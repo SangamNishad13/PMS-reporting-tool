@@ -1,0 +1,939 @@
+================================================================================
+                    PROJECT MANAGEMENT SYSTEM (PMS)
+                    COMPLETE FLOW DOCUMENTATION
+================================================================================
+
+Generated: February 9, 2026
+Version: 1.0
+Purpose: Accessibility Testing & Project Management
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+1. SYSTEM OVERVIEW
+2. USER ROLES & PERMISSIONS
+3. AUTHENTICATION FLOW
+4. ADMIN WORKFLOWS
+5. PROJECT LEAD WORKFLOWS
+6. QA WORKFLOWS
+7. TESTER WORKFLOWS (AT/FT)
+8. PROJECT LIFECYCLE
+9. ISSUE MANAGEMENT FLOW
+10. TIME TRACKING FLOW
+11. FEEDBACK SYSTEM FLOW
+12. DEVICE MANAGEMENT FLOW
+13. REPORTING & EXPORT FLOW
+14. NOTIFICATION SYSTEM
+15. DATABASE STRUCTURE
+
+================================================================================
+1. SYSTEM OVERVIEW
+================================================================================
+
+The Project Management System (PMS) is a comprehensive web-based application
+designed for managing accessibility testing projects. It provides tools for
+project tracking, issue management, time logging, team collaboration, and
+reporting.
+
+Key Features:
+- Multi-role user management
+- Project and task tracking
+- Accessibility issue management
+- Time and hours tracking
+- Team collaboration tools
+- Comprehensive reporting
+- Export functionality (Excel/PDF)
+- Device management
+- Feedback system
+- Admin vault for credentials
+
+Technology Stack:
+- Backend: PHP 7.4+
+- Database: MySQL 5.7+
+- Frontend: HTML5, CSS3, JavaScript, Bootstrap 5
+- Libraries: jQuery, Font Awesome, Summernote
+
+================================================================================
+2. USER ROLES & PERMISSIONS
+================================================================================
+
+2.1 SUPER ADMIN
+   - Full system access
+   - User management (create, edit, delete)
+   - System configuration
+   - All admin features
+   - Access to all projects
+
+2.2 ADMIN
+   - User management (limited)
+   - Project management
+   - Master data configuration
+   - Reports and analytics
+   - Backup and restore
+   - Access to all projects
+
+2.3 PROJECT LEAD
+   - Create and manage assigned projects
+   - Team assignment
+   - Task distribution
+   - Progress monitoring
+   - Time approval
+   - Project-specific access
+
+2.4 QA (Quality Assurance)
+   - View assigned projects
+   - Create and manage issues
+   - Review test results
+   - Approve/reject findings
+   - Time logging
+   - Project-specific access
+
+2.5 AT TESTER (Accessibility Tester)
+   - View assigned projects
+   - Report accessibility issues
+   - Update test status
+   - Time logging
+   - Limited project access
+
+2.6 FT TESTER (Functional Tester)
+   - View assigned projects
+   - Report functional issues
+   - Update test status
+   - Time logging
+   - Limited project access
+
+================================================================================
+3. AUTHENTICATION FLOW
+================================================================================
+
+3.1 LOGIN PROCESS
+   Step 1: User navigates to /modules/auth/login.php
+   Step 2: Enter username and password
+   Step 3: System validates credentials against users table
+   Step 4: Check if user is_removed = 0 (active)
+   Step 5: Create session with user_id, username, role, full_name
+   Step 6: Log login activity in user_login_activity table
+   Step 7: Create entry in user_sessions table
+   Step 8: Redirect to role-specific dashboard
+
+3.2 SESSION MANAGEMENT
+   - Session stored in PHP $_SESSION
+   - Session timeout: 24 hours (configurable)
+   - Concurrent sessions allowed
+   - Session tracking in user_sessions table
+   - IP address and user agent logged
+
+3.3 LOGOUT PROCESS
+   Step 1: User clicks logout
+   Step 2: Update user_sessions table (logout_at timestamp)
+   Step 3: Set logout_type (manual/forced/timeout)
+   Step 4: Destroy PHP session
+   Step 5: Redirect to login page
+
+3.4 PASSWORD RESET
+   Step 1: Admin navigates to user management
+   Step 2: Select user and click "Force Reset Password"
+   Step 3: System sets force_password_reset = 1
+   Step 4: User redirected to /modules/auth/force_reset.php on next login
+   Step 5: User enters new password
+   Step 6: Password hashed and updated
+   Step 7: force_password_reset set to 0
+
+================================================================================
+4. ADMIN WORKFLOWS
+================================================================================
+
+4.1 USER MANAGEMENT FLOW
+   Step 1: Navigate to /modules/admin/users.php
+   Step 2: View list of all users
+   Step 3: Actions available:
+           - Add New User (form with username, email, role, password)
+           - Edit User (update details, change role)
+           - Remove User (soft delete - set is_removed = 1)
+           - Force Password Reset
+           - View Login Activity
+   Step 4: Changes saved to users table
+   Step 5: Activity logged in activity_log table
+
+4.2 PROJECT MANAGEMENT FLOW
+   Step 1: Navigate to /modules/admin/projects.php
+   Step 2: View all projects with status
+   Step 3: Actions available:
+           - Create Project (title, client, type, dates)
+           - Edit Project (update details, status, phase)
+           - Archive Project
+           - Delete Project
+           - View Project Details
+   Step 4: Changes saved to projects table
+   Step 5: Notifications sent to team members
+
+4.3 MASTER DATA CONFIGURATION
+   
+   4.3.1 Issue Statuses (/modules/admin/issue_statuses.php)
+         - Add/Edit/Delete issue statuses
+         - Set status colors
+         - Define status order
+         - Saved in issue_statuses table
+   
+   4.3.2 QA Status Master (/modules/admin/qa_status_master.php)
+         - Configure QA status options
+         - Set badge colors
+         - Display order
+         - Active/Inactive toggle
+         - Saved in qa_status_master table
+   
+   4.3.3 Phase Master (/modules/admin/phase_master.php)
+         - Define project phases
+         - Set phase order
+         - Active/Inactive status
+         - Saved in phase_master table
+   
+   4.3.4 Page Status Masters
+         - Page QA Status (/modules/admin/page_qa_status_master.php)
+         - Page Testing Status (/modules/admin/page_testing_status_master.php)
+         - Environment Status (/modules/admin/env_status_master.php)
+   
+   4.3.5 Issue Configuration (/modules/admin/issue_config.php)
+         - Issue Types
+         - Issue Templates
+         - Issue Presets
+         - Metadata Fields
+
+4.4 BACKUP & RESTORE FLOW
+   Step 1: Navigate to /modules/admin/backup.php
+   Step 2: Click "Create Backup"
+   Step 3: System executes mysqldump
+   Step 4: Backup saved to database/backups/ with timestamp
+   Step 5: List of backups displayed
+   Step 6: Restore option available for each backup
+
+4.5 HOURS MANAGEMENT FLOW
+   Step 1: Navigate to /modules/admin/manage_hours.php
+   Step 2: View all time logs with filters
+   Step 3: Actions available:
+           - Edit time entry
+           - Delete time entry
+           - Approve/Reject hours
+           - Bulk operations
+   Step 4: Changes saved to project_time_logs table
+
+4.6 DEVICE MANAGEMENT FLOW
+   Step 1: Navigate to /modules/admin/devices.php
+   Step 2: View all devices
+   Step 3: Actions available:
+           - Add Device (name, type, OS, specs)
+           - Edit Device
+           - Delete Device
+           - Assign to User
+           - View Assignment History
+   Step 4: Saved in devices and device_assignments tables
+
+4.7 ADMIN VAULT FLOW
+   Step 1: Navigate to /modules/admin/vault.php
+   Step 2: View stored credentials (encrypted)
+   Step 3: Actions available:
+           - Add Credential (title, category, username, password)
+           - Edit Credential
+           - Delete Credential
+           - View Password (decrypted)
+   Step 4: Passwords encrypted before storage
+   Step 5: Saved in admin_credentials table
+
+================================================================================
+5. PROJECT LEAD WORKFLOWS
+================================================================================
+
+5.1 PROJECT CREATION FLOW
+   Step 1: Navigate to /modules/projects/create.php
+   Step 2: Fill project details:
+           - Title
+           - Client (select from clients table)
+           - Project Type (web, mobile, desktop)
+           - PO Number
+           - Project Code
+           - Start Date, End Date
+           - Description
+   Step 3: Submit form
+   Step 4: Project created in projects table
+   Step 5: Project Lead automatically assigned
+   Step 6: Redirect to project view
+
+5.2 TEAM ASSIGNMENT FLOW
+   Step 1: Navigate to project view
+   Step 2: Click "Team" tab
+   Step 3: Click "Manage Assignments"
+   Step 4: Select users from available list
+   Step 5: Assign roles (QA, AT Tester, FT Tester)
+   Step 6: Set assignment dates
+   Step 7: Save assignments to user_assignments table
+   Step 8: Notifications sent to assigned users
+
+5.3 PAGE MANAGEMENT FLOW
+   Step 1: Navigate to project view
+   Step 2: Click "Pages" tab
+   Step 3: Actions available:
+           - Add Page (page name, number, URL)
+           - Bulk Upload Pages (CSV/Excel)
+           - Edit Page
+           - Delete Page
+           - Assign Testers to Page
+   Step 4: Pages saved in project_pages table
+   Step 5: Page environments created in page_environments table
+
+5.4 PHASE MANAGEMENT FLOW
+   Step 1: Navigate to project view
+   Step 2: Click "Phases" tab
+   Step 3: View current phase
+   Step 4: Update phase status
+   Step 5: Add phase notes
+   Step 6: Changes saved to project_phases table
+
+================================================================================
+6. QA WORKFLOWS
+================================================================================
+
+6.1 ISSUE CREATION FLOW
+   Step 1: Navigate to /modules/projects/issues_pages.php?project_id=X
+   Step 2: Select page
+   Step 3: Click "Add Issue"
+   Step 4: Fill issue details:
+           - Title
+           - Description (with Summernote editor)
+           - Status
+           - QA Status (multiple selection)
+           - Severity
+           - Priority
+           - Pages (multiple selection)
+           - Grouped URLs
+           - Reporters
+           - Custom metadata fields
+   Step 5: Upload screenshots
+   Step 6: Submit form
+   Step 7: Issue saved to issues table
+   Step 8: Metadata saved to issue_metadata table
+   Step 9: Page associations saved to issue_pages table
+   Step 10: Issue key generated (e.g., DOM1-1)
+   Step 11: Notifications sent to team
+
+6.2 COMMON ISSUE CREATION FLOW
+   Step 1: Navigate to /modules/projects/issues_common.php?project_id=X
+   Step 2: Click "Add Common Issue"
+   Step 3: Fill issue details (similar to regular issue)
+   Step 4: Select multiple pages affected
+   Step 5: Set common title in metadata
+   Step 6: Submit form
+   Step 7: Issue saved with common flag
+   Step 8: Associated with multiple pages
+
+6.3 ISSUE REVIEW FLOW
+   Step 1: Navigate to issues list
+   Step 2: Click on issue to expand
+   Step 3: Review details
+   Step 4: Actions available:
+           - Edit Issue
+           - Change Status
+           - Add Comment
+           - Upload Additional Screenshots
+           - Update QA Status
+           - Assign to Developer
+   Step 5: Changes saved and logged
+   Step 6: Version history maintained in issue_versions table
+
+6.4 ISSUE COMMENT FLOW
+   Step 1: Open issue detail
+   Step 2: Scroll to comments section
+   Step 3: Write comment
+   Step 4: Select comment type (general/regression)
+   Step 5: Tag users (optional)
+   Step 6: Submit comment
+   Step 7: Comment saved to issue_comments table
+   Step 8: Tagged users notified
+
+================================================================================
+7. TESTER WORKFLOWS (AT/FT)
+================================================================================
+
+7.1 VIEW ASSIGNED PROJECTS
+   Step 1: Login as tester
+   Step 2: Dashboard shows assigned projects
+   Step 3: Click on project to view details
+   Step 4: View assigned pages and tasks
+
+7.2 REPORT ISSUE FLOW
+   Step 1: Navigate to assigned project
+   Step 2: Select page to test
+   Step 3: Click "Report Issue"
+   Step 4: Fill issue form (limited fields)
+   Step 5: Upload screenshot
+   Step 6: Submit issue
+   Step 7: Issue created with tester as reporter
+
+7.3 UPDATE TEST STATUS
+   Step 1: Navigate to assigned page
+   Step 2: Update page testing status
+   Step 3: Add notes
+   Step 4: Mark as tested/in-progress/blocked
+   Step 5: Status saved to page_environments table
+
+7.4 TIME LOGGING
+   Step 1: Navigate to project
+   Step 2: Click "Log Time"
+   Step 3: Select date
+   Step 4: Enter hours worked
+   Step 5: Add description
+   Step 6: Submit time log
+   Step 7: Saved to project_time_logs table
+
+================================================================================
+8. PROJECT LIFECYCLE
+================================================================================
+
+8.1 PROJECT CREATION PHASE
+   - Admin/Project Lead creates project
+   - Basic details entered
+   - Client assigned
+   - Project code generated
+   - Status: Planning
+
+8.2 TEAM ASSIGNMENT PHASE
+   - Project Lead assigns team members
+   - Roles defined (QA, Testers)
+   - Permissions set
+   - Notifications sent
+   - Status: Team Setup
+
+8.3 PLANNING PHASE
+   - Pages added to project
+   - Test environments configured
+   - Test plan created
+   - Timeline defined
+   - Status: Planning
+
+8.4 EXECUTION PHASE
+   - Testers assigned to pages
+   - Testing begins
+   - Issues reported
+   - Daily progress tracked
+   - Status: In Progress
+
+8.5 REVIEW PHASE
+   - QA reviews reported issues
+   - Issues validated
+   - Status updates
+   - Retesting scheduled
+   - Status: Review
+
+8.6 CLOSURE PHASE
+   - All issues resolved
+   - Final report generated
+   - Client approval
+   - Project archived
+   - Status: Completed
+
+================================================================================
+9. ISSUE MANAGEMENT FLOW
+================================================================================
+
+9.1 ISSUE LIFECYCLE
+
+   Created → Open → In Progress → Resolved → Closed
+                ↓
+              Reopened
+
+9.2 ISSUE STATES
+
+   OPEN
+   - Newly created issue
+   - Awaiting assignment
+   - Not yet started
+   
+   IN PROGRESS
+   - Assigned to developer
+   - Work in progress
+   - Under investigation
+   
+   RESOLVED
+   - Fix implemented
+   - Ready for testing
+   - Awaiting verification
+   
+   CLOSED
+   - Verified by QA
+   - Issue fixed
+   - No further action needed
+   
+   REOPENED
+   - Issue persists
+   - Fix not working
+   - Back to In Progress
+
+9.3 ISSUE METADATA
+
+   Standard Fields:
+   - Issue Key (auto-generated)
+   - Title
+   - Description
+   - Status
+   - QA Status
+   - Severity (Low, Medium, High, Critical)
+   - Priority (Low, Medium, High, Urgent)
+   - Reporter
+   - Pages Affected
+   - Grouped URLs
+   
+   Custom Metadata Fields:
+   - Users Affected
+   - WCAG Success Criteria Number
+   - WCAG Success Criteria Name
+   - WCAG Success Criteria Level
+   - GIGW 3.0
+   - IS 17802
+   - Common Title (for common issues)
+   - Any admin-configured fields
+
+9.4 ISSUE TEMPLATES
+
+   Templates contain sections:
+   - [Actual Result]
+   - [Incorrect Code]
+   - [Screenshot]
+   - [Recommendation]
+   - [Correct Code]
+   - [Expected Result]
+   - [Steps to Reproduce]
+   - [Impact]
+   - [Notes]
+
+9.5 ISSUE PRESETS
+
+   Pre-configured issue templates with:
+   - Title
+   - Description template
+   - Default severity
+   - Default priority
+   - Common metadata values
+   - Quick issue creation
+
+================================================================================
+10. TIME TRACKING FLOW
+================================================================================
+
+10.1 TIME LOGGING PROCESS
+
+   Step 1: User navigates to project
+   Step 2: Clicks "Log Time" or uses time tracking widget
+   Step 3: Selects date (cannot be future date)
+   Step 4: Enters hours (decimal format, e.g., 2.5)
+   Step 5: Selects task type:
+           - Development
+           - Testing
+           - Review
+           - Meeting
+           - Documentation
+           - Other
+   Step 6: Adds description
+   Step 7: Optionally links to issue
+   Step 8: Submits time log
+   Step 9: Saved to project_time_logs table
+   Step 10: Validation checks:
+            - Total daily hours ≤ 24
+            - No duplicate entries for same date/task
+            - Hours > 0
+
+10.2 TIME APPROVAL FLOW
+
+   Step 1: Project Lead/Admin views time logs
+   Step 2: Reviews submitted hours
+   Step 3: Actions:
+           - Approve (status = approved)
+           - Reject (status = rejected, add reason)
+           - Request Edit (status = pending_edit)
+   Step 4: User notified of approval/rejection
+   Step 5: Approved hours counted in reports
+
+10.3 EDIT REQUEST FLOW
+
+   Step 1: User wants to edit approved time log
+   Step 2: Clicks "Request Edit"
+   Step 3: Fills edit request form:
+           - Reason for edit
+           - Proposed changes
+   Step 4: Request saved to edit_requests table
+   Step 5: Admin/Project Lead notified
+   Step 6: Admin reviews request
+   Step 7: Actions:
+           - Approve Edit (unlock time log)
+           - Reject Edit (keep locked)
+   Step 8: User notified of decision
+
+10.4 HOURS COMPLIANCE
+
+   Daily Compliance Check:
+   - Cron job runs at 6 PM daily
+   - Checks if users logged minimum hours
+   - Sends reminder if hours < threshold
+   - Logs compliance status
+   
+   Weekly Reports:
+   - Total hours per user
+   - Project-wise breakdown
+   - Billable vs non-billable
+   - Overtime tracking
+
+================================================================================
+11. FEEDBACK SYSTEM FLOW
+================================================================================
+
+11.1 FEEDBACK CREATION
+
+   Step 1: User navigates to /modules/feedback.php
+   Step 2: Clicks "Give Feedback"
+   Step 3: Fills feedback form:
+           - Target User (who to give feedback to)
+           - Project (optional)
+           - Feedback Type (positive/negative/suggestion)
+           - Category (work quality, communication, etc.)
+           - Message
+           - Rating (1-5 stars)
+   Step 4: Submits feedback
+   Step 5: Saved to feedbacks table
+   Step 6: Target user notified
+   Step 7: Status: Pending
+
+11.2 FEEDBACK REVIEW
+
+   Step 1: Admin views feedback list
+   Step 2: Reviews feedback content
+   Step 3: Actions:
+           - Approve (visible to target user)
+           - Reject (not visible)
+           - Edit (modify content)
+   Step 4: Status updated
+   Step 5: Target user can view approved feedback
+
+11.3 FEEDBACK RESPONSE
+
+   Step 1: User views received feedback
+   Step 2: Reads feedback message
+   Step 3: Can add response/comment
+   Step 4: Response saved
+   Step 5: Feedback giver notified
+
+================================================================================
+12. DEVICE MANAGEMENT FLOW
+================================================================================
+
+12.1 DEVICE REGISTRATION
+
+   Step 1: Admin navigates to /modules/admin/devices.php
+   Step 2: Clicks "Add Device"
+   Step 3: Fills device details:
+           - Device Name
+           - Device Type (laptop, desktop, mobile, tablet)
+           - Operating System
+           - OS Version
+           - Processor
+           - RAM
+           - Storage
+           - Serial Number
+           - Purchase Date
+           - Warranty Expiry
+           - Status (available, assigned, maintenance, retired)
+   Step 4: Submits form
+   Step 5: Device saved to devices table
+
+12.2 DEVICE ASSIGNMENT
+
+   Step 1: Admin selects device
+   Step 2: Clicks "Assign to User"
+   Step 3: Selects user from list
+   Step 4: Sets assignment date
+   Step 5: Adds notes
+   Step 6: Submits assignment
+   Step 7: Saved to device_assignments table
+   Step 8: Device status changed to "assigned"
+   Step 9: User notified
+
+12.3 DEVICE RETURN
+
+   Step 1: Admin views assigned devices
+   Step 2: Selects device to return
+   Step 3: Clicks "Return Device"
+   Step 4: Sets return date
+   Step 5: Adds condition notes
+   Step 6: Updates device_assignments (return_date)
+   Step 7: Device status changed to "available"
+
+================================================================================
+13. REPORTING & EXPORT FLOW
+================================================================================
+
+13.1 ISSUE EXPORT FLOW
+
+   Step 1: Navigate to /modules/projects/export_issues.php?project_id=X
+   Step 2: Select export format:
+           - Excel (.xlsx)
+           - PDF (.pdf)
+   Step 3: Select image handling:
+           - Image Links Only
+           - Embed Images
+           - No Images
+   Step 4: Apply filters:
+           - Pages
+           - Status
+           - QA Status
+           - Date Range
+   Step 5: Select columns to export:
+           - Basic fields (issue key, title, status, etc.)
+           - Metadata fields
+           - Template sections
+   Step 6: Drag and drop to reorder columns
+   Step 7: Click "Export Issues"
+   Step 8: System processes:
+           - Fetches issues from database
+           - Applies filters
+           - Formats data
+           - Generates file
+   Step 9: File downloaded to user's computer
+
+13.2 EXCEL EXPORT FORMAT
+
+   - CSV format with UTF-8 BOM
+   - Header row with column names
+   - Data rows with formatted text
+   - HTML converted to plain text
+   - Bold markers (**text**)
+   - Bullet points preserved
+   - Line breaks maintained
+   - Image URLs included
+
+13.3 PDF EXPORT FORMAT
+
+   - Document style (not table)
+   - Issue containers with borders
+   - Issue title as heading
+   - Description section
+   - Basic fields in 2-column grid
+   - Template sections as separate blocks
+   - Grouped URLs as bullet list
+   - Images embedded (if selected)
+   - Print-friendly layout
+
+13.4 PROJECT REPORTS
+
+   Available Reports:
+   - Project Summary Report
+   - Issue Status Report
+   - Team Performance Report
+   - Time Tracking Report
+   - Hours Compliance Report
+   - Device Utilization Report
+   - User Activity Report
+
+================================================================================
+14. NOTIFICATION SYSTEM
+================================================================================
+
+14.1 NOTIFICATION TRIGGERS
+
+   User Assignment:
+   - User assigned to project
+   - User removed from project
+   - Role changed
+   
+   Issue Updates:
+   - New issue created
+   - Issue assigned
+   - Issue status changed
+   - Issue commented
+   - User tagged in comment
+   
+   Time Tracking:
+   - Time log approved
+   - Time log rejected
+   - Edit request approved/rejected
+   - Hours reminder (daily)
+   
+   Feedback:
+   - New feedback received
+   - Feedback approved
+   - Feedback response added
+   
+   Device:
+   - Device assigned
+   - Device return due
+   - Device maintenance scheduled
+
+14.2 NOTIFICATION DELIVERY
+
+   In-App Notifications:
+   - Bell icon in header
+   - Notification count badge
+   - Dropdown list of recent notifications
+   - Mark as read functionality
+   
+   Email Notifications:
+   - Sent for critical events
+   - Configurable per user
+   - HTML formatted emails
+   - Action links included
+
+================================================================================
+15. DATABASE STRUCTURE
+================================================================================
+
+15.1 CORE TABLES
+
+   users
+   - User accounts and authentication
+   - Roles and permissions
+   - Profile information
+   
+   projects
+   - Project details
+   - Client information
+   - Status and phase
+   - Dates and timeline
+   
+   issues
+   - Issue details
+   - Status and priority
+   - Reporter and assignee
+   - Timestamps
+   
+   project_pages
+   - Page information
+   - Page numbers and names
+   - URLs and notes
+   
+   user_assignments
+   - Team assignments
+   - Project-user relationships
+   - Assignment dates
+
+15.2 ISSUE MANAGEMENT TABLES
+
+   issue_metadata
+   - Custom field values
+   - Key-value pairs
+   - Flexible structure
+   
+   issue_pages
+   - Issue-page associations
+   - Many-to-many relationship
+   
+   issue_comments
+   - Comments on issues
+   - Comment types
+   - Reply threading
+   
+   issue_versions
+   - Issue history
+   - Change tracking
+   - Audit trail
+   
+   issue_assignees
+   - Multiple assignees per issue
+   - Assignment dates
+
+15.3 MASTER DATA TABLES
+
+   issue_statuses
+   - Status definitions
+   - Colors and order
+   
+   issue_priorities
+   - Priority levels
+   
+   issue_types
+   - Issue categories
+   
+   issue_templates
+   - Template definitions
+   - Section structures
+   
+   issue_presets
+   - Pre-configured issues
+   - Quick creation
+   
+   issue_metadata_fields
+   - Custom field definitions
+   - Field types and validation
+   
+   qa_status_master
+   - QA status options
+   - Badge colors
+   
+   phase_master
+   - Project phases
+   - Phase order
+   
+   page_qa_status_master
+   - Page QA statuses
+   
+   page_testing_status_master
+   - Page testing statuses
+   
+   env_status_master
+   - Environment statuses
+
+15.4 TIME TRACKING TABLES
+
+   project_time_logs
+   - Time entries
+   - Hours and dates
+   - Task descriptions
+   
+   project_hours
+   - Aggregated hours
+   - Project totals
+   
+   edit_requests
+   - Time log edit requests
+   - Approval workflow
+
+15.5 SUPPORTING TABLES
+
+   clients
+   - Client information
+   - Contact details
+   
+   devices
+   - Device inventory
+   - Specifications
+   
+   device_assignments
+   - Device allocation
+   - Assignment history
+   
+   feedbacks
+   - User feedback
+   - Ratings and comments
+   
+   user_sessions
+   - Active sessions
+   - Login tracking
+   
+   user_login_activity
+   - Login history
+   - IP addresses
+   
+   activity_log
+   - System activity
+   - Audit trail
+   
+   page_environments
+   - Environment configurations
+   - Status tracking
+   
+   admin_credentials
+   - Encrypted credentials
+   - Vault storage
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+
+For questions or support, contact the system administrator.
+Last Updated: February 9, 2026

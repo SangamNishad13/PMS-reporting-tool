@@ -1,0 +1,19 @@
+// Instructions for integrating Summernote WYSIWYG editor in the PMS user calendar modal
+// 1. Download Summernote assets or use CDN links.
+// 2. Add Summernote CSS and JS to your calendar page.
+// 3. Replace the <textarea> for notes or personal note with a <textarea class="summernote">.
+// 4. Initialize Summernote in your JS after the modal is shown.
+// 5. On form submit, get the HTML content from Summernote and submit it as the value.
+
+// Example CDN links:
+// <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-bs4.min.css" rel="stylesheet">
+// <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-bs4.min.js"></script>
+
+// Example JS initialization:
+// $('.summernote').summernote({
+//   height: 120
+// });
+
+// To get/set value:
+// var html = $('.summernote').summernote('code');
+// $('.summernote').summernote('code', '<p>new content</p>');

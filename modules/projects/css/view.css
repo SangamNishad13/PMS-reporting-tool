@@ -1,0 +1,1282 @@
+/* CSS Extracted from view.php */
+
+/* Custom Scrollbar for better UX */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Base styles / Utils */
+.nav-tabs .nav-link {
+    color: #495057;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 0.75rem 1.25rem;
+    font-weight: 500;
+}
+
+.nav-tabs .nav-link:hover {
+    color: #0d6efd;
+    border-color: transparent;
+    background: rgba(13, 110, 253, 0.05);
+}
+
+.nav-tabs .nav-link.active {
+    color: #0d6efd;
+    border-bottom: 2px solid #0d6efd;
+    background: transparent;
+    font-weight: 600;
+}
+
+.tab-content {
+    padding-top: 20px;
+}
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border: 1px solid rgba(0, 0, 0, .08);
+    transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+}
+
+.avatar-circle {
+    width: 36px;
+    height: 36px;
+    background-color: #e9ecef;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #495057;
+    font-weight: 600;
+    font-size: 14px;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.avatar-stack {
+    display: flex;
+    padding-left: 10px;
+}
+
+.avatar-stack .avatar-circle {
+    margin-left: -10px;
+    transition: transform 0.2s, z-index 0.2s;
+    position: relative;
+    z-index: 1;
+}
+
+.avatar-stack .avatar-circle:hover {
+    transform: translateY(-2px);
+    z-index: 10;
+}
+
+/* Chat Widget */
+.chat-widget-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 360px;
+    height: 500px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    transform: translateY(120%);
+    /* Hidden by default */
+}
+
+.chat-widget-container.open {
+    transform: translateY(0);
+}
+
+.chat-widget-container.fullscreen {
+    width: 95vw;
+    height: 90vh;
+    bottom: 5vh;
+    right: 2.5vw;
+    z-index: 10600;
+}
+
+.chat-widget-header {
+    background: #0d6efd;
+    color: white;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: move;
+}
+
+.chat-widget-container iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    flex-grow: 1;
+}
+
+.chat-launcher {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 60px;
+    height: 60px;
+    border-radius: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    box-shadow: 0 4px 15px rgba(13, 110, 253, 0.4);
+    z-index: 999;
+    transition: transform 0.2s;
+}
+
+.chat-launcher:hover {
+    transform: scale(1.1);
+}
+
+.chat-launcher span {
+    display: none;
+}
+
+/* Enhanced styling for project chat launcher */
+.chat-launcher {
+    width: auto;
+    padding: 0 24px;
+    gap: 8px;
+}
+
+.chat-launcher span {
+    display: inline;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+/* Floating Actions */
+.floating-actions {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.floating-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    transition: transform 0.2s;
+}
+
+.floating-btn:hover {
+    transform: translateY(-3px);
+}
+
+/* Issues Tab Styling */
+.issue-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1.25rem;
+}
+
+.issue-card {
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #eef0f3;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    transition: all 0.25s cubic-bezier(0.165, 0.84, 0.44, 1);
+    position: relative;
+    overflow: hidden;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.issue-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
+    border-color: #dee2e6;
+}
+
+.issue-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: #ccc;
+    transition: background 0.3s;
+}
+
+.issue-card[data-priority="high"],
+.issue-card[data-priority="urgent"],
+.issue-card[data-priority="critical"] {
+    border-left: none;
+    /* using before element */
+}
+
+.issue-card[data-priority="high"]::before {
+    background: #fd7e14;
+}
+
+.issue-card[data-priority="urgent"]::before {
+    background: #dc3545;
+}
+
+.issue-card[data-priority="critical"]::before {
+    background: #721c24;
+}
+
+.issue-card[data-priority="medium"]::before {
+    background: #ffc107;
+}
+
+.issue-card[data-priority="low"]::before {
+    background: #198754;
+}
+
+.issue-card-header {
+    padding: 1rem 1.25rem;
+    background: #fff;
+    border-bottom: 1px solid #f0f2f5;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.issue-card-body {
+    padding: 1.25rem;
+    flex-grow: 1;
+    /* Pushes footer down */
+}
+
+.issue-card-footer {
+    padding: 0.75rem 1.25rem;
+    background: #f8f9fa;
+    border-top: 1px solid #f0f2f5;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+}
+
+.issue-id-badge {
+    background: #e9ecef;
+    color: #495057;
+    font-family: 'SF Mono', monospace;
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.issue-title {
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+    font-size: 1.05rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.issue-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 0.75rem;
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.issue-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 5px 0;
+}
+
+.issue-status-badge {
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 12px;
+    letter-spacing: 0.5px;
+}
+
+/* Status Colors from design system */
+.status-open {
+    background: #e3f2fd;
+    color: #0d47a1;
+}
+
+.status-in_progress {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.status-resolved {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+
+.status-closed {
+    background: #eceff1;
+    color: #37474f;
+}
+
+.issue-action-btn {
+    opacity: 0.6;
+    transition: opacity 0.2s, background 0.2s;
+    padding: 4px;
+    border-radius: 4px;
+    color: #495057;
+    border: none;
+    background: transparent;
+}
+
+.issue-action-btn:hover {
+    opacity: 1;
+    background: #e9ecef;
+    color: #0d6efd;
+}
+
+.issue-action-btn.delete:hover {
+    color: #dc3545;
+}
+
+/* Image improvements */
+.issue-image-thumb {
+    width: 60px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: zoom-in;
+    background: #f8f9fa;
+}
+
+.issue-image-thumb:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    z-index: 2;
+}
+
+.issue-image-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+/* Modal Styling Improvements */
+.issue-image-modal .modal-content {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+.issue-image-modal .modal-body {
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: transparent;
+}
+
+.issue-image-modal .btn-close {
+    position: absolute;
+    right: -40px;
+    top: -20px;
+    background-color: #fff;
+    opacity: 1;
+    z-index: 10600;
+    border-radius: 50%;
+    padding: 0.5rem;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.issue-image-modal .modal-dialog {
+    max-width: 95vw;
+    margin: 1.75rem auto;
+}
+
+#issueModalImg {
+    max-height: 90vh;
+    object-fit: contain;
+    border-radius: 4px;
+    box-shadow: 0 5px 30px rgba(0, 0, 0, 0.5);
+    background: #fff;
+}
+
+/* Modal safety with floating chat widget */
+.modal {
+    z-index: 10550;
+}
+
+.modal-backdrop {
+    z-index: 10540;
+}
+
+.modal-dialog {
+    margin-bottom: 90px;
+    /* keep footer above chat window */
+}
+
+.modal-footer {
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    z-index: 2;
+    border-top: 1px solid #dee2e6;
+}
+
+/* Form Elements in Modal */
+.issue-title-prominent {
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    margin: -1rem -1rem 1rem -1rem;
+    border-radius: calc(0.3rem - 1px) calc(0.3rem - 1px) 0 0;
+    padding: 1rem 1.5rem 0.5rem 1.5rem;
+}
+
+.issue-title-prominent label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6c757d;
+    font-weight: 600;
+}
+
+.issue-title-prominent .select2-container--bootstrap-5 .select2-selection {
+    border: 1px solid #ced4da !important;
+    background: #fff !important;
+    font-size: 1.1rem;
+    font-weight: 600;
+    height: auto !important;
+    padding: 0.5rem 0.75rem !important;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02) !important;
+}
+
+.issue-title-prominent .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+    padding: 0 !important;
+    color: #212529 !important;
+}
+
+.issue-title-prominent .form-select {
+    border: 1px solid #ced4da;
+    background: #fff;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+}
+
+/* Review History / Diff View */
+.issue-history-entry {
+    border-left: 3px solid #dee2e6;
+    padding: 10px 0 10px 15px;
+    margin-bottom: 15px;
+    position: relative;
+    background: #fdfdfd;
+}
+
+.issue-history-entry::before {
+    content: '';
+    position: absolute;
+    left: -4px;
+    top: 15px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #6c757d;
+}
+
+.diff-old {
+    text-decoration: line-through;
+    color: #dc3545;
+    background: #fff5f5;
+    padding: 0 4px;
+    border-radius: 2px;
+}
+
+.diff-new {
+    color: #198754;
+    background: #f0fff4;
+    padding: 0 4px;
+    border-radius: 2px;
+    font-weight: 500;
+}
+
+.btn-xs {
+    padding: 0.1rem 0.3rem;
+    font-size: 0.75rem;
+    border-radius: 0.2rem;
+}
+
+/* Fix Select2 scroll in modal */
+.select2-container--open .select2-dropdown {
+    z-index: 10600;
+}
+
+.select2-results__options {
+    max-height: 250px !important;
+    overflow-y: auto !important;
+}
+
+.toggle-icon {
+    transition: transform 0.3s ease;
+}
+
+.page-summary {
+    transition: opacity 0.3s ease;
+}
+
+.collapse.show+.page-summary {
+    opacity: 0.7;
+}
+
+/* Compact page cards */
+.card-header {
+    padding: 0.75rem 1rem;
+}
+
+.page-toggle-btn {
+    border: 1px solid #dee2e6;
+    background: transparent;
+}
+
+.page-toggle-btn:focus {
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, .25);
+}
+
+/* Tab content height limitation */
+#projectTabsContent {
+    /* max-height: 600px; */
+    /* overflow-y: auto; */
+    padding-bottom: 20px;
+}
+
+#projectTabsContent .table-responsive {
+    /* max-height: 400px; */
+    /* overflow-y: auto; */
+}
+
+/* Sticky Headers for Tables */
+#projectTabsContent .table-responsive thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #f8f9fa;
+    /* Ensure it's opaque */
+    box-shadow: 0 1px 0 #dee2e6;
+}
+
+/* Ensure dropdowns in tables don't get clipped (often an issue with overflow-y: auto)
+   We might need min-height for table bodies if rows are few */
+
+/* Specifically for the resizable columns */
+.resizable-col {
+    position: relative;
+    /* overflow: hidden; -- Removed to allow dropdowns */
+}
+
+.resizer {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 5px;
+    cursor: col-resize;
+    user-select: none;
+    z-index: 10;
+}
+
+.resizer:hover,
+.resizing {
+    background-color: #0d6efd;
+}
+
+/* Context Menu for right click */
+.context-menu {
+    border: 1px solid #ddd;
+    box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.2);
+    display: none;
+    position: absolute;
+    z-index: 9999;
+}
+
+/* Ensure th is positioned for the resizer */
+#projectTabsContent .table-responsive th {
+    position: relative;
+    vertical-align: middle;
+}
+
+/* Default cell content: show ellipsis when overflowed, unless the column is marked to wrap */
+#projectTabsContent .table-responsive td,
+#projectTabsContent .table-responsive th {
+    box-sizing: border-box;
+    min-width: 0;
+    /* allow columns to shrink */
+}
+
+#projectTabsContent .table-responsive td .page-name-display,
+#projectTabsContent .table-responsive td .notes-display {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* Ensure edit buttons stay visible */
+#projectTabsContent .table-responsive td .edit-page-name {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Allow visible overflow for action columns containing dropdowns */
+#projectTabsContent .table-responsive td.actions-col,
+#projectTabsContent .table-responsive th.actions-col {
+    overflow: visible;
+}
+
+/* Specific wrappers for lengthy text if not relying on global td rules */
+.cell-content {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+}
+
+/* Page Status Dropdown in Tables */
+.status-dropdown .dropdown-toggle {
+    width: 100%;
+    text-align: left;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.status-dropdown .dropdown-toggle::after {
+    margin-left: auto;
+}
+
+.status-dropdown .dropdown-menu {
+    min-width: 150px;
+    z-index: 1050;
+    /* Ensure high z-index */
+}
+
+.status-option {
+    cursor: pointer;
+    padding: 0.35rem 1rem;
+}
+
+.status-option:hover {
+    background-color: #f8f9fa;
+}
+
+/* Table Header Sort Icons */
+.sort-icon {
+    font-size: 0.8em;
+    margin-left: 5px;
+    opacity: 0.4;
+    cursor: pointer;
+}
+
+.sort-icon.active {
+    opacity: 1;
+    color: #0d6efd;
+}
+
+/* Assign Bulk Modal user list */
+#bulkAssignUserList {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+}
+
+.user-item {
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.user-item:last-child {
+    border-bottom: none;
+}
+
+.user-item:hover {
+    background-color: #f8f9fa;
+}
+
+/* Assets Assets */
+.asset-card {
+    transition: transform 0.2s;
+}
+
+.asset-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .15) !important;
+}
+
+.asset-icon {
+    font-size: 2rem;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8f9fa;
+    border-radius: 50%;
+    margin: 0 auto 10px;
+}
+
+.asset-actions {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.asset-card:hover .asset-actions {
+    opacity: 1;
+}
+
+/* Assets Grid */
+#assets .row {
+    /* max-height: 500px; */
+    /* overflow-y: auto; */
+    margin-top: 15px;
+}
+
+/* Production hours table height */
+#production-hours .table-responsive {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+#production-hours th {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 10;
+    box-shadow: 0 1px 0 #dee2e6;
+}
+
+/* Issues tab sidebar */
+.issues-page-list {
+    max-height: calc(100vh - 250px);
+    overflow-y: auto;
+    border-right: 1px solid #eef0f3;
+}
+
+.issues-page-list .list-group-item {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: #ffffff;
+    border: 1px solid transparent;
+    border-bottom: 1px solid #f0f0f0;
+    border-left: 4px solid transparent;
+    margin-bottom: 2px;
+    padding: 0.75rem 1rem;
+}
+
+.issues-page-list .list-group-item:hover {
+    background-color: #f8f9fa;
+    border-left-color: #cce5ff;
+}
+
+.issues-page-list .list-group-item.active {
+    background-color: #e3f2fd;
+    border-left-color: #0d6efd;
+    color: #495057;
+    font-weight: 500;
+}
+
+.issues-page-list .list-group-item .badge {
+    font-weight: 500;
+}
+
+.issue-mode-note {
+    font-size: 0.8rem;
+    padding: 8px 12px;
+    background: #fff3cd;
+    border-radius: 6px;
+    color: #856404;
+    margin-bottom: 15px;
+}
+
+.issue-expand-actions {
+    margin-bottom: 15px;
+}
+
+.issue-expand-actions .btn {
+    white-space: nowrap;
+}
+
+.issue-url-toggle {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Add Alt Text Button */
+.img-insert-alt-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 11px;
+    cursor: pointer;
+    z-index: 10;
+    display: none;
+    /* Shown on hover via JS or CSS if possible */
+}
+
+.note-editor .note-editable img:hover+.img-insert-alt-btn,
+.note-editor .note-editable .img-wrapper:hover .img-insert-alt-btn {
+    display: block;
+}
+
+/* Custom Select2 for Issue Modal to match Bootstrap 5 */
+.select2-container--bootstrap-5 .select2-selection {
+    border-color: #dee2e6;
+}
+
+/* Issue Comments Chat Styling */
+.message {
+    display: block;
+    margin-bottom: 1rem;
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.message.own-message {
+    text-align: right;
+}
+
+.message.own-message .message-content {
+    display: inline-block;
+    max-width: 75%;
+    text-align: left;
+    background-color: #cfe2ff !important;
+    border-left: 3px solid #0d6efd;
+}
+
+.message.other-message .message-content {
+    display: inline-block;
+    max-width: 75%;
+    background-color: #f8f9fa;
+    border-left: 3px solid #6c757d;
+}
+
+.message-content {
+    word-wrap: break-word;
+    word-break: break-word;
+}
+
+.message-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    margin: 0.5rem 0;
+}
+
+.message-content .badge {
+    font-size: 0.85em;
+}
+
+#finalIssueCommentsList {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 1rem;
+}
+
+#finalIssueCommentsList::-webkit-scrollbar {
+    width: 6px;
+}
+
+#finalIssueCommentsList::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+/* Mention dropdown styling */
+#issueMentionDropdown {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+#issueMentionDropdown .mention-item {
+    cursor: pointer;
+    padding: 0.5rem 1rem;
+    transition: background-color 0.15s ease-in-out;
+}
+
+#issueMentionDropdown .mention-item:hover,
+#issueMentionDropdown .mention-item.active {
+    background-color: #0d6efd;
+    color: white;
+}
+
+/* Issue Comment Reply Preview Styles */
+.reply-preview {
+    background: #f8f9fa !important;
+    border-left: 3px solid #0d6efd !important;
+    border-radius: 0.25rem;
+    padding: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+    transition: all 0.2s ease;
+}
+
+.reply-preview:hover {
+    background: #e9ecef !important;
+    border-left-color: #0b5ed7 !important;
+}
+
+.reply-preview .fa-reply {
+    color: #0d6efd;
+    font-size: 0.75rem;
+}
+
+.reply-preview small {
+    display: block;
+    line-height: 1.4;
+}
+
+.reply-preview .fw-bold {
+    color: #0d6efd !important;
+}
+
+/* Issue Comment Reply Preview Banner (when composing) */
+#issueCommentReplyPreview {
+    background: linear-gradient(135deg, #e7f3ff 0%, #f0f8ff 100%);
+    border: 1px solid #b6d4fe;
+    border-left: 4px solid #0d6efd;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+    border-radius: 0.375rem;
+    box-shadow: 0 2px 4px rgba(13, 110, 253, 0.1);
+}
+
+#issueCommentReplyPreview .fa-reply {
+    color: #0d6efd;
+    font-size: 1rem;
+}
+
+#issueCommentReplyPreview #replyUserName {
+    color: #0d6efd;
+    font-weight: 600;
+}
+
+#issueCommentReplyPreview #replyCommentText {
+    color: #495057;
+    font-style: italic;
+    margin-top: 0.25rem;
+    padding-left: 1.5rem;
+}
+
+#issueCommentReplyPreview .btn-close {
+    font-size: 0.75rem;
+}
+
+/* Edit History Diff Styles */
+.issue-history-entry {
+    background: #fff;
+    transition: all 0.2s ease;
+}
+
+.issue-history-entry:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.diff-container {
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0.25rem;
+    overflow-x: auto;
+}
+
+.diff-removed {
+    background-color: #ffd7d5 !important;
+    color: #d73a49 !important;
+    text-decoration: line-through !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+    margin: 0 2px !important;
+    display: inline !important;
+}
+
+.diff-added {
+    background-color: #d4edda !important;
+    color: #28a745 !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+    margin: 0 2px !important;
+    font-weight: 600 !important;
+    display: inline !important;
+}
+
+.diff-preview, .diff-full {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* History entry styling */
+.issue-history-entry .fw-bold {
+    font-size: 1rem;
+    color: #0d6efd;
+}
+
+.issue-history-entry .small {
+    font-size: 0.875rem;
+}
+
+/* Before/After boxes for non-description fields */
+.bg-danger-subtle {
+    background-color: #f8d7da !important;
+}
+
+.text-danger {
+    color: #dc3545 !important;
+}
+
+.bg-success-subtle {
+    background-color: #d1e7dd !important;
+}
+
+.text-success {
+    color: #198754 !important;
+}
+
+/* Badge styling */
+.badge.bg-danger-subtle {
+    background-color: #f8d7da !important;
+    color: #842029 !important;
+    border: 1px solid #f5c2c7;
+}
+
+.badge.bg-success-subtle {
+    background-color: #d1e7dd !important;
+    color: #0f5132 !important;
+    border: 1px solid #badbcc;
+}
+
+/* Keyboard focus styles for chevron toggle button */
+.chevron-toggle-btn:focus {
+    outline: 2px solid #0d6efd;
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+.chevron-toggle-btn:focus-visible {
+    outline: 2px solid #0d6efd;
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* Remove default focus outline for mouse users */
+.chevron-toggle-btn:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* Hover effect for chevron button */
+.chevron-toggle-btn:hover {
+    color: #0d6efd !important;
+}
+
+.chevron-toggle-btn:hover .chevron-icon {
+    color: #0d6efd !important;
+}
+
+/* Compact issue title styling */
+.issue-title-compact {
+    padding: 0.5rem 0;
+}
+
+.issue-title-compact .form-label {
+    margin-bottom: 0.25rem;
+    font-size: 0.875rem;
+}
+
+.issue-title-compact .form-control {
+    font-size: 0.95rem;
+}
+
+/* Modal header optimization */
+.modal-header.pb-2 {
+    padding-bottom: 0.5rem !important;
+}
+
+.modal-body.pt-2 {
+    padding-top: 0.5rem !important;
+}
+
+/* Compact common title field */
+#finalIssueCommonTitleWrap {
+    padding: 0.5rem 0;
+}
+
+#finalIssueCommonTitleWrap .form-label {
+    font-size: 0.75rem;
+    margin-bottom: 0.25rem;
+}
+
+#finalIssueCommonTitleWrap .form-control-sm {
+    font-size: 0.875rem;
+    padding: 0.375rem 0.5rem;
+}
+
+/* Fix for dropdown options getting clipped in tables */
+.table-responsive {
+    overflow: visible !important;
+}
+
+/* Ensure table cells with dropdowns don't clip */
+.table td.has-dropdown,
+.table th.has-dropdown {
+    overflow: visible !important;
+    position: relative;
+}
+
+/* Ensure dropdown menus appear above table rows */
+.form-select {
+    position: relative;
+    z-index: 1;
+}
+
+.form-select:focus {
+    z-index: 10;
+}
+
+/* Specific fix for environment status dropdowns in Pages tab */
+.env-status-update {
+    position: relative;
+    z-index: 1;
+}
+
+.env-status-update:focus,
+.env-status-update:active {
+    z-index: 100 !important;
+}
+
+/* Ensure parent containers don't clip dropdowns */
+.card-body {
+    overflow: visible !important;
+}
+
+.collapse .card-body {
+    overflow: visible !important;
+}
+
+/* Fix for nested tables in collapsed sections */
+.collapse.show {
+    overflow: visible !important;
+}
+
+/* Ensure table rows don't clip dropdown options */
+.table tbody tr {
+    position: relative;
+}
+
+.table tbody tr td {
+    overflow: visible;
+}
+
+/* Specific fix for page environment cards */
+#page-details-container .card {
+    overflow: visible !important;
+}
+
+#page-details-container .card-body {
+    overflow: visible !important;
+}
+
+#page-details-container .table-responsive {
+    overflow: visible !important;
+}
+
+/* Ensure dropdown options are visible */
+select.form-select option {
+    background: white;
+    color: black;
+    padding: 8px;
+}
+
+/* Fix z-index stacking for dropdowns in tables */
+.table {
+    position: relative;
+    z-index: 1;
+}
+
+.table tbody {
+    position: relative;
+    z-index: 2;
+}
+
+.table tbody tr {
+    position: relative;
+    z-index: 3;
+}
+
+.table tbody tr td select {
+    position: relative;
+    z-index: 4;
+}
+
+.table tbody tr td select:focus {
+    z-index: 100;
+}

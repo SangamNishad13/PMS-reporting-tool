@@ -1,0 +1,558 @@
+/* 
+   Project Management System - Professional Compact Theme
+   Version: 2.0 (High Density & Accessibility Focused)
+   Date: 2026-02-02
+*/
+
+:root {
+    /* --- Palette: Slate & Blue Professional --- */
+    --primary: #0f6cbf;
+    /* Strong professional blue */
+    --primary-hover: #0a559b;
+    --primary-subtle: #e0f0ff;
+
+    --secondary: #475569;
+    /* Slate 600 */
+    --secondary-hover: #334155;
+
+    --success: #16a34a;
+    /* Accessible Green */
+    --success-subtle: #dcfce7;
+    --warning: #ca8a04;
+    /* Darker yellow for text contrast */
+    --warning-subtle: #fef9c3;
+    --danger: #dc2626;
+    --danger-subtle: #fee2e2;
+    --info: #0891b2;
+    --info-subtle: #cffafe;
+
+    /* --- Surfaces --- */
+    --bg-body: #f1f5f9;
+    /* Slate 100 */
+    --bg-surface: #ffffff;
+    --bg-subtle: #f8fafc;
+    /* Slate 50 */
+
+    /* --- Typography & Text --- */
+    --font-sans: 'Inter', 'Manrope', system-ui, -apple-system, sans-serif;
+    --text-main: #0f172a;
+    /* Slate 900 */
+    --text-secondary: #475569;
+    /* Slate 600 */
+    --text-muted: #94a3b8;
+    /* Slate 400 */
+
+    /* --- Borders & Effects --- */
+    --border-color: #cbd5e1;
+    /* Slate 300 */
+    --border-subtle: #e2e8f0;
+    /* Slate 200 */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+
+    /* --- Spacing System (Compact) --- */
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 0.75rem;
+    --space-lg: 1rem;
+    --space-xl: 1.5rem;
+}
+
+/* --- Global Reset & Typography --- */
+body,
+.app-shell {
+    font-family: var(--font-sans);
+    background-color: var(--bg-body);
+    color: var(--text-main);
+    font-size: 0.875rem;
+    /* 14px base for compactness */
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* --- Accessibility: Global High Contrast Focus --- */
+:focus-visible,
+input:focus-visible,
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+    outline: 2px solid #0f172a !important;
+    /* Strong Slate (Black-ish) */
+    outline-offset: 2px !important;
+    box-shadow: 0 0 0 4px #ffffff !important;
+    /* White outer ring/gap fill */
+    z-index: 1000 !important;
+    border-radius: 2px !important;
+}
+
+/* Dark mode adjustment */
+[data-theme="dark"] :focus-visible {
+    outline-color: #ffffff !important;
+    box-shadow: 0 0 0 4px #0f172a !important;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    color: var(--text-main);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    margin-bottom: var(--space-sm);
+}
+
+h1 {
+    font-size: 1.5rem;
+}
+
+h2 {
+    font-size: 1.25rem;
+}
+
+h3 {
+    font-size: 1.1rem;
+}
+
+h4 {
+    font-size: 1rem;
+}
+
+a {
+    color: var(--primary);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+a:hover {
+    color: var(--primary-hover);
+    text-decoration: underline;
+}
+
+/* --- Layout Containers --- */
+main,
+.container,
+.container-fluid {
+    padding-top: var(--space-lg);
+    padding-bottom: var(--space-lg);
+}
+
+.container-fluid {
+    padding-left: var(--space-lg);
+    padding-right: var(--space-lg);
+    max-width: 1920px;
+    /* Prevent overly stretched content on ultrawide */
+}
+
+/* --- Navigation Bar (Compact) --- */
+.navbar {
+    background: #1e293b !important;
+    /* Slate 800 */
+    border-bottom: 2px solid var(--primary);
+    padding-top: var(--space-xs);
+    padding-bottom: var(--space-xs);
+    /* Reduce vertical height */
+    box-shadow: var(--shadow-md);
+}
+
+.navbar-brand {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.nav-link {
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: var(--space-xs) var(--space-sm) !important;
+    border-radius: var(--radius-sm) !important;
+    transition: background 0.15s;
+}
+
+.nav-link:hover,
+.nav-link:focus {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.dropdown-menu {
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-subtle);
+    font-size: 0.85rem;
+    padding: var(--space-xs) 0;
+}
+
+.dropdown-item {
+    padding: var(--space-xs) var(--space-lg);
+}
+
+.dropdown-item:active {
+    background-color: var(--primary);
+}
+
+/* --- Cards (High Density) --- */
+.card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--space-lg);
+}
+
+.card-header {
+    background: var(--bg-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: var(--space-sm) var(--space-lg);
+    font-weight: 600;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.card-body {
+    padding: var(--space-lg);
+    /* 1rem padding */
+}
+
+/* Ultra compact card variant */
+.card-compact .card-body {
+    padding: var(--space-sm);
+}
+
+/* --- Tables (Dense & Professional) --- */
+.table {
+    margin-bottom: 0;
+    font-size: 0.85rem;
+    border-color: var(--border-subtle);
+}
+
+.table th {
+    background-color: var(--bg-subtle);
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.03em;
+    padding: var(--space-sm) var(--space-md);
+    border-bottom: 2px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.table td {
+    padding: var(--space-xs) var(--space-md);
+    /* Reduced vertical padding */
+    vertical-align: middle;
+    color: var(--text-main);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--primary-subtle);
+}
+
+.table-responsive {
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    overflow: auto;
+}
+
+/* --- Buttons (Compact) --- */
+.btn {
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.35rem 0.85rem;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+    transition: all 0.15s ease-in-out;
+}
+
+.btn-sm,
+.btn-xs {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+.btn-primary {
+    background-color: var(--primary);
+    border-color: var(--primary);
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+
+.btn-outline-primary {
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--primary);
+    color: #fff;
+}
+
+.btn-secondary {
+    background-color: var(--bg-surface);
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+}
+
+.btn-secondary:hover {
+    background-color: var(--bg-subtle);
+    color: var(--text-main);
+}
+
+/* --- Forms (Clean & Focused) --- */
+.form-control,
+.form-select {
+    font-size: 0.875rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-surface);
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(15, 108, 191, 0.15);
+    /* Accessible focus ring */
+}
+
+label {
+    font-weight: 500;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+/* --- Badges & Status --- */
+.badge {
+    font-weight: 600;
+    padding: 0.25em 0.6em;
+    border-radius: 999px;
+    font-size: 0.75em;
+    letter-spacing: 0.02em;
+}
+
+.bg-success {
+    background-color: var(--success) !important;
+}
+
+.bg-warning {
+    background-color: var(--warning) !important;
+    color: #fff;
+}
+
+.bg-danger {
+    background-color: var(--danger) !important;
+}
+
+.bg-info {
+    background-color: var(--info) !important;
+}
+
+/* Status Text Helpers */
+.status-completed {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.status-in-progress {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.status-on-hold {
+    color: var(--warning);
+    font-weight: 600;
+}
+
+.status-pending {
+    color: var(--secondary);
+}
+
+/* --- Dashboard Widgets (Data Dense) --- */
+.widget {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+    position: relative;
+    overflow: hidden;
+    height: 100%;
+}
+
+.widget h3 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-main);
+}
+
+.widget p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+}
+
+.widget i {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 2.5rem;
+    opacity: 0.1;
+    color: var(--text-main);
+}
+
+/* Widget Variations using border-left for subtle indication instead of full bg */
+.widget-primary {
+    border-left: 4px solid var(--primary);
+}
+
+.widget-success {
+    border-left: 4px solid var(--success);
+}
+
+.widget-warning {
+    border-left: 4px solid var(--warning);
+}
+
+.widget-danger {
+    border-left: 4px solid var(--danger);
+}
+
+.widget-info {
+    border-left: 4px solid var(--info);
+}
+
+/* --- Chat Interface --- */
+#chatMessages {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    font-size: 0.85rem;
+}
+
+.message {
+    background: #fff;
+    border: 1px solid var(--border-subtle);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-sm);
+    box-shadow: var(--shadow-sm);
+}
+
+/* --- Utilities --- */
+.text-xs {
+    font-size: 0.75rem;
+}
+
+.fw-medium {
+    font-weight: 500;
+}
+
+.fw-semibold {
+    font-weight: 600;
+}
+
+/* Focus Accessibility */
+:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+/* --- Issues Tab Enhancements (Professional) --- */
+.issue-card-mini {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+    font-size: 0.8rem;
+}
+
+.shadow-inner-sm {
+    box-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
+}
+
+.group-hover-target:hover {
+    background-color: var(--bg-subtle) !important;
+}
+
+.group-hover-target:hover .opacity-100-hover {
+    opacity: 1 !important;
+}
+
+.transition-colors {
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.text-primary-hover:hover {
+    color: var(--primary-hover) !important;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.tracking-wide {
+    letter-spacing: 0.05em;
+}
+
+.theme-text-primary {
+    color: var(--text-main);
+}
+
+
+/* Page URLs Card - Issues Tab Enhancement */
+#pageUrlsCard .card-header:hover {
+    background-color: #e9ecef !important;
+}
+
+#pageUrlsList.show ~ .card-header #urlsToggleIcon,
+#pageUrlsList.collapsing ~ .card-header #urlsToggleIcon {
+    transform: rotate(90deg);
+}
+
+/* Enhanced Issues Table */
+.table-hover tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Responsive table for issues */
+@media (max-width: 1400px) {
+    #finalIssuesBody .table-responsive {
+        overflow-x: auto;
+    }
+}
+
+/* Issues Tab - Pages Table */
+#issuesPageList .issues-page-row {
+    transition: background-color 0.2s ease;
+}
+
+#issuesPageList .issues-page-row:hover {
+    background-color: #f8f9fa;
+}
+
+#issuesPageList .issues-page-row.table-active {
+    background-color: #e7f3ff;
+    border-left: 3px solid #0d6efd;
+}
+
+#issuesPageList .issues-page-row.table-active td:first-child {
+    border-left: none;
+}

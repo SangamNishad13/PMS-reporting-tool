@@ -1,0 +1,1709 @@
+<?php
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/functions.php';
+
+$auth = new Auth();
+$auth->requireLogin();
+
+// Restrict admin access - they don't need daily status (except for AJAX requests)
+$isAjaxRequest = isset($_GET['action']) && in_array($_GET['action'], ['get_personal_note', 'check_edit_request']);
+$isPostRequest = $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']);
+if (hasAdminPrivileges() && !$isAjaxRequest && !$isPostRequest) {
+    header("Location: " . getBaseDir() . "/modules/admin/calendar.php");
+    exit;
+}
+
+$userId = $_SESSION['user_id'];
+$isAdmin = hasAdminPrivileges();
+$db = Database::getInstance();
+$baseDir = getBaseDir();
+$date = $_POST['date'] ?? $_GET['date'] ?? date('Y-m-d');
+
+// Ensure edit requests table exists (safe to run if migration not applied)
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS user_edit_requests (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id INT NOT NULL,
+        req_date DATE NOT NULL,
+        reason TEXT,
+        status ENUM('pending','approved','rejected') DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_user_date (user_id, req_date),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+} catch (Exception $e) {}
+
+// Handle AJAX: check if edit request is pending for this date
+if (isset($_GET['action']) && $_GET['action'] === 'check_edit_request') {
+    $reqDate = $_GET['date'] ?? $date;
+    $stmt = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ?");
+    $stmt->execute([$userId, $reqDate]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $pending = ($row && $row['status'] === 'pending');
+    header('Content-Type: application/json');
+    echo json_encode(['pending' => $pending]);
+    exit;
+}
+
+// Handle AJAX: user requests edit for a past date
+if (isset($_POST['action']) && $_POST['action'] === 'request_edit') {
+    $reqDate = $_POST['date'] ?? $date;
+    $reason = $_POST['reason'] ?? '';
+    
+    try {
+        // Insert or update request to pending
+        $stmt = $db->prepare("INSERT INTO user_edit_requests (user_id, req_date, status, reason) VALUES (?, ?, 'pending', ?) ON DUPLICATE KEY UPDATE status='pending', reason=VALUES(reason), updated_at=NOW()");
+        $stmt->execute([$userId, $reqDate, $reason]);
+
+        // Insert notification for all admins
+        $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin','super_admin') AND is_active = 1");
+        $adminStmt->execute();
+        $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (empty($admins)) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'No active admins found']);
+            exit;
+        }
+        
+        $userName = $_SESSION['full_name'] ?? 'User';
+        $msg = $userName . " requested edit for " . $reqDate;
+        if ($reason) {
+            $msg .= " - Reason: " . substr($reason, 0, 100) . (strlen($reason) > 100 ? '...' : '');
+        }
+        $link = "/modules/admin/edit_requests.php";
+        
+        foreach ($admins as $admin) {
+            $nStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'edit_request', ?, ?)");
+            $nStmt->execute([$admin['id'], $msg, $link]);
+        }
+        
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'message' => 'Edit request sent to ' . count($admins) . ' admin(s)']);
+        exit;
+        
+    } catch (Exception $e) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+        exit;
+    }
+}
+
+// Handle AJAX: save pending changes for edit request
+if (isset($_POST['action']) && $_POST['action'] === 'save_pending') {
+    $reqDate = $_POST['date'] ?? $date;
+    $status = $_POST['status'] ?? 'not_updated';
+    $notes = $_POST['notes'] ?? '';
+    $personal_note = $_POST['personal_note'] ?? '';
+    
+    try {
+        // Create pending changes table if not exists
+        $db->exec("CREATE TABLE IF NOT EXISTS user_pending_changes (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            user_id INT NOT NULL,
+            req_date DATE NOT NULL,
+            status ENUM('not_updated','available','working','busy','on_leave','sick_leave') DEFAULT 'not_updated',
+            notes TEXT,
+            personal_note TEXT,
+            pending_time_logs TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_user_date (user_id, req_date),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        
+        // Save pending changes
+        $stmt = $db->prepare("INSERT INTO user_pending_changes (user_id, req_date, status, notes, personal_note) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE status=VALUES(status), notes=VALUES(notes), personal_note=VALUES(personal_note), updated_at=NOW()");
+        $stmt->execute([$userId, $reqDate, $status, $notes, $personal_note]);
+        
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'message' => 'Pending changes saved successfully']);
+        exit;
+        
+    } catch (Exception $e) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+        exit;
+    }
+}
+
+// Ensure personal notes table exists (safe to run if migration not applied)
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS user_calendar_notes (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id INT NOT NULL,
+        note_date DATE NOT NULL,
+        content TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_user_date (user_id, note_date),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+} catch (Exception $e) {
+    // If creation fails (permissions), we'll surface real errors later when used.
+}
+
+// Handle Status Update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
+    $isAdmin = hasAdminPrivileges();
+    $targetUser = $userId;
+    
+    $status = $_POST['status'];
+    $notes = $_POST['notes'];
+    $personal_note = isset($_POST['personal_note']) ? trim($_POST['personal_note']) : null;
+    
+    // Allow admin to update another user's status by providing user_id
+    if ($isAdmin && isset($_POST['user_id']) && $_POST['user_id'] !== '') {
+        $targetUser = intval($_POST['user_id']);
+        
+        // For admin updates, we don't need to check edit request approval
+        $stmt = $db->prepare("
+            INSERT INTO user_daily_status (user_id, status_date, status, notes)
+            VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE status = VALUES(status), notes = VALUES(notes)
+        ");
+        
+        $stmt->execute([$targetUser, $date, $status, $notes]);
+
+        // Save personal note (visible only to this user)
+        if ($personal_note !== null) {
+            $trimmedNote = trim($personal_note);
+            if ($trimmedNote !== '') {
+                $noteStmt = $db->prepare("INSERT INTO user_calendar_notes (user_id, note_date, content) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE content = VALUES(content)");
+                $noteStmt->execute([$targetUser, $date, $trimmedNote]);
+            } else {
+                // Delete empty personal note if it exists
+                $deleteStmt = $db->prepare("DELETE FROM user_calendar_notes WHERE user_id = ? AND note_date = ?");
+                $deleteStmt->execute([$targetUser, $date]);
+            }
+        }
+
+        // If AJAX request, return JSON instead of redirecting
+        $isAjax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true]);
+            exit;
+        }
+
+        $_SESSION['success'] = "Status updated successfully.";
+        header("Location: " . getBaseDir() . "/modules/admin/calendar.php");
+        exit;
+    }
+
+    // Prevent non-admin users from updating past dates unless approved
+    $today = date('Y-m-d');
+    if (!$isAdmin && $date < $today) {
+        // Check if user has approved edit request for this date
+        $requestStmt = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND status = 'approved'");
+        $requestStmt->execute([$userId, $date]);
+        $approvedRequest = $requestStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$approvedRequest) {
+            $isAjax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Cannot update past dates without admin approval']);
+                exit;
+            }
+            $_SESSION['error'] = 'Cannot update past dates without admin approval.';
+            header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+            exit;
+        }
+    }
+    
+    $stmt = $db->prepare("
+        INSERT INTO user_daily_status (user_id, status_date, status, notes)
+        VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE status = VALUES(status), notes = VALUES(notes)
+    ");
+    
+    $stmt->execute([$targetUser, $date, $status, $notes]);
+
+    // Save personal note (visible only to this user)
+    if ($personal_note !== null) {
+        $trimmedNote = trim($personal_note);
+        if ($trimmedNote !== '') {
+            $noteStmt = $db->prepare("INSERT INTO user_calendar_notes (user_id, note_date, content) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE content = VALUES(content)");
+            $noteStmt->execute([$targetUser, $date, $trimmedNote]);
+        } else {
+            // Delete empty personal note if it exists
+            $deleteStmt = $db->prepare("DELETE FROM user_calendar_notes WHERE user_id = ? AND note_date = ?");
+            $deleteStmt->execute([$targetUser, $date]);
+        }
+    }
+
+    // If this was an approved edit request, mark it as used
+    if (!$isAdmin && $date < $today) {
+        $updateRequestStmt = $db->prepare("UPDATE user_edit_requests SET status = 'used', updated_at = NOW() WHERE user_id = ? AND req_date = ? AND status = 'approved'");
+        $updateRequestStmt->execute([$userId, $date]);
+    }
+
+    // If AJAX request, return JSON instead of redirecting
+    $isAjax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
+    $_SESSION['success'] = "Status updated successfully.";
+    header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+    exit;
+}
+
+// Handle Time Log
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_time'])) {
+
+    
+    $projectId = $_POST['project_id'];
+    $hours = floatval($_POST['hours_spent']);
+    $desc = $_POST['description'];
+    $taskType = $_POST['task_type'] ?? '';
+    
+
+    
+    // Initialize variables
+    $pageIds = [];
+    $envId = null;
+    $phaseId = null;
+    $genericCategoryId = null;
+    $taskDetails = '';
+    
+    // Process based on task type
+    switch ($taskType) {
+        case 'page_testing':
+            // Handle multiple pages
+            if (isset($_POST['page_ids']) && is_array($_POST['page_ids'])) {
+                $pageIds = array_filter($_POST['page_ids'], function($id) { return !empty($id); });
+                $pageIds = array_map('intval', $pageIds);
+            }
+            
+            // Handle multiple environments
+            if (isset($_POST['environment_ids']) && is_array($_POST['environment_ids'])) {
+                $envIds = array_filter($_POST['environment_ids'], function($id) { return !empty($id); });
+                if (!empty($envIds)) {
+                    // For now, store the first environment ID (we can enhance this later)
+                    $envId = intval($envIds[0]);
+                    // Add environment info to description
+                    if (count($envIds) > 1) {
+                        $desc .= ' (Multiple environments: ' . count($envIds) . ')';
+                    }
+                }
+            }
+            $testingType = $_POST['testing_type'] ?? '';
+            if ($testingType) {
+                $desc = ucfirst(str_replace('_', ' ', $testingType)) . ': ' . $desc;
+            }
+            
+            // Add page info to description
+            if (!empty($pageIds)) {
+                if (count($pageIds) > 1) {
+                    $desc .= ' (Multiple pages: ' . count($pageIds) . ')';
+                }
+            }
+            break;
+            
+        case 'project_phase':
+            $phaseId = isset($_POST['phase_id']) && $_POST['phase_id'] !== '' ? intval($_POST['phase_id']) : null;
+            $phaseActivity = $_POST['phase_activity'] ?? '';
+            if ($phaseActivity) {
+                $desc = ucfirst($phaseActivity) . ': ' . $desc;
+            }
+            break;
+            
+        case 'generic_task':
+            $genericCategoryId = isset($_POST['generic_category_id']) && $_POST['generic_category_id'] !== '' ? intval($_POST['generic_category_id']) : null;
+            $taskDetails = $_POST['generic_task_detail'] ?? '';
+            if ($taskDetails) {
+                $desc .= ' - ' . $taskDetails;
+            }
+            break;
+    }
+    
+    // Handle bench activity description enhancement
+    if (isset($_POST['bench_activity']) && $_POST['bench_activity'] !== '') {
+        $benchActivity = $_POST['bench_activity'];
+        $desc = ucfirst($benchActivity) . ': ' . $desc;
+    }
+    // Issue link (optional) for regression hours
+    $issueId = isset($_POST['issue_id']) && $_POST['issue_id'] !== '' ? intval($_POST['issue_id']) : null;
+    
+    // Check if off-production
+    $isUtilized = 1;
+    $stmt = $db->prepare("SELECT po_number FROM projects WHERE id = ?");
+    $stmt->execute([$projectId]);
+    $po = $stmt->fetchColumn();
+    if ($po === 'OFF-PROD-001') {
+        $isUtilized = 0;
+    }
+    
+
+    
+    try {
+        // Prevent logging for past dates unless admin or approved edit request
+        $today = date('Y-m-d');
+        if (!$isAdmin && $date < $today) {
+            $reqCheck = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND status = 'approved'");
+            $reqCheck->execute([$userId, $date]);
+            $approved = $reqCheck->fetch(PDO::FETCH_ASSOC);
+            if (!$approved) {
+                throw new Exception('Cannot log hours for past dates without admin approval. Please request an edit.');
+            }
+        }
+        $db->beginTransaction();
+        
+        // Check if enhanced columns exist
+        $columnsExist = false;
+        try {
+            $checkStmt = $db->query("SHOW COLUMNS FROM project_time_logs LIKE 'task_type'");
+            $columnsExist = $checkStmt->rowCount() > 0;
+        } catch (Exception $e) {
+            $columnsExist = false;
+        }
+        
+
+        
+        // If multiple pages are selected, create separate entries for each page
+        if ($taskType === 'page_testing' && !empty($pageIds)) {
+
+            foreach ($pageIds as $pageId) {
+
+                if ($columnsExist) {
+                    // Insert with enhanced columns
+                    $stmt = $db->prepare("INSERT INTO project_time_logs (user_id, project_id, page_id, environment_id, issue_id, task_type, phase_id, generic_category_id, testing_type, log_date, hours_spent, description, is_utilized) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $testingType = isset($_POST['testing_type']) ? $_POST['testing_type'] : null;
+
+                    // Adjust hours for multiple pages (divide equally)
+                    $adjustedHours = count($pageIds) > 1 ? $hours / count($pageIds) : $hours;
+
+                    $stmt->execute([$userId, $projectId, $pageId, $envId, $issueId, $taskType, $phaseId, $genericCategoryId, $testingType, $date, $adjustedHours, $desc, $isUtilized]);
+
+                } else {
+                    // Insert with basic columns
+                    $stmt = $db->prepare("
+                        INSERT INTO project_time_logs (user_id, project_id, page_id, environment_id, log_date, hours_spent, description, is_utilized)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    
+                    // Adjust hours for multiple pages (divide equally)
+                    $adjustedHours = count($pageIds) > 1 ? $hours / count($pageIds) : $hours;
+                    
+                    $stmt->execute([$userId, $projectId, $pageId, $envId, $date, $adjustedHours, $desc, $isUtilized]);
+
+                }
+            }
+        } else {
+
+            // Single entry for non-page tasks or single page
+            $pageId = !empty($pageIds) ? $pageIds[0] : null;
+            
+
+            if ($columnsExist) {
+                // Insert with enhanced columns
+                $stmt = $db->prepare("INSERT INTO project_time_logs (user_id, project_id, page_id, environment_id, issue_id, task_type, phase_id, generic_category_id, testing_type, log_date, hours_spent, description, is_utilized) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $testingType = isset($_POST['testing_type']) ? $_POST['testing_type'] : null;
+                $stmt->execute([$userId, $projectId, $pageId, $envId, $issueId, $taskType, $phaseId, $genericCategoryId, $testingType, $date, $hours, $desc, $isUtilized]);
+
+            } else {
+                // Insert with basic columns
+                $stmt = $db->prepare("
+                    INSERT INTO project_time_logs (user_id, project_id, page_id, environment_id, log_date, hours_spent, description, is_utilized)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmt->execute([$userId, $projectId, $pageId, $envId, $date, $hours, $desc, $isUtilized]);
+
+            }
+        }
+        
+        // Update project phase actual hours if phase is specified
+        if ($phaseId) {
+            $updatePhaseStmt = $db->prepare("
+                UPDATE project_phases 
+                SET actual_hours = actual_hours + ? 
+                WHERE id = ? AND project_id = ?
+            ");
+            $updatePhaseStmt->execute([$hours, $phaseId, $projectId]);
+        }
+        
+        // Update project total actual hours (for utilized hours only)
+        if ($isUtilized) {
+            // Get current total utilized hours for this project
+            $totalStmt = $db->prepare("
+                SELECT COALESCE(SUM(hours_spent), 0) 
+                FROM project_time_logs 
+                WHERE project_id = ? AND is_utilized = 1
+            ");
+            $totalStmt->execute([$projectId]);
+            $totalUtilizedHours = $totalStmt->fetchColumn();
+            
+            // Update project's total hours (this could be used for tracking)
+            $updateProjectStmt = $db->prepare("
+                UPDATE projects 
+                SET total_hours = ? 
+                WHERE id = ?
+            ");
+            $updateProjectStmt->execute([$totalUtilizedHours, $projectId]);
+        }
+        
+        // Log generic task if applicable
+        if ($taskType === 'generic_task' && $genericCategoryId) {
+            $genericStmt = $db->prepare("
+                INSERT INTO user_generic_tasks (user_id, category_id, task_description, hours_spent, task_date)
+                VALUES (?, ?, ?, ?, ?)
+            ");
+            $genericStmt->execute([$userId, $genericCategoryId, $desc, $hours, $date]);
+        }
+        
+        $db->commit();
+        $_SESSION['success'] = "Time logged successfully and project hours updated.";
+        
+    } catch (Exception $e) {
+        $db->rollBack();
+        $_SESSION['error'] = "Error logging time: " . $e->getMessage();
+    }
+    
+    header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+    exit;
+}
+
+// Handle Delete Log
+if (isset($_GET['delete_log'])) {
+    $logId = $_GET['delete_log'];
+    // Prevent deletion for past dates unless admin or approved
+    $canDelete = true;
+    if (!$isAdmin) {
+        $today = date('Y-m-d');
+        // previous business day: if today is Monday (N=1) go back 3 days to Friday
+        if (date('N') == 1) {
+            $prev = date('Y-m-d', strtotime('-3 days'));
+        } else {
+            $prev = date('Y-m-d', strtotime('-1 days'));
+        }
+        // allow delete only for today or previous business day; older dates require approved edit request
+        if ($date !== $today && $date !== $prev) {
+            $reqCheck = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND status = 'approved'");
+            $reqCheck->execute([$userId, $date]);
+            $approved = $reqCheck->fetch(PDO::FETCH_ASSOC);
+            if (!$approved) $canDelete = false;
+        }
+    }
+    if (!$canDelete) {
+        $_SESSION['error'] = 'Cannot delete logs for past dates without admin approval.';
+        header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+        exit;
+    }
+
+    $db->prepare("DELETE FROM project_time_logs WHERE id = ? AND user_id = ?")->execute([$logId, $userId]);
+    $_SESSION['success'] = "Log deleted.";
+    header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+    exit;
+}
+
+// AJAX: return status and personal note for given date (supports admin querying other users via user_id)
+if (isset($_GET['action']) && $_GET['action'] === 'get_personal_note') {
+    $queriedDate = $_GET['date'] ?? $date;
+    $targetUser = $userId;
+    if ($isAdmin && isset($_GET['user_id']) && $_GET['user_id'] !== '') {
+        $targetUser = intval($_GET['user_id']);
+    }
+
+
+
+    // Check if there's a pending edit request for this date
+    $editRequestStmt = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ?");
+    $editRequestStmt->execute([$targetUser, $queriedDate]);
+    $editRequest = $editRequestStmt->fetch(PDO::FETCH_ASSOC);
+    $hasPendingRequest = ($editRequest && $editRequest['status'] === 'pending');
+
+
+
+    // If there's a pending request, load pending changes instead of current data
+    if ($hasPendingRequest) {
+        $pendingStmt = $db->prepare("SELECT * FROM user_pending_changes WHERE user_id = ? AND req_date = ?");
+        $pendingStmt->execute([$targetUser, $queriedDate]);
+        $pendingData = $pendingStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($pendingData) {
+            // Get user role
+            $roleStmt = $db->prepare("SELECT role FROM users WHERE id = ?");
+            $roleStmt->execute([$targetUser]);
+            $userRole = $roleStmt->fetchColumn();
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'status' => $pendingData['status'],
+                'notes' => $pendingData['notes'],
+                'personal_note' => $pendingData['personal_note'],
+                'role' => $userRole,
+                'is_pending' => true
+            ]);
+            exit;
+        }
+    }
+
+    // Load current/approved data
+    $statusStmt = $db->prepare("SELECT uds.*, u.role FROM user_daily_status uds JOIN users u ON uds.user_id = u.id WHERE uds.user_id = ? AND uds.status_date = ?");
+    $statusStmt->execute([$targetUser, $queriedDate]);
+    $currentStatus = $statusStmt->fetch(PDO::FETCH_ASSOC);
+
+    $noteStmt = $db->prepare("SELECT content FROM user_calendar_notes WHERE user_id = ? AND note_date = ?");
+    $noteStmt->execute([$targetUser, $queriedDate]);
+    $personalNoteRow = $noteStmt->fetch(PDO::FETCH_ASSOC);
+    $personalNote = $personalNoteRow ? $personalNoteRow['content'] : '';
+
+
+
+    // Get user role if status doesn't exist
+    $userRole = $currentStatus['role'] ?? null;
+    if (!$userRole) {
+        $roleStmt = $db->prepare("SELECT role FROM users WHERE id = ?");
+        $roleStmt->execute([$targetUser]);
+        $userRole = $roleStmt->fetchColumn();
+    }
+
+    $response = [
+        'success' => true,
+        'status' => $currentStatus['status'] ?? null,
+        'notes' => $currentStatus['notes'] ?? null,
+        'personal_note' => $personalNote,
+        'role' => $userRole,
+        'is_pending' => false,
+        'debug_info' => [
+            'queried_date' => $queriedDate,
+            'target_user' => $targetUser,
+            'current_user' => $userId,
+            'has_pending_request' => $hasPendingRequest,
+            'status_found' => !empty($currentStatus)
+        ]
+    ];
+
+
+
+    header('Content-Type: application/json');
+    echo json_encode($response);
+    exit;
+}
+
+// Handle AJAX: check if edit request is pending or approved for this date
+if (isset($_GET['action']) && $_GET['action'] === 'check_edit_request') {
+    $reqDate = $_GET['date'] ?? $date;
+    $stmt = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ?");
+    $stmt->execute([$userId, $reqDate]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $pending = ($row && $row['status'] === 'pending');
+    $approved = ($row && $row['status'] === 'approved');
+    header('Content-Type: application/json');
+    echo json_encode(['pending' => $pending, 'approved' => $approved]);
+    exit;
+}
+
+// Get Current Status
+$statusStmt = $db->prepare("SELECT * FROM user_daily_status WHERE user_id = ? AND status_date = ?");
+$statusStmt->execute([$userId, $date]);
+$currentStatus = $statusStmt->fetch();
+
+// Get personal note for this date (if any)
+$noteStmt = $db->prepare("SELECT content FROM user_calendar_notes WHERE user_id = ? AND note_date = ?");
+$noteStmt->execute([$userId, $date]);
+$personalNoteRow = $noteStmt->fetch();
+$personalNote = $personalNoteRow ? $personalNoteRow['content'] : '';
+
+// Check if there's a pending edit request for this user/date to adjust UI
+$editReqStmt = $db->prepare("SELECT * FROM user_edit_requests WHERE user_id = ? AND req_date = ?");
+$editReqStmt->execute([$userId, $date]);
+$editReq = $editReqStmt->fetch(PDO::FETCH_ASSOC);
+$hasPendingRequest = ($editReq && $editReq['status'] === 'pending');
+$pendingData = null;
+if ($hasPendingRequest) {
+    $pendingStmt = $db->prepare("SELECT * FROM user_pending_changes WHERE user_id = ? AND req_date = ?");
+    $pendingStmt->execute([$userId, $date]);
+    $pendingData = $pendingStmt->fetch(PDO::FETCH_ASSOC);
+}
+
+// Is this a past date (and non-admin)? used to make fields readonly initially
+$isPastDateReadonly = (!$isAdmin && $date < date('Y-m-d'));
+
+// Get Time Logs
+$logsStmt = $db->prepare("
+    SELECT ptl.*, p.title, p.po_number 
+    FROM project_time_logs ptl
+    JOIN projects p ON ptl.project_id = p.id
+    WHERE ptl.user_id = ? AND ptl.log_date = ?
+");
+$logsStmt->execute([$userId, $date]);
+$logs = $logsStmt->fetchAll();
+
+// Get Assigned Projects with phases
+$projectsStmt = $db->prepare("
+    SELECT p.id, p.title, p.po_number, ua.role
+    FROM projects p
+    LEFT JOIN user_assignments ua ON p.id = ua.project_id AND ua.user_id = ?
+    WHERE p.status = 'in_progress' AND (ua.id IS NOT NULL OR p.project_lead_id = ? OR p.po_number = 'OFF-PROD-001')
+    ORDER BY p.po_number = 'OFF-PROD-001', p.title
+");
+$projectsStmt->execute([$userId, $userId]);
+$assignedProjects = $projectsStmt->fetchAll();
+
+// Note: If no projects assigned, ensure OFF-PROD is available.
+// The SQL above handles it if OFF-PROD is 'in_progress'. 
+// If OFF-PROD is not showing up for some reason (e.g. status), check the DB. 
+// We inserted OFF-PROD with 'in_progress'.
+
+include __DIR__ . '/../includes/header.php';
+?>
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Daily Status & Time Log</h2>
+        <div>
+            <input type="date" class="form-control" value="<?php echo $date; ?>" 
+                   onchange="window.location.href='?date='+this.value">
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Status Section -->
+        <div class="col-md-4">
+            <div class="card mb-3">
+                <div class="card-header bg-info text-dark">
+                    <h5 class="mb-0">My Status (<?php echo date('M d', strtotime($date)); ?>)</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="statusForm">
+                        <div class="mb-3">
+                            <label>Availability</label>
+                            <select name="status" class="form-select" id="statusSelect" <?php echo $isPastDateReadonly ? 'disabled' : ''; ?>>
+                                <option value="available" <?php echo ($currentStatus['status']??'') == 'available' ? 'selected' : ''; ?>>Available</option>
+                                <option value="working" <?php echo ($currentStatus['status']??'') == 'working' ? 'selected' : ''; ?>>Working</option>
+                                <option value="busy" <?php echo ($currentStatus['status']??'') == 'busy' ? 'selected' : ''; ?>>Busy / In Meeting</option>
+                                <option value="on_leave" <?php echo ($currentStatus['status']??'') == 'on_leave' ? 'selected' : ''; ?>>On Leave</option>
+                                <option value="sick_leave" <?php echo ($currentStatus['status']??'') == 'sick_leave' ? 'selected' : ''; ?>>Sick Leave</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label>Notes (Optional)</label>
+                            <textarea name="notes" class="form-control" rows="2" id="notesField" <?php echo $isPastDateReadonly ? 'disabled' : ''; ?>><?php echo htmlspecialchars($currentStatus['notes'] ?? ''); ?></textarea>
+                        </div>
+
+                        <div class="mb-3" id="personalNoteContainer" style="display: <?php echo $isPastDateReadonly ? 'none' : 'block'; ?>;">
+                            <label>Personal Note (private)</label>
+                            <textarea name="personal_note" id="personal_note" class="form-control" rows="2"><?php echo htmlspecialchars($personalNote); ?></textarea>
+                        </div>
+
+                        <?php if ($isPastDateReadonly): ?>
+                            <?php if ($hasPendingRequest): ?>
+                                <div class="alert alert-warning">An edit request is pending for this date. Your pending changes will be shown once admin reviews.</div>
+                            <?php else: ?>
+                                <div class="alert alert-secondary">This date is read-only. Click <button type="button" id="editToggleBtn" class="btn btn-sm btn-outline-primary">Edit</button> to make changes and submit an edit request to admins.</div>
+                            <?php endif; ?>
+                        <?php endif; ?>
+
+                        <button type="submit" name="update_status" id="updateStatusBtn" class="btn btn-info text-dark w-100" style="<?php echo $isPastDateReadonly ? 'display:none;' : ''; ?>">Update Status</button>
+                        <button type="button" id="saveRequestBtn" class="btn btn-warning text-dark w-100" style="display:none;">Save & Request Edit</button>
+                    </form>
+                </div>
+            </div>
+    
+            <?php if ($personalNote): ?>
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0">Your Personal Note for <?php echo date('M d, Y', strtotime($date)); ?></h6>
+                </div>
+                <div class="card-body">
+                    <p><?php echo nl2br(htmlspecialchars($personalNote)); ?></p>
+                </div>
+            </div>
+            <?php endif; ?>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Time Summary</h5>
+                </div>
+                <div class="card-body">
+                    <?php
+                    $total = 0;
+                    $utilized = 0;
+                    foreach ($logs as $l) {
+                        $total += $l['hours_spent'];
+                        if ($l['is_utilized']) $utilized += $l['hours_spent'];
+                    }
+                    ?>
+                    <h3 class="text-center"><?php echo $total; ?> hrs</h3>
+                    <div class="progress mb-2">
+                        <?php 
+                        $utilPct = $total > 0 ? ($utilized / $total) * 100 : 0;
+                        ?>
+                        <div class="progress-bar bg-success" role="progressbar" style="width: <?php echo $utilPct; ?>%">
+                            Utilized
+                        </div>
+                        <div class="progress-bar bg-secondary" role="progressbar" style="width: <?php echo 100 - $utilPct; ?>%">
+                            Bench/Off
+                        </div>
+                    </div>
+                    <p class="text-center small text-muted">
+                        Utilized: <?php echo $utilized; ?>h | Off-Prod: <?php echo $total - $utilized; ?>h
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Time Logs Section -->
+        <div class="col-md-8">
+            <!-- Production Hours Section -->
+            <div class="card mb-3">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Log Production Hours</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" class="row align-items-end mb-4" id="logProductionHoursForm">
+                        <div class="col-md-3">
+                            <label>Project</label>
+                            <select name="project_id" class="form-select" required>
+                                <option value="">Select Project</option>
+                                <?php foreach ($assignedProjects as $p): ?>
+                                    <?php if ($p['po_number'] !== 'OFF-PROD-001'): ?>
+                                    <option value="<?php echo $p['id']; ?>">
+                                        <?php echo $p['title']; ?>
+                                    </option>
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Task Type</label>
+                            <select name="task_type" id="taskTypeSelect" class="form-select" required>
+                                <option value="">Select Task Type</option>
+                                <option value="page_testing">Page Testing</option>
+                                <option value="page_qa">Page QA</option>
+                                <option value="regression_testing">Regression Testing</option>
+                                <option value="project_phase">Project Phase</option>
+                                <option value="generic_task">Generic Task</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Page Testing Options -->
+                        <div class="col-md-12 mt-2" id="pageTestingContainer" style="display:none;">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <label>Page/Screen (Multiple)</label>
+                                    <select name="page_ids[]" id="productionPageSelect" class="form-select" multiple size="4">
+                                        <option value="">Select pages</option>
+                                    </select>
+                                    <small class="text-muted">Hold Ctrl/Cmd to select multiple</small>
+                                </div>
+                                <div class="col-md-4">
+                                    <label>Environments (Multiple)</label>
+                                    <select name="environment_ids[]" id="productionEnvSelect" class="form-select" multiple size="3">
+                                        <option value="">Select environments</option>
+                                    </select>
+                                    <small class="text-muted">Hold Ctrl/Cmd to select multiple</small>
+                                </div>
+                                <div class="col-md-4">
+                                    <label>Testing Type</label>
+                                    <select name="testing_type" id="testingTypeSelect" class="form-select">
+                                        <option value="at_testing">AT Testing</option>
+                                        <option value="ft_testing">FT Testing</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4" id="productionIssueContainer" style="display:none;">
+                                    <label>Issue (optional)</label>
+                                    <select name="issue_id" id="productionIssueSelect" class="form-select">
+                                        <option value="">Select issue (optional)</option>
+                                    </select>
+                                    <small class="text-muted">Select an issue when logging regression hours</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Regression Options -->
+                        <div class="col-md-12 mt-2" id="regressionContainer" style="display:none;">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <label>Regression Summary</label>
+                                    <div id="regressionSummary" class="border rounded p-2">
+                                        Loading…
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Project Phase Options -->
+                        <div class="col-md-12 mt-2" id="projectPhaseContainer" style="display:none;">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label>Project Phase</label>
+                                    <select name="phase_id" id="projectPhaseSelect" class="form-select">
+                                        <option value="">Select project phase</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label>Phase Activity</label>
+                                    <select name="phase_activity" class="form-select">
+                                        <option value="scoping">Scoping & Analysis</option>
+                                        <option value="setup">Setup & Configuration</option>
+                                        <option value="testing">Testing Activities</option>
+                                        <option value="review">Review & Documentation</option>
+                                        <option value="training">Training & Knowledge Transfer</option>
+                                        <option value="reporting">Reporting & VPAT</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Generic Task Options -->
+                        <div class="col-md-12 mt-2" id="genericTaskContainer" style="display:none;">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label>Task Category</label>
+                                    <select name="generic_category_id" id="genericCategorySelect" class="form-select">
+                                        <option value="">Select category</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label>Task Details</label>
+                                    <input type="text" name="generic_task_detail" class="form-control" placeholder="Specific task details">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-2 mt-2">
+                            <label>Hours</label>
+                            <input type="number" id="logHoursInput" name="hours_spent" class="form-control" step="0.25" min="0.25" max="24" required <?php echo $isPastDateReadonly ? 'disabled' : ''; ?> >
+                        </div>
+                        <div class="col-md-4 mt-2">
+                            <label>Description</label>
+                            <input type="text" id="logDescriptionInput" name="description" class="form-control" placeholder="What did you work on?" required <?php echo $isPastDateReadonly ? 'disabled' : ''; ?> >
+                        </div>
+                        <div class="col-md-2 mt-2 d-grid">
+                            <button type="submit" id="logTimeBtn" name="log_time" class="btn btn-success w-100" <?php echo $isPastDateReadonly ? 'disabled' : ''; ?>>Log Hours</button>
+                        </div>
+                    </form>
+                    <script>
+                    (function(){
+                        const isPast = <?php echo $isPastDateReadonly ? 'true' : 'false'; ?>;
+                        const hasPending = <?php echo $hasPendingRequest ? 'true' : 'false'; ?>;
+                        if (!isPast) return;
+
+                        const editBtn = document.getElementById('editToggleBtn');
+                        const saveBtn = document.getElementById('saveRequestBtn');
+                        const updateBtn = document.getElementById('updateStatusBtn');
+                        const statusSelect = document.getElementById('statusSelect');
+                        const notesField = document.getElementById('notesField');
+                        const personalNote = document.getElementById('personal_note');
+
+                        function setEditable(on){
+                            if (statusSelect) statusSelect.disabled = !on;
+                            if (notesField) notesField.disabled = !on;
+                            if (personalNote) personalNote.disabled = !on;
+                            // Time-log fields
+                            var prodProj = document.querySelector('#logProductionHoursForm select[name="project_id"]');
+                            var pageSel = document.getElementById('productionPageSelect');
+                            var envSel = document.getElementById('productionEnvSelect');
+                            var testingSel = document.getElementById('testingTypeSelect');
+                            var issueSel = document.getElementById('productionIssueSelect');
+                            var hoursInput = document.getElementById('logHoursInput');
+                            var descInput = document.getElementById('logDescriptionInput');
+                            var logBtn = document.getElementById('logTimeBtn');
+                            if (prodProj) prodProj.disabled = !on;
+                            if (pageSel) pageSel.disabled = !on;
+                            if (envSel) envSel.disabled = !on;
+                            if (testingSel) testingSel.disabled = !on;
+                            if (issueSel) issueSel.disabled = !on;
+                            if (hoursInput) hoursInput.disabled = !on;
+                            if (descInput) descInput.disabled = !on;
+                            if (logBtn) logBtn.disabled = !on;
+                            if (on) {
+                                saveBtn.style.display = 'block';
+                                if (updateBtn) updateBtn.style.display = 'none';
+                                document.getElementById('personalNoteContainer').style.display = 'block';
+                            } else {
+                                saveBtn.style.display = 'none';
+                                if (updateBtn) updateBtn.style.display = 'none';
+                                document.getElementById('personalNoteContainer').style.display = 'none';
+                            }
+                        }
+
+                        if (hasPending) {
+                            // Load pending values via AJAX and show them read-only
+                            fetch(window.location.pathname + '?action=get_personal_note&date=' + encodeURIComponent('<?php echo $date; ?>'))
+                                .then(r => r.json())
+                                .then(data => {
+                                    if (data.success && data.is_pending) {
+                                        if (statusSelect) statusSelect.value = data.status || statusSelect.value;
+                                        if (notesField) notesField.value = data.notes || '';
+                                        if (personalNote) personalNote.value = data.personal_note || '';
+                                    }
+                                }).catch(()=>{});
+                            // leave fields disabled
+                            setEditable(false);
+                        } else {
+                            // No pending request; fields are readonly until Edit clicked
+                            setEditable(false);
+                        }
+
+                        if (editBtn) {
+                            editBtn.addEventListener('click', function(){
+                                setEditable(true);
+                                editBtn.style.display = 'none';
+                            });
+                        }
+
+                        if (saveBtn) {
+                            saveBtn.addEventListener('click', function(){
+                                // gather values and POST to save_pending then request_edit
+                                const fd = new FormData();
+                                fd.append('action','save_pending');
+                                fd.append('date','<?php echo $date; ?>');
+                                fd.append('status', statusSelect ? statusSelect.value : '');
+                                fd.append('notes', notesField ? notesField.value : '');
+                                fd.append('personal_note', personalNote ? personalNote.value : '');
+                                // capture current time-log form values as pending time log (single entry from the quick form)
+                                try {
+                                    var pendingLogs = [];
+                                    var proj = document.querySelector('#logProductionHoursForm select[name="project_id"]');
+                                    if (proj) {
+                                        var entry = {
+                                            project_id: proj.value || null,
+                                            task_type: document.querySelector('#logProductionHoursForm select[name="task_type"]')?.value || null,
+                                            page_ids: Array.from(document.querySelectorAll('#productionPageSelect option:checked')).map(o => o.value).filter(Boolean),
+                                            environment_ids: Array.from(document.querySelectorAll('#productionEnvSelect option:checked')).map(o => o.value).filter(Boolean),
+                                            testing_type: document.querySelector('#testingTypeSelect')?.value || null,
+                                            issue_id: document.querySelector('#productionIssueSelect')?.value || null,
+                                            hours: document.getElementById('logHoursInput') ? document.getElementById('logHoursInput').value : null,
+                                            description: document.getElementById('logDescriptionInput') ? document.getElementById('logDescriptionInput').value : null,
+                                            is_utilized: document.querySelector('#logProductionHoursForm input[name="is_utilized"]') ? (document.querySelector('#logProductionHoursForm input[name="is_utilized"]').checked ? 1 : 0) : 1
+                                        };
+                                        pendingLogs.push(entry);
+                                    }
+                                    fd.append('pending_time_logs', JSON.stringify(pendingLogs));
+                                } catch (e) { fd.append('pending_time_logs', '[]'); }
+
+                                saveBtn.disabled = true;
+                                saveBtn.textContent = 'Saving...';
+
+                                fetch(window.location.pathname + '?action=save_pending', {method:'POST', body: fd})
+                                .then(r => r.json())
+                                .then(resp => {
+                                    if (resp.success) {
+                                        // Now request admin approval
+                                        const fd2 = new FormData();
+                                        fd2.append('action','request_edit');
+                                        fd2.append('date','<?php echo $date; ?>');
+                                        fd2.append('reason','User requested edit via calendar');
+                                        return fetch(window.location.pathname + '?action=request_edit', {method:'POST', body: fd2});
+                                    } else {
+                                        throw new Error(resp.error || 'Failed to save pending');
+                                    }
+                                })
+                                .then(r => r.json())
+                                .then(resp2 => {
+                                    if (resp2.success) {
+                                            // Show confirmation and mark readonly
+                                            showToast('Edit request submitted to admins. You will be notified when approved.', 'success');
+                                            setEditable(false);
+                                            // show pending message
+                                            location.reload();
+                                        } else {
+                                            throw new Error(resp2.error || 'Failed to request edit');
+                                        }
+                                })
+                                .catch(err => {
+                                    showToast('Error: ' + (err.message || 'unknown'), 'danger');
+                                })
+                                .finally(()=>{
+                                    saveBtn.disabled = false;
+                                    saveBtn.textContent = 'Save & Request Edit';
+                                });
+                            });
+                        }
+                    })();
+                    </script>
+                </div>
+            </div>
+
+            <!-- Off-Production/Bench Hours Section -->
+            <div class="card mb-3">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">Log Off-Production/Bench Hours</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" class="row align-items-end mb-4" id="logBenchHoursForm">
+                        <input type="hidden" name="project_id" value="<?php 
+                            // Find OFF-PROD project ID
+                            foreach ($assignedProjects as $p) {
+                                if ($p['po_number'] === 'OFF-PROD-001') {
+                                    echo $p['id'];
+                                    break;
+                                }
+                            }
+                        ?>">
+                        <div class="col-md-4">
+                            <label>Activity Type</label>
+                            <select name="bench_activity" class="form-select" required>
+                                <option value="">Select Activity</option>
+                                <option value="training">Training</option>
+                                <option value="learning">Learning/Research</option>
+                                <option value="documentation">Documentation</option>
+                                <option value="meetings">Meetings</option>
+                                <option value="admin">Administrative Tasks</option>
+                                <option value="waiting">Waiting for Assignment</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label>Hours</label>
+                            <input type="number" name="hours_spent" class="form-control" step="0.5" min="0.5" max="24" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label>Description</label>
+                            <input type="text" name="description" class="form-control" placeholder="Describe the activity" required>
+                        </div>
+                        <div class="col-md-2 d-grid">
+                            <button type="submit" name="log_time" class="btn btn-secondary w-100">Log</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Logged Hours Display -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Logged Today</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Production Hours -->
+                    <?php 
+                    $productionLogs = array_filter($logs, function($log) { 
+                        return $log['po_number'] !== 'OFF-PROD-001'; 
+                    });
+                    $benchLogs = array_filter($logs, function($log) { 
+                        return $log['po_number'] === 'OFF-PROD-001'; 
+                    });
+                    ?>
+                    
+                    <?php if (!empty($productionLogs)): ?>
+                    <h6 class="text-success">Production Hours</h6>
+                    <table class="table table-striped table-sm mb-4">
+                        <thead>
+                            <tr>
+                                <th>Project</th>
+                                <th>Page/Task</th>
+                                <th>Environment</th>
+                                <th>Description</th>
+                                <th>Hours</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($productionLogs as $log): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($log['title']); ?></td>
+                                <td>
+                                    <?php 
+                                    if ($log['page_id']) {
+                                        // Get page name
+                                        $pageStmt = $db->prepare("SELECT page_name FROM project_pages WHERE id = ?");
+                                        $pageStmt->execute([$log['page_id']]);
+                                        $pageName = $pageStmt->fetchColumn();
+                                        echo htmlspecialchars($pageName ?: 'Page #' . $log['page_id']);
+                                        
+                                        // Check if this is part of multiple pages (same description and time)
+                                        $multiPageStmt = $db->prepare("
+                                            SELECT COUNT(*) as count, GROUP_CONCAT(pp.page_name SEPARATOR ', ') as page_names
+                                            FROM project_time_logs ptl 
+                                            JOIN project_pages pp ON ptl.page_id = pp.id
+                                            WHERE ptl.user_id = ? AND ptl.log_date = ? AND ptl.description = ? AND ptl.hours_spent = ?
+                                        ");
+                                        $multiPageStmt->execute([$userId, $date, $log['description'], $log['hours_spent']]);
+                                        $multiPageResult = $multiPageStmt->fetch();
+                                        
+                                        if ($multiPageResult['count'] > 1) {
+                                            echo '<br><small class="text-muted">+ ' . ($multiPageResult['count'] - 1) . ' more pages</small>';
+                                        }
+                                    } else {
+                                        // Check if it's a project phase or generic task
+                                        $desc = $log['description'];
+                                        if (strpos($desc, 'Phase:') !== false || strpos($desc, 'Scoping') !== false || strpos($desc, 'Training') !== false) {
+                                            echo '<em>Project Phase</em>';
+                                        } elseif (strpos($desc, 'Generic:') !== false) {
+                                            echo '<em>Generic Task</em>';
+                                        } else {
+                                            echo '<em>General</em>';
+                                        }
+                                    }
+                                    ?>
+                                </td>
+                                <td>
+                                    <?php 
+                                    if ($log['environment_id']) {
+                                        $envStmt = $db->prepare("SELECT name FROM testing_environments WHERE id = ?");
+                                        $envStmt->execute([$log['environment_id']]);
+                                        $envName = $envStmt->fetchColumn();
+                                        echo htmlspecialchars($envName ?: 'Env #' . $log['environment_id']);
+                                    } else {
+                                        echo '<em>N/A</em>';
+                                    }
+                                    ?>
+                                </td>
+                                <td>
+                                    <?php 
+                                    $desc = htmlspecialchars($log['description']);
+                                    // Truncate long descriptions
+                                    if (strlen($desc) > 50) {
+                                        echo substr($desc, 0, 50) . '...';
+                                    } else {
+                                        echo $desc;
+                                    }
+                                    ?>
+                                </td>
+                                <td><span class="badge bg-success"><?php echo $log['hours_spent']; ?>h</span></td>
+                                <td>
+                                    <a href="javascript:void(0)" 
+                                       class="text-danger" onclick="return handleDeleteLog(<?php echo $log['id']; ?>, '<?php echo $date; ?>')">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <?php endif; ?>
+
+                    <?php if (!empty($benchLogs)): ?>
+                    <h6 class="text-secondary">Off-Production/Bench Hours</h6>
+                    <table class="table table-striped table-sm">
+                        <thead>
+                            <tr>
+                                <th>Activity</th>
+                                <th>Description</th>
+                                <th>Hours</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($benchLogs as $log): ?>
+                            <tr>
+                                <td>
+                                    <?php 
+                                    // Extract activity type from description or show generic
+                                    $desc = $log['description'];
+                                    $activityTypes = ['training', 'learning', 'documentation', 'meetings', 'admin', 'waiting', 'other'];
+                                    $activity = 'General';
+                                    foreach ($activityTypes as $type) {
+                                        if (stripos($desc, $type) !== false) {
+                                            $activity = ucfirst($type);
+                                            break;
+                                        }
+                                    }
+                                    echo htmlspecialchars($activity);
+                                    ?>
+                                </td>
+                                <td><?php echo htmlspecialchars($log['description']); ?></td>
+                                <td><span class="badge bg-secondary"><?php echo $log['hours_spent']; ?>h</span></td>
+                                <td>
+                                    <a href="javascript:void(0)" 
+                                       class="text-danger" onclick="return handleDeleteLog(<?php echo $log['id']; ?>, '<?php echo $date; ?>')">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <?php endif; ?>
+
+                    <?php if (empty($logs)): ?>
+                    <p class="text-muted text-center">No hours logged for today.</p>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php include __DIR__ . '/../includes/footer.php'; ?>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    // Production hours form handling
+    var productionProjectSelect = document.querySelector('#logProductionHoursForm select[name="project_id"]');
+    var taskTypeSelect = document.getElementById('taskTypeSelect');
+    var pageTestingContainer = document.getElementById('pageTestingContainer');
+    var projectPhaseContainer = document.getElementById('projectPhaseContainer');
+    var genericTaskContainer = document.getElementById('genericTaskContainer');
+    var regressionContainer = document.getElementById('regressionContainer');
+    
+    var productionPageSelect = document.getElementById('productionPageSelect');
+    var productionEnvSelect = document.getElementById('productionEnvSelect');
+    var productionIssueSelect = document.getElementById('productionIssueSelect');
+    var projectPhaseSelect = document.getElementById('projectPhaseSelect');
+    var genericCategorySelect = document.getElementById('genericCategorySelect');
+    var testingTypeSelect = document.getElementById('testingTypeSelect');
+    
+    var productionDescInput = document.querySelector('#logProductionHoursForm input[name="description"]');
+
+    // Bench hours form handling
+    var benchActivitySelect = document.querySelector('#logBenchHoursForm select[name="bench_activity"]');
+    var benchDescInput = document.querySelector('#logBenchHoursForm input[name="description"]');
+
+    function clearSelect(sel) {
+        if (sel) {
+            sel.innerHTML = '<option value="">Select</option>';
+        }
+    }
+
+    function hideAllTaskContainers() {
+        pageTestingContainer.style.display = 'none';
+        projectPhaseContainer.style.display = 'none';
+        genericTaskContainer.style.display = 'none';
+        if (regressionContainer) regressionContainer.style.display = 'none';
+    }
+
+    // Task type selection
+    if (taskTypeSelect) {
+        taskTypeSelect.addEventListener('change', function(){
+            var taskType = this.value;
+            var projectId = productionProjectSelect ? productionProjectSelect.value : '';
+            
+            hideAllTaskContainers();
+            
+            if (!projectId) {
+                showToast('Please select a project first', 'warning');
+                return;
+            }
+            
+            switch(taskType) {
+                case 'page_testing':
+                case 'page_qa':
+                    pageTestingContainer.style.display = 'block';
+                    loadProjectPages();
+                    break;
+                case 'regression_testing':
+                    regressionContainer.style.display = 'block';
+                    loadRegressionSummary();
+                    break;
+                case 'project_phase':
+                    projectPhaseContainer.style.display = 'block';
+                    loadProjectPhases();
+                    break;
+                case 'generic_task':
+                    genericTaskContainer.style.display = 'block';
+                    loadGenericCategories();
+                    break;
+            }
+        });
+    }
+
+    // Production project selection
+    if (productionProjectSelect) {
+        productionProjectSelect.addEventListener('change', function(){
+            var projectId = this.value;
+            var taskType = taskTypeSelect ? taskTypeSelect.value : '';
+            
+            clearSelect(productionPageSelect);
+            clearSelect(productionEnvSelect);
+            clearSelect(projectPhaseSelect);
+            
+            if (!projectId) {
+                hideAllTaskContainers();
+                return;
+            }
+            
+            // Show appropriate container based on selected task type
+            if (taskType === 'page_testing' || taskType === 'page_qa') {
+                pageTestingContainer.style.display = 'block';
+                loadProjectPages();
+            } else if (taskType === 'regression_testing') {
+                regressionContainer.style.display = 'block';
+                loadRegressionSummary();
+            } else if (taskType === 'project_phase') {
+                projectPhaseContainer.style.display = 'block';
+                loadProjectPhases();
+            } else if (taskType === 'generic_task') {
+                genericTaskContainer.style.display = 'block';
+                loadGenericCategories();
+            }
+        });
+    }
+
+    function loadProjectPages() {
+        var projectId = productionProjectSelect ? productionProjectSelect.value : '';
+        if (!projectId) return;
+        
+        // Show loading message
+        productionPageSelect.innerHTML = '<option value="">Loading pages...</option>';
+        
+        fetch('<?php echo $baseDir; ?>/api/tasks.php?project_id=' + encodeURIComponent(projectId), {
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(r => {
+            if (!r.ok) {
+                throw new Error('HTTP ' + r.status + ': ' + r.statusText);
+            }
+            return r.json();
+        })
+        .then(function(pages){
+            productionPageSelect.innerHTML = '';
+            if (pages && Array.isArray(pages) && pages.length > 0) {
+                pages.forEach(function(pg){
+                    var opt = document.createElement('option');
+                    opt.value = pg.id;
+                    // Show only page name, not tester names
+                    opt.textContent = pg.page_name || pg.title || pg.url || ('Page ' + pg.id);
+                    productionPageSelect.appendChild(opt);
+                });
+            } else if (pages && pages.error) {
+                var opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'Error: ' + pages.error;
+                productionPageSelect.appendChild(opt);
+            } else {
+                var opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No pages found for this project';
+                productionPageSelect.appendChild(opt);
+            }
+        }).catch(function(error){ 
+            productionPageSelect.innerHTML = '<option value="">Error: ' + error.message + '</option>';
+        });
+    }
+
+    function loadProjectPhases() {
+        var projectId = productionProjectSelect ? productionProjectSelect.value : '';
+        if (!projectId) return;
+        
+        // Show loading message
+        projectPhaseSelect.innerHTML = '<option value="">Loading phases...</option>';
+        
+        fetch('<?php echo $baseDir; ?>/api/projects.php?action=get_phases&project_id=' + encodeURIComponent(projectId), {
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(function(res){
+            return res.text().then(function(txt){
+                if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + txt);
+                try {
+                    return JSON.parse(txt);
+                } catch (e) {
+                    throw new Error('Invalid JSON response: ' + (txt.length > 500 ? txt.slice(0,500) + '...' : txt));
+                }
+            });
+        })
+        .then(function(phases){
+            projectPhaseSelect.innerHTML = '<option value="">Select project phase</option>';
+                if (phases && Array.isArray(phases) && phases.length > 0) {
+                phases.forEach(function(phase){
+                    var opt = document.createElement('option');
+                    opt.value = phase.id;
+                    // Humanize phase name: replace underscores and capitalize words; handle common acronyms
+                    var name = (phase.phase_name || '').toString();
+                    var parts = name.replace(/_/g, ' ').split(/\s+/).map(function(w){
+                        var lw = w.toLowerCase();
+                        if (lw === 'po') return 'PO';
+                        if (lw === 'vpat') return 'VPAT';
+                        if (lw === 'acr') return 'ACR';
+                        return lw.charAt(0).toUpperCase() + lw.slice(1);
+                    });
+                    var displayName = parts.join(' ');
+                    opt.textContent = displayName + ' (' + (phase.actual_hours || 0) + '/' + (phase.planned_hours || 0) + ' hrs)';
+                    projectPhaseSelect.appendChild(opt);
+                });
+            } else if (phases && phases.error) {
+                var opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'Error: ' + phases.error;
+                projectPhaseSelect.appendChild(opt);
+            } else {
+                var opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No phases found for this project';
+                projectPhaseSelect.appendChild(opt);
+            }
+        }).catch(function(error){ 
+            projectPhaseSelect.innerHTML = '<option value="">Error: ' + (error.message || 'Unknown') + '</option>';
+        });
+    }
+
+    function loadRegressionSummary() {
+        function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&"'<>]/g, function (m) { return ({'&':'&amp;','"':'&quot;','\'':'&#39;','<':'&lt;','>':'&gt;'}[m]); }); }
+        var projectId = productionProjectSelect ? productionProjectSelect.value : '';
+        var container = document.getElementById('regressionSummary');
+        if (!container) return;
+        if (!projectId) { container.textContent = 'Select a project to view regression summary'; return; }
+        container.textContent = 'Loading...';
+        fetch('<?php echo $baseDir; ?>/api/regression_actions.php?action=get_stats&project_id=' + encodeURIComponent(projectId), { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(function(json){
+                if (!json || !json.success) {
+                    container.textContent = 'Error loading regression summary';
+                    return;
+                }
+                var s = json || {};
+                var total = s.issues_total || 0;
+                var statusCounts = s.status_counts || {};
+                var attemptedTotal = s.attempted_issues_total || 0;
+                var attemptedStatus = s.attempted_status_counts || {};
+
+                var html = '<div><strong>Total issues:</strong> ' + total + '</div>';
+                html += '<div><strong>Attempted during regression:</strong> ' + attemptedTotal + '</div>';
+                html += '<div class="mt-1"><strong>Attempted status breakdown:</strong><br/>';
+                if (Object.keys(attemptedStatus).length === 0) {
+                    html += '<small class="text-muted">No attempted issues logged yet</small>';
+                } else {
+                    for (var k in attemptedStatus) {
+                        html += '<div>' + k + ': ' + attemptedStatus[k] + '</div>';
+                    }
+                }
+                html += '</div>';
+
+                // also show regression task status counts
+                html += '<div class="mt-2"><strong>Regression tasks:</strong><br/>';
+                if (Object.keys(statusCounts).length === 0) html += '<small class="text-muted">No regression tasks</small>'; else {
+                    for (var st in statusCounts) {
+                        html += '<div>' + st + ': ' + statusCounts[st] + '</div>';
+                    }
+                }
+                html += '</div>';
+
+                // per-user attempted issues (if available)
+                var attemptsByUser = s.attempts_by_user || {};
+                var userCounts = s.user_counts || [];
+                var userMap = {};
+                userCounts.forEach(function(u){ userMap[u.id] = u.full_name || ('User '+u.id); });
+                html += '<div class="mt-2"><strong>Attempts by user:</strong><br/>';
+                if (Object.keys(attemptsByUser).length === 0) {
+                    html += '<small class="text-muted">No attempts recorded</small>';
+                } else {
+                    for (var uid in attemptsByUser) {
+                        var issues = attemptsByUser[uid] || [];
+                        var uname = userMap[uid] || (uid === '0' ? 'System' : ('User '+uid));
+                        html += '<div class="mt-1"><strong>' + escapeHtml(uname) + '</strong> — ' + issues.length + ' issue(s)';
+                        html += '<div class="ms-3">';
+                        issues.forEach(function(it){
+                            html += '<div><strong>' + escapeHtml(it.issue_key || ('#'+it.issue_id)) + '</strong> — ' + escapeHtml(it.last_status || '') + ' <small class="text-muted">' + escapeHtml(it.last_changed_at || '') + '</small></div>';
+                        });
+                        html += '</div></div>';
+                    }
+                }
+                html += '</div>';
+
+                container.innerHTML = html;
+            }).catch(function(){ container.textContent = 'Error loading regression summary'; });
+    }
+
+    function loadGenericCategories() {
+        // Show loading message
+        genericCategorySelect.innerHTML = '<option value="">Loading categories...</option>';
+        
+        fetch('<?php echo $baseDir; ?>/api/generic_tasks.php?action=get_categories', {
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(r => {
+            if (!r.ok) {
+                throw new Error('HTTP ' + r.status + ': ' + r.statusText);
+            }
+            return r.json();
+        })
+        .then(function(categories){
+            genericCategorySelect.innerHTML = '<option value="">Select category</option>';
+            if (categories && Array.isArray(categories) && categories.length > 0) {
+                categories.forEach(function(cat){
+                    var opt = document.createElement('option');
+                    opt.value = cat.id;
+                    opt.textContent = cat.name + (cat.description ? ' - ' + cat.description : '');
+                    genericCategorySelect.appendChild(opt);
+                });
+            } else if (categories && categories.error) {
+                var opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'Error: ' + categories.error;
+                genericCategorySelect.appendChild(opt);
+            } else {
+                var opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No categories found';
+                genericCategorySelect.appendChild(opt);
+            }
+        }).catch(function(error){ 
+            genericCategorySelect.innerHTML = '<option value="">Error: ' + error.message + '</option>';
+        });
+    }
+
+    // Production page selection (multiple pages)
+    if (productionPageSelect) {
+        productionPageSelect.addEventListener('change', function(){
+            var selectedPages = Array.from(this.selectedOptions).map(option => option.value).filter(val => val !== '');
+            clearSelect(productionEnvSelect);
+            
+            if (selectedPages.length === 0) return;
+            
+            // If multiple pages selected, load environments from the first page
+            // (or we could load environments common to all selected pages)
+            var firstPageId = selectedPages[0];
+            
+            fetch('<?php echo $baseDir; ?>/api/tasks.php?page_id=' + encodeURIComponent(firstPageId), {credentials: 'same-origin'})
+                .then(r => r.json())
+                .then(function(page){
+                    productionEnvSelect.innerHTML = '';
+                    if (page.environments && page.environments.length > 0) {
+                        page.environments.forEach(function(env){
+                            var opt = document.createElement('option');
+                            opt.value = env.id;
+                            opt.textContent = env.name + (env.status ? ' ('+env.status+')' : '');
+                            productionEnvSelect.appendChild(opt);
+                        });
+                    } else {
+                        var opt = document.createElement('option');
+                        opt.value = '';
+                        opt.textContent = 'No environments found';
+                        productionEnvSelect.appendChild(opt);
+                    }
+                    
+                    // Pre-fill description with page names for convenience
+                    if (productionDescInput && (!productionDescInput.value || productionDescInput.value.trim() === '')) {
+                        if (selectedPages.length === 1) {
+                            productionDescInput.value = page.page_name || page.title || '';
+                        } else {
+                            productionDescInput.value = 'Multiple pages testing';
+                        }
+                    }
+                    // Load issues if regression selected
+                    if (testingTypeSelect && testingTypeSelect.value === 'regression') {
+                        loadProjectIssues(productionProjectSelect.value, firstPageId);
+                        var issueCont = document.getElementById('productionIssueContainer');
+                        if (issueCont) issueCont.style.display = 'block';
+                    } else {
+                        var issueCont = document.getElementById('productionIssueContainer');
+                        if (issueCont) issueCont.style.display = 'none';
+                    }
+                    // If regression testing type selected, load issues for this page
+                    if (testingTypeSelect && testingTypeSelect.value === 'regression') {
+                        loadProjectIssues(projectId, pageId);
+                    }
+                }).catch(function(error){ 
+                    productionEnvSelect.innerHTML = '<option value="">Error loading environments</option>';
+                });
+        });
+
+    function loadProjectIssues(projectId, pageId) {
+        if (!projectId) return;
+        if (!productionIssueSelect) return;
+        productionIssueSelect.innerHTML = '<option value="">Issues subsystem disabled</option>';
+        fetch('<?php echo $baseDir; ?>/api/regression_actions.php?action=get_project_issues&project_id=' + encodeURIComponent(projectId) + (pageId ? '&page_id='+encodeURIComponent(pageId) : ''), {credentials: 'same-origin'})
+            .then(r => r.json())
+            .then(function(data){
+                productionIssueSelect.innerHTML = '<option value="">Select issue (optional)</option>';
+                if (data && data.issues && Array.isArray(data.issues)) {
+                    data.issues.forEach(function(it){
+                        var opt = document.createElement('option');
+                        opt.value = it.id;
+                        opt.textContent = (it.issue_key ? (it.issue_key + ' - ') : '') + (it.title || ('Issue ' + it.id));
+                        productionIssueSelect.appendChild(opt);
+                    });
+                }
+            }).catch(function(){
+                productionIssueSelect.innerHTML = '<option value="">Issues subsystem disabled</option>';
+            });
+    }
+    }
+
+    // Bench activity selection
+    if (benchActivitySelect) {
+        benchActivitySelect.addEventListener('change', function(){
+            var activity = this.value;
+            if (benchDescInput && (!benchDescInput.value || benchDescInput.value.trim() === '')) {
+                // Pre-fill description based on activity type
+                var descriptions = {
+                    'training': 'Training session on ',
+                    'learning': 'Learning/Research on ',
+                    'documentation': 'Documentation work on ',
+                    'meetings': 'Meeting: ',
+                    'admin': 'Administrative task: ',
+                    'waiting': 'Waiting for assignment',
+                    'other': 'Other activity: '
+                };
+                benchDescInput.value = descriptions[activity] || '';
+            }
+        });
+    }
+
+    // Show/hide issue selector when testing type changes
+    if (testingTypeSelect) {
+        testingTypeSelect.addEventListener('change', function(){
+            var v = this.value;
+            var issueCont = document.getElementById('productionIssueContainer');
+            if (v === 'regression') {
+                if (issueCont) issueCont.style.display = 'block';
+                // Load issues for first selected page (if any)
+                var firstPage = productionPageSelect && productionPageSelect.selectedOptions && productionPageSelect.selectedOptions.length ? productionPageSelect.selectedOptions[0].value : null;
+                loadProjectIssues(productionProjectSelect.value, firstPage);
+            } else {
+                if (issueCont) issueCont.style.display = 'none';
+            }
+        });
+    }
+});
+</script>
+
+<script>
+// Allow deletion only for today and previous business day for non-admins. For older dates open edit request.
+function isDeletableDate(dateStr) {
+    try {
+        var d = new Date(dateStr + 'T00:00:00');
+        var today = new Date(); today.setHours(0,0,0,0);
+        if (d.getTime() === today.getTime()) return true;
+        var prev = new Date(today); prev.setDate(prev.getDate() - 1);
+        // If today is Monday, previous business day is last Friday
+        if (today.getDay() === 1) {
+            var lastFri = new Date(today); lastFri.setDate(lastFri.getDate() - 3);
+            return d.getTime() === lastFri.getTime();
+        }
+        return d.getTime() === prev.getTime();
+    } catch (e) { return false; }
+}
+
+function handleDeleteLog(logId, dateStr) {
+    var isAdmin = <?php echo $isAdmin ? 'true' : 'false'; ?>;
+    if (isAdmin || isDeletableDate(dateStr)) {
+        confirmModal('Delete this log?', function() {
+            window.location.href = '?date=' + encodeURIComponent(dateStr) + '&delete_log=' + encodeURIComponent(logId);
+        });
+        return false;
+    }
+
+    // Open edit request flow: ask for reason and submit request_edit
+    var reason = prompt('This is a past date. To modify or delete it you must request an edit. Please enter a reason:');
+    if (!reason || !reason.trim()) return false;
+
+    var fd = new FormData();
+    fd.append('action','request_edit');
+    fd.append('date', dateStr);
+    fd.append('reason', reason.trim());
+
+    fetch(window.location.pathname + '?action=request_edit', { method: 'POST', body: fd })
+        .then(r => r.json())
+            .then(function(resp){
+            if (resp && resp.success) {
+                showToast('Edit request submitted. Admin will review.', 'success');
+                location.reload();
+            } else {
+                showToast('Failed to submit edit request: ' + (resp && resp.error ? resp.error : 'Unknown'), 'danger');
+            }
+        }).catch(function(){ showToast('Failed to send edit request.', 'danger'); });
+
+    return false;
+}
+</script>
