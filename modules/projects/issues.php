@@ -88,7 +88,7 @@ include __DIR__ . '/../../includes/header.php';
                     </div>
                     <h4 class="card-title">Pages</h4>
                     <p class="card-text text-muted">
-                        View page-wise accessibility issues, final reports, and automated findings
+                        View page-wise final accessibility issues and reports
                     </p>
                     <a href="<?php echo $baseDir; ?>/modules/projects/issues_pages.php?project_id=<?php echo $projectId; ?>" 
                        class="btn btn-primary btn-lg">
