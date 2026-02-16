@@ -1,0 +1,9 @@
+# Runtime PHP session files
+tmp/sessions/*
+!tmp/sessions/.gitkeep
+
+# Local scan artifacts
+assets/uploads/automated_findings/
+
+# Local Node dependencies (tooling)
+tools/accessibility/node_modules/

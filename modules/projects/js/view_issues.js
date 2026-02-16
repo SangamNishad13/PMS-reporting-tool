@@ -1269,7 +1269,6 @@
             btn._pageClickHandler = function (e) {
                 // Don't trigger if clicking on the collapse button
                 if (e.target.closest('button[data-bs-toggle="collapse"]')) return;
-                console.debug('issues: row clicked (direct) on', btn.getAttribute('data-page-id') || btn.getAttribute('data-unique-id'));
                 var pageId = btn.getAttribute('data-page-id');
                 if (pageId && pageId !== '0') {
                     setSelectedPage(btn);
@@ -1293,7 +1292,6 @@
                     if (!row) return;
                     // Ignore clicks on collapse toggle buttons
                     if (e.target.closest && e.target.closest('button[data-bs-toggle="collapse"]')) return;
-                    console.debug('issues: delegated row click on', row.getAttribute('data-page-id') || row.getAttribute('data-unique-id'));
                     var pageId = row.getAttribute('data-page-id');
                     if (pageId && pageId !== '0') { setSelectedPage(row); return; }
                     var uniqueId = row.getAttribute('data-unique-id');

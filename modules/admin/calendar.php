@@ -997,7 +997,6 @@ document.addEventListener('click', function(e) {
         saveBtn.textContent = 'Save Changes';
         saveBtn.onclick = function() {
             // Manually trigger form submission
-            console.log('Admin save button clicked, submitting form');
             $('#adminCalendarEditForm').submit();
         };
         modalFooter.insertBefore(saveBtn, cancelBtn);
