@@ -186,67 +186,6 @@
     </div>
 </div>
 
-<!-- Review Issue Modal -->
-<div class="modal fade" id="reviewIssueModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <div>
-                    <h5 class="modal-title" id="reviewEditorTitle">New Review Issue</h5>
-                    <div class="small text-muted">Automated findings with instance + WCAG failure.</div>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="reviewIssueEditId" value="">
-                <input type="hidden" id="reviewIssueRuleId" value="">
-                <input type="hidden" id="reviewIssueImpact" value="">
-                <input type="hidden" id="reviewIssuePrimarySourceUrl" value="">
-                <div class="row g-3">
-                    <div class="col-12">
-                        <label class="form-label">Issue Title</label>
-                        <input type="text" class="form-control" id="reviewIssueTitle" placeholder="Issue title">
-                    </div>
-                    <div class="col-lg-8">
-                        <label class="form-label">Issue Details</label>
-                        <textarea id="reviewIssueDetails" class="issue-summernote"></textarea>
-                    </div>
-                    <div class="col-lg-4">
-                        <div class="row g-3">
-                            <div class="col-12">
-                        <label class="form-label">Instance Name</label>
-                        <textarea class="form-control" id="reviewIssueInstance" rows="4" placeholder="Instance paths"></textarea>
-                            </div>
-                            <div class="col-12">
-                        <label class="form-label">Source URLs</label>
-                        <textarea class="form-control" id="reviewIssueSourceUrls" rows="4" placeholder="Source URLs" readonly></textarea>
-                            </div>
-                            <div class="col-12">
-                        <label class="form-label">WCAG Failure</label>
-                        <input type="text" class="form-control" id="reviewIssueWcag" placeholder="WCAG failure">
-                            </div>
-                            <div class="col-12">
-                        <label class="form-label">Severity</label>
-                        <select id="reviewIssueSeverity" class="form-select">
-                            <option value="low">Low</option>
-                            <option value="medium">Medium</option>
-                            <option value="high">High</option>
-                            <option value="critical">Critical</option>
-                        </select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button class="btn btn-outline-primary d-none" id="reviewIssueMoveToFinalBtn" type="button">Move to Final Issue</button>
-                <button class="btn btn-primary" id="reviewIssueSaveBtn">Save</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Common Issue Modal -->
 <div class="modal fade" id="commonIssueModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -305,24 +244,4 @@
             </div>
         </div>
     </div>
-
-                <!-- Confirm Delete Automated Findings Modal -->
-                <div class="modal fade" id="confirmDeleteFindingsModal" tabindex="-1" aria-hidden="true">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">Confirm Deletion</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <p id="confirmDeleteFindingsMessage">Are you sure you want to permanently delete the selected automated findings? This will also remove any associated screenshots.</p>
-                                <div class="small text-muted">This action cannot be undone.</div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                                <button type="button" class="btn btn-danger" id="confirmDeleteFindingsBtn">Delete</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
 </div>

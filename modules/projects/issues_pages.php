@@ -222,7 +222,7 @@ include __DIR__ . '/../../includes/header.php';
                         <i class="fas fa-file-alt text-primary me-2"></i>
                         Issues - Pages View
                     </h2>
-                    <p class="text-muted mb-0">Pages-wise final issues and automated review findings</p>
+                    <p class="text-muted mb-0">Pages-wise final issues</p>
                 </div>
                 <div class="col-md-4 text-md-end">
                     <a href="<?php echo $baseDir; ?>/modules/projects/issues_all.php?project_id=<?php echo $projectId; ?>" class="btn btn-primary btn-sm me-2">

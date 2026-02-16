@@ -29,8 +29,6 @@
     var groupedUrls = ProjectConfig.groupedUrls || [];
     var projectId = ProjectConfig.projectId;
     var projectType = ProjectConfig.projectType || 'web';
-    var apiBase = ProjectConfig.baseDir + '/api/automated_findings.php';
-    var isInfinityFreeHost = /(?:^|\.)infinityfreeapp\.com$/i.test(String(window.location.hostname || ''));
     var axeCoreCdnUrl = 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.3/axe.min.js';
     var issuesApiBase = ProjectConfig.baseDir + '/api/issues.php';
     var issueImageUploadUrl = ProjectConfig.baseDir + '/api/issue_upload_image.php';
@@ -58,6 +56,15 @@
         }
     };
 
+    // Detail page fallback: pick page_id from URL if pre-selection bootstrap misses.
+    try {
+        var qp = new URLSearchParams(window.location.search || '');
+        var pageIdFromQuery = qp.get('page_id');
+        if (pageIdFromQuery && !issueData.selectedPageId) {
+            issueData.selectedPageId = String(pageIdFromQuery);
+        }
+    } catch (e) { }
+
     // Expose issueData globally for external access
     window.issueData = issueData;
     var issueTemplates = [];
@@ -75,6 +82,9 @@
     var reviewPageSize = 25;
     var reviewCurrentPage = 1;
     var pendingScanUrl = '';
+    var reviewFeaturesEnabled = false;
+    var reviewStorageKey = 'pms_review_findings_v1_' + String(projectId || '0');
+    var browserScanRestrictionShown = false;
     var reviewIssueInitialFormState = null;
     var reviewIssueBypassCloseConfirm = false;
 
@@ -88,6 +98,36 @@
         if (!store[pageId].review) store[pageId].review = [];
     }
 
+    function readReviewStore() {
+        try {
+            var raw = localStorage.getItem(reviewStorageKey);
+            var parsed = raw ? JSON.parse(raw) : {};
+            return (parsed && typeof parsed === 'object') ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function writeReviewStore(store) {
+        try {
+            localStorage.setItem(reviewStorageKey, JSON.stringify(store || {}));
+        } catch (e) { }
+    }
+
+    function getLocalReviewItems(pageId) {
+        var store = readReviewStore();
+        var key = String(pageId || '');
+        var arr = store[key];
+        return Array.isArray(arr) ? arr : [];
+    }
+
+    function setLocalReviewItems(pageId, items) {
+        var store = readReviewStore();
+        var key = String(pageId || '');
+        store[key] = Array.isArray(items) ? items : [];
+        writeReviewStore(store);
+    }
+
     function canEdit() {
         return true;
     }
@@ -95,11 +135,7 @@
     function updateEditingState() {
         var editable = canEdit() && !!issueData.selectedPageId;
         var addBtn = document.getElementById('issueAddFinalBtn');
-        var reviewAddBtn = document.getElementById('reviewAddBtn');
-        var runScanBtn = document.getElementById('reviewRunScanBtn');
         if (addBtn) addBtn.disabled = !editable;
-        if (reviewAddBtn) reviewAddBtn.disabled = !editable;
-        if (runScanBtn) runScanBtn.disabled = !editable;
 
         if (!canEdit()) {
             hideEditors();
@@ -459,323 +495,10 @@
         return parts.join('');
     }
 
-    function resolveScanUrlCandidates(pageId) {
-        var results = [];
-        var seen = {};
-        var page = (pages || []).find(function (p) { return String(p.id) === String(pageId); });
-        var pageUrl = page && page.url ? String(page.url).trim() : '';
-        if (page && page.url) {
-            seen[String(page.url).trim()] = true;
-            results.push({ label: 'Unique URL', value: String(page.url).trim() });
-        }
-        (groupedUrls || []).forEach(function (g) {
-            if (!g) return;
-            var mapped = g.mapped_page_id || g.page_id || g.project_page_id || null;
-            var matchesMappedPage = mapped && String(mapped) === String(pageId);
-            var urlVal = String(g.url || g.normalized_url || '').trim();
-            var normalizedVal = String(g.normalized_url || '').trim();
-            var matchesPageUrl = pageUrl && (urlVal === pageUrl || normalizedVal === pageUrl);
-            if (!matchesMappedPage && !matchesPageUrl) return;
-            var val = String(g.url || g.normalized_url || '').trim();
-            if (!val || seen[val]) return;
-            seen[val] = true;
-            results.push({ label: 'Grouped URL', value: val });
-        });
-        return results;
-    }
-
-    function showScanConfigModal() {
-        if (!issueData.selectedPageId) {
-            alert('Please select a page first.');
-            return;
-        }
-        var modalEl = document.getElementById('reviewScanConfigModal');
-        if (!modalEl) {
-            runAutomatedScanForSelectedPage();
-            return;
-        }
-        var checklist = document.getElementById('reviewScanUrlChecklist');
-        var customUrlInput = document.getElementById('reviewScanCustomUrl');
-        var iframeWrap = document.getElementById('reviewScanIframeWrap');
-        var iframe = document.getElementById('reviewScanIframe');
-        var pageInfo = document.getElementById('reviewScanPageInfo');
-        var pageName = getPageName(issueData.selectedPageId);
-        if (pageInfo) {
-            var modeNote = isInfinityFreeHost ? ' | Mode: Browser scan (same-origin URLs only)' : '';
-            pageInfo.textContent = 'Page: ' + pageName + modeNote;
-        }
-        if (iframeWrap) iframeWrap.classList.add('d-none');
-        if (iframe) iframe.src = 'about:blank';
-        if (customUrlInput) {
-            customUrlInput.value = '';
-        }
-        var options = resolveScanUrlCandidates(issueData.selectedPageId);
-        if (checklist) {
-            checklist.innerHTML = options.map(function (o, idx) {
-                var id = 'scan-url-' + idx;
-                return '<div class="form-check mb-1">' +
-                    '<input class="form-check-input review-scan-url-check" type="checkbox" value="' + escapeAttr(o.value) + '" id="' + escapeAttr(id) + '" checked>' +
-                    '<label class="form-check-label" for="' + escapeAttr(id) + '">' + escapeHtml(o.label + ' - ' + o.value) + '</label>' +
-                    '</div>';
-            }).join('') || '<div class="text-muted small">No mapped URLs found for this page.</div>';
-        }
-        var bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
-        bsModal.show();
-    }
-
-    function getScanUrlsFromModal() {
-        var urls = [];
-        document.querySelectorAll('.review-scan-url-check:checked').forEach(function (el) {
-            var v = String(el.value || '').trim();
-            if (!v) return;
-            if (urls.indexOf(v) === -1) urls.push(v);
-        });
-        return urls;
-    }
-
-    function getPrimaryScanUrlFromModal() {
-        var urls = getScanUrlsFromModal();
-        if (urls.length) return urls[0];
-        var custom = (document.getElementById('reviewScanCustomUrl') || {}).value || '';
-        return String(custom).trim();
-    }
-
-    function normalizeScanUrl(url) {
-        var raw = String(url || '').trim();
-        if (!raw) return '';
-        return /^https?:\/\//i.test(raw) ? raw : ('https://' + raw.replace(/^\/+/, ''));
-    }
-
-    function isSameOriginScanUrl(url) {
-        try {
-            var resolved = new URL(url, window.location.href);
-            return resolved.origin === window.location.origin;
-        } catch (e) {
-            return false;
-        }
-    }
-
-    function loadAxeIntoFrame(frameWin) {
-        return new Promise(function (resolve, reject) {
-            try {
-                if (!frameWin || !frameWin.document) {
-                    reject(new Error('Unable to access scan frame.'));
-                    return;
-                }
-                if (frameWin.axe && typeof frameWin.axe.run === 'function') {
-                    resolve();
-                    return;
-                }
-                var doc = frameWin.document;
-                var existing = doc.querySelector('script[data-pms-axe="1"]');
-                if (existing && frameWin.axe && typeof frameWin.axe.run === 'function') {
-                    resolve();
-                    return;
-                }
-                var script = existing || doc.createElement('script');
-                script.setAttribute('data-pms-axe', '1');
-                script.src = axeCoreCdnUrl;
-                script.async = true;
-                script.onload = function () {
-                    if (frameWin.axe && typeof frameWin.axe.run === 'function') {
-                        resolve();
-                    } else {
-                        reject(new Error('axe-core failed to load in scan frame.'));
-                    }
-                };
-                script.onerror = function () {
-                    reject(new Error('Unable to load axe-core library.'));
-                };
-                if (!existing) {
-                    (doc.head || doc.documentElement || doc.body).appendChild(script);
-                }
-            } catch (e) {
-                reject(e);
-            }
-        });
-    }
-
-    async function collectBrowserViolations(scanUrl) {
-        var normalized = normalizeScanUrl(scanUrl);
-        if (!normalized) throw new Error('Scan URL is required.');
-        if (!isSameOriginScanUrl(normalized)) {
-            throw new Error('Browser scan supports only same-origin URLs on free hosting.');
-        }
-
-        var iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.width = '1px';
-        iframe.style.height = '1px';
-        iframe.style.left = '-9999px';
-        iframe.style.top = '-9999px';
-        iframe.style.opacity = '0';
-        iframe.setAttribute('aria-hidden', 'true');
-        document.body.appendChild(iframe);
-
-        try {
-            await new Promise(function (resolve, reject) {
-                var done = false;
-                var timer = setTimeout(function () {
-                    if (done) return;
-                    done = true;
-                    reject(new Error('Timed out while loading scan URL.'));
-                }, 45000);
-                iframe.onload = function () {
-                    if (done) return;
-                    done = true;
-                    clearTimeout(timer);
-                    resolve();
-                };
-                iframe.onerror = function () {
-                    if (done) return;
-                    done = true;
-                    clearTimeout(timer);
-                    reject(new Error('Unable to load scan URL in browser frame.'));
-                };
-                iframe.src = normalized;
-            });
-
-            var frameWin = iframe.contentWindow;
-            if (!frameWin || !frameWin.document) {
-                throw new Error('Unable to access loaded page for scan.');
-            }
-            await loadAxeIntoFrame(frameWin);
-            var axeResult = await frameWin.axe.run(frameWin.document, {
-                resultTypes: ['violations'],
-                runOnly: {
-                    type: 'tag',
-                    values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']
-                }
-            });
-            return {
-                scan_url: normalized,
-                violations: Array.isArray(axeResult && axeResult.violations) ? axeResult.violations : []
-            };
-        } finally {
-            try { iframe.remove(); } catch (e) {}
-        }
-    }
-
-    async function storeBrowserScanFindings(scanUrl, violations) {
-        var fd = new FormData();
-        fd.append('action', 'store_scan_results');
-        fd.append('project_id', projectId);
-        fd.append('page_id', issueData.selectedPageId);
-        fd.append('scan_url', normalizeScanUrl(scanUrl));
-        fd.append('violations_json', JSON.stringify(Array.isArray(violations) ? violations : []));
-        var res = await fetch(apiBase, { method: 'POST', body: fd, credentials: 'same-origin' });
-        var json = await res.json();
-        if (!res.ok || !json || json.error) {
-            throw new Error((json && json.error) ? json.error : 'Failed to store scan results');
-        }
-        return Number(json.created || 0);
-    }
-
-    async function runBrowserAutomatedScanForSelectedPage(scanUrl) {
-        var result = await collectBrowserViolations(scanUrl);
-        var created = await storeBrowserScanFindings(result.scan_url, result.violations);
-        return created;
-    }
-
-    async function runAutomatedScanForSelectedPage(scanUrl, options) {
-        options = options || {};
-        if (!issueData.selectedPageId) {
-            alert('Please select a page first.');
-            return;
-        }
-        var btn = document.getElementById('reviewRunScanBtn');
-        var progressEl = document.getElementById('reviewScanProgress');
-        var oldText = btn ? btn.textContent : '';
-        var progressVal = 0;
-        var progressTimer = null;
-        if (progressEl && !options.manageProgressExternally) progressEl.textContent = '0%';
-        if (btn) {
-            btn.disabled = true;
-            btn.textContent = 'Scanning...';
-        }
-        if (!options.manageProgressExternally) {
-            progressTimer = setInterval(function () {
-                progressVal = Math.min(95, progressVal + 5);
-                if (progressEl) progressEl.textContent = progressVal + '%';
-            }, 500);
-        }
-        try {
-            var createdCount = 0;
-            if (isInfinityFreeHost) {
-                createdCount = await runBrowserAutomatedScanForSelectedPage(scanUrl);
-            } else {
-                var fd = new FormData();
-                fd.append('action', 'run_scan');
-                fd.append('project_id', projectId);
-                fd.append('page_id', issueData.selectedPageId);
-                if (scanUrl) fd.append('scan_url', scanUrl);
-                var res = await fetch(apiBase, { method: 'POST', body: fd, credentials: 'same-origin' });
-                var json = await res.json();
-                if (!res.ok || !json || json.error) {
-                    throw new Error((json && json.error) ? json.error : 'Scan failed');
-                }
-                createdCount = Number(json.created || 0);
-            }
-            if (progressEl && !options.manageProgressExternally) progressEl.textContent = '100%';
-            if (!options.skipReload) await loadReviewFindings(issueData.selectedPageId);
-            if (!options.silent && window.showToast) showToast('Scan complete. ' + createdCount + ' findings added for review.', 'success');
-            return createdCount;
-        } catch (e) {
-            if (!options.silent) alert('Automated scan failed: ' + e.message);
-            throw e;
-        } finally {
-            if (progressTimer) clearInterval(progressTimer);
-            if (btn) {
-                btn.textContent = oldText || 'Run Auto Scan';
-                updateEditingState();
-            }
-            if (progressEl && !options.manageProgressExternally) setTimeout(function () { progressEl.textContent = ''; }, 1500);
-        }
-    }
-
-    async function loadReviewFindings(pageId) {
-        if (!pageId) return;
-        var tbody = document.getElementById('reviewIssuesBody');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="text-muted text-center">Loading automated findings...</td></tr>';
-        var store = issueData.pages;
-        ensurePageStore(store, pageId);
-        try {
-            var url = apiBase + '?action=list&project_id=' + encodeURIComponent(projectId) + '&page_id=' + encodeURIComponent(pageId);
-            var res = await fetch(url, { credentials: 'same-origin' });
-            var json = await res.json();
-            var items = (json && json.findings) ? json.findings : [];
-            store[pageId].review = items.map(function (it) {
-                var impactVal = String(it.impact || '').toLowerCase();
-                var derivedSeverity = (function () {
-                    if (impactVal === 'critical') return 'critical';
-                    if (impactVal === 'serious') return 'high';
-                    if (impactVal === 'moderate') return 'medium';
-                    if (impactVal === 'minor') return 'low';
-                    return 'medium';
-                })();
-                return {
-                    id: String(it.id),
-                    title: it.title || 'Automated Issue',
-                    instance: cleanInstanceValue(it.instance_name || ''),
-                    wcag: it.wcag_failure || '',
-                    rule_id: it.rule_id || '',
-                    impact: it.impact || '',
-                    source_url: it.source_url || '',
-                    description_text: it.description_text || '',
-                    failure_summary: it.failure_summary || '',
-                    incorrect_code: it.incorrect_code || '',
-                    recommendation: it.recommendation || '',
-                    severity: (it.severity || derivedSeverity),
-                    details: it.details || '',
-                    page_id: it.page_id || pageId
-                };
-            });
-            reviewCurrentPage = 1;
-            renderReviewIssues();
-        } catch (e) {
-            if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="text-muted text-center">Unable to load automated findings.</td></tr>';
-        }
-    }
+    // Automated scan/review system removed.
+    function showScanConfigModal() {}
+    async function runAutomatedScanForSelectedPage() { return 0; }
+    async function loadReviewFindings() { return; }
 
     async function loadFinalIssues(pageId) {
         if (!pageId) return;
@@ -1531,9 +1254,7 @@
         showIssuesDetail();
         updateEditingState();
         populatePageUrls(issueData.selectedPageId);
-        reviewCurrentPage = 1;
         renderAll();
-        loadReviewFindings(issueData.selectedPageId);
         loadFinalIssues(issueData.selectedPageId);
     }
 
@@ -1769,7 +1490,7 @@
     }
 
     function hideEditors() {
-        ['finalIssueModal', 'reviewIssueModal', 'commonIssueModal'].forEach(function (id) {
+        ['finalIssueModal', 'commonIssueModal'].forEach(function (id) {
             var el = document.getElementById(id);
             if (!el) return;
             var inst = bootstrap.Modal.getInstance(el);
@@ -2013,6 +1734,10 @@
     }
 
     function openReviewEditor(issue) {
+        if (!reviewFeaturesEnabled) {
+            alert('Review issues feature is disabled.');
+            return;
+        }
         if (!canEdit()) return;
         var modalEl = document.getElementById('reviewIssueModal');
         if (!modalEl) return;
@@ -2924,6 +2649,11 @@
     }
 
     function renderReviewIssues() {
+        if (!reviewFeaturesEnabled) {
+            var tbodyDisabled = document.getElementById('reviewIssuesBody');
+            if (tbodyDisabled) tbodyDisabled.innerHTML = '';
+            return;
+        }
         var tbody = document.getElementById('reviewIssuesBody');
         if (!tbody) return;
         var rawItems = (issueData.selectedPageId && issueData.pages[issueData.selectedPageId]) ? (issueData.pages[issueData.selectedPageId].review || []) : [];
@@ -3509,7 +3239,7 @@
         }
     }
 
-    function renderAll() { renderFinalIssues(); renderReviewIssues(); renderCommonIssues(); updateSelectionButtons(); }
+    function renderAll() { renderFinalIssues(); renderCommonIssues(); updateSelectionButtons(); }
 
     function renderIssuePresence(users) {
         var el = document.getElementById('finalIssuePresenceIndicator');
@@ -3681,13 +3411,8 @@
 
     function updateSelectionButtons() {
         var finalChecked = document.querySelectorAll('.final-select:checked').length;
-        var reviewChecked = document.querySelectorAll('.review-select:checked').length;
         var finalDelete = document.getElementById('finalDeleteSelected');
-        var reviewDelete = document.getElementById('reviewDeleteSelected');
-        var reviewMove = document.getElementById('reviewMoveSelected');
         if (finalDelete) finalDelete.disabled = !finalChecked || !canEdit();
-        if (reviewDelete) reviewDelete.disabled = !reviewChecked || !canEdit();
-        if (reviewMove) reviewMove.disabled = !reviewChecked || !canEdit();
     }
 
     function getPageName(id) { var p = (pages || []).find(function (x) { return String(x.id) === String(id); }); return p ? p.page_name : id; }
@@ -4302,6 +4027,7 @@
     }
 
     async function addOrUpdateReviewIssue() {
+        if (!reviewFeaturesEnabled) return;
         if (!issueData.selectedPageId) return;
         var editId = document.getElementById('reviewIssueEditId').value;
         var editIds = normalizeIdList(editId);
@@ -4321,90 +4047,53 @@
         if (!data.title) { alert('Issue title is required.'); return; }
         if (!data.details || data.details.trim() === '') data.details = data.title;
         try {
-            var fd = new FormData();
-            fd.append('project_id', projectId);
-            fd.append('page_id', issueData.selectedPageId);
-            fd.append('title', data.title);
-            fd.append('instance_name', data.instance);
-            fd.append('wcag_failure', data.wcag);
-            fd.append('details', data.details);
-            fd.append('summary', '');
-            fd.append('snippet', '');
-
+            var pageId = String(issueData.selectedPageId);
+            var list = getLocalReviewItems(pageId);
             if (editIds.length) {
-                for (var i = 0; i < editIds.length; i++) {
-                    var fdUpd = new FormData();
-                    fdUpd.append('project_id', projectId);
-                    fdUpd.append('page_id', issueData.selectedPageId);
-                    fdUpd.append('title', data.title);
-                    fdUpd.append('instance_name', data.instance);
-                    fdUpd.append('wcag_failure', data.wcag);
-                    fdUpd.append('details', data.details);
-                    fdUpd.append('summary', '');
-                    fdUpd.append('snippet', '');
-                    fdUpd.append('action', 'update');
-                    fdUpd.append('id', editIds[i]);
-                    var resUpd = await fetch(apiBase, { method: 'POST', body: fdUpd, credentials: 'same-origin' });
-                    var jsonUpd = await resUpd.json();
-                    if (!jsonUpd || jsonUpd.error) throw new Error(jsonUpd && jsonUpd.error ? jsonUpd.error : 'Save failed');
-                }
+                list = list.map(function (it) {
+                    if (editIds.indexOf(String(it.id)) === -1) return it;
+                    return Object.assign({}, it, {
+                        title: data.title,
+                        instance: data.instance,
+                        wcag: data.wcag,
+                        details: data.details,
+                        rule_id: meta.rule_id || it.rule_id || '',
+                        impact: meta.impact || it.impact || '',
+                        source_url: meta.source_url || it.source_url || '',
+                        source_urls: (meta.source_url ? [meta.source_url] : (it.source_urls || []))
+                    });
+                });
             } else {
-                fd.append('action', 'create');
-                var res = await fetch(apiBase, { method: 'POST', body: fd, credentials: 'same-origin' });
-                var json = await res.json();
-                if (!json || json.error) throw new Error(json && json.error ? json.error : 'Save failed');
+                list.push({
+                    id: 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+                    title: data.title,
+                    instance: data.instance,
+                    wcag: data.wcag,
+                    rule_id: meta.rule_id || '',
+                    impact: meta.impact || '',
+                    source_url: meta.source_url || '',
+                    source_urls: meta.source_url ? [meta.source_url] : [],
+                    description_text: '',
+                    failure_summary: '',
+                    incorrect_code: '',
+                    recommendation: '',
+                    severity: data.severity || 'medium',
+                    details: data.details,
+                    page_id: pageId
+                });
             }
+            setLocalReviewItems(pageId, list);
             reviewIssueBypassCloseConfirm = true;
             reviewIssueInitialFormState = null;
             hideEditors();
             clearReviewDraftLocal();
             await loadReviewFindings(issueData.selectedPageId);
-        } catch (e) { alert('Unable to save automated finding.'); }
+        } catch (e) { alert('Unable to save tool finding.'); }
     }
 
     async function moveCurrentReviewIssueToFinal() {
-        if (!issueData.selectedPageId) return;
-        var btn = document.getElementById('reviewIssueMoveToFinalBtn');
-        if (!btn) return;
-        var ids = normalizeIdList(btn.getAttribute('data-ids') || '');
-        if (!ids.length) return;
-        try {
-            var mergedTitle = (document.getElementById('reviewIssueTitle') || {}).value || '';
-            var mergedDetails = '';
-            if (window.jQuery && jQuery.fn.summernote) {
-                mergedDetails = jQuery('#reviewIssueDetails').summernote('code') || '';
-            } else {
-                mergedDetails = (document.getElementById('reviewIssueDetails') || {}).value || '';
-            }
-            var mergedSeverity = (document.getElementById('reviewIssueSeverity') || {}).value || 'medium';
-            var sourceUrlsRaw = ((document.getElementById('reviewIssueSourceUrls') || {}).value || '').split('\n');
-            var mergedSourceUrls = sourceUrlsRaw.map(function (line) {
-                var s = String(line || '').trim();
-                if (!s) return '';
-                s = s.replace(/^\d+\.\s*/, '').trim();
-                return s;
-            }).filter(function (u) { return /^https?:\/\//i.test(u); });
-            mergedSourceUrls = Array.from(new Set(mergedSourceUrls));
-
-            var fd = new FormData();
-            fd.append('action', 'move_to_issue');
-            fd.append('project_id', projectId);
-            fd.append('ids', ids.join(','));
-            fd.append('merged_title', String(mergedTitle).trim());
-            fd.append('merged_details', String(mergedDetails || ''));
-            fd.append('merged_severity', String(mergedSeverity || 'medium').trim());
-            fd.append('merged_source_urls', JSON.stringify(mergedSourceUrls));
-            var res = await fetch(apiBase, { method: 'POST', body: fd, credentials: 'same-origin' });
-            var json = await res.json();
-            if (!json || json.error) throw new Error(json && json.error ? json.error : 'Move failed');
-            hideEditors();
-            await loadReviewFindings(issueData.selectedPageId);
-            await loadFinalIssues(issueData.selectedPageId);
-            updateIssueTabCounts();
-            if (window.showToast) showToast('Moved to Final Issues.', 'success');
-        } catch (e) {
-            alert('Unable to move finding to final issue.');
-        }
+        if (!reviewFeaturesEnabled) return;
+        alert('JS-only mode: "Move to Final" is disabled. Create final issue manually.');
     }
 
     async function addOrUpdateCommonIssue() {
@@ -4432,31 +4121,21 @@
     }
 
     async function moveReviewToFinal() {
-        if (!issueData.selectedPageId) return;
-        var selected = collectSelectedReviewIds();
-        if (!selected.length) return;
-        try {
-            var fd = new FormData();
-            fd.append('action', 'move_to_issue'); fd.append('project_id', projectId); fd.append('ids', selected.join(','));
-            var res = await fetch(apiBase, { method: 'POST', body: fd, credentials: 'same-origin' });
-            var json = await res.json();
-            if (!json || json.error) throw new Error(json && json.error ? json.error : 'Move failed');
-            await loadReviewFindings(issueData.selectedPageId);
-            await loadFinalIssues(issueData.selectedPageId);
-            updateIssueTabCounts();
-        } catch (e) { alert('Unable to move findings to final report.'); }
+        if (!reviewFeaturesEnabled) return;
+        alert('JS-only mode: "Move to Final" is disabled. Create final issue manually.');
     }
 
     async function deleteReviewIds(ids) {
+        if (!reviewFeaturesEnabled) return;
         ids = Array.from(new Set(normalizeIdList(ids)));
         if (!ids.length) return;
         try {
-            var fd = new FormData(); fd.append('action', 'delete'); fd.append('project_id', projectId); fd.append('ids', ids.join(','));
-            var res = await fetch(apiBase, { method: 'POST', body: fd, credentials: 'same-origin' });
-            var json = await res.json();
-            if (!json || json.error) throw new Error(json && json.error ? json.error : 'Delete failed');
+            var pageId = String(issueData.selectedPageId || '');
+            var list = getLocalReviewItems(pageId);
+            var next = list.filter(function (it) { return ids.indexOf(String(it.id || '')) === -1; });
+            setLocalReviewItems(pageId, next);
             await loadReviewFindings(issueData.selectedPageId);
-        } catch (e) { alert('Unable to delete automated findings.'); }
+        } catch (e) { alert('Unable to delete tool findings.'); }
     }
 
     async function deleteFinalIds(ids) {
@@ -4485,56 +4164,19 @@
 
     async function deleteSelected(type) {
         if (!issueData.selectedPageId && type !== 'common') return;
-        if (type === 'final' || type === 'review') {
-            var sel = type === 'review'
-                ? collectSelectedReviewIds()
-                : Array.from(document.querySelectorAll('.' + type + '-select:checked')).map(function (el) {
-                    return el.getAttribute('data-id') || el.value || '';
-                });
+        if (type === 'final') {
+            var sel = Array.from(document.querySelectorAll('.' + type + '-select:checked')).map(function (el) {
+                return el.getAttribute('data-id') || el.value || '';
+            });
             sel = Array.from(new Set(normalizeIdList(sel)));
             if (!sel.length) return;
-            if (type === 'review') {
-                showConfirmDeleteFindings(sel);
-            } else {
-                await deleteFinalIds(sel);
-            }
+            await deleteFinalIds(sel);
         } else if (type === 'common') {
             var selC = Array.from(document.querySelectorAll('.common-select:checked')).map(function (el) { return el.getAttribute('data-id'); });
             if (!selC.length) return;
             await deleteCommonIds(selC);
         }
     }
-
-    function showConfirmDeleteFindings(ids) {
-        var modalEl = document.getElementById('confirmDeleteFindingsModal');
-        if (!modalEl) {
-            // Fallback: delete immediately
-            deleteReviewIds(ids);
-            return;
-        }
-        // Store ids in dataset for confirm handler
-        modalEl.dataset.deleteIds = JSON.stringify(ids);
-        var msg = document.getElementById('confirmDeleteFindingsMessage');
-        if (msg) msg.textContent = 'Are you sure you want to permanently delete ' + ids.length + ' automated finding' + (ids.length>1?'s':'') + '? This will also remove any associated screenshots.';
-        var bsModal = new bootstrap.Modal(modalEl);
-        bsModal.show();
-    }
-
-    // Confirm button handler
-    document.addEventListener('DOMContentLoaded', function () {
-        var confirmBtn = document.getElementById('confirmDeleteFindingsBtn');
-        if (confirmBtn) {
-            confirmBtn.addEventListener('click', async function (e) {
-                var modalEl = document.getElementById('confirmDeleteFindingsModal');
-                try {
-                    var ids = JSON.parse(modalEl.dataset.deleteIds || '[]');
-                } catch (e) { ids = []; }
-                var bs = bootstrap.Modal.getInstance(modalEl);
-                if (bs) bs.hide();
-                if (ids && ids.length) await deleteReviewIds(ids);
-            });
-        }
-    });
 
     document.addEventListener('DOMContentLoaded', function () {
         try { } catch (e) { }
@@ -4603,9 +4245,7 @@
             ensurePageStore(issueData.pages, issueData.selectedPageId);
             updateEditingState();
             populatePageUrls(issueData.selectedPageId);
-            reviewCurrentPage = 1;
             renderAll();
-            loadReviewFindings(issueData.selectedPageId);
             loadFinalIssues(issueData.selectedPageId);
         }
     };
@@ -4771,178 +4411,6 @@
         bsModal.show();
     }
 
-    var reviewIssueModalEl = document.getElementById('reviewIssueModal');
-    if (reviewIssueModalEl) {
-        reviewIssueModalEl.addEventListener('hide.bs.modal', function (e) {
-            if (reviewIssueBypassCloseConfirm) {
-                reviewIssueBypassCloseConfirm = false;
-                reviewIssueInitialFormState = null;
-                return;
-            }
-            if (!hasReviewFormChanges()) {
-                reviewIssueInitialFormState = null;
-                return;
-            }
-            e.preventDefault();
-            e.stopPropagation();
-            var editId = (document.getElementById('reviewIssueEditId') || {}).value || '';
-            showDraftConfirmation(function (action) {
-                if (action === 'keep') return;
-                if (action === 'save') {
-                    if (editId) {
-                        var saveBtn = document.getElementById('reviewIssueSaveBtn');
-                        if (saveBtn) saveBtn.click();
-                    } else {
-                        saveReviewDraftLocal();
-                        reviewIssueBypassCloseConfirm = true;
-                        reviewIssueInitialFormState = null;
-                        var instSave = bootstrap.Modal.getOrCreateInstance(reviewIssueModalEl);
-                        instSave.hide();
-                    }
-                    return;
-                }
-                if (action === 'discard') {
-                    clearReviewDraftLocal();
-                    reviewIssueBypassCloseConfirm = true;
-                    reviewIssueInitialFormState = null;
-                    var instDiscard = bootstrap.Modal.getOrCreateInstance(reviewIssueModalEl);
-                    instDiscard.hide();
-                }
-            }, editId);
-        });
-    }
-
-    var addR = document.getElementById('reviewAddBtn'); if (addR) addR.addEventListener('click', function () { openReviewEditor(null); });
-    var runScanBtn = document.getElementById('reviewRunScanBtn');
-    if (runScanBtn) runScanBtn.addEventListener('click', function () { showScanConfigModal(); });
-    var scanPreviewBtn = document.getElementById('reviewScanOpenIframeBtn');
-    if (scanPreviewBtn) {
-        scanPreviewBtn.addEventListener('click', function () {
-            var url = getPrimaryScanUrlFromModal();
-            if (!url) {
-                alert('Please select or enter URL first.');
-                return;
-            }
-            if (!/^https?:\/\//i.test(url)) url = 'https://' + url.replace(/^\/+/, '');
-            var iframeWrap = document.getElementById('reviewScanIframeWrap');
-            var iframe = document.getElementById('reviewScanIframe');
-            if (iframeWrap) iframeWrap.classList.remove('d-none');
-            if (iframe) iframe.src = url;
-        });
-    }
-    var scanSelectAllBtn = document.getElementById('reviewScanSelectAllBtn');
-    if (scanSelectAllBtn) {
-        scanSelectAllBtn.addEventListener('click', function () {
-            document.querySelectorAll('.review-scan-url-check').forEach(function (el) { el.checked = true; });
-        });
-    }
-    var scanSelectNoneBtn = document.getElementById('reviewScanSelectNoneBtn');
-    if (scanSelectNoneBtn) {
-        scanSelectNoneBtn.addEventListener('click', function () {
-            document.querySelectorAll('.review-scan-url-check').forEach(function (el) { el.checked = false; });
-        });
-    }
-    var scanAddCustomBtn = document.getElementById('reviewScanAddCustomBtn');
-    if (scanAddCustomBtn) {
-        scanAddCustomBtn.addEventListener('click', function () {
-            var input = document.getElementById('reviewScanCustomUrl');
-            var checklist = document.getElementById('reviewScanUrlChecklist');
-            var raw = String((input && input.value) || '').trim();
-            if (!raw) return;
-            var url = /^https?:\/\//i.test(raw) ? raw : ('https://' + raw.replace(/^\/+/, ''));
-            if (!checklist) return;
-            var exists = Array.from(checklist.querySelectorAll('.review-scan-url-check')).some(function (el) {
-                return String(el.value || '').trim() === url;
-            });
-            if (exists) {
-                if (input) input.value = '';
-                return;
-            }
-            var id = 'scan-url-custom-' + Date.now();
-            var row = document.createElement('div');
-            row.className = 'form-check mb-1';
-            row.innerHTML = '<input class="form-check-input review-scan-url-check" type="checkbox" checked value="' + escapeAttr(url) + '" id="' + escapeAttr(id) + '">' +
-                '<label class="form-check-label" for="' + escapeAttr(id) + '">' + escapeHtml('Custom URL - ' + url) + '</label>';
-            checklist.appendChild(row);
-            if (input) input.value = '';
-        });
-    }
-    var scanStartBtn = document.getElementById('reviewScanStartBtn');
-    if (scanStartBtn) {
-        scanStartBtn.addEventListener('click', async function () {
-            var urls = getScanUrlsFromModal();
-            if (!urls.length) {
-                var fallback = getPrimaryScanUrlFromModal();
-                if (fallback) urls = [fallback];
-            }
-            if (!urls.length) {
-                alert('Please select at least one URL.');
-                return;
-            }
-            urls = urls.map(function (u) {
-                var s = String(u || '').trim();
-                return /^https?:\/\//i.test(s) ? s : ('https://' + s.replace(/^\/+/, ''));
-            });
-            var modalEl = document.getElementById('reviewScanConfigModal');
-            if (modalEl) {
-                var modal = bootstrap.Modal.getInstance(modalEl);
-                if (modal) modal.hide();
-            }
-            var modeEl = document.querySelector('input[name="reviewScanRunMode"]:checked');
-            var mode = modeEl ? modeEl.value : 'sequential';
-            var progressEl = document.getElementById('reviewScanProgress');
-            var completed = 0;
-            var total = urls.length;
-            function paintScanCounter(pagePercent) {
-                if (!progressEl) return;
-                var current = Math.min(total, completed + 1);
-                var pct = (typeof pagePercent === 'number')
-                    ? Math.max(0, Math.min(100, Math.round(pagePercent)))
-                    : (total > 0 ? Math.round((completed / total) * 100) : 0);
-                progressEl.textContent = pct + '% - Scanning page ' + current + '/' + total;
-            }
-            paintScanCounter();
-            try {
-                var totalCreated = 0;
-                if (mode === 'parallel' && urls.length > 1) {
-                    var results = await Promise.all(urls.map(function (u) {
-                        return runAutomatedScanForSelectedPage(u, { skipReload: true, silent: true, manageProgressExternally: true })
-                            .then(function (v) { completed += 1; paintScanCounter(); return v; })
-                            .catch(function () { completed += 1; paintScanCounter(); return 0; });
-                    }));
-                    totalCreated = results.reduce(function (sum, v) { return sum + Number(v || 0); }, 0);
-                } else {
-                    for (var i = 0; i < urls.length; i++) {
-                        var pagePct = 0;
-                        paintScanCounter(pagePct);
-                        var ticker = setInterval(function () {
-                            pagePct = Math.min(95, pagePct + 4);
-                            paintScanCounter(pagePct);
-                        }, 300);
-                        try {
-                            totalCreated += await runAutomatedScanForSelectedPage(urls[i], { skipReload: true, silent: true, manageProgressExternally: true });
-                        } finally {
-                            clearInterval(ticker);
-                        }
-                        paintScanCounter(100);
-                        completed += 1;
-                    }
-                }
-                await loadReviewFindings(issueData.selectedPageId);
-                if (progressEl) {
-                    progressEl.textContent = '100% - Completed ' + total + '/' + total;
-                    setTimeout(function () { progressEl.textContent = ''; }, 1500);
-                }
-                if (window.showToast) showToast('Scan complete for ' + urls.length + ' URL(s). ' + totalCreated + ' findings added for review.', 'success');
-            } catch (e) {
-                if (progressEl) {
-                    var stoppedPct = total > 0 ? Math.round((completed / total) * 100) : 0;
-                    progressEl.textContent = stoppedPct + '% - Stopped at ' + completed + '/' + total;
-                }
-                alert('Automated scan failed: ' + (e && e.message ? e.message : 'Unknown error'));
-            }
-        });
-    }
     var saveF = document.getElementById('finalIssueSaveBtn'); if (saveF) {
         saveF.addEventListener('click', addOrUpdateFinalIssue);
     }
@@ -5406,10 +4874,6 @@
         if (btn && btn.classList.contains('issue-url-toggle')) { btn.innerHTML = '<i class="fas fa-globe"></i>'; }
     });
 
-    var saveR = document.getElementById('reviewIssueSaveBtn'); if (saveR) saveR.addEventListener('click', addOrUpdateReviewIssue);
-    var moveInModalBtn = document.getElementById('reviewIssueMoveToFinalBtn');
-    if (moveInModalBtn) moveInModalBtn.addEventListener('click', moveCurrentReviewIssueToFinal);
-
     // Use event delegation for commonAddBtn to handle dynamic loading
     document.addEventListener('click', function (e) {
         var target = e.target;
@@ -5432,27 +4896,7 @@
             if (confirm('Delete selected issues?')) deleteSelected('final');
         }
     });
-    var delR = document.getElementById('reviewDeleteSelected'); if (delR) delR.addEventListener('click', function () {
-        if (typeof confirmModal === 'function') {
-            confirmModal('Delete selected findings? This action cannot be undone.', function () { deleteSelected('review'); });
-        } else {
-            if (confirm('Delete selected findings?')) deleteSelected('review');
-        }
-    });
-    var movR = document.getElementById('reviewMoveSelected'); if (movR) movR.addEventListener('click', moveReviewToFinal);
-    var reviewPagination = document.getElementById('reviewPagination');
-    if (reviewPagination) {
-        reviewPagination.addEventListener('click', function (e) {
-            var btn = e.target && e.target.closest ? e.target.closest('[data-review-page]') : null;
-            if (!btn || btn.disabled) return;
-            var action = btn.getAttribute('data-review-page');
-            if (action === 'prev') reviewCurrentPage = Math.max(1, reviewCurrentPage - 1);
-            if (action === 'next') reviewCurrentPage = reviewCurrentPage + 1;
-            renderReviewIssues();
-        });
-    }
-
-    ['common', 'final', 'review'].forEach(function (t) {
+    ['common', 'final'].forEach(function (t) {
         var c = document.getElementById(t + 'SelectAll');
         if (c) c.addEventListener('change', function (e) {
             document.querySelectorAll('.' + t + '-select').forEach(function (cb) { cb.checked = e.target.checked; });
@@ -5466,16 +4910,10 @@
                 if (!target) return;
 
                 var id = target.getAttribute('data-id');
-                var idsCsv = target.getAttribute('data-ids') || id;
-
                     if (target.classList.contains(t + '-edit') || target.classList.contains('issue-open')) {
                         if (t === 'final') { 
                             var i = issueData.pages[issueData.selectedPageId].final.find(function (x) { return String(x.id) === id; }); 
                             openFinalEditor(i);
-                        }
-                        if (t === 'review') {
-                            var reviewIssue = buildReviewEditIssueFromIds(idsCsv);
-                            openReviewEditor(reviewIssue);
                         }
                     if (t === 'common') {
                         var i = issueData.common.find(function (x) { return String(x.id) === id; });
@@ -5517,13 +4955,11 @@
                     if (typeof confirmModal === 'function') {
                         confirmModal('Delete this item? This action cannot be undone.', function () {
                             if (t === 'final') deleteFinalIds([id]);
-                            if (t === 'review') deleteReviewIds([id]);
                             if (t === 'common') deleteCommonIds([id]);
                         });
                     } else {
                         if (confirm('Delete this item?')) {
                             if (t === 'final') deleteFinalIds([id]);
-                            if (t === 'review') deleteReviewIds([id]);
                             if (t === 'common') deleteCommonIds([id]);
                         }
                     }
@@ -5563,7 +4999,6 @@
 
     // Expose necessary functions globally for external pages
     window.loadFinalIssues = loadFinalIssues;
-    window.loadReviewFindings = loadReviewFindings;
     window.updateEditingState = updateEditingState;
     window.loadCommonIssues = loadCommonIssues;
     window.openFinalEditor = openFinalEditor;

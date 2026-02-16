@@ -498,7 +498,7 @@ include __DIR__ . '/../../includes/header.php';
         <div class="card-header py-2 d-flex justify-content-between align-items-center">
             <div>
                 <strong>Page Issues</strong>
-                <span class="small text-muted ms-2">Final issues and automated findings</span>
+                <span class="small text-muted ms-2">Final issues</span>
             </div>
             <button class="btn btn-primary btn-sm" id="issueAddFinalBtn">
                 <i class="fas fa-plus me-1"></i> Add Issue
@@ -508,9 +508,6 @@ include __DIR__ . '/../../includes/header.php';
             <ul class="nav nav-tabs px-3 pt-2 mb-0" id="pageIssueTabs" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active py-2" id="final-issues-tab" data-bs-toggle="tab" data-bs-target="#final_issues_tab" type="button">Final Issues <span class="badge bg-secondary ms-1" id="finalIssuesCountBadge">0</span></button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link py-2" id="review-issues-tab" data-bs-toggle="tab" data-bs-target="#review_issues_tab" type="button">Needs Review <span class="badge bg-secondary ms-1" id="reviewIssuesCountBadge">0</span></button>
                 </li>
             </ul>
 
@@ -547,96 +544,6 @@ include __DIR__ . '/../../includes/header.php';
                         </table>
                     </div>
                 </div>
-
-                <div class="tab-pane fade" id="review_issues_tab" role="tabpanel">
-                    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
-                        <div class="small text-muted">Automated tool findings</div>
-                        <div class="d-flex gap-2">
-                            <button class="btn btn-sm btn-primary" id="reviewRunScanBtn">Run Auto Scan</button>
-                            <span class="small text-muted align-self-center" id="reviewScanProgress" aria-live="polite"></span>
-                            <button class="btn btn-sm btn-outline-primary" id="reviewMoveSelected" disabled>Move to Final</button>
-                            <button class="btn btn-sm btn-outline-secondary" id="reviewDeleteSelected" disabled>Delete</button>
-                            <button class="btn btn-sm btn-outline-secondary" id="reviewAddBtn">Add Tool Issue</button>
-                        </div>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
-                            <thead>
-                                <tr>
-                                    <th style="width:30px;"><input type="checkbox" id="reviewSelectAll"></th>
-                                    <th>Title</th>
-                                    <th>Source URL</th>
-                                    <th>Instance</th>
-                                    <th>Rule</th>
-                                    <th>Impact</th>
-                                    <th>WCAG</th>
-                                    <th>Severity</th>
-                                    <th>Recommendation</th>
-                                    <th style="width:110px;">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="reviewIssuesBody">
-                                <tr><td colspan="10" class="text-muted text-center py-4">
-                                    <i class="fas fa-search fa-2x mb-2 opacity-25"></i>
-                                    <div>No automated findings for this page.</div>
-                                    <div class="small mt-1">Click "Add Tool Issue" to add one.</div>
-                                </td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="reviewPagination" class="px-3 py-2"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="reviewScanConfigModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Run Automated Scan</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="small text-muted mb-2" id="reviewScanPageInfo"></div>
-                <div class="row g-2 align-items-end mb-2">
-                    <div class="col-lg-8">
-                        <label class="form-label">Grouped / Unique URLs</label>
-                        <div class="d-flex gap-2 mb-2">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="reviewScanSelectAllBtn">Select All</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="reviewScanSelectNoneBtn">Clear</button>
-                        </div>
-                        <div id="reviewScanUrlChecklist" class="border rounded p-2" style="max-height: 220px; overflow:auto;"></div>
-                        <div class="input-group mt-2">
-                            <input type="url" id="reviewScanCustomUrl" class="form-control" placeholder="https://example.com/path">
-                            <button type="button" class="btn btn-outline-secondary" id="reviewScanAddCustomBtn">Add URL</button>
-                        </div>
-                        <div class="form-text">Choose one or more URLs. You can run selected URLs one-by-one or all at once.</div>
-                    </div>
-                    <div class="col-lg-4 d-grid">
-                        <button type="button" class="btn btn-outline-secondary" id="reviewScanOpenIframeBtn">Open In Iframe For Login</button>
-                    </div>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label d-block">Execution Mode</label>
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="radio" name="reviewScanRunMode" id="reviewScanModeSequential" value="sequential" checked>
-                        <label class="form-check-label" for="reviewScanModeSequential">One by one</label>
-                    </div>
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="radio" name="reviewScanRunMode" id="reviewScanModeParallel" value="parallel">
-                        <label class="form-check-label" for="reviewScanModeParallel">All at once</label>
-                    </div>
-                </div>
-                <div id="reviewScanIframeWrap" class="border rounded p-2 d-none">
-                    <div class="small text-muted mb-2">If login is required, login here first and then click Start Scan.</div>
-                    <iframe id="reviewScanIframe" title="Scan URL Login Frame" style="width:100%; height:420px; border:1px solid #dee2e6; border-radius:6px;" src="about:blank"></iframe>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="reviewScanStartBtn">Start Scan</button>
             </div>
         </div>
     </div>
@@ -750,10 +657,6 @@ include __DIR__ . '/../../includes/header.php';
                 if (typeof window.loadFinalIssues === 'function') {
                     window.loadFinalIssues(<?php echo $pageId; ?>);
                 }
-                
-                if (typeof window.loadReviewFindings === 'function') {
-                    window.loadReviewFindings(<?php echo $pageId; ?>);
-                }
             }, 300);
         }
     }, 100);
@@ -762,6 +665,42 @@ include __DIR__ . '/../../includes/header.php';
     setTimeout(function() {
         clearInterval(checkInterval);
     }, 5000);
+})();
+
+// Compatibility guard: some legacy templates still call openImagePopup/closeImagePopup.
+// Keep these null-safe so a missing element never breaks other page scripts (e.g. scan actions).
+(function () {
+    function setElementHidden(el, hidden) {
+        if (!el) return;
+        if ('hidden' in el) el.hidden = !!hidden;
+        if (el.style) el.style.display = hidden ? 'none' : '';
+    }
+
+    window.openImagePopup = function (imageSrc, imageAlt) {
+        var modalEl = document.getElementById('issueImageModal');
+        var previewEl = document.getElementById('issueImagePreview');
+        var altWrapEl = document.getElementById('issueImageAltText');
+        var altTextEl = document.getElementById('issueImageAltTextContent');
+        var altValue = String(imageAlt || '').trim();
+
+        if (previewEl) {
+            previewEl.src = imageSrc || '';
+            previewEl.alt = altValue;
+        }
+        if (altTextEl) altTextEl.textContent = altValue;
+        if (altWrapEl) setElementHidden(altWrapEl, !altValue);
+
+        if (modalEl && window.bootstrap && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+    };
+
+    window.closeImagePopup = function () {
+        var modalEl = document.getElementById('issueImageModal');
+        if (modalEl && window.bootstrap && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+    };
 })();
 </script>
 
