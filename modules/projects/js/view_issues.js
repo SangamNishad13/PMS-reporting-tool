@@ -30,6 +30,8 @@
     var projectId = ProjectConfig.projectId;
     var projectType = ProjectConfig.projectType || 'web';
     var apiBase = ProjectConfig.baseDir + '/api/automated_findings.php';
+    var isInfinityFreeHost = /(?:^|\.)infinityfreeapp\.com$/i.test(String(window.location.hostname || ''));
+    var axeCoreCdnUrl = 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.3/axe.min.js';
     var issuesApiBase = ProjectConfig.baseDir + '/api/issues.php';
     var issueImageUploadUrl = ProjectConfig.baseDir + '/api/issue_upload_image.php';
     var issueTemplatesApi = ProjectConfig.baseDir + '/api/issue_templates.php';
@@ -498,7 +500,10 @@
         var iframe = document.getElementById('reviewScanIframe');
         var pageInfo = document.getElementById('reviewScanPageInfo');
         var pageName = getPageName(issueData.selectedPageId);
-        if (pageInfo) pageInfo.textContent = 'Page: ' + pageName;
+        if (pageInfo) {
+            var modeNote = isInfinityFreeHost ? ' | Mode: Browser scan (same-origin URLs only)' : '';
+            pageInfo.textContent = 'Page: ' + pageName + modeNote;
+        }
         if (iframeWrap) iframeWrap.classList.add('d-none');
         if (iframe) iframe.src = 'about:blank';
         if (customUrlInput) {
@@ -535,6 +540,143 @@
         return String(custom).trim();
     }
 
+    function normalizeScanUrl(url) {
+        var raw = String(url || '').trim();
+        if (!raw) return '';
+        return /^https?:\/\//i.test(raw) ? raw : ('https://' + raw.replace(/^\/+/, ''));
+    }
+
+    function isSameOriginScanUrl(url) {
+        try {
+            var resolved = new URL(url, window.location.href);
+            return resolved.origin === window.location.origin;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function loadAxeIntoFrame(frameWin) {
+        return new Promise(function (resolve, reject) {
+            try {
+                if (!frameWin || !frameWin.document) {
+                    reject(new Error('Unable to access scan frame.'));
+                    return;
+                }
+                if (frameWin.axe && typeof frameWin.axe.run === 'function') {
+                    resolve();
+                    return;
+                }
+                var doc = frameWin.document;
+                var existing = doc.querySelector('script[data-pms-axe="1"]');
+                if (existing && frameWin.axe && typeof frameWin.axe.run === 'function') {
+                    resolve();
+                    return;
+                }
+                var script = existing || doc.createElement('script');
+                script.setAttribute('data-pms-axe', '1');
+                script.src = axeCoreCdnUrl;
+                script.async = true;
+                script.onload = function () {
+                    if (frameWin.axe && typeof frameWin.axe.run === 'function') {
+                        resolve();
+                    } else {
+                        reject(new Error('axe-core failed to load in scan frame.'));
+                    }
+                };
+                script.onerror = function () {
+                    reject(new Error('Unable to load axe-core library.'));
+                };
+                if (!existing) {
+                    (doc.head || doc.documentElement || doc.body).appendChild(script);
+                }
+            } catch (e) {
+                reject(e);
+            }
+        });
+    }
+
+    async function collectBrowserViolations(scanUrl) {
+        var normalized = normalizeScanUrl(scanUrl);
+        if (!normalized) throw new Error('Scan URL is required.');
+        if (!isSameOriginScanUrl(normalized)) {
+            throw new Error('Browser scan supports only same-origin URLs on free hosting.');
+        }
+
+        var iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.width = '1px';
+        iframe.style.height = '1px';
+        iframe.style.left = '-9999px';
+        iframe.style.top = '-9999px';
+        iframe.style.opacity = '0';
+        iframe.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(iframe);
+
+        try {
+            await new Promise(function (resolve, reject) {
+                var done = false;
+                var timer = setTimeout(function () {
+                    if (done) return;
+                    done = true;
+                    reject(new Error('Timed out while loading scan URL.'));
+                }, 45000);
+                iframe.onload = function () {
+                    if (done) return;
+                    done = true;
+                    clearTimeout(timer);
+                    resolve();
+                };
+                iframe.onerror = function () {
+                    if (done) return;
+                    done = true;
+                    clearTimeout(timer);
+                    reject(new Error('Unable to load scan URL in browser frame.'));
+                };
+                iframe.src = normalized;
+            });
+
+            var frameWin = iframe.contentWindow;
+            if (!frameWin || !frameWin.document) {
+                throw new Error('Unable to access loaded page for scan.');
+            }
+            await loadAxeIntoFrame(frameWin);
+            var axeResult = await frameWin.axe.run(frameWin.document, {
+                resultTypes: ['violations'],
+                runOnly: {
+                    type: 'tag',
+                    values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']
+                }
+            });
+            return {
+                scan_url: normalized,
+                violations: Array.isArray(axeResult && axeResult.violations) ? axeResult.violations : []
+            };
+        } finally {
+            try { iframe.remove(); } catch (e) {}
+        }
+    }
+
+    async function storeBrowserScanFindings(scanUrl, violations) {
+        var fd = new FormData();
+        fd.append('action', 'store_scan_results');
+        fd.append('project_id', projectId);
+        fd.append('page_id', issueData.selectedPageId);
+        fd.append('scan_url', normalizeScanUrl(scanUrl));
+        fd.append('violations_json', JSON.stringify(Array.isArray(violations) ? violations : []));
+        var res = await fetch(apiBase, { method: 'POST', body: fd, credentials: 'same-origin' });
+        var json = await res.json();
+        if (!res.ok || !json || json.error) {
+            throw new Error((json && json.error) ? json.error : 'Failed to store scan results');
+        }
+        return Number(json.created || 0);
+    }
+
+    async function runBrowserAutomatedScanForSelectedPage(scanUrl) {
+        var result = await collectBrowserViolations(scanUrl);
+        var created = await storeBrowserScanFindings(result.scan_url, result.violations);
+        return created;
+    }
+
     async function runAutomatedScanForSelectedPage(scanUrl, options) {
         options = options || {};
         if (!issueData.selectedPageId) {
@@ -558,20 +700,26 @@
             }, 500);
         }
         try {
-            var fd = new FormData();
-            fd.append('action', 'run_scan');
-            fd.append('project_id', projectId);
-            fd.append('page_id', issueData.selectedPageId);
-            if (scanUrl) fd.append('scan_url', scanUrl);
-            var res = await fetch(apiBase, { method: 'POST', body: fd, credentials: 'same-origin' });
-            var json = await res.json();
-            if (!res.ok || !json || json.error) {
-                throw new Error((json && json.error) ? json.error : 'Scan failed');
+            var createdCount = 0;
+            if (isInfinityFreeHost) {
+                createdCount = await runBrowserAutomatedScanForSelectedPage(scanUrl);
+            } else {
+                var fd = new FormData();
+                fd.append('action', 'run_scan');
+                fd.append('project_id', projectId);
+                fd.append('page_id', issueData.selectedPageId);
+                if (scanUrl) fd.append('scan_url', scanUrl);
+                var res = await fetch(apiBase, { method: 'POST', body: fd, credentials: 'same-origin' });
+                var json = await res.json();
+                if (!res.ok || !json || json.error) {
+                    throw new Error((json && json.error) ? json.error : 'Scan failed');
+                }
+                createdCount = Number(json.created || 0);
             }
             if (progressEl && !options.manageProgressExternally) progressEl.textContent = '100%';
             if (!options.skipReload) await loadReviewFindings(issueData.selectedPageId);
-            if (!options.silent && window.showToast) showToast('Scan complete. ' + (json.created || 0) + ' findings added for review.', 'success');
-            return Number(json.created || 0);
+            if (!options.silent && window.showToast) showToast('Scan complete. ' + createdCount + ' findings added for review.', 'success');
+            return createdCount;
         } catch (e) {
             if (!options.silent) alert('Automated scan failed: ' + e.message);
             throw e;

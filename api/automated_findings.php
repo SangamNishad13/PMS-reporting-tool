@@ -621,6 +621,108 @@ try {
         jsonResponse(['success' => true, 'created' => $created]);
     }
 
+    if ($method === 'POST' && $action === 'store_scan_results') {
+        $pageId = (int)($_POST['page_id'] ?? 0);
+        if (!$pageId) jsonError('page_id is required', 400);
+
+        $pageStmt = $db->prepare("SELECT id, page_name, url FROM project_pages WHERE id = ? AND project_id = ? LIMIT 1");
+        $pageStmt->execute([$pageId, $projectId]);
+        $page = $pageStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$page) jsonError('Page not found', 404);
+
+        $scanUrl = trim((string)($_POST['scan_url'] ?? ''));
+        if ($scanUrl === '') {
+            $scanUrl = trim((string)($page['url'] ?? ''));
+        }
+        if ($scanUrl === '') jsonError('Page URL missing for scan', 400);
+        if (!preg_match('/^https?:\/\//i', $scanUrl)) {
+            $scanUrl = 'https://' . ltrim($scanUrl, '/');
+        }
+
+        $violationsRaw = $_POST['violations_json'] ?? '';
+        $violations = json_decode((string)$violationsRaw, true);
+        if (!is_array($violations)) {
+            jsonError('Invalid violations_json payload', 400);
+        }
+
+        $ins = $db->prepare("
+            INSERT INTO automated_findings
+                (page_id, environment_id, instance_name, issue_description, wcag_failure, detected_at)
+            VALUES (?, NULL, ?, ?, ?, NOW())
+        ");
+
+        $created = 0;
+        foreach ($violations as $v) {
+            if (!is_array($v)) continue;
+            $title = trim((string)($v['help'] ?? 'Automated Issue'));
+            $desc = trim((string)($v['description'] ?? ''));
+            $impact = trim((string)($v['impact'] ?? ''));
+            $ruleId = trim((string)($v['id'] ?? ''));
+            $actualResultText = $title !== '' ? $title : $desc;
+            $recommendationText = sanitizeRecommendationText($desc !== '' ? $desc : $title);
+            $nodes = is_array($v['nodes'] ?? null) ? $v['nodes'] : [];
+            $tags = is_array($v['tags'] ?? null) ? $v['tags'] : [];
+            $wcagTags = array_values(array_filter($tags, function($t){ return stripos((string)$t, 'wcag') === 0; }));
+            $wcag = implode(', ', $wcagTags);
+
+            if (empty($nodes)) {
+                $instance = trim($title);
+                $detailsLines = [
+                    'Issue: ' . $title,
+                    'Rule ID: ' . $ruleId,
+                    'Impact: ' . $impact,
+                    'Source URL: ' . $scanUrl,
+                    'Description: ' . $actualResultText,
+                    'Recommendation: ' . $recommendationText
+                ];
+                $details = trim(implode("\n", array_filter($detailsLines, function($line){ return trim((string)$line) !== ''; })));
+                $ins->execute([$pageId, $instance, $details, $wcag]);
+                $created++;
+                continue;
+            }
+
+            foreach ($nodes as $n) {
+                if (!is_array($n)) continue;
+                $target = '';
+                if (!empty($n['target']) && is_array($n['target'])) {
+                    $target = trim((string)implode(' | ', $n['target']));
+                }
+                $nodeLabel = '';
+                if (isset($n['html'])) {
+                    $nodeLabel = extractNodeLabelText((string)$n['html']);
+                }
+                $instance = ($nodeLabel !== '' && $target !== '') ? ($nodeLabel . ' | ' . $target) : ($target !== '' ? $target : trim($title));
+                $failureSummary = trim((string)($n['failureSummary'] ?? ''));
+                $incorrectCode = trim((string)($n['html'] ?? ''));
+                if (strlen($incorrectCode) > 700) {
+                    $incorrectCode = substr($incorrectCode, 0, 700) . '...';
+                }
+
+                $detailsLines = [
+                    'Issue: ' . $title,
+                    'Rule ID: ' . $ruleId,
+                    'Impact: ' . $impact,
+                    'Source URL: ' . $scanUrl,
+                    'Description: ' . $actualResultText,
+                    'Failure: ' . $failureSummary,
+                    'Incorrect Code: ' . $incorrectCode,
+                    'Recommendation: ' . $recommendationText
+                ];
+                $details = trim(implode("\n", array_filter($detailsLines, function($line){ return trim((string)$line) !== ''; })));
+                $ins->execute([$pageId, $instance, $details, $wcag]);
+                $created++;
+            }
+        }
+
+        jsonResponse([
+            'success' => true,
+            'scan_url' => $scanUrl,
+            'violations' => count($violations),
+            'created' => $created,
+            'mode' => 'browser'
+        ]);
+    }
+
     if ($method === 'POST' && $action === 'run_scan') {
         $pageId = (int)($_POST['page_id'] ?? 0);
         if (!$pageId) jsonError('page_id is required', 400);
