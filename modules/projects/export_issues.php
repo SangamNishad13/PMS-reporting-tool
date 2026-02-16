@@ -345,6 +345,29 @@ include __DIR__ . '/../../includes/header.php';
                             </div>
                         </div>
 
+                        <!-- Comments & Additional Data -->
+                        <div class="col-md-6">
+                            <h6 class="text-muted small mb-2">Comments & Additional Data</h6>
+                            <div class="column-checkbox mb-2" draggable="true">
+                                <i class="fas fa-grip-vertical drag-handle"></i>
+                                <input type="checkbox" class="form-check-input me-2" name="columns[]" value="regression_comments" id="col_regression_comments">
+                                <label class="form-check-label" for="col_regression_comments">
+                                    Regression Comments
+                                    <small class="text-muted d-block">All regression comments from issue chat</small>
+                                </label>
+                            </div>
+                            <div class="column-checkbox mb-2" draggable="true">
+                                <i class="fas fa-grip-vertical drag-handle"></i>
+                                <input type="checkbox" class="form-check-input me-2" name="columns[]" value="image_alt_texts" id="col_image_alt_texts">
+                                <label class="form-check-label" for="col_image_alt_texts">
+                                    Image Alt Texts
+                                    <small class="text-muted d-block">Alt text of all images in issue details</small>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row g-2 mt-3">
                         <!-- Metadata Columns -->
                         <div class="col-md-6">
                             <h6 class="text-muted small mb-2">Metadata Fields (Admin Created)</h6>
@@ -485,6 +508,26 @@ document.getElementById('exportForm').addEventListener('submit', function(e) {
         alert('Please select at least one column to export.');
         return false;
     }
+
+    // Preserve exact UI order in payload (dragged order).
+    this.querySelectorAll('input.generated-column-order').forEach(function(el) { el.remove(); });
+    var orderedChecked = Array.from(document.querySelectorAll('.column-checkbox input[name="columns[]"]')).filter(function(cb) {
+        return cb.checked;
+    });
+
+    orderedChecked.forEach(function(cb) {
+        var hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = 'columns[]';
+        hidden.value = cb.value;
+        hidden.className = 'generated-column-order';
+        document.getElementById('exportForm').appendChild(hidden);
+    });
+
+    // Disable original checkboxes to avoid duplicate columns[] values.
+    document.querySelectorAll('.column-checkbox input[name="columns[]"]').forEach(function(cb) {
+        cb.disabled = true;
+    });
 });
 
 // Drag and Drop functionality for column ordering

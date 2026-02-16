@@ -163,7 +163,7 @@ $teamMembers = $teamMemberStmt->fetchAll(PDO::FETCH_ASSOC);
 $allEnvironments = $db->query("SELECT id, name FROM testing_environments ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 
 // Pre-fetch project pages
-$pagesStmt = $db->prepare("SELECT id, page_name FROM project_pages WHERE project_id = ? ORDER BY page_name");
+$pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_pages WHERE project_id = ? ORDER BY page_name");
 $pagesStmt->execute([$projectId]);
 $projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -246,15 +246,22 @@ $issueStatuses = $db->query("SELECT id, name, color FROM issue_statuses ORDER BY
 
 // Load project users for issue modal
 $projectUsersStmt = $db->prepare("
-    SELECT DISTINCT u.id, u.full_name 
+    SELECT DISTINCT u.id, u.full_name, u.username
     FROM user_assignments ua 
     JOIN users u ON ua.user_id = u.id 
     WHERE ua.project_id = ? 
       AND u.is_active = 1
       AND (ua.is_removed IS NULL OR ua.is_removed = 0)
-    ORDER BY u.full_name
+    UNION
+    SELECT DISTINCT pl.id, pl.full_name, pl.username
+    FROM projects p
+    JOIN users pl ON p.project_lead_id = pl.id
+    WHERE p.id = ?
+      AND p.project_lead_id IS NOT NULL
+      AND pl.is_active = 1
+    ORDER BY full_name
 ");
-$projectUsersStmt->execute([$projectId]);
+$projectUsersStmt->execute([$projectId, $projectId]);
 $projectUsers = $projectUsersStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get current running phase
@@ -589,24 +596,24 @@ include __DIR__ . '/../../includes/header.php';
                 $remainingHours = $allocatedHours - $utilizedHours;
                 ?>
                 
-                <div class="d-flex justify-content-md-end gap-3">
+                <div class="d-flex justify-content-md-end gap-3" id="projectHoursSummary">
                     <div style="min-width:220px;">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <div class="text-center flex-fill">
-                                <div class="fw-bold text-primary"><?php echo number_format($allocatedHours, 1); ?></div>
+                                <div class="fw-bold text-primary" id="hoursSummaryBudget"><?php echo number_format($allocatedHours, 1); ?></div>
                                 <small class="text-muted">Budget</small>
                             </div>
                             <div class="text-center flex-fill">
-                                <div class="fw-bold <?php echo $isOvershoot ? 'text-danger' : 'text-success'; ?>">
+                                <div class="fw-bold <?php echo $isOvershoot ? 'text-danger' : 'text-success'; ?>" id="hoursSummaryUsed">
                                     <?php echo number_format($utilizedHours, 1); ?>
                                 </div>
                                 <small class="text-muted">Used</small>
                             </div>
                             <div class="text-center flex-fill">
-                                <div class="fw-bold <?php echo $isOvershoot ? 'text-danger' : 'text-warning'; ?>">
+                                <div class="fw-bold <?php echo $isOvershoot ? 'text-danger' : 'text-warning'; ?>" id="hoursSummaryRemaining">
                                     <?php echo $isOvershoot ? number_format($overshootHours, 1) : number_format($remainingHours, 1); ?>
                                 </div>
-                                <small class="text-muted"><?php echo $isOvershoot ? 'Overshoot' : 'Remaining'; ?></small>
+                                <small class="text-muted" id="hoursSummaryRemainingLabel"><?php echo $isOvershoot ? 'Overshoot' : 'Remaining'; ?></small>
                             </div>
                         </div>
                         
@@ -614,19 +621,21 @@ include __DIR__ . '/../../includes/header.php';
                         <div class="progress" style="height: 8px;">
                             <?php if ($isOvershoot): ?>
                                 <!-- Green bar for budget (100% of container) -->
-                                <div class="progress-bar bg-success" style="width: 100%;" title="Budget: <?php echo number_format($allocatedHours, 1); ?> hours"></div>
+                                <div class="progress-bar bg-success" id="hoursSummaryBudgetBar" style="width: 100%;" title="Budget: <?php echo number_format($allocatedHours, 1); ?> hours"></div>
                                 <!-- Red bar for overshoot hours -->
-                                <div class="progress-bar bg-danger" style="width: <?php echo ($overshootHours / $allocatedHours) * 100; ?>%;" title="Overshoot: <?php echo number_format($overshootHours, 1); ?> hours"></div>
+                                <div class="progress-bar bg-danger" id="hoursSummaryOverBar" style="width: <?php echo ($overshootHours / $allocatedHours) * 100; ?>%;" title="Overshoot: <?php echo number_format($overshootHours, 1); ?> hours"></div>
                             <?php else: ?>
                                 <!-- Normal green bar for used hours within budget -->
-                                <div class="progress-bar bg-success" style="width: <?php echo ($utilizedHours / $allocatedHours) * 100; ?>%;" title="Used: <?php echo number_format($utilizedHours, 1); ?> hours"></div>
+                                <div class="progress-bar bg-success" id="hoursSummaryUsedBar" style="width: <?php echo ($utilizedHours / $allocatedHours) * 100; ?>%;" title="Used: <?php echo number_format($utilizedHours, 1); ?> hours"></div>
                             <?php endif; ?>
                         </div>
                         <div class="text-center mt-1">
-                            <small class="text-muted">
+                            <small class="text-muted" id="hoursSummaryPercentText">
                                 <?php echo round(($utilizedHours / $allocatedHours) * 100, 1); ?>% used
                                 <?php if ($isOvershoot): ?>
-                                    <span class="text-danger">(<?php echo number_format($overshootHours, 1); ?>h over!)</span>
+                                    <span class="text-danger" id="hoursSummaryOverText">(<?php echo number_format($overshootHours, 1); ?>h over!)</span>
+                                <?php else: ?>
+                                    <span class="text-danger d-none" id="hoursSummaryOverText"></span>
                                 <?php endif; ?>
                             </small>
                         </div>
@@ -660,6 +669,10 @@ include __DIR__ . '/../../includes/header.php';
                 <a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>" 
                    class="btn btn-primary">
                     <i class="fas fa-file-alt me-1"></i> View Report
+                </a>
+                <a href="<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo $projectId; ?>"
+                   class="btn btn-outline-primary ms-2">
+                    <i class="fas fa-comments me-1"></i> Project Chat
                 </a>
             </div>
         </div>
@@ -700,6 +713,7 @@ include __DIR__ . '/../../includes/header.php';
         baseDir: '<?php echo $baseDir; ?>',
         projectType: '<?php echo $project['type'] ?? 'web'; ?>',
         projectPages: <?php echo json_encode($projectPages ?? []); ?>,
+        uniqueIssuePages: <?php echo json_encode($uniqueIssuePages ?? []); ?>,
         groupedUrls: <?php echo json_encode($groupedUrls ?? []); ?>,
         projectUsers: <?php echo json_encode($projectUsers ?? []); ?>,
         qaStatuses: <?php echo json_encode($qaStatuses ?? []); ?>,

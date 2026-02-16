@@ -20,6 +20,44 @@ function loadAll() {
     loadMeetings();
 }
 
+function showDeleteConfirm(message, onConfirm) {
+    const modalId = 'vaultDeleteConfirmModal';
+    $('#' + modalId).remove();
+
+    const modalHtml = `
+        <div class="modal fade" id="${modalId}" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle text-warning me-2"></i>Confirm Delete</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">${escapeHtml(message)}</div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger" id="${modalId}Ok">Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    $('body').append(modalHtml);
+    const el = document.getElementById(modalId);
+    const modal = new bootstrap.Modal(el);
+
+    $('#' + modalId + 'Ok').on('click', function () {
+        modal.hide();
+        if (typeof onConfirm === 'function') onConfirm();
+    });
+
+    $(el).on('hidden.bs.modal', function () {
+        $(this).remove();
+    });
+
+    modal.show();
+}
+
 // ===== CREDENTIALS =====
 function loadCredentials() {
     $.get('../../api/admin_vault.php?action=get_credentials', function(response) {
@@ -292,34 +330,40 @@ function showCredentialModal(cred = null) {
 }
 
 function saveCredential() {
-    const formData = new FormData($('#credentialForm')[0]);
     const action = $('#credId').val() ? 'update_credential' : 'add_credential';
-    formData.append('action', action);
+    const payload = $('#credentialForm').serialize() + '&action=' + encodeURIComponent(action);
     
-    $.post('../../api/admin_vault.php', formData, function(response) {
-        if (response.success) {
-            $('#credentialModal').modal('hide');
-            loadCredentials();
-            showToast(response.message, 'success');
-        } else {
-            showToast(response.message, 'danger');
+    $.ajax({
+        url: '../../api/admin_vault.php',
+        type: 'POST',
+        data: payload,
+        contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                $('#credentialModal').modal('hide');
+                loadCredentials();
+                showToast(response.message, 'success');
+            } else {
+                showToast(response.message, 'danger');
+            }
         }
     });
 }
 
 function deleteCredential(id) {
-    if (!confirm('Are you sure you want to delete this credential? This action cannot be undone.')) return;
-    
-    $.post('../../api/admin_vault.php', {
-        action: 'delete_credential',
-        id: id
-    }, function(response) {
-        if (response.success) {
-            loadCredentials();
-            showToast(response.message, 'success');
-        } else {
-            showToast(response.message, 'danger');
-        }
+    showDeleteConfirm('Are you sure you want to delete this credential? This action cannot be undone.', function () {
+        $.post('../../api/admin_vault.php', {
+            action: 'delete_credential',
+            id: id
+        }, function(response) {
+            if (response.success) {
+                loadCredentials();
+                showToast(response.message, 'success');
+            } else {
+                showToast(response.message, 'danger');
+            }
+        });
     });
 }
 
@@ -425,7 +469,7 @@ function showNoteModal(note = null) {
                             
                             <div class="mb-3">
                                 <label class="form-label"><i class="fas fa-align-left"></i> Content</label>
-                                <textarea class="form-control" name="content" rows="6" placeholder="Write your note here...">${isEdit && note.content ? escapeHtml(note.content) : ''}</textarea>
+                                <textarea class="form-control" id="noteContentEditor" name="content" rows="6" placeholder="Write your note here...">${isEdit && note.content ? escapeHtml(note.content) : ''}</textarea>
                             </div>
                             
                             <div class="row">
@@ -492,13 +536,36 @@ function showNoteModal(note = null) {
         </div>
     `;
     $('body').append(modal);
+    $('#noteModal').on('shown.bs.modal', function() {
+        if (window.jQuery && jQuery.fn.summernote) {
+            $('#noteContentEditor').summernote({
+                height: 220,
+                toolbar: [
+                    ['style', ['style']],
+                    ['font', ['bold', 'italic', 'underline', 'clear']],
+                    ['fontname', ['fontname']],
+                    ['fontsize', ['fontsize']],
+                    ['color', ['color']],
+                    ['para', ['ul', 'ol', 'paragraph']],
+                    ['insert', ['link']],
+                    ['view', ['codeview']]
+                ]
+            });
+        }
+    });
     $('#noteModal').modal('show');
     $('#noteModal').on('hidden.bs.modal', function() {
+        if (window.jQuery && jQuery.fn.summernote && $('#noteContentEditor').next('.note-editor').length) {
+            try { $('#noteContentEditor').summernote('destroy'); } catch (e) {}
+        }
         $(this).remove();
     });
 }
 
 function saveNote() {
+    if (window.jQuery && jQuery.fn.summernote && $('#noteContentEditor').next('.note-editor').length) {
+        $('#noteContentEditor').val($('#noteContentEditor').summernote('code'));
+    }
     const formData = new FormData($('#noteForm')[0]);
     const action = $('#noteId').val() ? 'update_note' : 'add_note';
     formData.append('action', action);
@@ -507,28 +574,36 @@ function saveNote() {
         formData.append('is_pinned', '0');
     }
     
-    $.post('../../api/admin_vault.php', formData, function(response) {
-        if (response.success) {
-            $('#noteModal').modal('hide');
-            loadNotes();
-            showToast(response.message, 'success');
-        } else {
-            showToast(response.message, 'danger');
+    $.ajax({
+        url: '../../api/admin_vault.php',
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                $('#noteModal').modal('hide');
+                loadNotes();
+                showToast(response.message, 'success');
+            } else {
+                showToast(response.message, 'danger');
+            }
         }
     });
 }
 
 function deleteNote(id) {
-    if (!confirm('Delete this note?')) return;
-    
-    $.post('../../api/admin_vault.php', {
-        action: 'delete_note',
-        id: id
-    }, function(response) {
-        if (response.success) {
-            loadNotes();
-            showToast(response.message, 'success');
-        }
+    showDeleteConfirm('Delete this note?', function () {
+        $.post('../../api/admin_vault.php', {
+            action: 'delete_note',
+            id: id
+        }, function(response) {
+            if (response.success) {
+                loadNotes();
+                showToast(response.message, 'success');
+            }
+        });
     });
 }
 
@@ -721,13 +796,21 @@ function saveTodo() {
     const action = $('#todoId').val() ? 'update_todo' : 'add_todo';
     formData.append('action', action);
     
-    $.post('../../api/admin_vault.php', formData, function(response) {
-        if (response.success) {
-            $('#todoModal').modal('hide');
-            loadTodos();
-            showToast(response.message, 'success');
-        } else {
-            showToast(response.message, 'danger');
+    $.ajax({
+        url: '../../api/admin_vault.php',
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                $('#todoModal').modal('hide');
+                loadTodos();
+                showToast(response.message, 'success');
+            } else {
+                showToast(response.message, 'danger');
+            }
         }
     });
 }
@@ -748,16 +831,16 @@ function markTodoComplete(id) {
 }
 
 function deleteTodo(id) {
-    if (!confirm('Delete this todo?')) return;
-    
-    $.post('../../api/admin_vault.php', {
-        action: 'delete_todo',
-        id: id
-    }, function(response) {
-        if (response.success) {
-            loadTodos();
-            showToast(response.message, 'success');
-        }
+    showDeleteConfirm('Delete this todo?', function () {
+        $.post('../../api/admin_vault.php', {
+            action: 'delete_todo',
+            id: id
+        }, function(response) {
+            if (response.success) {
+                loadTodos();
+                showToast(response.message, 'success');
+            }
+        });
     });
 }
 
@@ -1011,13 +1094,21 @@ function saveMeeting() {
         formData.append('status', 'Scheduled');
     }
     
-    $.post('../../api/admin_vault.php', formData, function(response) {
-        if (response.success) {
-            $('#meetingModal').modal('hide');
-            loadMeetings();
-            showToast(response.message, 'success');
-        } else {
-            showToast(response.message, 'danger');
+    $.ajax({
+        url: '../../api/admin_vault.php',
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                $('#meetingModal').modal('hide');
+                loadMeetings();
+                showToast(response.message, 'success');
+            } else {
+                showToast(response.message, 'danger');
+            }
         }
     });
 }
@@ -1042,16 +1133,16 @@ function markMeetingComplete(id) {
 }
 
 function deleteMeeting(id) {
-    if (!confirm('Delete this meeting?')) return;
-    
-    $.post('../../api/admin_vault.php', {
-        action: 'delete_meeting',
-        id: id
-    }, function(response) {
-        if (response.success) {
-            loadMeetings();
-            showToast(response.message, 'success');
-        }
+    showDeleteConfirm('Delete this meeting?', function () {
+        $.post('../../api/admin_vault.php', {
+            action: 'delete_meeting',
+            id: id
+        }, function(response) {
+            if (response.success) {
+                loadMeetings();
+                showToast(response.message, 'success');
+            }
+        });
     });
 }
 

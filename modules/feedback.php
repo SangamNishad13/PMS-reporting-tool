@@ -64,22 +64,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_feedback'])) {
 
 // Get user's feedback for "My Feedback" view
 if ($view === 'my') {
+    $isAdmin = in_array($userRole, ['admin', 'super_admin']) ? 1 : 0;
     $myFeedbackQuery = "
         SELECT DISTINCT f.*, 
+               sender.full_name as sender_name,
                p.title as project_title,
                p.po_number as project_code,
                GROUP_CONCAT(DISTINCT recipient.full_name SEPARATOR ', ') as recipients
         FROM feedbacks f
+        LEFT JOIN users sender ON f.sender_id = sender.id
         LEFT JOIN projects p ON f.project_id = p.id
         LEFT JOIN feedback_recipients fr ON f.id = fr.feedback_id
         LEFT JOIN users recipient ON fr.user_id = recipient.id
-        WHERE f.sender_id = ?
+        WHERE (
+                ? = 1
+                OR f.sender_id = ?
+                OR fr.user_id = ?
+                OR (f.send_to_admin = 1 AND ? = 1)
+                OR (f.send_to_lead = 1 AND p.project_lead_id = ?)
+                OR (
+                    f.is_generic = 1
+                    AND (
+                        f.project_id IS NULL
+                        OR p.project_lead_id = ?
+                        OR EXISTS (
+                            SELECT 1
+                            FROM user_assignments ua
+                            WHERE ua.project_id = f.project_id
+                              AND ua.user_id = ?
+                              AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+                        )
+                    )
+                )
+              )
         GROUP BY f.id
         ORDER BY f.created_at DESC
     ";
     
     $stmt = $db->prepare($myFeedbackQuery);
-    $stmt->execute([$userId]);
+    $stmt->execute([$isAdmin, $userId, $userId, $isAdmin, $userId, $userId, $userId]);
     $myFeedbacks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -237,74 +260,126 @@ include __DIR__ . '/../includes/header.php';
                     <?php if (empty($myFeedbacks)): ?>
                     <div class="text-center text-muted py-5">
                         <i class="fas fa-inbox fa-3x mb-3"></i>
-                        <h5>No feedback submitted yet</h5>
-                        <p>You haven't submitted any feedback yet.</p>
+                        <h5>No feedback found</h5>
+                        <p>You have no sent or received feedback yet.</p>
                         <a href="<?php echo $_SERVER['PHP_SELF']; ?>?view=send" class="btn btn-primary">
                             <i class="fas fa-paper-plane"></i> Send Your First Feedback
                         </a>
                     </div>
                     <?php else: ?>
-                    <div class="row">
-                        <?php foreach ($myFeedbacks as $feedback): ?>
-                        <div class="col-md-6 mb-4">
-                            <div class="card h-100">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <div>
+                    <div class="row g-2 mb-3" id="myFeedbackFilters">
+                        <div class="col-md-4">
+                            <label for="myFeedbackSearch" class="form-label mb-1">Search</label>
+                            <input type="text" id="myFeedbackSearch" class="form-control form-control-sm" placeholder="Search sender, project, recipients, preview">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="myFeedbackStatusFilter" class="form-label mb-1">Status</label>
+                            <select id="myFeedbackStatusFilter" class="form-select form-select-sm">
+                                <option value="">All Status</option>
+                                <option value="open">Open</option>
+                                <option value="in_progress">In Progress</option>
+                                <option value="resolved">Resolved</option>
+                                <option value="closed">Closed</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="myFeedbackTypeFilter" class="form-label mb-1">Type</label>
+                            <select id="myFeedbackTypeFilter" class="form-select form-select-sm">
+                                <option value="">All Types</option>
+                                <option value="project">Project-wide</option>
+                                <option value="private">Private</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="myFeedbackClearFilters">
+                                Clear Filters
+                            </button>
+                        </div>
+                    </div>
+                    <div class="small text-muted mb-2">
+                        Showing <span id="myFeedbackVisibleCount"><?php echo count($myFeedbacks); ?></span> of <?php echo count($myFeedbacks); ?> feedbacks
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover align-middle" id="myFeedbackTable">
+                            <thead>
+                                <?php
+                                    $rowStatus = strtolower((string)($feedback['status'] ?? 'open'));
+                                    $rowType = !empty($feedback['is_generic']) ? 'project' : 'private';
+                                    $rowSearchText = strtolower(trim(
+                                        ($feedback['sender_name'] ?? '') . ' ' .
+                                        ($feedback['project_title'] ?? 'General') . ' ' .
+                                        ($feedback['recipients'] ?? '') . ' ' .
+                                        trim(strip_tags($feedback['content'] ?? ''))
+                                    ));
+                                ?>
+                                <tr data-status="<?php echo htmlspecialchars($rowStatus, ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-type="<?php echo htmlspecialchars($rowType, ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-search="<?php echo htmlspecialchars($rowSearchText, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <th>Date</th>
+                                    <th>From</th>
+                                    <th>Project</th>
+                                    <th>Recipients</th>
+                                    <th>Type</th>
+                                    <th>Status</th>
+                                    <th>Preview</th>
+                                    <th class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($myFeedbacks as $feedback): ?>
+                                <tr>
+                                    <td class="text-nowrap"><?php echo date('M d, Y H:i', strtotime($feedback['created_at'])); ?></td>
+                                    <td><?php echo htmlspecialchars($feedback['sender_name'] ?? 'Unknown'); ?></td>
+                                    <td>
                                         <?php if ($feedback['project_title']): ?>
-                                        <h6 class="mb-0"><?php echo htmlspecialchars($feedback['project_title']); ?></h6>
-                                        <small class="text-muted"><?php echo htmlspecialchars($feedback['project_code']); ?></small>
+                                            <?php echo htmlspecialchars($feedback['project_title']); ?>
+                                            <div class="small text-muted"><?php echo htmlspecialchars($feedback['project_code']); ?></div>
                                         <?php else: ?>
-                                        <h6 class="mb-0">General Feedback</h6>
+                                            <span class="text-muted">General</span>
                                         <?php endif; ?>
-                                    </div>
-                                    <div>
+                                    </td>
+                                    <td>
+                                        <?php if (!empty($feedback['recipients'])): ?>
+                                            <span class="small"><?php echo htmlspecialchars($feedback['recipients']); ?></span>
+                                        <?php else: ?>
+                                            <span class="text-muted">-</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php if (!empty($feedback['is_generic'])): ?>
+                                            <span class="badge bg-info">Project-wide</span>
+                                        <?php else: ?>
+                                            <span class="badge bg-secondary">Private</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
                                         <?php
                                         $statusClass = 'secondary';
-                                        if ($feedback['status'] === 'open') $statusClass = 'warning';
-                                        if ($feedback['status'] === 'in_progress') $statusClass = 'info';
-                                        if ($feedback['status'] === 'resolved') $statusClass = 'success';
-                                        if ($feedback['status'] === 'closed') $statusClass = 'secondary';
+                                        if (($feedback['status'] ?? '') === 'open') $statusClass = 'warning';
+                                        if (($feedback['status'] ?? '') === 'in_progress') $statusClass = 'info';
+                                        if (($feedback['status'] ?? '') === 'resolved') $statusClass = 'success';
+                                        if (($feedback['status'] ?? '') === 'closed') $statusClass = 'secondary';
                                         ?>
                                         <span class="badge bg-<?php echo $statusClass; ?>">
                                             <?php echo ucfirst(str_replace('_', ' ', $feedback['status'] ?? 'open')); ?>
                                         </span>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <div class="feedback-content mb-3" style="max-height: 150px; overflow: hidden;">
-                                        <?php 
-                                        $content = strip_tags($feedback['content']);
-                                        echo htmlspecialchars(strlen($content) > 200 ? substr($content, 0, 200) . '...' : $content);
+                                    </td>
+                                    <td style="max-width: 320px;">
+                                        <?php
+                                        $content = trim(strip_tags($feedback['content'] ?? ''));
+                                        echo htmlspecialchars(strlen($content) > 140 ? substr($content, 0, 140) . '...' : $content);
                                         ?>
-                                    </div>
-                                    
-                                    <?php if ($feedback['recipients']): ?>
-                                    <div class="mb-2">
-                                        <small class="text-muted">
-                                            <i class="fas fa-users"></i> Recipients: <?php echo htmlspecialchars($feedback['recipients']); ?>
-                                        </small>
-                                    </div>
-                                    <?php endif; ?>
-                                    
-                                    <?php if ($feedback['is_generic']): ?>
-                                    <div class="mb-2">
-                                        <span class="badge bg-info small">Project-wide</span>
-                                    </div>
-                                    <?php endif; ?>
-                                    
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <small class="text-muted">
-                                            <i class="fas fa-clock"></i> <?php echo date('M d, Y H:i', strtotime($feedback['created_at'])); ?>
-                                        </small>
-                                        <button type="button" class="btn btn-sm btn-outline-primary" 
-                                                onclick="viewFeedbackDetails(<?php echo $feedback['id']; ?>)">
+                                    </td>
+                                    <td class="text-end">
+                                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                                onclick="viewFeedbackDetails(<?php echo (int)$feedback['id']; ?>)">
                                             <i class="fas fa-eye"></i> View
                                         </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -357,6 +432,39 @@ $(document).ready(function() {
     // Handle form reset
     $('button[type="reset"]').on('click', function() {
         $('#feedbackContent').summernote('code', '');
+    });
+
+    // My Feedback table filters
+    function applyMyFeedbackFilters() {
+        const $table = $('#myFeedbackTable');
+        if (!$table.length) return;
+        const search = String($('#myFeedbackSearch').val() || '').toLowerCase().trim();
+        const status = String($('#myFeedbackStatusFilter').val() || '').toLowerCase().trim();
+        const type = String($('#myFeedbackTypeFilter').val() || '').toLowerCase().trim();
+
+        let visible = 0;
+        $table.find('tbody tr').each(function() {
+            const $row = $(this);
+            const rowSearch = String($row.data('search') || '');
+            const rowStatus = String($row.data('status') || '');
+            const rowType = String($row.data('type') || '');
+
+            const matchSearch = !search || rowSearch.indexOf(search) !== -1;
+            const matchStatus = !status || rowStatus === status;
+            const matchType = !type || rowType === type;
+            const show = matchSearch && matchStatus && matchType;
+            $row.toggle(show);
+            if (show) visible++;
+        });
+        $('#myFeedbackVisibleCount').text(visible);
+    }
+
+    $('#myFeedbackSearch, #myFeedbackStatusFilter, #myFeedbackTypeFilter').on('input change', applyMyFeedbackFilters);
+    $('#myFeedbackClearFilters').on('click', function() {
+        $('#myFeedbackSearch').val('');
+        $('#myFeedbackStatusFilter').val('');
+        $('#myFeedbackTypeFilter').val('');
+        applyMyFeedbackFilters();
     });
 });
 

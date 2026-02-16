@@ -66,24 +66,56 @@ if (!$projectId) {
                 $uRole = $uRoleStmt->fetchColumn();
                 
                 if ($uRole) {
-                    // Check if user is already assigned to avoid duplicates
-                    $checkStmt = $db->prepare("SELECT id FROM user_assignments WHERE project_id = ? AND user_id = ? AND (is_removed IS NULL OR is_removed = 0)");
-                    $checkStmt->execute([$projectId, $uId]);
-                    
-                    if (!$checkStmt->fetch()) {
+                    // Check existing assignment (active or removed)
+                    $existingStmt = $db->prepare("SELECT id, is_removed FROM user_assignments WHERE project_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1");
+                    $existingStmt->execute([$projectId, $uId]);
+                    $existing = $existingStmt->fetch(PDO::FETCH_ASSOC);
+
+                    if ($existing && (int)$existing['is_removed'] === 0) {
+                        // already active, skip
+                        continue;
+                    }
+
+                    // Get project details for notification
+                    $projectStmt = $db->prepare("SELECT title, po_number FROM projects WHERE id = ?");
+                    $projectStmt->execute([$projectId]);
+                    $projectInfo = $projectStmt->fetch(PDO::FETCH_ASSOC);
+
+                    if ($existing && (int)$existing['is_removed'] === 1) {
+                        // Restore removed assignment
+                        $restoreStmt = $db->prepare("UPDATE user_assignments SET is_removed = 0, removed_at = NULL, removed_by = NULL, assigned_by = ?, assigned_at = NOW(), hours_allocated = ? WHERE id = ? AND project_id = ?");
+                        $restoreStmt->execute([$userId, $hours, $existing['id'], $projectId]);
+
+                        $notificationMessage = "You have been restored to project: " . ($projectInfo['title'] ?? 'Unknown Project');
+                        if (!empty($projectInfo['po_number'])) {
+                            $notificationMessage .= " (" . $projectInfo['po_number'] . ")";
+                        }
+                        if ($hours > 0) {
+                            $notificationMessage .= " with " . $hours . " hours allocated";
+                        }
+
+                        createNotification(
+                            $db,
+                            $uId,
+                            'assignment',
+                            $notificationMessage,
+                            getBaseDir() . "/modules/projects/view.php?id=" . $projectId
+                        );
+
+                        logActivity($db, $userId, 'restore_team', 'project', $projectId, [
+                            'assignment_id' => $existing['id'],
+                            'restored_user_id' => $uId,
+                            'role' => $uRole,
+                            'hours' => $hours
+                        ]);
+                    } else {
                         // Insert new assignment
                         $insertStmt = $db->prepare("
                             INSERT INTO user_assignments (project_id, user_id, role, assigned_by, hours_allocated)
                             VALUES (?, ?, ?, ?, ?)
                         ");
                         $insertStmt->execute([$projectId, $uId, $uRole, $userId, $hours]);
-                        
-                        // Get project details for notification
-                        $projectStmt = $db->prepare("SELECT title, po_number FROM projects WHERE id = ?");
-                        $projectStmt->execute([$projectId]);
-                        $projectInfo = $projectStmt->fetch(PDO::FETCH_ASSOC);
-                        
-                        // Create notification for assigned user
+
                         $notificationMessage = "You have been assigned to project: " . ($projectInfo['title'] ?? 'Unknown Project');
                         if (!empty($projectInfo['po_number'])) {
                             $notificationMessage .= " (" . $projectInfo['po_number'] . ")";
@@ -91,15 +123,15 @@ if (!$projectId) {
                         if ($hours > 0) {
                             $notificationMessage .= " with " . $hours . " hours allocated";
                         }
-                        
+
                         createNotification(
-                            $db, 
-                            $uId, 
-                            'assignment', 
+                            $db,
+                            $uId,
+                            'assignment',
                             $notificationMessage,
                             getBaseDir() . "/modules/projects/view.php?id=" . $projectId
                         );
-                        
+
                         // Log Activity
                         logActivity($db, $userId, 'assign_team', 'project', $projectId, [
                             'assigned_user_id' => $uId,
@@ -121,10 +153,36 @@ if (!$projectId) {
             $userStmt = $db->prepare("SELECT user_id FROM user_assignments WHERE id = ?");
             $userStmt->execute([$removeId]);
             $removedUserId = $userStmt->fetchColumn();
+            $removedUserRole = null;
+            if ($removedUserId) {
+                $roleStmt = $db->prepare("SELECT role FROM users WHERE id = ?");
+                $roleStmt->execute([$removedUserId]);
+                $removedUserRole = $roleStmt->fetchColumn();
+            }
             
             // Soft delete - mark as removed instead of hard delete
             $updateStmt = $db->prepare("UPDATE user_assignments SET is_removed = 1, removed_at = NOW(), removed_by = ? WHERE id = ? AND project_id = ?");
             $updateStmt->execute([$userId, $removeId, $projectId]);
+
+            // Remove page-level assignments so removed user no longer appears in active projects list
+            if ($removedUserId && $removedUserRole) {
+                if ($removedUserRole === 'at_tester') {
+                    $updPages = $db->prepare("UPDATE project_pages SET at_tester_id = NULL WHERE project_id = ? AND at_tester_id = ?");
+                    $updPages->execute([$projectId, $removedUserId]);
+                    $updEnvs = $db->prepare("UPDATE page_environments pe JOIN project_pages pp ON pp.id = pe.page_id SET pe.at_tester_id = NULL WHERE pp.project_id = ? AND pe.at_tester_id = ?");
+                    $updEnvs->execute([$projectId, $removedUserId]);
+                } elseif ($removedUserRole === 'ft_tester') {
+                    $updPages = $db->prepare("UPDATE project_pages SET ft_tester_id = NULL WHERE project_id = ? AND ft_tester_id = ?");
+                    $updPages->execute([$projectId, $removedUserId]);
+                    $updEnvs = $db->prepare("UPDATE page_environments pe JOIN project_pages pp ON pp.id = pe.page_id SET pe.ft_tester_id = NULL WHERE pp.project_id = ? AND pe.ft_tester_id = ?");
+                    $updEnvs->execute([$projectId, $removedUserId]);
+                } elseif ($removedUserRole === 'qa') {
+                    $updPages = $db->prepare("UPDATE project_pages SET qa_id = NULL WHERE project_id = ? AND qa_id = ?");
+                    $updPages->execute([$projectId, $removedUserId]);
+                    $updEnvs = $db->prepare("UPDATE page_environments pe JOIN project_pages pp ON pp.id = pe.page_id SET pe.qa_id = NULL WHERE pp.project_id = ? AND pe.qa_id = ?");
+                    $updEnvs->execute([$projectId, $removedUserId]);
+                }
+            }
             
             // Get project details for notification
             if ($removedUserId) {
@@ -624,9 +682,15 @@ if (!$projectId) {
         JOIN users u ON ua.user_id = u.id
         LEFT JOIN users ru ON ua.removed_by = ru.id
         WHERE ua.project_id = ? AND ua.is_removed = 1
+        AND ua.user_id NOT IN (
+            SELECT user_id 
+            FROM user_assignments 
+            WHERE project_id = ? 
+            AND (is_removed IS NULL OR is_removed = 0)
+        )
         ORDER BY ua.removed_at DESC
     ");
-    $removedTeam->execute([$projectId]);
+    $removedTeam->execute([$projectId, $projectId]);
     $removedMembers = $removedTeam->fetchAll();
 
     // project_pages table se pages ka data ab use nahi ho raha (delete/ignore)
@@ -1552,6 +1616,41 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.classList.remove('is-invalid');
                 this.classList.add('is-valid');
                 document.querySelector('button[name="assign_team"]').disabled = false;
+            }
+        });
+    }
+
+    // Confirmation before adding team members
+    const teamAssignForm = document.getElementById('teamAssignForm');
+    if (teamAssignForm) {
+        teamAssignForm.addEventListener('submit', function(e) {
+            if (teamAssignForm.dataset.confirmed === '1') {
+                return;
+            }
+
+            e.preventDefault();
+            const selectedUsers = Array.from(teamAssignForm.querySelectorAll('select[name="user_ids[]"] option:checked'));
+            const selectedCount = selectedUsers.length;
+            const hours = teamAssignForm.querySelector('input[name="hours_allocated"]')?.value || '0';
+
+            if (selectedCount === 0) {
+                teamAssignForm.submit();
+                return;
+            }
+
+            const msg = 'Add ' + selectedCount + ' team member(s) with ' + hours + ' allocated hours?';
+            if (typeof window.confirmModal === 'function') {
+                window.confirmModal(msg, function() {
+                    teamAssignForm.dataset.confirmed = '1';
+                    teamAssignForm.submit();
+                }, {
+                    title: 'Confirm Team Assignment',
+                    confirmText: 'Add Members',
+                    confirmClass: 'btn-primary'
+                });
+            } else if (window.confirm(msg)) {
+                teamAssignForm.dataset.confirmed = '1';
+                teamAssignForm.submit();
             }
         });
     }

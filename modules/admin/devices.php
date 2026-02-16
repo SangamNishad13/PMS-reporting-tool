@@ -1,6 +1,6 @@
 <?php
 require_once '../../includes/auth.php';
-requireAdmin();
+requireDeviceManager();
 
 $page_title = 'Device Management';
 include '../../includes/header.php';
@@ -12,6 +12,11 @@ include '../../includes/header.php';
             <h2><i class="fas fa-laptop"></i> Device Management</h2>
         </div>
         <div class="col-auto">
+            <?php if (in_array($_SESSION['role'] ?? '', ['admin', 'super_admin'], true)): ?>
+            <a href="../admin/device_permissions.php" class="btn btn-outline-secondary me-2">
+                <i class="fas fa-user-shield"></i> Device Permissions
+            </a>
+            <?php endif; ?>
             <button class="btn btn-primary" onclick="showAddDeviceModal()">
                 <i class="fas fa-plus"></i> Add Device
             </button>
@@ -438,6 +443,7 @@ function renderRequests() {
             </button>` : 
             `<small class="text-muted">Responded</small>`;
         
+        const holderName = request.holder_full_name || request.holder_name || 'Office';
         tbody.append(`
             <tr class="${rowClass}">
                 <td>
@@ -449,7 +455,7 @@ function renderRequests() {
                     ${isPending ? '<br><span class="badge bg-warning">Waiting</span>' : ''}
                 </td>
                 <td>
-                    <strong>${request.holder_full_name || request.holder_name}</strong>
+                    <strong>${holderName}</strong>
                     ${isPending ? '<br><span class="badge bg-info">Current</span>' : ''}
                 </td>
                 <td><small>${request.reason || '<em class="text-muted">No reason provided</em>'}</small></td>
@@ -462,22 +468,22 @@ function renderRequests() {
 }
 
 function quickApprove(requestId) {
-    if (!confirm('Approve this device switch request? The device will be automatically reassigned.')) return;
-    
-    $.post('../../api/devices.php', {
-        action: 'respond_to_request',
-        request_id: requestId,
-        response: 'Approved',
-        response_notes: 'Quick approved by admin'
-    }, function(response) {
-        if (response.success) {
-            alert(response.message);
-            loadRequests();
-            loadDevices();
-            loadRotationHistory();
-        } else {
-            alert('Error: ' + response.message);
-        }
+    confirmAction('Approve this device switch request? The device will be automatically reassigned.', function() {
+        $.post('../../api/devices.php', {
+            action: 'respond_to_request',
+            request_id: requestId,
+            response: 'Approved',
+            response_notes: 'Quick approved by admin'
+        }, function(response) {
+            if (response.success) {
+                alert(response.message);
+                loadRequests();
+                loadDevices();
+                loadRotationHistory();
+            } else {
+                alert('Error: ' + response.message);
+            }
+        });
     });
 }
 
@@ -570,30 +576,50 @@ function saveDevice() {
     const action = $('#deviceId').val() ? 'update_device' : 'add_device';
     formData.append('action', action);
     
-    $.post('../../api/devices.php', formData, function(response) {
-        if (response.success) {
-            alert(response.message);
-            $('#deviceModal').modal('hide');
-            loadDevices();
-        } else {
-            alert('Error: ' + response.message);
+    $.ajax({
+        url: '../../api/devices.php',
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(response) {
+            if (response.success) {
+                alert(response.message);
+                $('#deviceModal').modal('hide');
+                loadDevices();
+            } else {
+                alert('Error: ' + response.message);
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('AJAX Error:', error);
+            console.error('Response:', xhr.responseText);
+            alert('Request failed: ' + error);
         }
     });
 }
 
+function confirmAction(message, onConfirm) {
+    if (typeof confirmModal === 'function') {
+        confirmModal(message, onConfirm);
+        return;
+    }
+    if (confirm(message)) onConfirm();
+}
+
 function deleteDevice(deviceId) {
-    if (!confirm('Are you sure you want to delete this device?')) return;
-    
-    $.post('../../api/devices.php', {
-        action: 'delete_device',
-        device_id: deviceId
-    }, function(response) {
-        if (response.success) {
-            alert(response.message);
-            loadDevices();
-        } else {
-            alert('Error: ' + response.message);
-        }
+    confirmAction('Are you sure you want to delete this device?', function() {
+        $.post('../../api/devices.php', {
+            action: 'delete_device',
+            device_id: deviceId
+        }, function(response) {
+            if (response.success) {
+                alert(response.message);
+                loadDevices();
+            } else {
+                alert('Error: ' + response.message);
+            }
+        });
     });
 }
 
@@ -661,18 +687,18 @@ function assignDevice() {
 }
 
 function returnDevice(deviceId) {
-    if (!confirm('Mark this device as returned?')) return;
-    
-    $.post('../../api/devices.php', {
-        action: 'return_device',
-        device_id: deviceId
-    }, function(response) {
-        if (response.success) {
-            alert(response.message);
-            loadDevices();
-        } else {
-            alert('Error: ' + response.message);
-        }
+    confirmAction('Mark this device as returned?', function() {
+        $.post('../../api/devices.php', {
+            action: 'return_device',
+            device_id: deviceId
+        }, function(response) {
+            if (response.success) {
+                alert(response.message);
+                loadDevices();
+            } else {
+                alert('Error: ' + response.message);
+            }
+        });
     });
 }
 
@@ -683,21 +709,23 @@ function showRespondModal(requestId) {
 }
 
 function respondToRequest(action) {
-    $.post('../../api/devices.php', {
-        action: 'respond_to_request',
-        request_id: $('#requestId').val(),
-        response: action,
-        response_notes: $('#responseNotes').val()
-    }, function(response) {
-        if (response.success) {
-            alert(response.message);
-            $('#respondModal').modal('hide');
-            loadRequests();
-            loadDevices();
-            loadRotationHistory(); // Reload history after approval
-        } else {
-            alert('Error: ' + response.message);
-        }
+    confirmAction(`Are you sure you want to ${action === 'Approved' ? 'approve' : 'reject'} this request?`, function() {
+        $.post('../../api/devices.php', {
+            action: 'respond_to_request',
+            request_id: $('#requestId').val(),
+            response: action,
+            response_notes: $('#responseNotes').val()
+        }, function(response) {
+            if (response.success) {
+                alert(response.message);
+                $('#respondModal').modal('hide');
+                loadRequests();
+                loadDevices();
+                loadRotationHistory(); // Reload history after approval
+            } else {
+                alert('Error: ' + response.message);
+            }
+        });
     });
 }
 

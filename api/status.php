@@ -86,14 +86,13 @@ function mapComputedToPageStatus(string $status): string {
     return $map[$status] ?? 'in_progress';
 }
 
-if (!$pageId || !$status) {
-    echo json_encode(['success' => false, 'message' => 'Missing required fields']);
-    exit;
-}
-
 try {
     if ($action === 'mark_notification_read') {
         $notificationId = $_POST['notification_id'] ?? 0;
+        if (!$notificationId) {
+            echo json_encode(['success' => false, 'message' => 'Notification ID required']);
+            exit;
+        }
         $stmt = $db->prepare("UPDATE notifications SET is_read = TRUE WHERE id = ? AND user_id = ?");
         $stmt->execute([$notificationId, $userId]);
         echo json_encode(['success' => true, 'message' => 'Notification marked as read']);
@@ -104,6 +103,10 @@ try {
         echo json_encode(['success' => true, 'message' => 'All notifications marked as read']);
         
     } elseif ($action === 'update_page_status') {
+        if (!$pageId || !$status) {
+            echo json_encode(['success' => false, 'message' => 'Missing required fields']);
+            exit;
+        }
         if (!in_array($status, $pageStatusOptions, true)) {
             echo json_encode(['success' => false, 'message' => 'Invalid status']);
             exit;
@@ -125,6 +128,10 @@ try {
         echo json_encode(['success' => true, 'message' => 'Page status updated']);
         
     } elseif ($action === 'update_env_status') {
+        if (!$pageId || !$status) {
+            echo json_encode(['success' => false, 'message' => 'Missing required fields']);
+            exit;
+        }
         if (!$envId) {
             echo json_encode(['success' => false, 'message' => 'Environment ID required']);
             exit;
@@ -189,6 +196,10 @@ try {
             'global_status_label' => ucfirst(str_replace('_', ' ', $mappedStatus))
         ]);
     } elseif ($action === 'update_qa_env_status') {
+        if (!$pageId || !$status) {
+            echo json_encode(['success' => false, 'message' => 'Missing required fields']);
+            exit;
+        }
         if (!$envId) {
             echo json_encode(['success' => false, 'message' => 'Environment ID required']);
             exit;

@@ -51,6 +51,28 @@ try {
         // sanitize HTML content using existing sanitizer
         $clean = sanitize_chat_html($content);
 
+        // Parse @mentions from content and auto-include mentioned users as recipients.
+        $plain = trim(strip_tags($clean));
+        $mentionedUserIds = [];
+        if ($plain !== '') {
+            preg_match_all('/@([A-Za-z0-9._-]+)/', $plain, $matches);
+            $mentions = array_values(array_unique(array_map('strtolower', $matches[1] ?? [])));
+            if (!empty($mentions)) {
+                $ph = implode(',', array_fill(0, count($mentions), '?'));
+                $mStmt = $db->prepare("SELECT id, username FROM users WHERE is_active = 1 AND LOWER(username) IN ($ph)");
+                $mStmt->execute($mentions);
+                while ($u = $mStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $uid = (int)$u['id'];
+                    if ($uid > 0 && $uid !== (int)$userId) {
+                        $mentionedUserIds[] = $uid;
+                    }
+                }
+            }
+        }
+        $recipients = array_values(array_unique(array_filter(array_merge($recipients, $mentionedUserIds), function ($id) use ($userId) {
+            return (int)$id > 0 && (int)$id !== (int)$userId;
+        })));
+
         $stmt = $db->prepare("INSERT INTO feedbacks (sender_id, target_user_id, send_to_admin, send_to_lead, content, project_id, is_generic, created_at) VALUES (?, NULL, ?, ?, ?, ?, ?, NOW())");
         $stmt->execute([$userId, $sendToAdmin, $sendToLead, $clean, $projectId, $isGeneric]);
         $feedbackId = $db->lastInsertId();
@@ -61,6 +83,36 @@ try {
             foreach ($recipients as $rid) {
                 $ins->execute([$feedbackId, $rid]);
             }
+        }
+
+        // Build additional notification recipients from flags.
+        $notificationRecipients = $recipients;
+        if ($sendToAdmin) {
+            $adminStmt = $db->query("SELECT id FROM users WHERE is_active = 1 AND role IN ('admin', 'super_admin')");
+            while ($row = $adminStmt->fetch(PDO::FETCH_ASSOC)) {
+                $uid = (int)$row['id'];
+                if ($uid > 0 && $uid !== (int)$userId) $notificationRecipients[] = $uid;
+            }
+        }
+        if ($sendToLead && $projectId) {
+            $leadStmt = $db->prepare("SELECT project_lead_id FROM projects WHERE id = ? LIMIT 1");
+            $leadStmt->execute([$projectId]);
+            $leadId = (int)$leadStmt->fetchColumn();
+            if ($leadId > 0 && $leadId !== (int)$userId) $notificationRecipients[] = $leadId;
+        }
+        $notificationRecipients = array_values(array_unique(array_filter($notificationRecipients)));
+
+        // Create notifications for recipients.
+        $senderName = $_SESSION['full_name'] ?? 'A user';
+        $feedbackLink = getBaseDir() . '/modules/feedback.php?view=my';
+        foreach ($notificationRecipients as $rid) {
+            createNotification(
+                $db,
+                (int)$rid,
+                'mention',
+                $senderName . ' shared feedback with you.',
+                $feedbackLink
+            );
         }
 
         // Log activity
@@ -160,7 +212,8 @@ try {
             exit;
         }
         
-        // Users can only view their own feedback
+        $isAdmin = in_array($userRole, ['admin', 'super_admin']) ? 1 : 0;
+        // Users can view feedback they sent, received, generic feedback for their projects, admin-targeted (for admin), and lead-targeted (for project lead).
         $stmt = $db->prepare("
             SELECT f.*, 
                    p.title as project_title,
@@ -170,10 +223,31 @@ try {
             LEFT JOIN projects p ON f.project_id = p.id
             LEFT JOIN feedback_recipients fr ON f.id = fr.feedback_id
             LEFT JOIN users recipient ON fr.user_id = recipient.id
-            WHERE f.id = ? AND f.sender_id = ?
+            WHERE f.id = ?
+              AND (
+                    ? = 1
+                    OR f.sender_id = ?
+                    OR fr.user_id = ?
+                    OR (f.send_to_admin = 1 AND ? = 1)
+                    OR (f.send_to_lead = 1 AND p.project_lead_id = ?)
+                    OR (
+                        f.is_generic = 1
+                        AND (
+                            f.project_id IS NULL
+                            OR p.project_lead_id = ?
+                            OR EXISTS (
+                                SELECT 1
+                                FROM user_assignments ua
+                                WHERE ua.project_id = f.project_id
+                                  AND ua.user_id = ?
+                                  AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+                            )
+                        )
+                    )
+              )
             GROUP BY f.id
         ");
-        $stmt->execute([$feedbackId, $userId]);
+        $stmt->execute([$feedbackId, $isAdmin, $userId, $userId, $isAdmin, $userId, $userId, $userId]);
         $feedback = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$feedback) {

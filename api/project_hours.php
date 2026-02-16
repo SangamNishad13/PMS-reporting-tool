@@ -86,10 +86,17 @@ try {
             $hours = isset($_POST['hours']) ? floatval($_POST['hours']) : 0;
             $desc = $_POST['description'] ?? '';
             $taskType = $_POST['task_type'] ?? 'other';
+            $issueCount = isset($_POST['issue_count']) && $_POST['issue_count'] !== '' ? max(0, intval($_POST['issue_count'])) : null;
             $logDate = isset($_POST['log_date']) && $_POST['log_date'] !== '' ? $_POST['log_date'] : date('Y-m-d');
 
             if (!$projectId || $hours <= 0) {
                 throw new Exception('Missing project_id or invalid hours');
+            }
+
+            if ($taskType === 'regression_testing' && $issueCount !== null && $issueCount > 0) {
+                $desc = trim($desc);
+                $prefix = 'Regression issue count: ' . $issueCount;
+                $desc = $desc !== '' ? ($prefix . ' | ' . $desc) : $prefix;
             }
 
             // check project access
@@ -136,7 +143,12 @@ try {
                 $stmt->execute([$userId, $projectId, $pageId, $envId, $logDate, $hours, $desc, $isUtilized]);
             }
 
-            echo json_encode(['success' => true, 'message' => 'Logged successfully']);
+            $summary = getProjectHoursSummary($db, $projectId);
+            echo json_encode([
+                'success' => true,
+                'message' => 'Logged successfully',
+                'summary' => $summary
+            ]);
             exit;
         }
     } else {

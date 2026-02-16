@@ -34,6 +34,58 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
 } catch (Exception $e) {}
 
+// Ensure time log history table exists (for audit trail visible to clients)
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS project_time_log_history (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        time_log_id INT NULL,
+        project_id INT NOT NULL,
+        user_id INT NOT NULL,
+        action_type ENUM('created','deleted','updated') NOT NULL,
+        old_log_date DATE NULL,
+        new_log_date DATE NULL,
+        old_hours DECIMAL(10,2) NULL,
+        new_hours DECIMAL(10,2) NULL,
+        old_description TEXT NULL,
+        new_description TEXT NULL,
+        changed_by INT NOT NULL,
+        context_json LONGTEXT NULL,
+        changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_time_log_id (time_log_id),
+        INDEX idx_project_id (project_id),
+        INDEX idx_user_id (user_id),
+        INDEX idx_changed_at (changed_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+} catch (Exception $e) {}
+
+if (!function_exists('recordProjectTimeLogHistory')) {
+    function recordProjectTimeLogHistory($db, array $data) {
+        try {
+            $stmt = $db->prepare("
+                INSERT INTO project_time_log_history
+                (time_log_id, project_id, user_id, action_type, old_log_date, new_log_date, old_hours, new_hours, old_description, new_description, changed_by, context_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([
+                $data['time_log_id'] ?? null,
+                $data['project_id'] ?? 0,
+                $data['user_id'] ?? 0,
+                $data['action_type'] ?? 'updated',
+                $data['old_log_date'] ?? null,
+                $data['new_log_date'] ?? null,
+                $data['old_hours'] ?? null,
+                $data['new_hours'] ?? null,
+                $data['old_description'] ?? null,
+                $data['new_description'] ?? null,
+                $data['changed_by'] ?? 0,
+                $data['context_json'] ?? null
+            ]);
+        } catch (Exception $e) {
+            // Keep hours logging resilient even if history insert fails.
+        }
+    }
+}
+
 // Handle AJAX: check if edit request is pending for this date
 if (isset($_GET['action']) && $_GET['action'] === 'check_edit_request') {
     $reqDate = $_GET['date'] ?? $date;
@@ -379,6 +431,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_time'])) {
                     $adjustedHours = count($pageIds) > 1 ? $hours / count($pageIds) : $hours;
 
                     $stmt->execute([$userId, $projectId, $pageId, $envId, $issueId, $taskType, $phaseId, $genericCategoryId, $testingType, $date, $adjustedHours, $desc, $isUtilized]);
+                    $newLogId = (int)$db->lastInsertId();
+                    recordProjectTimeLogHistory($db, [
+                        'time_log_id' => $newLogId,
+                        'project_id' => $projectId,
+                        'user_id' => $userId,
+                        'action_type' => 'created',
+                        'new_log_date' => $date,
+                        'new_hours' => $adjustedHours,
+                        'new_description' => $desc,
+                        'changed_by' => $userId,
+                        'context_json' => json_encode([
+                            'task_type' => $taskType,
+                            'environment_id' => $envId,
+                            'page_id' => $pageId,
+                            'issue_id' => $issueId,
+                            'testing_type' => $testingType
+                        ], JSON_UNESCAPED_UNICODE)
+                    ]);
 
                 } else {
                     // Insert with basic columns
@@ -391,6 +461,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_time'])) {
                     $adjustedHours = count($pageIds) > 1 ? $hours / count($pageIds) : $hours;
                     
                     $stmt->execute([$userId, $projectId, $pageId, $envId, $date, $adjustedHours, $desc, $isUtilized]);
+                    $newLogId = (int)$db->lastInsertId();
+                    recordProjectTimeLogHistory($db, [
+                        'time_log_id' => $newLogId,
+                        'project_id' => $projectId,
+                        'user_id' => $userId,
+                        'action_type' => 'created',
+                        'new_log_date' => $date,
+                        'new_hours' => $adjustedHours,
+                        'new_description' => $desc,
+                        'changed_by' => $userId,
+                        'context_json' => json_encode([
+                            'task_type' => $taskType,
+                            'environment_id' => $envId,
+                            'page_id' => $pageId
+                        ], JSON_UNESCAPED_UNICODE)
+                    ]);
 
                 }
             }
@@ -405,6 +491,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_time'])) {
                 $stmt = $db->prepare("INSERT INTO project_time_logs (user_id, project_id, page_id, environment_id, issue_id, task_type, phase_id, generic_category_id, testing_type, log_date, hours_spent, description, is_utilized) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 $testingType = isset($_POST['testing_type']) ? $_POST['testing_type'] : null;
                 $stmt->execute([$userId, $projectId, $pageId, $envId, $issueId, $taskType, $phaseId, $genericCategoryId, $testingType, $date, $hours, $desc, $isUtilized]);
+                $newLogId = (int)$db->lastInsertId();
+                recordProjectTimeLogHistory($db, [
+                    'time_log_id' => $newLogId,
+                    'project_id' => $projectId,
+                    'user_id' => $userId,
+                    'action_type' => 'created',
+                    'new_log_date' => $date,
+                    'new_hours' => $hours,
+                    'new_description' => $desc,
+                    'changed_by' => $userId,
+                    'context_json' => json_encode([
+                        'task_type' => $taskType,
+                        'environment_id' => $envId,
+                        'page_id' => $pageId,
+                        'issue_id' => $issueId,
+                        'testing_type' => $testingType
+                    ], JSON_UNESCAPED_UNICODE)
+                ]);
 
             } else {
                 // Insert with basic columns
@@ -413,6 +517,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_time'])) {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $stmt->execute([$userId, $projectId, $pageId, $envId, $date, $hours, $desc, $isUtilized]);
+                $newLogId = (int)$db->lastInsertId();
+                recordProjectTimeLogHistory($db, [
+                    'time_log_id' => $newLogId,
+                    'project_id' => $projectId,
+                    'user_id' => $userId,
+                    'action_type' => 'created',
+                    'new_log_date' => $date,
+                    'new_hours' => $hours,
+                    'new_description' => $desc,
+                    'changed_by' => $userId,
+                    'context_json' => json_encode([
+                        'task_type' => $taskType,
+                        'environment_id' => $envId,
+                        'page_id' => $pageId
+                    ], JSON_UNESCAPED_UNICODE)
+                ]);
 
             }
         }
@@ -495,8 +615,42 @@ if (isset($_GET['delete_log'])) {
         exit;
     }
 
-    $db->prepare("DELETE FROM project_time_logs WHERE id = ? AND user_id = ?")->execute([$logId, $userId]);
-    $_SESSION['success'] = "Log deleted.";
+    try {
+        $db->beginTransaction();
+        $logStmt = $db->prepare("SELECT * FROM project_time_logs WHERE id = ? AND user_id = ? LIMIT 1");
+        $logStmt->execute([$logId, $userId]);
+        $existingLog = $logStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($existingLog) {
+            $db->prepare("DELETE FROM project_time_logs WHERE id = ? AND user_id = ?")->execute([$logId, $userId]);
+            recordProjectTimeLogHistory($db, [
+                'time_log_id' => (int)$existingLog['id'],
+                'project_id' => (int)$existingLog['project_id'],
+                'user_id' => (int)$existingLog['user_id'],
+                'action_type' => 'deleted',
+                'old_log_date' => $existingLog['log_date'] ?? null,
+                'old_hours' => $existingLog['hours_spent'] ?? null,
+                'old_description' => $existingLog['description'] ?? null,
+                'changed_by' => $userId,
+                'context_json' => json_encode([
+                    'page_id' => $existingLog['page_id'] ?? null,
+                    'environment_id' => $existingLog['environment_id'] ?? null,
+                    'issue_id' => $existingLog['issue_id'] ?? null,
+                    'task_type' => $existingLog['task_type'] ?? null
+                ], JSON_UNESCAPED_UNICODE)
+            ]);
+            $_SESSION['success'] = "Log deleted.";
+        } else {
+            $_SESSION['error'] = "Log not found.";
+        }
+
+        $db->commit();
+    } catch (Exception $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        $_SESSION['error'] = "Error deleting log: " . $e->getMessage();
+    }
     header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
     exit;
 }
@@ -1377,6 +1531,34 @@ document.addEventListener('DOMContentLoaded', function(){
     function loadProjectPhases() {
         var projectId = productionProjectSelect ? productionProjectSelect.value : '';
         if (!projectId) return;
+        function formatPhaseLabel(raw) {
+            var txt = String(raw || '').trim();
+            if (!txt) return '';
+            var known = {
+                'po_received': 'PO received',
+                'scoping_confirmation': 'Scoping confirmation',
+                'testing': 'Testing',
+                'regression': 'Regression',
+                'training': 'Training',
+                'vpat_acr': 'VPAT ACR'
+            };
+            if (known[txt]) return known[txt];
+            return txt
+                .replace(/[_-]+/g, ' ')
+                .split(/\s+/)
+                .map(function (w) {
+                    var lw = w.toLowerCase();
+                    if (lw === 'po') return 'PO';
+                    if (lw === 'qa') return 'QA';
+                    if (lw === 'uat') return 'UAT';
+                    if (lw === 'ui') return 'UI';
+                    if (lw === 'ux') return 'UX';
+                    if (lw === 'vpat') return 'VPAT';
+                    if (lw === 'acr') return 'ACR';
+                    return lw.charAt(0).toUpperCase() + lw.slice(1);
+                })
+                .join(' ');
+        }
         
         // Show loading message
         projectPhaseSelect.innerHTML = '<option value="">Loading phases...</option>';
@@ -1404,16 +1586,7 @@ document.addEventListener('DOMContentLoaded', function(){
                 phases.forEach(function(phase){
                     var opt = document.createElement('option');
                     opt.value = phase.id;
-                    // Humanize phase name: replace underscores and capitalize words; handle common acronyms
-                    var name = (phase.phase_name || '').toString();
-                    var parts = name.replace(/_/g, ' ').split(/\s+/).map(function(w){
-                        var lw = w.toLowerCase();
-                        if (lw === 'po') return 'PO';
-                        if (lw === 'vpat') return 'VPAT';
-                        if (lw === 'acr') return 'ACR';
-                        return lw.charAt(0).toUpperCase() + lw.slice(1);
-                    });
-                    var displayName = parts.join(' ');
+                    var displayName = formatPhaseLabel(phase.phase_name || phase.name || phase.id);
                     opt.textContent = displayName + ' (' + (phase.actual_hours || 0) + '/' + (phase.planned_hours || 0) + ' hrs)';
                     projectPhaseSelect.appendChild(opt);
                 });

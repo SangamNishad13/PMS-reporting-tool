@@ -29,6 +29,32 @@ if (!$project) {
 }
 
 // Handle test result submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_env_status'])) {
+    $pageId = (int)($_POST['page_id'] ?? 0);
+    $environmentId = (int)($_POST['environment_id'] ?? 0);
+    $status = trim((string)($_POST['status'] ?? ''));
+    $allowedStatuses = ['not_started', 'in_progress', 'pass', 'fail', 'on_hold', 'needs_review', 'tested', 'testing_failed', 'in_testing'];
+
+    if ($pageId > 0 && $environmentId > 0 && in_array($status, $allowedStatuses, true)) {
+        try {
+            $updateStatus = $db->prepare("
+                UPDATE page_environments
+                SET status = ?
+                WHERE page_id = ? AND environment_id = ? AND at_tester_id = ?
+            ");
+            $updateStatus->execute([$status, $pageId, $environmentId, $userId]);
+            $_SESSION['success'] = "Environment status updated successfully.";
+        } catch (Exception $e) {
+            $_SESSION['error'] = "Error updating status: " . $e->getMessage();
+        }
+    } else {
+        $_SESSION['error'] = "Invalid status update request.";
+    }
+
+    header("Location: project_tasks.php?project_id=$projectId");
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_test'])) {
     $pageId = (int)$_POST['page_id'];
     $environmentId = (int)$_POST['environment_id'];
@@ -162,7 +188,14 @@ include __DIR__ . '/../../includes/header.php';
                                 <td>
                                     <strong><?php echo htmlspecialchars($page['page_name']); ?></strong>
                                     <?php if ($page['url']): ?>
-                                        <br><small class="text-muted"><?php echo htmlspecialchars($page['url']); ?></small>
+                                        <?php
+                                        $rawPageUrl = trim((string)$page['url']);
+                                        $openUrl = $rawPageUrl;
+                                        if ($openUrl !== '' && !preg_match('/^[a-z][a-z0-9+\-.]*:\/\//i', $openUrl)) {
+                                            $openUrl = 'https://' . ltrim($openUrl, '/');
+                                        }
+                                        ?>
+                                        <br><small class="text-muted"><?php echo htmlspecialchars($openUrl); ?></small>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -179,15 +212,21 @@ include __DIR__ . '/../../includes/header.php';
                                     $statusClass = 'secondary';
                                     $statusText = 'Not Tested';
                                     
-                                    if ($page['status'] === 'tested') {
+                                    if ($page['status'] === 'tested' || $page['status'] === 'pass') {
                                         $statusClass = 'success';
-                                        $statusText = 'Tested';
-                                    } elseif ($page['status'] === 'testing_failed') {
+                                        $statusText = ($page['status'] === 'pass') ? 'Pass' : 'Tested';
+                                    } elseif ($page['status'] === 'testing_failed' || $page['status'] === 'fail') {
                                         $statusClass = 'danger';
                                         $statusText = 'Failed';
-                                    } elseif ($page['status'] === 'in_testing') {
+                                    } elseif ($page['status'] === 'in_testing' || $page['status'] === 'in_progress') {
                                         $statusClass = 'warning';
-                                        $statusText = 'In Testing';
+                                        $statusText = 'In Progress';
+                                    } elseif ($page['status'] === 'on_hold') {
+                                        $statusClass = 'secondary';
+                                        $statusText = 'On Hold';
+                                    } elseif ($page['status'] === 'needs_review') {
+                                        $statusClass = 'info';
+                                        $statusText = 'Needs Review';
                                     }
                                     ?>
                                     <span class="badge bg-<?php echo $statusClass; ?>">
@@ -208,16 +247,31 @@ include __DIR__ . '/../../includes/header.php';
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <button class="btn btn-sm btn-primary" 
-                                            data-bs-toggle="modal" 
-                                            data-bs-target="#testModal"
-                                            onclick="openTestModal(<?php echo $page['id']; ?>, <?php echo $page['environment_id']; ?>, '<?php echo htmlspecialchars($page['page_name'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($page['environment_name'], ENT_QUOTES); ?>')">
-                                        <i class="fas fa-vial"></i> Test
-                                    </button>
+                                    <form method="POST" class="d-inline-flex align-items-center gap-2">
+                                        <input type="hidden" name="page_id" value="<?php echo (int)$page['id']; ?>">
+                                        <input type="hidden" name="environment_id" value="<?php echo (int)$page['environment_id']; ?>">
+                                        <select name="status" class="form-select form-select-sm" style="min-width: 150px;" aria-label="Update environment status">
+                                            <option value="not_started" <?php echo ($page['status'] ?? '') === 'not_started' ? 'selected' : ''; ?>>Not Started</option>
+                                            <option value="in_progress" <?php echo ($page['status'] ?? '') === 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
+                                            <option value="pass" <?php echo ($page['status'] ?? '') === 'pass' ? 'selected' : ''; ?>>Pass</option>
+                                            <option value="fail" <?php echo ($page['status'] ?? '') === 'fail' ? 'selected' : ''; ?>>Fail</option>
+                                            <option value="on_hold" <?php echo ($page['status'] ?? '') === 'on_hold' ? 'selected' : ''; ?>>On Hold</option>
+                                            <option value="needs_review" <?php echo ($page['status'] ?? '') === 'needs_review' ? 'selected' : ''; ?>>Needs Review</option>
+                                        </select>
+                                        <button type="submit" name="update_env_status" class="btn btn-sm btn-primary">
+                                            Update
+                                        </button>
+                                    </form>
+
+                                    <a href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/projects/issues_page_detail.php?project_id=<?php echo (int)$projectId; ?>&page_id=<?php echo (int)$page['id']; ?>"
+                                       class="btn btn-sm btn-outline-secondary">
+                                        <i class="fas fa-tasks"></i> View Task
+                                    </a>
                                     
-                                    <?php if ($page['url']): ?>
-                                        <a href="<?php echo htmlspecialchars($page['url']); ?>" 
+                                    <?php if (!empty($openUrl)): ?>
+                                        <a href="<?php echo htmlspecialchars($openUrl); ?>" 
                                            target="_blank" 
+                                           rel="noopener noreferrer"
                                            class="btn btn-sm btn-outline-info">
                                             <i class="fas fa-external-link-alt"></i> Open
                                         </a>

@@ -12,6 +12,7 @@ $selectedColumns = $_POST['columns'] ?? [];
 $selectedPages = $_POST['pages'] ?? ['all'];
 $selectedStatuses = $_POST['status'] ?? ['all'];
 $imageHandling = $_POST['image_handling'] ?? 'links'; // links, embed, none
+$includeRegressionComments = isset($_POST['include_regression_comments']) && $_POST['include_regression_comments'] == '1';
 
 if (!$projectId || empty($selectedColumns)) {
     http_response_code(400);
@@ -210,12 +211,73 @@ foreach ($issues as &$issue) {
     
     // Extract template sections from description field
     $issue['sections'] = extractTemplateSections($issue['description'] ?? '');
+    
+    // Fetch regression comments if column is selected
+    $issue['regression_comments'] = '';
+    if (in_array('regression_comments', $selectedColumns)) {
+        $commentsStmt = $db->prepare("
+            SELECT 
+                ic.comment_html,
+                ic.created_at,
+                u.full_name as commenter_name
+            FROM issue_comments ic
+            LEFT JOIN users u ON ic.user_id = u.id
+            WHERE ic.issue_id = ? AND ic.comment_type = 'regression'
+            ORDER BY ic.created_at ASC
+        ");
+        $commentsStmt->execute([$issue['id']]);
+        $regressionComments = $commentsStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (!empty($regressionComments)) {
+            $commentsList = [];
+            foreach ($regressionComments as $comment) {
+                $commenterName = $comment['commenter_name'] ?? 'Unknown';
+                $commentDate = date('Y-m-d H:i', strtotime($comment['created_at']));
+                $commentText = strip_tags($comment['comment_html']);
+                $commentsList[] = "[$commentDate] $commenterName: $commentText";
+            }
+            $issue['regression_comments'] = implode("\n\n", $commentsList);
+        }
+    }
+    
+    // Extract image alt texts if column is selected
+    $issue['image_alt_texts'] = '';
+    if (in_array('image_alt_texts', $selectedColumns)) {
+        $altTexts = extractImageAltTexts($issue['description'] ?? '');
+        if (!empty($altTexts)) {
+            $issue['image_alt_texts'] = implode("\n", $altTexts);
+        }
+    }
 }
 
 if ($format === 'excel') {
-    exportToExcel($issues, $selectedColumns, $project, $imageHandling);
+    exportToExcel($issues, $selectedColumns, $project, $imageHandling, $includeRegressionComments);
 } else {
-    exportToPDF($issues, $selectedColumns, $project, $imageHandling);
+    exportToPDF($issues, $selectedColumns, $project, $imageHandling, $includeRegressionComments);
+}
+
+function extractImageAltTexts($html) {
+    $altTexts = [];
+    
+    if (empty($html)) {
+        return $altTexts;
+    }
+    
+    // Use DOMDocument to parse HTML and extract alt attributes
+    $dom = new DOMDocument();
+    // Suppress warnings for malformed HTML
+    @$dom->loadHTML('<?xml encoding="UTF-8">' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+    
+    $images = $dom->getElementsByTagName('img');
+    
+    foreach ($images as $img) {
+        $alt = $img->getAttribute('alt');
+        if (!empty($alt)) {
+            $altTexts[] = $alt;
+        }
+    }
+    
+    return $altTexts;
 }
 
 function extractTemplateSections($html) {
@@ -247,218 +309,260 @@ function extractTemplateSections($html) {
     return $sections;
 }
 
-function exportToExcel($issues, $columns, $project, $imageHandling) {
-    // Set headers for CSV download (Excel can open CSV files)
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="issues_' . sanitizeFilename($project['title']) . '_' . date('Y-m-d') . '.csv"');
+function exportToExcel($issues, $columns, $project, $imageHandling, $includeRegressionComments) {
+    // Use HTML-based XLS export to preserve rich text formatting.
+    header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+    header('Content-Disposition: attachment; filename="issues_' . sanitizeFilename($project['title']) . '_' . date('Y-m-d') . '.xls"');
     header('Cache-Control: max-age=0');
-    
-    $output = fopen('php://output', 'w');
-    
-    // Write UTF-8 BOM for Excel compatibility
-    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
-    
-    // Write header row
-    $headers = [];
+
+    echo '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; }
+        table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+        th, td { border: 1px solid #d0d7de; padding: 8px; vertical-align: top; word-wrap: break-word; }
+        th { background: #f2f5f9; font-weight: bold; }
+        .rich p { margin: 0 0 8px 0; }
+        .rich ul, .rich ol { margin: 0 0 8px 20px; padding: 0; }
+        .rich pre { white-space: pre-wrap; word-break: break-word; background: #f6f8fa; border: 1px solid #d8dee4; padding: 8px; border-radius: 4px; }
+        .rich code { font-family: Consolas, monospace; background: #f6f8fa; padding: 1px 3px; border-radius: 3px; }
+        .rich img { max-width: 420px; height: auto; border: 1px solid #ddd; }
+        .rich * { max-width: 100%; }
+    </style>
+</head>
+<body>';
+
+    echo '<h2>Issues Export - ' . htmlspecialchars($project['title']) . '</h2>';
+    echo '<p><strong>Export Date:</strong> ' . date('Y-m-d H:i:s') . ' | <strong>Total Issues:</strong> ' . count($issues) . '</p>';
+
+    echo '<table><thead><tr>';
     foreach ($columns as $col) {
         if (strpos($col, 'section_') === 0) {
-            // Convert section_actual_result to "Actual Result"
             $sectionName = str_replace('section_', '', $col);
             $sectionName = str_replace('_', ' ', $sectionName);
-            $headers[] = '[' . ucwords($sectionName) . ']';
+            echo '<th>' . htmlspecialchars('[' . ucwords($sectionName) . ']') . '</th>';
         } else {
-            $headers[] = ucwords(str_replace('_', ' ', $col));
+            echo '<th>' . htmlspecialchars(ucwords(str_replace('_', ' ', $col))) . '</th>';
         }
     }
-    fputcsv($output, $headers);
-    
-    // Write data rows
+    echo '</tr></thead><tbody>';
+
     foreach ($issues as $issue) {
-        $row = [];
+        echo '<tr>';
         foreach ($columns as $col) {
+            echo '<td>';
+
             if ($col === 'description') {
-                // Handle description with formatting preserved
-                $description = $issue[$col] ?? '';
-                // First process images based on handling option
-                $description = processImagesInContent($description, $imageHandling);
-                // Then convert HTML to formatted text
-                $description = convertHtmlToFormattedText($description);
-                $row[] = $description;
+                echo '<div class="rich">' . renderRichContentForExport($issue[$col] ?? '', $imageHandling, 'excel') . '</div>';
             } elseif ($col === 'common_title') {
-                // Handle common issue title from metadata
-                $row[] = $issue['common_title'] ?? '';
+                echo htmlspecialchars($issue['common_title'] ?? '');
             } elseif ($col === 'reporter_name') {
-                // Use all_reporters which includes primary + additional reporters
-                $row[] = $issue['all_reporters'] ?? '';
+                echo htmlspecialchars($issue['all_reporters'] ?? '');
             } elseif (strpos($col, 'section_') === 0) {
-                // Handle template sections
                 $sectionKey = str_replace('section_', '', $col);
                 $sectionContent = $issue['sections'][$sectionKey] ?? '';
-                // Process images in section content
-                $sectionContent = processImagesInContent($sectionContent, $imageHandling);
-                // Convert HTML to formatted text
-                $sectionContent = convertHtmlToFormattedText($sectionContent);
-                $row[] = $sectionContent;
+                echo '<div class="rich">' . renderRichContentForExport($sectionContent, $imageHandling, 'excel') . '</div>';
+            } elseif ($col === 'regression_comments') {
+                echo nl2br(htmlspecialchars($issue['regression_comments'] ?? ''));
+            } elseif ($col === 'image_alt_texts') {
+                echo nl2br(htmlspecialchars($issue['image_alt_texts'] ?? ''));
+            } elseif ($col === 'grouped_urls') {
+                $urlsString = $issue['grouped_urls'] ?? $issue[$col] ?? '';
+                $urls = array_filter(array_map('trim', explode(',', $urlsString)));
+                if (!empty($urls)) {
+                    echo '<ul>';
+                    foreach ($urls as $url) {
+                        echo '<li>' . htmlspecialchars($url) . '</li>';
+                    }
+                    echo '</ul>';
+                }
             } elseif (isset($issue['metadata'][$col])) {
                 $value = $issue['metadata'][$col];
-                $row[] = is_array($value) ? implode(', ', $value) : $value;
+                echo htmlspecialchars(is_array($value) ? implode(', ', $value) : (string)$value);
             } else {
-                $row[] = $issue[$col] ?? '';
+                echo htmlspecialchars($issue[$col] ?? '');
             }
+
+            echo '</td>';
         }
-        fputcsv($output, $row);
+        echo '</tr>';
     }
-    
-    fclose($output);
+
+    echo '</tbody></table></body></html>';
     exit;
 }
 
-function exportToPDF($issues, $columns, $project, $imageHandling) {
-    // Create a formatted document-style PDF (HTML for print)
-    
+function exportToPDF($issues, $columns, $project, $imageHandling, $includeRegressionComments) {
     header('Content-Type: text/html; charset=utf-8');
-    
+    $pdfTemplate = loadPdfTemplateConfig();
+    $customEnabled = !empty($pdfTemplate['enabled']);
+    $customCss = $customEnabled ? sanitizeTemplateCss((string)($pdfTemplate['custom_css'] ?? '')) : '';
+    $customHeaderHtml = $customEnabled ? sanitizeTemplateHtml((string)($pdfTemplate['header_html'] ?? '')) : '';
+    $customFooterHtml = $customEnabled ? sanitizeTemplateHtml((string)($pdfTemplate['footer_html'] ?? '')) : '';
+    $logoUrl = $customEnabled ? resolveTemplateLogoUrl((string)($pdfTemplate['logo_url'] ?? '')) : '';
+    $logoAlt = $customEnabled ? trim((string)($pdfTemplate['logo_alt'] ?? '')) : '';
+    $showDefaultHeader = $customEnabled ? !empty($pdfTemplate['show_default_header']) : true;
+    $showExportDate = $customEnabled ? !empty($pdfTemplate['show_export_date']) : true;
+    $showTotalIssues = $customEnabled ? !empty($pdfTemplate['show_total_issues']) : true;
+    $headerTitleRaw = $customEnabled ? trim((string)($pdfTemplate['header_title'] ?? '')) : '';
+    $headerTitle = htmlspecialchars($headerTitleRaw !== '' ? $headerTitleRaw : ('Issues Export - ' . ($project['title'] ?? '')), ENT_QUOTES, 'UTF-8');
+
     echo '<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>Issues Export - ' . htmlspecialchars($project['title']) . '</title>
     <style>
         * { box-sizing: border-box; }
-        body { 
-            font-family: Arial, sans-serif; 
-            font-size: 13px; 
-            margin: 15px; 
-            line-height: 1.6;
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            margin: 15px;
+            line-height: 1.45;
             max-width: 100%;
         }
-        .header { 
-            border-bottom: 3px solid #0d6efd; 
-            padding-bottom: 15px; 
+        .header {
+            border-bottom: 3px solid #0d6efd;
+            padding-bottom: 15px;
             margin-bottom: 30px;
             max-width: 100%;
         }
-        .header h1 { 
-            color: #333; 
-            margin: 0; 
+        .header h1 {
+            color: #333;
+            margin: 0;
             font-size: 26px;
             word-wrap: break-word;
         }
-        .meta-info { 
-            color: #666; 
-            font-size: 12px; 
+        .meta-info {
+            color: #666;
+            font-size: 12px;
             margin-top: 10px;
         }
-        
-        .issue-container { 
-            margin-bottom: 40px; 
+        .issue-container {
+            margin-bottom: 18px;
             page-break-inside: avoid;
             border: 1px solid #ddd;
-            padding: 15px;
+            padding: 12px;
             border-radius: 5px;
             background: #f8f9fa;
             max-width: 100%;
             overflow: hidden;
         }
-        
-        .issue-title { 
-            font-size: 20px; 
-            font-weight: bold; 
-            color: #0d6efd; 
-            margin-bottom: 15px;
+        .issue-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #0d6efd;
+            margin-bottom: 10px;
             border-bottom: 2px solid #0d6efd;
-            padding-bottom: 8px;
+            padding-bottom: 6px;
             word-wrap: break-word;
         }
-        
-        .fields-grid {
+        .meta-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px 20px;
-            margin-bottom: 20px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin: 6px 0 10px;
         }
-        
-        .issue-field { 
-            word-wrap: break-word;
-            overflow-wrap: break-word;
+        .meta-item {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-left: 4px solid #0d6efd;
+            border-radius: 4px;
+            padding: 8px;
         }
-        
-        .field-label { 
-            font-weight: bold; 
-            color: #495057;
+        .meta-label {
             display: block;
-            margin-bottom: 4px;
+            font-size: 11px;
+            color: #6b7280;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+            font-weight: 600;
+        }
+        .meta-value {
+            display: block;
             font-size: 12px;
+            line-height: 1.35;
+            word-break: break-word;
         }
-        
-        .field-value { 
-            color: #212529;
-            display: block;
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            font-size: 13px;
-        }
-        
-        .field-full-width {
-            grid-column: 1 / -1;
-        }
-        
         .section-container {
-            margin-top: 20px;
-            padding: 15px;
+            margin-top: 8px;
+            padding: 10px;
             background: white;
             border-left: 4px solid #0d6efd;
-            margin-bottom: 15px;
             max-width: 100%;
             overflow: hidden;
         }
-        
         .section-title {
             font-weight: bold;
             color: #0d6efd;
-            font-size: 15px;
+            font-size: 14px;
             margin-bottom: 8px;
             text-transform: uppercase;
         }
-        
         .section-content {
-            color: #212529;
-            white-space: pre-wrap;
             word-wrap: break-word;
             overflow-wrap: break-word;
             max-width: 100%;
-            font-size: 13px;
-            line-height: 1.7;
+            line-height: 1.45;
         }
-        
-        img { 
-            max-width: 100%; 
-            height: auto;
-            margin: 10px 0;
-            border: 1px solid #ddd;
-            padding: 5px;
-            background: white;
+        .section-content p { margin: 0 0 8px 0; }
+        .section-content ul, .section-content ol { margin: 0 0 8px 20px; }
+        .section-content pre {
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: #f6f8fa;
+            border: 1px solid #d8dee4;
+            border-radius: 4px;
+            padding: 8px;
+            margin: 8px 0;
+            font-family: Consolas, monospace;
         }
-        
+        .section-content code {
+            background: #f6f8fa;
+            border-radius: 3px;
+            padding: 1px 3px;
+            font-family: Consolas, monospace;
+        }
+        .section-content * { max-width: 100%; }
         .url-list {
             list-style: none;
             padding-left: 0;
             margin: 5px 0;
         }
-        
         .url-list li {
-            padding: 4px 0;
+            padding: 2px 0;
             color: #0d6efd;
             word-wrap: break-word;
             overflow-wrap: break-word;
         }
-        
+        .custom-template-header {
+            border: 1px solid #d9e2ef;
+            background: #ffffff;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 12px;
+        }
+        .custom-template-header .logo-wrap img {
+            max-height: 56px;
+            width: auto;
+            display: inline-block;
+            margin-bottom: 8px;
+        }
+        .custom-template-footer {
+            margin-top: 12px;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 8px;
+            font-size: 11px;
+            color: #6b7280;
+        }
+        ' . $customCss . '
         @media print {
             body { margin: 10mm; }
             button { display: none; }
             .issue-container { page-break-inside: avoid; }
         }
-        
         @page {
             margin: 15mm;
             size: A4;
@@ -469,128 +573,129 @@ function exportToPDF($issues, $columns, $project, $imageHandling) {
     <button onclick="window.print()" style="padding: 10px 20px; background: #0d6efd; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 20px;">
         Print / Save as PDF
     </button>
-    
-    <div class="header">
-        <h1>Issues Export - ' . htmlspecialchars($project['title']) . '</h1>
-        <div class="meta-info">
-            <strong>Export Date:</strong> ' . date('Y-m-d H:i:s') . ' | 
-            <strong>Total Issues:</strong> ' . count($issues) . '
-        </div>
-    </div>';
-    
+    ' . ($customEnabled ? '<div class="custom-template-header">' .
+            ($logoUrl !== '' ? '<div class="logo-wrap"><img src="' . htmlspecialchars($logoUrl, ENT_QUOTES, 'UTF-8') . '" alt="' . htmlspecialchars($logoAlt !== '' ? $logoAlt : 'Template Logo', ENT_QUOTES, 'UTF-8') . '"></div>' : '') .
+            $customHeaderHtml .
+        '</div>' : '') . '
+
+    <main role="main" aria-label="Issues export document">
+    ' . ($showDefaultHeader ? '<header class="header" role="banner">
+        <h1>' . $headerTitle . '</h1>
+        ' . (($showExportDate || $showTotalIssues) ? '<div class="meta-info">' : '') . '
+            ' . ($showExportDate ? '<strong>Export Date:</strong> ' . date('Y-m-d H:i:s') : '') . '
+            ' . ($showExportDate && $showTotalIssues ? ' | ' : '') . '
+            ' . ($showTotalIssues ? '<strong>Total Issues:</strong> ' . count($issues) : '') . '
+        ' . (($showExportDate || $showTotalIssues) ? '</div>' : '') . '
+    </header>' : '');
+
     $issueNumber = 1;
     foreach ($issues as $issue) {
         echo '<div class="issue-container">';
-        echo '<div class="issue-title">Issue #' . $issueNumber . ': ' . htmlspecialchars($issue['title'] ?? 'Untitled') . '</div>';
-        
-        // Display description first if selected
-        if (in_array('description', $columns) && !empty($issue['description'])) {
-            echo '<div class="section-container">';
-            echo '<div class="section-title">ISSUE DESCRIPTION</div>';
-            echo '<div class="section-content">';
-            if ($imageHandling === 'embed') {
-                echo processImagesForPDF($issue['description']);
-            } else {
-                echo nl2br(htmlspecialchars(convertHtmlToFormattedText($issue['description'])));
+        echo '<h2 class="issue-title">Issue #' . $issueNumber . '</h2>';
+        $metaBuffer = [];
+
+        $flushMetaBuffer = function () use (&$metaBuffer) {
+            if (empty($metaBuffer)) {
+                return;
+            }
+            echo '<div class="meta-grid">';
+            foreach ($metaBuffer as $item) {
+                echo '<div class="meta-item">';
+                echo '<span class="meta-label">' . htmlspecialchars($item['label']) . '</span>';
+                echo '<span class="meta-value">' . nl2br(htmlspecialchars($item['value'])) . '</span>';
+                echo '</div>';
             }
             echo '</div>';
-            echo '</div>';
-        }
-        
-        // Display basic fields in 2-column grid
-        echo '<div class="fields-grid">';
-        
+            $metaBuffer = [];
+        };
+
         foreach ($columns as $col) {
-            // Skip sections, description and title - handled separately
-            if (strpos($col, 'section_') === 0 || $col === 'description' || $col === 'title') {
+            $label = (strpos($col, 'section_') === 0)
+                ? '[' . ucwords(str_replace('_', ' ', str_replace('section_', '', $col))) . ']'
+                : ucwords(str_replace('_', ' ', $col));
+
+            if ($col === 'description') {
+                $html = renderRichContentForExport($issue['description'] ?? '', $imageHandling, 'pdf');
+                if (trim((string)$html) !== '') {
+                    $flushMetaBuffer();
+                    echo '<div class="section-container"><div class="section-title">' . htmlspecialchars($label) . '</div><div class="section-content">' . $html . '</div></div>';
+                }
                 continue;
             }
-            
-            $label = ucwords(str_replace('_', ' ', $col));
-            $value = '';
-            $isFullWidth = false;
-            
+
+            if (strpos($col, 'section_') === 0) {
+                $sectionKey = str_replace('section_', '', $col);
+                $html = renderRichContentForExport($issue['sections'][$sectionKey] ?? '', $imageHandling, 'pdf');
+                if (trim((string)$html) !== '') {
+                    $flushMetaBuffer();
+                    echo '<div class="section-container"><div class="section-title">' . htmlspecialchars($label) . '</div><div class="section-content">' . $html . '</div></div>';
+                }
+                continue;
+            }
+
+            if ($col === 'grouped_urls') {
+                $urlsString = $issue['grouped_urls'] ?? $issue[$col] ?? '';
+                $urls = array_filter(array_map('trim', explode(',', (string)$urlsString)));
+                if (!empty($urls)) {
+                    $flushMetaBuffer();
+                    echo '<div class="section-container"><div class="section-title">' . htmlspecialchars($label) . '</div><div class="section-content"><ul class="url-list">';
+                    foreach ($urls as $url) {
+                        echo '<li>' . htmlspecialchars($url) . '</li>';
+                    }
+                    echo '</ul></div></div>';
+                }
+                continue;
+            }
+
+            if ($col === 'regression_comments') {
+                $value = $issue['regression_comments'] ?? '';
+                if ($value !== '') {
+                    $flushMetaBuffer();
+                    echo '<div class="section-container"><div class="section-title">' . htmlspecialchars($label) . '</div><div class="section-content">' . nl2br(htmlspecialchars($value)) . '</div></div>';
+                }
+                continue;
+            }
+
+            if ($col === 'image_alt_texts') {
+                $value = $issue['image_alt_texts'] ?? '';
+                if ($value !== '') {
+                    $flushMetaBuffer();
+                    echo '<div class="section-container"><div class="section-title">' . htmlspecialchars($label) . '</div><div class="section-content">' . nl2br(htmlspecialchars($value)) . '</div></div>';
+                }
+                continue;
+            }
+
             if ($col === 'common_title') {
                 $value = $issue['common_title'] ?? '';
             } elseif ($col === 'reporter_name') {
                 $value = $issue['all_reporters'] ?? '';
-            } elseif ($col === 'grouped_urls') {
-                // Special handling for URLs - full width
-                $urlsString = $issue['grouped_urls'] ?? $issue[$col] ?? '';
-                $urls = array_filter(explode(', ', $urlsString));
-                
-                if (!empty($urls)) {
-                    echo '<div class="issue-field field-full-width">';
-                    echo '<span class="field-label">' . htmlspecialchars($label) . '</span>';
-                    echo '<ul class="url-list">';
-                    foreach ($urls as $url) {
-                        $url = trim($url);
-                        if (!empty($url)) {
-                            echo '<li>' . htmlspecialchars($url) . '</li>';
-                        }
-                    }
-                    echo '</ul>';
-                    echo '</div>';
-                }
-                continue;
+            } elseif ($col === 'title') {
+                $value = $issue['title'] ?? '';
             } elseif (isset($issue['metadata'][$col])) {
                 $metaValue = $issue['metadata'][$col];
                 $value = is_array($metaValue) ? implode(', ', $metaValue) : $metaValue;
-                
-                // Check if value is long - make it full width
-                if (strlen($value) > 80) {
-                    $isFullWidth = true;
-                }
             } else {
                 $value = $issue[$col] ?? '';
             }
-            
-            if (!empty($value)) {
-                $fieldClass = $isFullWidth ? 'issue-field field-full-width' : 'issue-field';
-                echo '<div class="' . $fieldClass . '">';
-                echo '<span class="field-label">' . htmlspecialchars($label) . '</span>';
-                echo '<span class="field-value">' . htmlspecialchars($value) . '</span>';
-                echo '</div>';
+
+            if ((string)$value !== '') {
+                $metaBuffer[] = [
+                    'label' => $label,
+                    'value' => (string)$value
+                ];
             }
         }
-        
-        echo '</div>'; // End fields-grid
-        
-        // Display template sections
-        foreach ($columns as $col) {
-            if (strpos($col, 'section_') === 0) {
-                $sectionKey = str_replace('section_', '', $col);
-                $sectionName = str_replace('_', ' ', $sectionKey);
-                $sectionContent = $issue['sections'][$sectionKey] ?? '';
-                
-                if (!empty($sectionContent)) {
-                    echo '<div class="section-container">';
-                    echo '<div class="section-title">[' . htmlspecialchars(ucwords($sectionName)) . ']</div>';
-                    echo '<div class="section-content">';
-                    
-                    if ($imageHandling === 'embed') {
-                        // Keep images in HTML
-                        echo processImagesForPDF($sectionContent);
-                    } elseif ($imageHandling === 'links') {
-                        // Convert images to links
-                        echo nl2br(htmlspecialchars(processImagesInContent($sectionContent, 'links')));
-                    } else {
-                        // Remove images
-                        echo nl2br(htmlspecialchars(strip_tags($sectionContent)));
-                    }
-                    
-                    echo '</div>';
-                    echo '</div>';
-                }
-            }
-        }
-        
-        echo '</div>'; // End issue-container
+        $flushMetaBuffer();
+
+        echo '</div>';
         $issueNumber++;
     }
-    
-    echo '</body>
-</html>';
+
+    if ($customEnabled && $customFooterHtml !== '') {
+        echo '<footer class="custom-template-footer" role="contentinfo">' . $customFooterHtml . '</footer>';
+    }
+
+    echo '</main></body></html>';
     exit;
 }
 
@@ -598,99 +703,132 @@ function sanitizeFilename($filename) {
     return preg_replace('/[^a-zA-Z0-9_-]/', '_', $filename);
 }
 
-function convertHtmlToFormattedText($html) {
-    // Convert HTML to formatted plain text while preserving structure
-    
-    // First, normalize line breaks
-    $text = str_replace(["\r\n", "\r"], "\n", $html);
-    
-    // Convert <br> tags to newlines
-    $text = preg_replace('/<br\s*\/?>/i', "\n", $text);
-    
-    // Convert closing paragraph tags to double newlines
-    $text = preg_replace('/<\/p>/i', "\n\n", $text);
-    
-    // Remove opening paragraph tags
-    $text = preg_replace('/<p[^>]*>/i', '', $text);
-    
-    // Convert div closing tags to newlines
-    $text = preg_replace('/<\/div>/i', "\n", $text);
-    $text = preg_replace('/<div[^>]*>/i', '', $text);
-    
-    // Convert headings to text with extra spacing
-    $text = preg_replace('/<h[1-6][^>]*>(.*?)<\/h[1-6]>/is', "\n\n$1\n\n", $text);
-    
-    // Convert lists - add newline before and after list items
-    $text = preg_replace('/<li[^>]*>/i', "\n• ", $text);
-    $text = preg_replace('/<\/li>/i', "", $text);
-    $text = preg_replace('/<\/(ul|ol)>/i', "\n", $text);
-    $text = preg_replace('/<(ul|ol)[^>]*>/i', "\n", $text);
-    
-    // Convert bold/strong - keep as is or add markers
-    $text = preg_replace('/<(strong|b)[^>]*>(.*?)<\/(strong|b)>/is', '**$2**', $text);
-    
-    // Convert italic/em
-    $text = preg_replace('/<(em|i)[^>]*>(.*?)<\/(em|i)>/is', '*$2*', $text);
-    
-    // Remove all remaining HTML tags
-    $text = strip_tags($text);
-    
-    // Decode HTML entities
-    $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-    
-    // Clean up excessive whitespace on same line
-    $text = preg_replace('/[ \t]+/', ' ', $text);
-    
-    // Remove spaces at start/end of lines
-    $text = preg_replace('/^[ \t]+/m', '', $text);
-    $text = preg_replace('/[ \t]+$/m', '', $text);
-    
-    // Reduce multiple consecutive newlines to maximum 2
-    $text = preg_replace('/\n{3,}/', "\n\n", $text);
-    
-    // Trim overall
-    return trim($text);
-}
-
-function processImagesInContent($html, $imageHandling) {
-    if ($imageHandling === 'none') {
-        // Remove all images
-        return strip_tags($html);
-    } elseif ($imageHandling === 'links') {
-        // Convert images to just URLs (one per line)
-        $html = preg_replace_callback('/<img[^>]+src=["\']([^"\']+)["\'][^>]*>/i', function($matches) {
-            $src = $matches[1];
-            
-            // If relative path, convert to full URL
-            if (strpos($src, 'http') !== 0) {
-                // Get base URL from server
-                $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
-                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                
-                // Remove leading slash if present in src
-                $src = ltrim($src, '/');
-                $fullUrl = $protocol . '://' . $host . '/' . $src;
-            } else {
-                $fullUrl = $src;
-            }
-            
-            return $fullUrl . "\n";
-        }, $html);
-        return strip_tags($html);
+function renderRichContentForExport($html, $imageHandling, $context = 'pdf') {
+    if (trim((string)$html) === '') {
+        return '';
     }
-    // For 'embed', return as is (will be handled differently in PDF)
-    return strip_tags($html);
+
+    $cleanHtml = sanitizeExportHtml($html);
+    $cleanHtml = applyImageHandlingToHtml($cleanHtml, $imageHandling, $context);
+
+    return $cleanHtml;
 }
 
-function processImagesForPDF($html) {
-    // For PDF, keep images but ensure they have proper attributes
-    $html = preg_replace_callback('/<img([^>]+)>/i', function($matches) {
-        $attrs = $matches[1];
-        // Ensure images have max-width for PDF
-        if (strpos($attrs, 'style=') === false) {
-            $attrs .= ' style="max-width: 200px; max-height: 150px;"';
-        }
-        return '<img' . $attrs . '>';
-    }, $html);
+function sanitizeExportHtml($html) {
+    // Drop dangerous blocks first.
+    $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', (string)$html);
+    $html = preg_replace('/<style\b[^>]*>.*?<\/style>/is', '', (string)$html);
+
+    // Keep rich-text formatting tags used in issue descriptions.
+    $allowed = '<p><br><strong><b><em><i><u><s><strike><sub><sup><mark><ul><ol><li><pre><code><blockquote><h1><h2><h3><h4><h5><h6><a><img><span><div><font>';
+    $html = strip_tags($html, $allowed);
+
+    // Remove inline event handlers and javascript: URLs.
+    $html = preg_replace('/\son\w+\s*=\s*"[^"]*"/i', '', $html);
+    $html = preg_replace("/\\son\\w+\\s*=\\s*'[^']*'/i", '', $html);
+    $html = preg_replace("/\\s(href|src)\\s*=\\s*([\"'])\\s*javascript:[^\"']*\\2/i", '', $html);
+
     return $html;
+}
+
+function applyImageHandlingToHtml($html, $imageHandling, $context = 'pdf') {
+    return preg_replace_callback("/<img\\b[^>]*src=[\"']([^\"']+)[\"'][^>]*>/i", function ($matches) use ($imageHandling, $context) {
+        $src = toAbsoluteUrl($matches[1]);
+
+        if ($imageHandling === 'none') {
+            return '';
+        }
+
+        if ($imageHandling === 'links') {
+            $safeSrc = htmlspecialchars($src, ENT_QUOTES, 'UTF-8');
+            return '<p><a href="' . $safeSrc . '" target="_blank" rel="noopener noreferrer">' . $safeSrc . '</a></p>';
+        }
+
+        $safeSrc = htmlspecialchars($src, ENT_QUOTES, 'UTF-8');
+        $imgStyle = $context === 'excel'
+            ? 'max-width: 420px; height: auto; border: 1px solid #ddd;'
+            : 'max-width: 100%; height: auto; border: 1px solid #ddd; padding: 4px; background: #fff;';
+
+        return '<img src="' . $safeSrc . '" alt="Issue image" style="' . $imgStyle . '">';
+    }, $html);
+}
+
+function toAbsoluteUrl($src) {
+    $src = trim((string)$src);
+    if ($src === '') {
+        return '';
+    }
+
+    if (preg_match('/^(https?:)?\/\//i', $src) || strpos($src, 'data:') === 0) {
+        return $src;
+    }
+
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+
+    return $protocol . '://' . $host . '/' . ltrim($src, '/');
+}
+
+function resolveTemplateLogoUrl($src) {
+    $src = trim((string)$src);
+    if ($src === '') {
+        return '';
+    }
+
+    if (preg_match('/^(https?:)?\/\//i', $src) || strpos($src, 'data:') === 0) {
+        return $src;
+    }
+
+    return rtrim(getBaseDir(), '/') . '/' . ltrim($src, '/');
+}
+
+
+function getPdfTemplateConfigPath() {
+    return __DIR__ . '/../storage/pdf_export_template.json';
+}
+
+function loadPdfTemplateConfig() {
+    $defaults = [
+        'enabled' => false,
+        'header_html' => '',
+        'footer_html' => '',
+        'custom_css' => '',
+        'logo_url' => '',
+        'logo_alt' => '',
+        'show_default_header' => true,
+        'show_export_date' => true,
+        'show_total_issues' => true,
+        'header_title' => ''
+    ];
+
+    $path = getPdfTemplateConfigPath();
+    if (!is_file($path)) {
+        return $defaults;
+    }
+
+    $raw = @file_get_contents($path);
+    if ($raw === false || trim($raw) === '') {
+        return $defaults;
+    }
+
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return $defaults;
+    }
+
+    return array_merge($defaults, $decoded);
+}
+
+function sanitizeTemplateHtml($html) {
+    $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', (string)$html);
+    $allowed = '<p><br><strong><b><em><i><u><s><span><div><small><h1><h2><h3><h4><h5><h6><ul><ol><li><a>';
+    return strip_tags($html, $allowed);
+}
+
+function sanitizeTemplateCss($css) {
+    $css = (string)$css;
+    $css = str_replace(['</style>', '<style>'], '', $css);
+    $css = preg_replace('/@import\s+url\s*\([^)]*\)\s*;?/i', '', $css);
+    $css = preg_replace('/expression\s*\([^)]*\)/i', '', $css);
+    return $css;
 }

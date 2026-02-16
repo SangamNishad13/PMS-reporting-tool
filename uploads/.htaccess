@@ -1,0 +1,7 @@
+# Disable directory listing for uploads folder
+Options -Indexes
+
+# Prevent browsing of subdirectories
+<IfModule mod_autoindex.c>
+    IndexIgnore *
+</IfModule>

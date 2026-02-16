@@ -11,8 +11,9 @@ $auth = new Auth();
 $baseDir = getBaseDir();
 $db = Database::getInstance();
 $action = $_REQUEST['action'] ?? '';
+$canManageIssueConfig = $auth->checkRole(['admin', 'super_admin']) || !empty($_SESSION['can_manage_issue_config']);
 // Check permissions (admin, super_admin, or explicit permission)
-if (!$auth->checkRole(['admin', 'super_admin']) && empty($_SESSION['can_manage_issue_config'])) {
+if (!$canManageIssueConfig) {
     http_response_code(403);
     echo json_encode(['error' => 'Unauthorized']);
     exit;
@@ -27,6 +28,12 @@ if (!in_array($projectType, ['web', 'app', 'pdf'])) {
 }
 
 try {
+    $assertCanManage = function () use ($canManageIssueConfig) {
+        if (!$canManageIssueConfig) {
+            throw new Exception('Unauthorized');
+        }
+    };
+
     switch ($action) {
         case 'get_presets':
             // Public read allowed (for authenticated users) if we implement public endpoint separately, 
@@ -45,7 +52,7 @@ try {
             break;
 
         case 'save_preset':
-            $auth->requireRole(['admin', 'super_admin']);
+            $assertCanManage();
             $id = $_POST['id'] ?? '';
             $title = trim($_POST['title']);
             $desc = $_POST['description_html'] ?? '';
@@ -64,7 +71,7 @@ try {
             break;
 
         case 'delete_preset':
-            $auth->requireRole(['admin', 'super_admin']);
+            $assertCanManage();
             $id = $_POST['id'];
             $stmt = $db->prepare("DELETE FROM issue_presets WHERE id=?");
             $stmt->execute([$id]);
@@ -72,7 +79,7 @@ try {
             break;
 
         case 'bulk_delete_presets':
-            $auth->requireRole(['admin', 'super_admin']);
+            $assertCanManage();
             $ids = $_POST['ids'] ?? [];
             if (!is_array($ids)) {
                 $ids = json_decode($ids, true);
@@ -96,7 +103,7 @@ try {
             break;
 
         case 'save_metadata':
-            $auth->requireRole(['admin', 'super_admin']);
+            $assertCanManage();
             $id = $_POST['id'] ?? '';
             $key = trim($_POST['field_key']);
             $label = trim($_POST['field_label']);
@@ -125,7 +132,7 @@ try {
             break;
         
         case 'update_metadata_sort':
-            $auth->requireRole(['admin', 'super_admin']);
+            $assertCanManage();
             $order = json_decode($_POST['order'], true);
             if (!$order || !is_array($order)) throw new Exception('Invalid order data');
             
@@ -139,7 +146,7 @@ try {
             break;
         
         case 'delete_metadata':
-            $auth->requireRole(['admin', 'super_admin']);
+            $assertCanManage();
             $id = $_POST['id'];
             $stmt = $db->prepare("DELETE FROM issue_metadata_fields WHERE id=?");
             $stmt->execute([$id]);
@@ -156,7 +163,7 @@ try {
             break;
 
         case 'save_defaults':
-            $auth->requireRole(['admin', 'super_admin']);
+            $assertCanManage();
             $sections = $_POST['sections_json'] ?? '[]';
             
             $stmt = $db->prepare("REPLACE INTO issue_default_templates (project_type, sections_json) VALUES (?, ?)");
@@ -165,7 +172,7 @@ try {
             break;
 
         case 'import_csv':
-            $auth->requireRole(['admin', 'super_admin']);
+            $assertCanManage();
             if (!isset($_FILES['csv']) || $_FILES['csv']['error'] !== 0) throw new Exception('Upload error');
             
             $mapping = isset($_POST['mapping']) ? json_decode($_POST['mapping'], true) : null;

@@ -38,12 +38,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } else {
                 $stmt = $db->prepare(
-                    "INSERT INTO users (username, email, password, full_name, role, force_password_reset, can_manage_issue_config) VALUES (?, ?, ?, ?, ?, 1, ?)"
+                    "INSERT INTO users (username, email, password, full_name, role, force_password_reset, can_manage_issue_config, can_manage_devices) VALUES (?, ?, ?, ?, ?, 1, ?, ?)"
                 );
                 $canManageConfig = isset($_POST['can_manage_issue_config']) ? 1 : 0;
+                $canManageDevices = isset($_POST['can_manage_devices']) ? 1 : 0;
 
                 try {
-                    if ($stmt->execute([$username, $email, $password, $fullName, $role, $canManageConfig])) {
+                    if ($stmt->execute([$username, $email, $password, $fullName, $role, $canManageConfig, $canManageDevices])) {
                         $_SESSION['success'] = "User added successfully! They will be asked to reset their password on first login.";
                     } else {
                         $_SESSION['error'] = "Failed to add user. Please try again.";
@@ -66,14 +67,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $role = sanitizeInput($_POST['role']);
         $isActive = isset($_POST['is_active']) ? 1 : 0;
         $canManageConfig = isset($_POST['can_manage_issue_config']) ? 1 : 0;
+        $canManageDevices = isset($_POST['can_manage_devices']) ? 1 : 0;
+
+        // Fetch previous permissions for notification diff
+        $prevStmt = $db->prepare("SELECT can_manage_issue_config, can_manage_devices FROM users WHERE id = ? LIMIT 1");
+        $prevStmt->execute([$userId]);
+        $prev = $prevStmt->fetch(PDO::FETCH_ASSOC) ?: ['can_manage_issue_config' => 0, 'can_manage_devices' => 0];
         
         $stmt = $db->prepare("
             UPDATE users 
-            SET full_name = ?, role = ?, is_active = ?, can_manage_issue_config = ?
+            SET full_name = ?, role = ?, is_active = ?, can_manage_issue_config = ?, can_manage_devices = ?
             WHERE id = ?
         ");
         
-        $stmt->execute([$fullName, $role, $isActive, $canManageConfig, $userId]);
+        $stmt->execute([$fullName, $role, $isActive, $canManageConfig, $canManageDevices, $userId]);
+
+        // Notify user if permission changed
+        $baseDir = getBaseDir();
+        if ((int)$prev['can_manage_issue_config'] !== (int)$canManageConfig) {
+            $msg = $canManageConfig ? 'You have been granted Issue Config access.' : 'Your Issue Config access has been removed.';
+            createNotification($db, (int)$userId, 'system', $msg, $baseDir . "/modules/admin/issue_config.php");
+        }
+        if ((int)$prev['can_manage_devices'] !== (int)$canManageDevices) {
+            $msg = $canManageDevices ? 'You have been granted Device Management access.' : 'Your Device Management access has been removed.';
+            createNotification($db, (int)$userId, 'system', $msg, $baseDir . "/modules/admin/devices.php");
+        }
         $_SESSION['success'] = "User updated successfully!";
     } elseif (isset($_POST['reset_password'])) {
         $userId = $_POST['user_id'];
@@ -168,7 +186,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_user_details' && isset($_
         $out = ['user' => null, 'projects' => [], 'pages' => [], 'assignments' => [], 'activity' => []];
 
         // Basic user info
-        $stmt = $db->prepare("SELECT id, username, full_name, email, role, is_active, can_manage_issue_config FROM users WHERE id = ?");
+        $stmt = $db->prepare("SELECT id, username, full_name, email, role, is_active, can_manage_issue_config, can_manage_devices FROM users WHERE id = ?");
         $stmt->execute([$uid]);
         $out['user'] = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -381,6 +399,14 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                                                     Can Manage Issue Config
                                                 </label>
                                             </div>
+                                            <div class="mb-3 form-check">
+                                                <input type="checkbox" name="can_manage_devices" class="form-check-input" 
+                                                       id="devicesPerm<?php echo $user['id']; ?>" 
+                                                       <?php echo !empty($user['can_manage_devices']) ? 'checked' : ''; ?>>
+                                                <label class="form-check-label" for="devicesPerm<?php echo $user['id']; ?>">
+                                                    Can Manage Devices
+                                                </label>
+                                            </div>
                                         </div>
                                         <div class="modal-footer">
                                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -490,6 +516,12 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                             Can Manage Issue Config
                         </label>
                     </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" name="can_manage_devices" class="form-check-input" id="addDevicesPerm">
+                        <label class="form-check-label" for="addDevicesPerm">
+                            Can Manage Devices
+                        </label>
+                    </div>
                     <div class="mb-3">
                         <label>Password *</label>
                         <input type="password" name="password" class="form-control" required>
@@ -570,7 +602,10 @@ $(document).on('click', '.view-user-btn', function() {
                 html.push('<h5>' + $('<div>').text(data.user.full_name).html() + ' <small class="text-muted">(' + $('<div>').text(data.user.username).html() + ')</small></h5>');
                 html.push('<p><strong>Email:</strong> ' + $('<div>').text(data.user.email).html() + ' &nbsp; <strong>Role:</strong> ' + $('<div>').text(data.user.role).html() + '</p>');
                 if (data.user.can_manage_issue_config == 1) {
-                    html.push('<p><span class="badge bg-primary">Has Issue Config Access</span></p>');
+                    html.push('<p><span class="badge bg-primary me-2">Has Issue Config Access</span></p>');
+                }
+                if (data.user.can_manage_devices == 1) {
+                    html.push('<p><span class="badge bg-success">Can Manage Devices</span></p>');
                 }
 
                 // Projects

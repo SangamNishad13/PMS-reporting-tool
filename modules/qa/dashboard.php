@@ -23,7 +23,7 @@ if (hasAdminPrivileges()) {
         LEFT JOIN users ft_user ON pp.ft_tester_id = ft_user.id
         LEFT JOIN testing_results tr ON pp.id = tr.page_id AND tr.tester_role IN ('at_tester', 'ft_tester')
         WHERE p.status NOT IN ('completed', 'cancelled')
-        AND pp.status IN ('qa_in_progress', 'needs_review')
+        AND (pp.status IS NULL OR LOWER(pp.status) NOT IN ('on_hold', 'hold', 'completed'))
         ORDER BY 
             CASE p.priority 
                 WHEN 'critical' THEN 1
@@ -48,7 +48,7 @@ if (hasAdminPrivileges()) {
         LEFT JOIN testing_results tr ON pp.id = tr.page_id AND tr.tester_role IN ('at_tester', 'ft_tester')
         WHERE pp.qa_id = ? 
         AND p.status NOT IN ('completed', 'cancelled')
-        AND pp.status IN ('qa_in_progress', 'needs_review')
+        AND (pp.status IS NULL OR LOWER(pp.status) NOT IN ('on_hold', 'hold', 'completed'))
         ORDER BY 
             CASE p.priority 
                 WHEN 'critical' THEN 1
@@ -67,7 +67,7 @@ if (hasAdminPrivileges()) {
     // Admin sees stats for all QA work
     $stmt = $db->prepare("
         SELECT 
-            COUNT(DISTINCT CASE WHEN pp.status IN ('qa_in_progress', 'needs_review') THEN pp.id END) as pending_pages,
+            COUNT(DISTINCT CASE WHEN pp.status IS NULL OR LOWER(pp.status) NOT IN ('on_hold', 'hold', 'completed') THEN pp.id END) as pending_pages,
             COUNT(DISTINCT CASE WHEN pp.status = 'completed' THEN pp.id END) as completed_pages,
             COUNT(DISTINCT CASE WHEN pp.status = 'in_fixing' THEN pp.id END) as fixing_pages,
             COUNT(DISTINCT pp.project_id) as total_assigned_projects
@@ -89,7 +89,7 @@ if (hasAdminPrivileges()) {
 } else {
     $stmt = $db->prepare("
         SELECT 
-            COUNT(DISTINCT CASE WHEN pp.status IN ('qa_in_progress', 'needs_review') THEN pp.id END) as pending_pages,
+            COUNT(DISTINCT CASE WHEN pp.status IS NULL OR LOWER(pp.status) NOT IN ('on_hold', 'hold', 'completed') THEN pp.id END) as pending_pages,
             COUNT(DISTINCT CASE WHEN pp.status = 'completed' THEN pp.id END) as completed_pages,
             COUNT(DISTINCT CASE WHEN pp.status = 'in_fixing' THEN pp.id END) as fixing_pages,
             COUNT(DISTINCT pp.project_id) as total_assigned_projects

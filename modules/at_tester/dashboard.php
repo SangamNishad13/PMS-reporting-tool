@@ -46,7 +46,7 @@ $recentActivities = $db->prepare($recentActivitiesQuery);
 $recentActivities->execute([$userId]);
 $activities = $recentActivities->fetchAll();
 
-// Get pending tasks (not tested, in progress, or failed)
+// Get pending tasks: all assigned tasks except on-hold/completed
 $pendingTasksQuery = "
     SELECT pp.id, pp.page_name, p.title as project_title, pe.status, te.name as environment_name,
            p.id as project_id
@@ -55,13 +55,17 @@ $pendingTasksQuery = "
     JOIN page_environments pe ON pp.id = pe.page_id
     JOIN testing_environments te ON pe.environment_id = te.id
     WHERE pe.at_tester_id = ? 
-    AND pe.status IN ('not_tested', 'in_progress', 'fail')
+    AND (pe.status IS NULL OR LOWER(pe.status) NOT IN ('on_hold', 'hold', 'completed', 'tested', 'pass'))
     AND p.status NOT IN ('completed', 'cancelled')
     ORDER BY 
         CASE pe.status 
             WHEN 'fail' THEN 1
+            WHEN 'testing_failed' THEN 1
             WHEN 'in_progress' THEN 2
+            WHEN 'in_testing' THEN 2
+            WHEN 'not_started' THEN 3
             WHEN 'not_tested' THEN 3
+            WHEN '' THEN 4
         END,
         pp.created_at ASC
     LIMIT 20

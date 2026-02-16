@@ -8,6 +8,58 @@
     var baseDir = window.ProjectConfig ? window.ProjectConfig.baseDir : '';
     var userId = window.ProjectConfig ? window.ProjectConfig.userId : 0;
 
+    function updateTopHoursSummary(summary) {
+        if (!summary) return;
+        var budget = parseFloat(summary.total_hours || 0);
+        if (!(budget > 0)) budget = parseFloat(summary.allocated_hours || 0);
+        var used = parseFloat(summary.utilized_hours || 0);
+        var remaining = budget - used;
+        var overshoot = remaining < 0 ? Math.abs(remaining) : 0;
+        var percent = budget > 0 ? (used / budget) * 100 : 0;
+        var isOvershoot = overshoot > 0;
+
+        var $budget = jQuery('#hoursSummaryBudget');
+        var $used = jQuery('#hoursSummaryUsed');
+        var $remaining = jQuery('#hoursSummaryRemaining');
+        var $remainingLabel = jQuery('#hoursSummaryRemainingLabel');
+        var $usedBar = jQuery('#hoursSummaryUsedBar');
+        var $overBar = jQuery('#hoursSummaryOverBar');
+        var $percentText = jQuery('#hoursSummaryPercentText');
+        var $overText = jQuery('#hoursSummaryOverText');
+
+        if ($budget.length) $budget.text(budget.toFixed(1));
+        if ($used.length) {
+            $used.text(used.toFixed(1));
+            $used.removeClass('text-success text-danger').addClass(isOvershoot ? 'text-danger' : 'text-success');
+        }
+        if ($remaining.length) {
+            $remaining.text((isOvershoot ? overshoot : remaining).toFixed(1));
+            $remaining.removeClass('text-warning text-danger').addClass(isOvershoot ? 'text-danger' : 'text-warning');
+        }
+        if ($remainingLabel.length) $remainingLabel.text(isOvershoot ? 'Overshoot' : 'Remaining');
+
+        if ($usedBar.length) {
+            $usedBar.css('width', (budget > 0 ? Math.max(0, Math.min(100, percent)) : 0) + '%');
+            $usedBar.attr('title', 'Used: ' + used.toFixed(1) + ' hours');
+        }
+        if ($overBar.length) {
+            $overBar.css('width', (isOvershoot && budget > 0 ? (overshoot / budget) * 100 : 0) + '%');
+            $overBar.attr('title', 'Overshoot: ' + overshoot.toFixed(1) + ' hours');
+            $overBar.toggleClass('d-none', !isOvershoot);
+        }
+        if ($percentText.length) {
+            $percentText.contents().filter(function () { return this.nodeType === 3; }).remove();
+            $percentText.prepend(percent.toFixed(1) + '% used ');
+        }
+        if ($overText.length) {
+            if (isOvershoot) {
+                $overText.text('(' + overshoot.toFixed(1) + 'h over!)').removeClass('d-none');
+            } else {
+                $overText.text('').addClass('d-none');
+            }
+        }
+    }
+
     // Production Hours quick-form: load pages/environments/issues and submit
     window.initProductionHours = function () {
         if (!window.jQuery) return;
@@ -24,6 +76,7 @@
         var $phaseSelect = $('#projectPhaseSelect');
         var $regressionCont = $('#regressionContainer');
         var $regressionSummary = $('#regressionSummary');
+        var $regressionIssueCount = $('#regressionIssueCount');
         var $dateInput = $form.find('[name="log_date"]');
 
         // Restrict allowed log dates
@@ -66,6 +119,34 @@
 
         function loadProjectPhases() {
             $phaseSelect.html('<option value="">Loading phases...</option>');
+            function formatPhaseLabel(raw) {
+                var txt = String(raw || '').trim();
+                if (!txt) return '';
+                var known = {
+                    'po_received': 'PO received',
+                    'scoping_confirmation': 'Scoping confirmation',
+                    'testing': 'Testing',
+                    'regression': 'Regression',
+                    'training': 'Training',
+                    'vpat_acr': 'VPAT ACR'
+                };
+                if (known[txt]) return known[txt];
+                return txt
+                    .replace(/[_-]+/g, ' ')
+                    .split(' ')
+                    .map(function (w) {
+                        var lw = w.toLowerCase();
+                        if (lw === 'po') return 'PO';
+                        if (lw === 'qa') return 'QA';
+                        if (lw === 'uat') return 'UAT';
+                        if (lw === 'ui') return 'UI';
+                        if (lw === 'ux') return 'UX';
+                        if (lw === 'vpat') return 'VPAT';
+                        if (lw === 'acr') return 'ACR';
+                        return lw.charAt(0).toUpperCase() + lw.slice(1);
+                    })
+                    .join(' ');
+            }
             fetch(baseDir + '/api/projects.php?action=get_phases&project_id=' + encodeURIComponent(projectId), { credentials: 'same-origin' })
                 .then(r => r.text())
                 .then(function (txt) {
@@ -74,7 +155,8 @@
                     $phaseSelect.append('<option value="">Select project phase</option>');
                     if (Array.isArray(phases)) {
                         phases.forEach(function (phase) {
-                            var opt = '<option value="' + phase.id + '">' + (phase.phase_name || phase.name || phase.id) + '</option>';
+                            var label = formatPhaseLabel(phase.phase_name || phase.name || phase.id);
+                            var opt = '<option value="' + phase.id + '">' + label + '</option>';
                             $phaseSelect.append(opt);
                         });
                     }
@@ -161,6 +243,7 @@
         $taskType.off('change').on('change', function () {
             var t = $(this).val();
             $pageTestingCont.hide(); $phaseCont.hide(); $genericCont.hide(); $regressionCont.hide(); $issueCont.hide();
+            if ($regressionIssueCount.length) $regressionIssueCount.val('');
             if (!t) return;
             if (t === 'page_testing' || t === 'page_qa') {
                 $pageTestingCont.show(); loadProjectPages();
@@ -187,13 +270,22 @@
             var envVals = $form.find('[name="environment_ids[]"]').val() || $form.find('[name="environment_id"]').val() || '';
             fd.environment_id = Array.isArray(envVals) ? (envVals[0] || '') : (envVals || '');
             fd.issue_id = $form.find('[name="issue_id"]').val() || '';
+            fd.task_type = $form.find('[name="task_type"]').val() || '';
             fd.testing_type = $form.find('[name="testing_type"]').val() || '';
+            fd.issue_count = $form.find('[name="issue_count"]').val() || '';
             fd.log_date = $form.find('[name="log_date"]').val() || '';
             fd.hours = $form.find('[name="hours"]').val();
             fd.description = $form.find('[name="description"]').val();
             fd.is_utilized = 1;
 
             if (!fd.hours || parseFloat(fd.hours) <= 0) { if (typeof showToast === 'function') showToast('Please enter valid hours', 'warning'); return; }
+            if (fd.task_type === 'regression_testing' && fd.issue_count !== '') {
+                var n = parseInt(fd.issue_count, 10);
+                if (isNaN(n) || n <= 0) {
+                    if (typeof showToast === 'function') showToast('Please enter a valid issue count', 'warning');
+                    return;
+                }
+            }
 
             $.ajax({
                 url: baseDir + '/api/project_hours.php',
@@ -202,6 +294,7 @@
                 dataType: 'json',
                 success: function (resp) {
                     if (resp.success) {
+                        updateTopHoursSummary(resp.summary || null);
                         // fetch updated production-hours panel and replace
                         fetch(window.location.href, { credentials: 'same-origin' }).then(r => r.text()).then(function (html) {
                             try {
@@ -211,6 +304,11 @@
                                 var curPanel = document.querySelector('#production-hours');
                                 if (newPanel && curPanel) {
                                     curPanel.innerHTML = newPanel.innerHTML;
+                                    var newSummary = doc.querySelector('#projectHoursSummary');
+                                    var curSummary = document.querySelector('#projectHoursSummary');
+                                    if (newSummary && curSummary) {
+                                        curSummary.innerHTML = newSummary.innerHTML;
+                                    }
                                     initProductionHours();
                                 } else {
                                     location.reload();

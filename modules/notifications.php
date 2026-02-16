@@ -190,7 +190,18 @@ include __DIR__ . '/../includes/header.php';
                                 <div class="ms-3">
                                     <div class="btn-group-vertical btn-group-sm">
                                         <?php if ($notification['link']): ?>
-                                            <a href="<?php echo htmlspecialchars($baseDir . $notification['link'], ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-primary btn-sm">
+                                            <?php
+                                                $rawLink = $notification['link'];
+                                                $href = $rawLink;
+                                                if (!preg_match('/^https?:\/\//i', $rawLink)) {
+                                                    if ($baseDir !== '' && strpos($rawLink, $baseDir . '/') === 0) {
+                                                        $href = $rawLink;
+                                                    } else {
+                                                        $href = $baseDir . $rawLink;
+                                                    }
+                                                }
+                                            ?>
+                                            <a href="<?php echo htmlspecialchars($href, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-primary btn-sm">
                                                 <i class="fas fa-external-link-alt"></i> View
                                             </a>
                                         <?php endif; ?>

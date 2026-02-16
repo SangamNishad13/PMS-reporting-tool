@@ -297,6 +297,189 @@ $(document).ready(function() {
     }
 
     // Initialize Summernote
+    if (!document.getElementById('preset-codeblock-btn-style')) {
+        var presetStyle = document.createElement('style');
+        presetStyle.id = 'preset-codeblock-btn-style';
+        presetStyle.textContent = '.note-btn-codeblock.active{background-color:#0d6efd!important;color:#fff!important;border-color:#0a58ca!important;}';
+        document.head.appendChild(presetStyle);
+    }
+
+    function setPresetCodeBlockButtonState() {
+        var $editor = $('#presetDescription');
+        var $btn = $editor.next('.note-editor').find('.note-btn-codeblock');
+        if (!$btn.length) return;
+        var inCode = false;
+        try {
+            var range = $editor.summernote('createRange');
+            var sc = range && range.sc ? range.sc : null;
+            var node = sc && sc.nodeType === 3 ? sc.parentNode : sc;
+            var editable = $editor.next('.note-editor').find('.note-editable')[0];
+            inCode = !!(node && editable && $(node).closest('code', editable).length);
+        } catch (e) { inCode = false; }
+        $btn
+            .toggleClass('active', inCode)
+            .attr('aria-pressed', inCode ? 'true' : 'false')
+            .attr('title', 'Code Block')
+            .attr('aria-label', 'Code Block');
+    }
+
+    function enablePresetToolbarKeyboardA11y() {
+        var $editor = $('#presetDescription');
+        var $toolbar = $editor.next('.note-editor').find('.note-toolbar').first();
+        if (!$toolbar.length || $toolbar.data('kbdA11yBound')) return;
+        function getItems() {
+            return $toolbar.find('.note-btn-group button').filter(function() {
+                var $b = $(this);
+                if ($b.is(':hidden')) return false;
+                if ($b.prop('disabled')) return false;
+                if ($b.closest('.dropdown-menu').length) return false;
+                if ($b.attr('aria-hidden') === 'true') return false;
+                return true;
+            });
+        }
+
+        function setActiveIndex(idx) {
+            var $items = getItems();
+            if (!$items.length) return;
+            var next = Math.max(0, Math.min(idx, $items.length - 1));
+            $items.attr('tabindex', '-1');
+            $items.eq(next).attr('tabindex', '0');
+            $toolbar.data('kbdIndex', next);
+        }
+
+        function ensureOneTabStop() {
+            var $items = getItems();
+            if (!$items.length) return;
+            if (!$items.filter('[tabindex="0"]').length) {
+                $items.attr('tabindex', '-1');
+                $items.eq(0).attr('tabindex', '0');
+            }
+        }
+
+        $toolbar.attr('role', 'toolbar');
+        if (!$toolbar.attr('aria-label')) {
+            $toolbar.attr('aria-label', 'Editor toolbar');
+        }
+        setActiveIndex(0);
+
+        $toolbar.on('focusin', 'button', function() {
+            var $items = getItems();
+            var idx = $items.index(this);
+            if (idx >= 0) setActiveIndex(idx);
+        });
+        $toolbar.on('click', 'button', function() {
+            var $items = getItems();
+            var idx = $items.index(this);
+            if (idx >= 0) setActiveIndex(idx);
+        });
+
+        function handleToolbarArrowNav(e) {
+            var key = e.key || (e.originalEvent && e.originalEvent.key);
+            if (key !== 'ArrowRight' && key !== 'ArrowLeft' && key !== 'Home' && key !== 'End') return;
+
+            var $items = getItems();
+            if (!$items.length) return;
+            var activeEl = document.activeElement;
+            var idx = $items.index(activeEl);
+            if (idx < 0 && activeEl && activeEl.closest) {
+                var parentBtn = activeEl.closest('button');
+                if (parentBtn) idx = $items.index(parentBtn);
+            }
+            if (idx < 0) {
+                var savedIdx = parseInt($toolbar.data('kbdIndex'), 10);
+                if (!isNaN(savedIdx) && savedIdx >= 0 && savedIdx < $items.length) idx = savedIdx;
+            }
+            if (idx < 0) idx = $items.index($items.filter('[tabindex="0"]').first());
+            if (idx < 0) idx = 0;
+
+            e.preventDefault();
+            if (e.stopPropagation) e.stopPropagation();
+            if (key === 'Home') idx = 0;
+            else if (key === 'End') idx = $items.length - 1;
+            else if (key === 'ArrowRight') idx = (idx + 1) % $items.length;
+            else if (key === 'ArrowLeft') idx = (idx - 1 + $items.length) % $items.length;
+
+            setActiveIndex(idx);
+            var $target = $items.eq(idx);
+            $target.focus();
+            if (document.activeElement !== $target.get(0)) {
+                setTimeout(function() { $target.focus(); }, 0);
+            }
+        }
+
+        $toolbar.on('keydown', handleToolbarArrowNav);
+        if (!$toolbar.data('kbdA11yNativeKeyBound')) {
+            $toolbar.get(0).addEventListener('keydown', handleToolbarArrowNav, true);
+            $toolbar.data('kbdA11yNativeKeyBound', true);
+        }
+
+        var observer = new MutationObserver(function() { ensureOneTabStop(); });
+        observer.observe($toolbar[0], { subtree: true, attributes: true, attributeFilter: ['tabindex', 'class', 'disabled'] });
+        $toolbar.data('kbdA11yObserver', observer);
+        var fixTimer = setInterval(ensureOneTabStop, 1000);
+        $toolbar.data('kbdA11yTimer', fixTimer);
+        ensureOneTabStop();
+
+        $toolbar.data('kbdA11yBound', true);
+    }
+
+    function toggleCodeBlockInPresetEditor(context) {
+        context.invoke('editor.focus');
+        context.invoke('editor.saveRange');
+        var range = context.invoke('editor.createRange');
+        var sc = range && range.sc ? range.sc : null;
+        var node = sc && sc.nodeType === 3 ? sc.parentNode : sc;
+        var editable = context.layoutInfo && context.layoutInfo.editable ? context.layoutInfo.editable[0] : null;
+        var inCode = false;
+        if (node && editable) {
+            inCode = $(node).closest('code', editable).length > 0;
+        }
+        if (inCode) {
+            var $code = $(node).closest('code', editable).first();
+            if ($code.length) {
+                var txt = document.createTextNode($code.text());
+                var codeNode = $code.get(0);
+                codeNode.parentNode.replaceChild(txt, codeNode);
+                try {
+                    var sel = window.getSelection();
+                    if (sel) {
+                        var r = document.createRange();
+                        r.setStart(txt, txt.textContent.length);
+                        r.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(r);
+                    }
+                } catch (e) {}
+            }
+        } else {
+            var sel = window.getSelection();
+            if (sel && sel.rangeCount) {
+                var nativeRange = sel.getRangeAt(0);
+                var selectedText = nativeRange.toString();
+                var code = document.createElement('code');
+                if (selectedText) {
+                    code.textContent = selectedText;
+                    nativeRange.deleteContents();
+                    nativeRange.insertNode(code);
+                    var after = document.createRange();
+                    after.setStartAfter(code);
+                    after.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(after);
+                } else {
+                    code.textContent = '\u200B';
+                    nativeRange.insertNode(code);
+                    var inside = document.createRange();
+                    inside.setStart(code.firstChild, 1);
+                    inside.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(inside);
+                }
+            }
+        }
+        setTimeout(setPresetCodeBlockButtonState, 0);
+    }
+
     $('#presetDescription').summernote({
         height: 250,
         toolbar: [
@@ -307,15 +490,39 @@ $(document).ready(function() {
             ['color', ['color']],
             ['para', ['ul', 'ol', 'paragraph', 'height']],
             ['table', ['table']],
-            ['insert', ['link', 'picture', 'video', 'hr']],
-            ['view', ['fullscreen', 'codeview', 'help']]
+            ['insert', ['link', 'picture', 'video', 'hr', 'codeBlockToggle']],
+            ['view', ['fullscreen', 'help']]
         ],
+        buttons: {
+            codeBlockToggle: function(context) {
+                var ui = $.summernote.ui;
+                var $btn = ui.button({
+                    contents: '&lt;/&gt;',
+                    className: 'note-btn-codeblock',
+                    click: function() { toggleCodeBlockInPresetEditor(context); }
+                }).render();
+                try {
+                    $btn.attr('title', 'Code Block');
+                    $btn.attr('aria-label', 'Code Block');
+                } catch (e) {}
+                return $btn;
+            }
+        },
         styleTags: [
             'p',
             { title: 'Blockquote', tag: 'blockquote', className: 'blockquote', value: 'blockquote' },
             'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'
         ],
         callbacks: {
+            onInit: function() {
+                setTimeout(setPresetCodeBlockButtonState, 0);
+                setTimeout(enablePresetToolbarKeyboardA11y, 0);
+                setTimeout(enablePresetToolbarKeyboardA11y, 200);
+            },
+            onFocus: function() { setPresetCodeBlockButtonState(); },
+            onKeyup: function() { setPresetCodeBlockButtonState(); },
+            onMouseup: function() { setPresetCodeBlockButtonState(); },
+            onChange: function() { setPresetCodeBlockButtonState(); },
             onImageUpload: function(files) {
                 const $el = $('#presetDescription');
                 (files || []).forEach(function(f){ uploadIssueImage(f, $el); });
@@ -336,6 +543,8 @@ $(document).ready(function() {
             }
         }
     });
+    setTimeout(enablePresetToolbarKeyboardA11y, 0);
+    setTimeout(enablePresetToolbarKeyboardA11y, 200);
 
     // --- Type Switching ---
     $('.project-type-toggle').on('change', function() {
@@ -465,7 +674,7 @@ $(document).ready(function() {
         let defaultHtml = '';
         if (defaultSections && defaultSections.length > 0) {
             defaultSections.forEach(sec => {
-                defaultHtml += `<p style="margin-bottom: 0;"><strong>[${sec}]</strong></p><p><br></p>`;
+                defaultHtml += `<p><strong>[${sec}]</strong></p><p><br></p><p><br></p>`;
             });
         }
         $('#presetDescription').summernote('code', defaultHtml);

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
+require_once __DIR__ . '/../../includes/project_permissions.php';
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) {
@@ -20,6 +21,16 @@ if (!$projectId) {
 
 $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'] ?? '';
+$projectLeadIdStmt = $db->prepare("SELECT project_lead_id FROM projects WHERE id = ? LIMIT 1");
+$projectLeadIdStmt->execute([$projectId]);
+$projectLeadId = (int)($projectLeadIdStmt->fetchColumn() ?? 0);
+$assignedStmt = $db->prepare("SELECT id FROM user_assignments WHERE project_id = ? AND user_id = ? AND (is_removed IS NULL OR is_removed = 0) LIMIT 1");
+$assignedStmt->execute([$projectId, $userId]);
+$isAssigned = (bool)$assignedStmt->fetch();
+$canManageAssets = in_array($userRole, ['admin', 'super_admin'], true)
+    || ($userRole === 'project_lead' && $projectLeadId === (int)$userId)
+    || $isAssigned
+    || hasAnyProjectPermission($db, $userId, $projectId, ['assets_edit', 'assets_delete']);
 
 $stmt = $db->prepare("SELECT pa.*, u.full_name as creator_name FROM project_assets pa LEFT JOIN users u ON pa.created_by = u.id WHERE pa.project_id = ? ORDER BY pa.created_at DESC");
 $stmt->execute([$projectId]);
@@ -65,8 +76,7 @@ if ($stmt->rowCount() > 0) {
         $createdAt = !empty($asset['created_at']) ? date('M d, Y', strtotime($asset['created_at'])) : '';
         echo '<small class="text-muted">By: ' . htmlspecialchars($asset['creator_name'] ?: 'System') . ($createdAt ? '<br>' . $createdAt : '') . '</small>';
 
-        $canDelete = in_array($userRole, ['admin', 'super_admin']) || ($userRole === 'project_lead');
-        if ($canDelete) {
+        if ($canManageAssets) {
             $formId = "deleteAssetForm_" . $asset['id'];
             echo '<form id="' . $formId . '" method="POST" action="' . $baseDir . '/modules/projects/handle_asset.php" onsubmit="confirmModal(\'Are you sure you want to delete this asset?\', function(){ document.getElementById(\'' . $formId . '\').submit(); }); return false;" class="d-inline">';
             echo '<input type="hidden" name="project_id" value="' . $projectId . '">';

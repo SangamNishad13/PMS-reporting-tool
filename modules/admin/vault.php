@@ -277,6 +277,8 @@ include '../../includes/header.php';
 }
 </style>
 
-<script src="../../assets/js/admin-vault.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
+<script src="../../assets/js/admin-vault.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/admin-vault.js'); ?>"></script>
 
 <?php include '../../includes/footer.php'; ?>

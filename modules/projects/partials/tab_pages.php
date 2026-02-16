@@ -487,8 +487,12 @@
                                         foreach ($envRows as $er) {
                                             // Only show if FT tester is assigned
                                             if ($er['ft_tester_id']) {
-                                                $ft = htmlspecialchars($er['ft_name']);
-                                                $envLabel = htmlspecialchars($er['env_name']);
+                                                $ftName = trim((string)($er['ft_name'] ?? ''));
+                                                if ($ftName === '') $ftName = 'User #' . (int)$er['ft_tester_id'];
+                                                $envName = trim((string)($er['env_name'] ?? ''));
+                                                if ($envName === '') $envName = 'Env #' . (int)$er['environment_id'];
+                                                $ft = htmlspecialchars($ftName);
+                                                $envLabel = htmlspecialchars($envName);
                                                 $statusHtml = renderEnvStatusDropdown($pageIdForEnv, $er['environment_id'], $er['env_status']);
                                                 echo '<div class="d-flex align-items-center justify-content-between gap-2 mb-1">';
                                                 echo '<div class="flex-grow-1 text-truncate"><strong>' . $ft . '</strong> <small class="text-muted">&middot; ' . $envLabel . '</small></div>';
@@ -515,8 +519,12 @@
                                         foreach ($envRows as $er) {
                                             // Only show if AT tester is assigned
                                             if ($er['at_tester_id']) {
-                                                $at = htmlspecialchars($er['at_name']);
-                                                $envLabel = htmlspecialchars($er['env_name']);
+                                                $atName = trim((string)($er['at_name'] ?? ''));
+                                                if ($atName === '') $atName = 'User #' . (int)$er['at_tester_id'];
+                                                $envName = trim((string)($er['env_name'] ?? ''));
+                                                if ($envName === '') $envName = 'Env #' . (int)$er['environment_id'];
+                                                $at = htmlspecialchars($atName);
+                                                $envLabel = htmlspecialchars($envName);
                                                 $statusHtml = renderEnvStatusDropdown($pageIdForEnv, $er['environment_id'], $er['env_status']);
                                                 echo '<div class="d-flex align-items-center justify-content-between gap-2 mb-1">';
                                                 echo '<div class="flex-grow-1 text-truncate"><strong>' . $at . '</strong> <small class="text-muted">&middot; ' . $envLabel . '</small></div>';
@@ -543,8 +551,12 @@
                                         foreach ($envRows as $er) {
                                             // Only show if QA is assigned
                                             if ($er['qa_id']) {
-                                                $qa = htmlspecialchars($er['qa_name']);
-                                                $envLabel = htmlspecialchars($er['env_name']);
+                                                $qaName = trim((string)($er['qa_name'] ?? ''));
+                                                if ($qaName === '') $qaName = 'User #' . (int)$er['qa_id'];
+                                                $envName = trim((string)($er['env_name'] ?? ''));
+                                                if ($envName === '') $envName = 'Env #' . (int)$er['environment_id'];
+                                                $qa = htmlspecialchars($qaName);
+                                                $envLabel = htmlspecialchars($envName);
                                                 $qaStatus = $er['env_qa_status'] ?? 'pending';
                                                 $statusHtml = renderQAEnvStatusDropdown($pageIdForEnv, $er['environment_id'], $qaStatus);
                                                 echo '<div class="d-flex align-items-center justify-content-between gap-2 mb-1">';

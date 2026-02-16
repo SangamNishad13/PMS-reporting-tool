@@ -36,7 +36,7 @@ if (!$project) {
 }
 
 // Get filter options
-$pagesStmt = $db->prepare("SELECT id, page_name, page_number FROM project_pages WHERE project_id = ? ORDER BY page_number, page_name");
+$pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_pages WHERE project_id = ? ORDER BY page_number, page_name");
 $pagesStmt->execute([$projectId]);
 $projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -47,11 +47,15 @@ $qaStatusesStmt = $db->query("SELECT status_key, status_label, badge_color FROM 
 $qaStatuses = $qaStatusesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $reportersStmt = $db->prepare("
-    SELECT DISTINCT u.id, u.full_name 
+    SELECT DISTINCT u.id, u.full_name, u.username, u.role
     FROM users u
     INNER JOIN user_assignments ua ON u.id = ua.user_id
     WHERE ua.project_id = ? AND u.is_active = 1 AND (ua.is_removed IS NULL OR ua.is_removed = 0)
-    ORDER BY u.full_name
+    UNION
+    SELECT u.id, u.full_name, u.username, u.role
+    FROM users u
+    WHERE u.is_active = 1 AND u.role IN ('admin', 'super_admin')
+    ORDER BY full_name
 ");
 $reportersStmt->execute([$projectId]);
 $projectUsers = $reportersStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -77,6 +81,34 @@ $groupedStmt = $db->prepare("
 ");
 $groupedStmt->execute([$projectId]);
 $groupedUrls = $groupedStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Unique page mapping for canonical URL fallback when grouped URLs are missing
+$uniqueIssuePages = [];
+try {
+    $uniqueIssueStmt = $db->prepare("
+        SELECT 
+            up.id AS unique_id,
+            up.name AS unique_name,
+            up.canonical_url,
+            MIN(pp.id) AS mapped_page_id
+        FROM unique_pages up
+        LEFT JOIN grouped_urls gu ON gu.project_id = up.project_id AND gu.unique_page_id = up.id
+        LEFT JOIN project_pages pp ON pp.project_id = up.project_id
+            AND (
+                pp.url = gu.url
+                OR pp.url = gu.normalized_url
+                OR pp.url = up.canonical_url
+                OR pp.page_name = up.name
+                OR pp.page_number = up.name
+            )
+        WHERE up.project_id = ?
+        GROUP BY up.id
+    ");
+    $uniqueIssueStmt->execute([$projectId]);
+    $uniqueIssuePages = $uniqueIssueStmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $uniqueIssuePages = [];
+}
 
 $pageTitle = 'All Issues - ' . htmlspecialchars($project['title']);
 include __DIR__ . '/../../includes/header.php';
@@ -118,6 +150,11 @@ include __DIR__ . '/../../includes/header.php';
     display: inline-block;
     margin: 2px;
     white-space: nowrap;
+}
+/* Reduce Summernote paragraph spacing */
+.note-editable p {
+    margin: 0 !important;
+    line-height: 1.5 !important;
 }
 </style>
 
@@ -273,6 +310,7 @@ window.ProjectConfig = {
     projectId: <?php echo $projectId; ?>,
     projectType: '<?php echo $project['type'] ?? 'web'; ?>',
     projectPages: <?php echo json_encode($projectPages); ?>,
+    uniqueIssuePages: <?php echo json_encode($uniqueIssuePages ?? []); ?>,
     groupedUrls: <?php echo json_encode($groupedUrls); ?>,
     baseDir: '<?php echo $baseDir; ?>',
     projectUsers: <?php echo json_encode($projectUsers); ?>,
@@ -291,25 +329,60 @@ const projectId = <?php echo $projectId; ?>;
 const baseDir = '<?php echo $baseDir; ?>';
 let allIssues = [];
 let filteredIssues = [];
+let autoRefreshTimer = null;
+let autoRefreshInFlight = false;
+const AUTO_REFRESH_MS = 15000;
 
 // Load all issues
-function loadIssues() {
-    fetch(`${baseDir}/api/issues.php?action=get_all&project_id=${projectId}`)
+function loadIssues(options) {
+    const opts = options || {};
+    const preserveFilters = !!opts.preserveFilters;
+    const silentErrors = !!opts.silentErrors;
+    return fetch(`${baseDir}/api/issues.php?action=get_all&project_id=${projectId}`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
                 allIssues = data.issues;
-                filteredIssues = allIssues;
-                updateCounts();
-                renderIssues();
+                if (preserveFilters) {
+                    applyFilters();
+                } else {
+                    filteredIssues = allIssues;
+                    updateCounts();
+                    renderIssues();
+                }
             } else {
-                showError('Failed to load issues');
+                if (!silentErrors) showError('Failed to load issues');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            showError('Error loading issues');
+            if (!silentErrors) showError('Error loading issues');
         });
+}
+
+function startIssuesAutoRefresh() {
+    if (autoRefreshTimer) return;
+    autoRefreshTimer = setInterval(function () {
+        if (document.hidden || autoRefreshInFlight) return;
+        const modal = document.getElementById('finalIssueModal');
+        if (modal && modal.classList.contains('show')) return;
+
+        autoRefreshInFlight = true;
+        loadIssues({ preserveFilters: true, silentErrors: true })
+            .finally(function () {
+                autoRefreshInFlight = false;
+            });
+    }, AUTO_REFRESH_MS);
+
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && !autoRefreshInFlight) {
+            autoRefreshInFlight = true;
+            loadIssues({ preserveFilters: true, silentErrors: true })
+                .finally(function () {
+                    autoRefreshInFlight = false;
+                });
+        }
+    });
 }
 
 // Render issues table
@@ -584,7 +657,8 @@ function editIssue(issueId) {
         reporters: issueData.reporter_ids || [], // Array of reporter IDs
         qa_status: issueData.qa_status_keys || [], // Array of QA status keys
         severity: issueData.severity || 'medium',
-        priority: issueData.priority || 'medium'
+        priority: issueData.priority || 'medium',
+        updated_at: issueData.updated_at || null
     };
     
     // Add any additional metadata fields from the metadata object
@@ -807,10 +881,13 @@ document.getElementById('clearFilters').addEventListener('click', function() {
     applyFilters();
 });
 
-document.getElementById('refreshBtn').addEventListener('click', loadIssues);
+document.getElementById('refreshBtn').addEventListener('click', function () {
+    loadIssues({ preserveFilters: true });
+});
 
 // Initial load
 loadIssues();
+startIssuesAutoRefresh();
 
 // Handle Add Issue button - open finalIssueModal for new issue
 document.getElementById('addIssueBtn').addEventListener('click', function() {
@@ -841,6 +918,8 @@ document.addEventListener('DOMContentLoaded', function() {
             
             newSaveBtn.addEventListener('click', async function() {
                 const editId = document.getElementById('finalIssueEditId').value;
+                const expectedUpdatedAtEl = document.getElementById('finalIssueExpectedUpdatedAt');
+                const expectedUpdatedAt = expectedUpdatedAtEl ? (expectedUpdatedAtEl.value || '').trim() : '';
                 
                 // Get title from custom field
                 let titleVal = '';
@@ -915,6 +994,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     fd.append('action', editId ? 'update' : 'create');
                     fd.append('project_id', projectId);
                     if (editId) fd.append('id', editId);
+                    if (editId && expectedUpdatedAt) fd.append('expected_updated_at', expectedUpdatedAt);
                     fd.append('page_id', selectedPages[0]); // Use first selected page as primary
                     fd.append('metadata', JSON.stringify(metadata));
                     
@@ -967,6 +1047,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     loadIssues();
                     
                 } catch (e) {
+                    if (String(e.message || '').toLowerCase().indexOf('modified by another user') !== -1) {
+                        alert('Issue was updated by another user. Latest data loaded. Please review and save again.');
+                        loadIssues({ preserveFilters: true, silentErrors: true });
+                        return;
+                    }
                     console.error('Save error:', e);
                     alert('Unable to save issue: ' + e.message);
                 }
@@ -1005,10 +1090,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
                     
-                    // Build HTML from sections
+                    // Build HTML from sections with 2 empty lines between sections
                     const html = sections.map(s => {
                         const escaped = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        return '<p style="margin-bottom:0;"><strong>[' + escaped + ']</strong></p><p><br></p>';
+                        return '<p><strong>[' + escaped + ']</strong></p><p><br></p><p><br></p>';
                     }).join('');
                     
                     // Set the content

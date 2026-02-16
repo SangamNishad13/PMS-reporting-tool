@@ -215,6 +215,13 @@
                     <div class="col-md-12 mt-2" id="regressionContainer" style="display:none;">
                         <label class="form-label">Regression Summary</label>
                         <div id="regressionSummary" class="border rounded p-2">Loading…</div>
+                        <div class="row mt-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Issue Count</label>
+                                <input type="number" name="issue_count" id="regressionIssueCount" class="form-control" min="1" step="1" placeholder="e.g., 5">
+                                <small class="text-muted">Number of issues covered in this regression log</small>
+                            </div>
+                        </div>
                     </div>
 
 
@@ -272,6 +279,33 @@
                                 $allLogs = $logsStmt->fetchAll(PDO::FETCH_ASSOC);
                                 $logsByUser = [];
                                 foreach ($allLogs as $l) { $logsByUser[intval($l['user_id'])][] = $l; }
+                                $logHistoryByLogId = [];
+                                try {
+                                    $logIds = array_values(array_unique(array_map(function($row) { return (int)$row['id']; }, $allLogs)));
+                                    if (!empty($logIds)) {
+                                        $placeholders = implode(',', array_fill(0, count($logIds), '?'));
+                                        $histStmt = $db->prepare("
+                                            SELECT h.*, u.full_name as changed_by_name
+                                            FROM project_time_log_history h
+                                            LEFT JOIN users u ON u.id = h.changed_by
+                                            WHERE h.time_log_id IN ($placeholders)
+                                            ORDER BY h.changed_at DESC
+                                        ");
+                                        $histStmt->execute($logIds);
+                                        $histRows = $histStmt->fetchAll(PDO::FETCH_ASSOC);
+                                        foreach ($histRows as $hr) {
+                                            $hid = (int)($hr['time_log_id'] ?? 0);
+                                            if ($hid > 0) {
+                                                if (!isset($logHistoryByLogId[$hid])) {
+                                                    $logHistoryByLogId[$hid] = [];
+                                                }
+                                                $logHistoryByLogId[$hid][] = $hr;
+                                            }
+                                        }
+                                    }
+                                } catch (Exception $e) {
+                                    $logHistoryByLogId = [];
+                                }
 
                                 // Get detailed hours breakdown by user
                                 $hoursBreakdown = $db->prepare(" 
@@ -400,10 +434,12 @@
                                                                     <th>Issue</th>
                                                                     <th style="width:100px">Hours</th>
                                                                     <th>Description</th>
+                                                                    <th style="width:120px">History</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
                                                             <?php foreach ($uLogs as $log): ?>
+                                                                <?php $logHist = $logHistoryByLogId[(int)$log['id']] ?? []; ?>
                                                                 <tr>
                                                                     <td><?php echo htmlspecialchars($log['log_date']); ?></td>
                                                                     <td><?php echo htmlspecialchars(formatTaskType($log['task_type'] ?: ($log['testing_type'] ?: ''))); ?></td>
@@ -413,7 +449,39 @@
                                                                     <td><?php echo htmlspecialchars($log['issue_key'] ?: ''); ?></td>
                                                                     <td><?php echo htmlspecialchars(number_format($log['hours_spent'], 2)); ?></td>
                                                                     <td><?php echo htmlspecialchars($log['description'] ?? $log['comments'] ?? ''); ?></td>
+                                                                    <td>
+                                                                        <?php if (!empty($logHist)): ?>
+                                                                            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#logHist<?php echo (int)$log['id']; ?>" aria-expanded="false" aria-controls="logHist<?php echo (int)$log['id']; ?>">
+                                                                                <?php echo count($logHist); ?> events
+                                                                            </button>
+                                                                        <?php else: ?>
+                                                                            <span class="text-muted small">No changes</span>
+                                                                        <?php endif; ?>
+                                                                    </td>
                                                                 </tr>
+                                                                <?php if (!empty($logHist)): ?>
+                                                                <tr>
+                                                                    <td colspan="9" class="p-0 border-0">
+                                                                        <div class="collapse" id="logHist<?php echo (int)$log['id']; ?>">
+                                                                            <div class="p-2 bg-light border rounded">
+                                                                                <?php foreach ($logHist as $h): ?>
+                                                                                    <div class="small mb-2">
+                                                                                        <strong><?php echo htmlspecialchars(ucfirst($h['action_type'])); ?></strong>
+                                                                                        by <?php echo htmlspecialchars($h['changed_by_name'] ?: 'Unknown'); ?>
+                                                                                        on <?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($h['changed_at']))); ?>
+                                                                                        <?php if (!empty($h['old_log_date']) || !empty($h['new_log_date'])): ?>
+                                                                                            <div class="text-muted">Date: <?php echo htmlspecialchars($h['old_log_date'] ?: '-'); ?> -> <?php echo htmlspecialchars($h['new_log_date'] ?: '-'); ?></div>
+                                                                                        <?php endif; ?>
+                                                                                        <?php if ($h['old_hours'] !== null || $h['new_hours'] !== null): ?>
+                                                                                            <div class="text-muted">Hours: <?php echo htmlspecialchars($h['old_hours'] !== null ? number_format((float)$h['old_hours'], 2) : '-'); ?> -> <?php echo htmlspecialchars($h['new_hours'] !== null ? number_format((float)$h['new_hours'], 2) : '-'); ?></div>
+                                                                                        <?php endif; ?>
+                                                                                    </div>
+                                                                                <?php endforeach; ?>
+                                                                            </div>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                                <?php endif; ?>
                                                             <?php endforeach; ?>
                                                             </tbody>
                                                         </table>

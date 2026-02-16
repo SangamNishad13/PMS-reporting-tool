@@ -37,13 +37,17 @@ if (!$project) {
 
 // Fetch project users
 $projectUsersStmt = $db->prepare("
-    SELECT DISTINCT u.id, u.full_name 
+    SELECT DISTINCT u.id, u.full_name, u.username, u.role
     FROM user_assignments ua 
     JOIN users u ON ua.user_id = u.id 
     WHERE ua.project_id = ? 
       AND u.is_active = 1
       AND (ua.is_removed IS NULL OR ua.is_removed = 0)
-    ORDER BY u.full_name
+    UNION
+    SELECT u.id, u.full_name, u.username, u.role
+    FROM users u
+    WHERE u.is_active = 1 AND u.role IN ('admin', 'super_admin')
+    ORDER BY full_name
 ");
 $projectUsersStmt->execute([$projectId]);
 $projectUsers = $projectUsersStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -57,7 +61,7 @@ $issueStatusesStmt = $db->query("SELECT id, status_key, status_label, badge_colo
 $issueStatuses = $issueStatusesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Pre-fetch project pages
-$pagesStmt = $db->prepare("SELECT id, page_name FROM project_pages WHERE project_id = ? ORDER BY page_name");
+$pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_pages WHERE project_id = ? ORDER BY page_name");
 $pagesStmt->execute([$projectId]);
 $projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -107,9 +111,13 @@ try {
             gu.url, 
             gu.normalized_url, 
             gu.unique_page_id,
+            up.id AS unique_id,
+            up.name AS unique_name,
+            up.canonical_url,
             pp.id AS mapped_page_id
         FROM grouped_urls gu 
-        LEFT JOIN project_pages pp ON pp.id = gu.unique_page_id
+        LEFT JOIN unique_pages up ON gu.unique_page_id = up.id
+        LEFT JOIN project_pages pp ON pp.project_id = gu.project_id AND (pp.url = gu.url OR pp.url = gu.normalized_url OR pp.url = up.canonical_url)
         WHERE gu.project_id = ? 
         ORDER BY gu.url
     ");
@@ -126,21 +134,31 @@ try {
     error_log("Error loading grouped URLs: " . $e->getMessage());
 }
 
-// Issues Pages view data - Use project_pages directly for simplicity
+// Issues Pages view data - prefer unique_pages canonical URL mapping
 $uniqueIssuePages = [];
 try {
     $uniqueIssueStmt = $db->prepare("
         SELECT 
-            pp.id AS unique_id,
-            pp.page_name AS unique_name,
-            pp.url AS canonical_url,
-            0 AS grouped_count,
-            pp.id AS mapped_page_id,
-            pp.page_number AS mapped_page_number,
-            pp.page_name AS mapped_page_name
-        FROM project_pages pp
-        WHERE pp.project_id = ?
-        ORDER BY LENGTH(pp.page_number) ASC, CAST(pp.page_number AS UNSIGNED) ASC, pp.page_name ASC
+            up.id AS unique_id,
+            up.name AS unique_name,
+            up.canonical_url,
+            COUNT(gu.id) AS grouped_count,
+            MIN(pp.id) AS mapped_page_id,
+            MIN(pp.page_number) AS mapped_page_number,
+            MIN(pp.page_name) AS mapped_page_name
+        FROM unique_pages up
+        LEFT JOIN grouped_urls gu ON gu.project_id = up.project_id AND gu.unique_page_id = up.id
+        LEFT JOIN project_pages pp ON pp.project_id = up.project_id
+            AND (
+                pp.url = gu.url
+                OR pp.url = gu.normalized_url
+                OR pp.url = up.canonical_url
+                OR pp.page_name = up.name
+                OR pp.page_number = up.name
+            )
+        WHERE up.project_id = ?
+        GROUP BY up.id
+        ORDER BY up.created_at ASC
     ");
     $uniqueIssueStmt->execute([$projectId]);
     $uniqueIssuePages = $uniqueIssueStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -207,11 +225,14 @@ include __DIR__ . '/../../includes/header.php';
                     <p class="text-muted mb-0">Pages-wise final issues and automated review findings</p>
                 </div>
                 <div class="col-md-4 text-md-end">
-                    <a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-secondary btn-sm me-2">
-                        <i class="fas fa-arrow-left me-1"></i> Back
+                    <a href="<?php echo $baseDir; ?>/modules/projects/issues_all.php?project_id=<?php echo $projectId; ?>" class="btn btn-primary btn-sm me-2">
+                        <i class="fas fa-list me-1"></i> View All Issues
                     </a>
-                    <a href="<?php echo $baseDir; ?>/modules/projects/issues_common.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-primary btn-sm">
+                    <a href="<?php echo $baseDir; ?>/modules/projects/issues_common.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-primary btn-sm me-2">
                         <i class="fas fa-layer-group me-1"></i> Common Issues
+                    </a>
+                    <a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left me-1"></i> Back
                     </a>
                 </div>
             </div>
@@ -369,6 +390,7 @@ include __DIR__ . '/partials/issues_modals.php';
         baseDir: '<?php echo $baseDir; ?>',
         projectType: '<?php echo $project['type'] ?? 'web'; ?>',
         projectPages: <?php echo json_encode($projectPages ?? []); ?>,
+        uniqueIssuePages: <?php echo json_encode($uniqueIssuePages ?? []); ?>,
         groupedUrls: <?php echo json_encode($groupedUrls ?? []); ?>,
         projectUsers: <?php echo json_encode($projectUsers ?? []); ?>,
         qaStatuses: <?php echo json_encode($qaStatuses ?? []); ?>,

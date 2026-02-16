@@ -58,6 +58,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: issue_statuses.php");
         exit;
     }
+
+    if (isset($_POST['delete_status'])) {
+        $statusId = (int)($_POST['status_id'] ?? 0);
+        if ($statusId <= 0) {
+            $_SESSION['error'] = "Invalid status selected.";
+            header("Location: issue_statuses.php");
+            exit;
+        }
+
+        // Prevent delete if status is used in issues.
+        $usageStmt = $db->prepare("SELECT COUNT(*) as count FROM issues WHERE status_id = ?");
+        $usageStmt->execute([$statusId]);
+        $usageCount = (int)($usageStmt->fetch()['count'] ?? 0);
+
+        if ($usageCount > 0) {
+            $_SESSION['error'] = "Cannot delete status: it is currently used by {$usageCount} issue(s).";
+            header("Location: issue_statuses.php");
+            exit;
+        }
+
+        $delStmt = $db->prepare("DELETE FROM issue_statuses WHERE id = ?");
+        if ($delStmt->execute([$statusId])) {
+            $_SESSION['success'] = "Issue Status deleted successfully!";
+        } else {
+            $_SESSION['error'] = "Failed to delete issue status.";
+        }
+
+        header("Location: issue_statuses.php");
+        exit;
+    }
 }
 
 // Get all issue statuses
@@ -147,6 +177,11 @@ include __DIR__ . '/../../includes/header.php';
                                                     onclick="editStatus(<?php echo $status['id']; ?>, '<?php echo addslashes($status['name']); ?>', '<?php echo addslashes($status['category'] ?? ''); ?>', '<?php echo $status['color']; ?>', <?php echo $status['points']; ?>, <?php echo $status['is_qa']; ?>)">
                                                 <i class="fas fa-edit"></i> Edit
                                             </button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                                    onclick="confirmDeleteIssueStatus(<?php echo (int)$status['id']; ?>, '<?php echo htmlspecialchars(addslashes($status['name']), ENT_QUOTES, 'UTF-8'); ?>', <?php echo (int)($usageStats[$status['id']] ?? 0); ?>)"
+                                                    <?php echo ((int)($usageStats[$status['id']] ?? 0) > 0) ? 'disabled title="Cannot delete: In use"' : ''; ?>>
+                                                <i class="fas fa-trash"></i> Delete
+                                            </button>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -154,6 +189,31 @@ include __DIR__ . '/../../includes/header.php';
                         </table>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form method="POST" id="deleteIssueStatusForm" style="display:none;">
+    <input type="hidden" name="delete_status" value="1">
+    <input type="hidden" name="status_id" id="delete_issue_status_id">
+</form>
+
+<div class="modal fade" id="deleteIssueStatusModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-exclamation-triangle text-warning me-2"></i>Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" id="deleteIssueStatusText">Are you sure you want to delete this issue status?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="deleteIssueStatusConfirmBtn">
+                    <i class="fas fa-trash me-1"></i> Delete
+                </button>
             </div>
         </div>
     </div>
@@ -267,6 +327,24 @@ function editStatus(id, name, category, color, points, isQa) {
     document.getElementById('edit_is_qa').checked = isQa == 1;
     
     new bootstrap.Modal(document.getElementById('editStatusModal')).show();
+}
+
+function confirmDeleteIssueStatus(id, name, usageCount) {
+    if (usageCount > 0) {
+        alert('Cannot delete this status: it is currently used by ' + usageCount + ' issue(s).');
+        return;
+    }
+
+    document.getElementById('delete_issue_status_id').value = id;
+    document.getElementById('deleteIssueStatusText').textContent =
+        'Are you sure you want to delete issue status "' + name + '"? This action cannot be undone.';
+
+    var confirmBtn = document.getElementById('deleteIssueStatusConfirmBtn');
+    confirmBtn.onclick = function () {
+        document.getElementById('deleteIssueStatusForm').submit();
+    };
+
+    new bootstrap.Modal(document.getElementById('deleteIssueStatusModal')).show();
 }
 </script>
 

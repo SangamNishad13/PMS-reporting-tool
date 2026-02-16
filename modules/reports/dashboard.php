@@ -50,15 +50,15 @@ if (!empty($filterStatus)) {
         $fpParams[] = $projectId;
     }
     
-    $fpStmt = $db->prepare("\
-        SELECT p.*, c.name as client_name, u.full_name as lead_name,\
-            (SELECT phase_name FROM project_phases ph WHERE ph.project_id = p.id AND ph.status = 'in_progress' ORDER BY ph.start_date DESC LIMIT 1) as current_phase\
-        FROM projects p\
-        LEFT JOIN clients c ON p.client_id = c.id\
-        LEFT JOIN users u ON p.project_lead_id = u.id\
-        WHERE $fpWhere\
-        ORDER BY p.title ASC\
-    ");
+    $fpStmt = $db->prepare(<<<SQL
+        SELECT p.*, c.name as client_name, u.full_name as lead_name,
+            (SELECT phase_name FROM project_phases ph WHERE ph.project_id = p.id AND ph.status = 'in_progress' ORDER BY ph.start_date DESC LIMIT 1) as current_phase
+        FROM projects p
+        LEFT JOIN clients c ON p.client_id = c.id
+        LEFT JOIN users u ON p.project_lead_id = u.id
+        WHERE $fpWhere
+        ORDER BY p.title ASC
+    SQL);
     $fpStmt->execute($fpParams);
     $filteredProjects = $fpStmt->fetchAll();
 }

@@ -109,6 +109,102 @@ function getIssueKey($db, $projectId) {
     return $prefix . '-' . (string)$next;
 }
 
+function ensureIssuePresenceTable($db) {
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS issue_active_editors (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            project_id INT NOT NULL,
+            issue_id INT NOT NULL,
+            user_id INT NOT NULL,
+            last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_issue_user (issue_id, user_id),
+            KEY idx_presence_project_issue (project_id, issue_id),
+            KEY idx_presence_last_seen (last_seen)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+}
+
+function ensureIssuePresenceSessionsTable($db) {
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS issue_presence_sessions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            project_id INT NOT NULL,
+            issue_id INT NOT NULL,
+            user_id INT NOT NULL,
+            session_token VARCHAR(64) NOT NULL,
+            opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            closed_at DATETIME NULL,
+            duration_seconds INT NULL,
+            UNIQUE KEY uniq_session_token (session_token),
+            KEY idx_session_issue (project_id, issue_id),
+            KEY idx_session_user (user_id),
+            KEY idx_session_opened (opened_at),
+            KEY idx_session_closed (closed_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+}
+
+function generatePresenceSessionToken() {
+    try {
+        return bin2hex(random_bytes(16));
+    } catch (Throwable $e) {
+        return uniqid('iss_', true);
+    }
+}
+
+function issueBelongsToProject($db, $issueId, $projectId) {
+    $stmt = $db->prepare("SELECT id FROM issues WHERE id = ? AND project_id = ? LIMIT 1");
+    $stmt->execute([(int)$issueId, (int)$projectId]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function cleanupIssuePresence($db) {
+    $db->exec("DELETE FROM issue_active_editors WHERE last_seen < (NOW() - INTERVAL 6 SECOND)");
+}
+
+function cleanupIssuePresenceSessions($db) {
+    // Auto-close stale open sessions (e.g., browser/tab closed unexpectedly).
+    $db->exec("
+        UPDATE issue_presence_sessions
+        SET closed_at = IFNULL(closed_at, NOW()),
+            duration_seconds = TIMESTAMPDIFF(SECOND, opened_at, IFNULL(closed_at, NOW()))
+        WHERE closed_at IS NULL
+          AND last_seen < (NOW() - INTERVAL 2 MINUTE)
+    ");
+}
+
+function getIssuePresenceUsers($db, $projectId, $issueId, $excludeUserId = 0) {
+    $sql = "
+        SELECT p.user_id, u.full_name, p.last_seen
+        FROM issue_active_editors p
+        JOIN users u ON u.id = p.user_id
+        WHERE p.project_id = ? AND p.issue_id = ? AND p.last_seen >= (NOW() - INTERVAL 6 SECOND)
+    ";
+    $params = [(int)$projectId, (int)$issueId];
+    if ((int)$excludeUserId > 0) {
+        $sql .= " AND p.user_id <> ? ";
+        $params[] = (int)$excludeUserId;
+    }
+    $sql .= " ORDER BY p.last_seen DESC, u.full_name ASC ";
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function getIssuePresenceSessions($db, $projectId, $issueId) {
+    $stmt = $db->prepare("
+        SELECT s.user_id, u.full_name, s.opened_at, s.closed_at, s.duration_seconds
+        FROM issue_presence_sessions s
+        JOIN users u ON u.id = s.user_id
+        WHERE s.project_id = ? AND s.issue_id = ?
+        ORDER BY s.opened_at DESC
+        LIMIT 200
+    ");
+    $stmt->execute([(int)$projectId, (int)$issueId]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
 $db = Database::getInstance();
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
@@ -238,7 +334,9 @@ try {
                 'wcagsuccesscriterialevel' => ($meta['wcagsuccesscriterialevel'] ?? []),
                 'gigw30' => ($meta['gigw30'] ?? []),
                 'is17802' => ($meta['is17802'] ?? []),
-                'common_title' => ($meta['common_title'][0] ?? '')
+                'common_title' => ($meta['common_title'][0] ?? ''),
+                'created_at' => $i['created_at'],
+                'updated_at' => $i['updated_at']
             ];
         }
 
@@ -447,8 +545,116 @@ try {
         jsonResponse(['success' => true, 'issues' => $out]);
     }
 
+    if ($method === 'GET' && $action === 'presence_list') {
+        $issueId = (int)($_GET['issue_id'] ?? 0);
+        if (!$issueId) jsonError('issue_id is required', 400);
+        if (!issueBelongsToProject($db, $issueId, $projectId)) jsonError('Issue not found', 404);
+
+        ensureIssuePresenceTable($db);
+        cleanupIssuePresence($db);
+        $users = getIssuePresenceUsers($db, $projectId, $issueId, $userId);
+        jsonResponse(['success' => true, 'users' => $users]);
+    }
+
+    if ($method === 'GET' && $action === 'presence_session_list') {
+        $issueId = (int)($_GET['issue_id'] ?? 0);
+        if (!$issueId) jsonError('issue_id is required', 400);
+        if (!issueBelongsToProject($db, $issueId, $projectId)) jsonError('Issue not found', 404);
+
+        ensureIssuePresenceSessionsTable($db);
+        cleanupIssuePresenceSessions($db);
+        $sessions = getIssuePresenceSessions($db, $projectId, $issueId);
+        jsonResponse(['success' => true, 'sessions' => $sessions]);
+    }
+
+    if ($method === 'POST' && $action === 'presence_open_session') {
+        $issueId = (int)($_POST['issue_id'] ?? 0);
+        if (!$issueId) jsonError('issue_id is required', 400);
+        if (!issueBelongsToProject($db, $issueId, $projectId)) jsonError('Issue not found', 404);
+
+        ensureIssuePresenceSessionsTable($db);
+        cleanupIssuePresenceSessions($db);
+
+        $sessionToken = generatePresenceSessionToken();
+        $ins = $db->prepare("
+            INSERT INTO issue_presence_sessions
+                (project_id, issue_id, user_id, session_token, opened_at, last_seen)
+            VALUES
+                (?, ?, ?, ?, NOW(), NOW())
+        ");
+        $ins->execute([(int)$projectId, (int)$issueId, (int)$userId, $sessionToken]);
+
+        jsonResponse(['success' => true, 'session_token' => $sessionToken]);
+    }
+
+    if ($method === 'POST' && $action === 'presence_ping') {
+        $issueId = (int)($_POST['issue_id'] ?? 0);
+        $sessionToken = trim((string)($_POST['session_token'] ?? ''));
+        if (!$issueId) jsonError('issue_id is required', 400);
+        if (!issueBelongsToProject($db, $issueId, $projectId)) jsonError('Issue not found', 404);
+
+        ensureIssuePresenceTable($db);
+        cleanupIssuePresence($db);
+        $db->prepare("DELETE FROM issue_active_editors WHERE project_id = ? AND issue_id = ? AND last_seen < (NOW() - INTERVAL 6 SECOND)")
+            ->execute([(int)$projectId, (int)$issueId]);
+
+        $upsert = $db->prepare("
+            INSERT INTO issue_active_editors (project_id, issue_id, user_id, last_seen)
+            VALUES (?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE project_id = VALUES(project_id), last_seen = NOW()
+        ");
+        $upsert->execute([(int)$projectId, (int)$issueId, (int)$userId]);
+
+        if ($sessionToken !== '') {
+            ensureIssuePresenceSessionsTable($db);
+            $touch = $db->prepare("
+                UPDATE issue_presence_sessions
+                SET last_seen = NOW()
+                WHERE session_token = ? AND project_id = ? AND issue_id = ? AND user_id = ? AND closed_at IS NULL
+            ");
+            $touch->execute([$sessionToken, (int)$projectId, (int)$issueId, (int)$userId]);
+        }
+
+        $users = getIssuePresenceUsers($db, $projectId, $issueId, $userId);
+        jsonResponse(['success' => true, 'users' => $users]);
+    }
+
+    if ($method === 'POST' && $action === 'presence_leave') {
+        $issueId = (int)($_POST['issue_id'] ?? 0);
+        $sessionToken = trim((string)($_POST['session_token'] ?? ''));
+        if (!$issueId) jsonError('issue_id is required', 400);
+        if (!issueBelongsToProject($db, $issueId, $projectId)) jsonError('Issue not found', 404);
+
+        ensureIssuePresenceTable($db);
+        $del = $db->prepare("DELETE FROM issue_active_editors WHERE project_id = ? AND issue_id = ? AND user_id = ?");
+        $del->execute([(int)$projectId, (int)$issueId, (int)$userId]);
+
+        ensureIssuePresenceSessionsTable($db);
+        if ($sessionToken !== '') {
+            $close = $db->prepare("
+                UPDATE issue_presence_sessions
+                SET closed_at = NOW(),
+                    duration_seconds = TIMESTAMPDIFF(SECOND, opened_at, NOW()),
+                    last_seen = NOW()
+                WHERE session_token = ? AND project_id = ? AND issue_id = ? AND user_id = ? AND closed_at IS NULL
+            ");
+            $close->execute([$sessionToken, (int)$projectId, (int)$issueId, (int)$userId]);
+        } else {
+            $closeAny = $db->prepare("
+                UPDATE issue_presence_sessions
+                SET closed_at = NOW(),
+                    duration_seconds = TIMESTAMPDIFF(SECOND, opened_at, NOW()),
+                    last_seen = NOW()
+                WHERE project_id = ? AND issue_id = ? AND user_id = ? AND closed_at IS NULL
+            ");
+            $closeAny->execute([(int)$projectId, (int)$issueId, (int)$userId]);
+        }
+        jsonResponse(['success' => true]);
+    }
+
     if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         $id = (int)($_POST['id'] ?? 0);
+        $expectedUpdatedAt = trim((string)($_POST['expected_updated_at'] ?? ''));
         $title = trim($_POST['title'] ?? '');
         if (!$title) jsonError('title is required', 400);
         $description = $_POST['description'] ?? '';
@@ -500,9 +706,22 @@ try {
             $oldIssue = $oldStmt->fetch(PDO::FETCH_ASSOC);
             if (!$oldIssue) jsonError('Issue not found', 404);
 
-            $oldMetaStmt = $db->prepare("SELECT meta_key, GROUP_CONCAT(meta_value ORDER BY id ASC) as val FROM issue_metadata WHERE issue_id = ? GROUP BY meta_key");
+            if ($expectedUpdatedAt !== '' && !empty($oldIssue['updated_at']) && $expectedUpdatedAt !== (string)$oldIssue['updated_at']) {
+                jsonResponse([
+                    'error' => 'This issue was modified by another user. Please reload latest data and try again.',
+                    'conflict' => true,
+                    'current_updated_at' => (string)$oldIssue['updated_at']
+                ], 409);
+            }
+
+            $oldMetaStmt = $db->prepare("SELECT meta_key, meta_value FROM issue_metadata WHERE issue_id = ? ORDER BY id ASC");
             $oldMetaStmt->execute([$id]);
-            $oldMeta = $oldMetaStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+            $oldMeta = [];
+            while ($m = $oldMetaStmt->fetch(PDO::FETCH_ASSOC)) {
+                $k = (string)$m['meta_key'];
+                if (!isset($oldMeta[$k])) $oldMeta[$k] = [];
+                $oldMeta[$k][] = (string)$m['meta_value'];
+            }
 
             function logHistory($db, $issueId, $userId, $field, $oldVal, $newVal) {
                 if ($oldVal === $newVal) return;
@@ -520,13 +739,58 @@ try {
             $stmt->execute([$title, $description, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null, $id, $projectId]);
         }
 
+        function normalizeHistoryMetaValues($values, $allowCsv = false) {
+            $out = [];
+            $push = function($v) use (&$out) {
+                if ($v === null) return;
+                $s = trim((string)$v);
+                if ($s === '') return;
+                $out[] = $s;
+            };
+
+            $walk = function($input) use (&$walk, $push, $allowCsv) {
+                if ($input === null) return;
+                if (is_array($input)) {
+                    foreach ($input as $v) $walk($v);
+                    return;
+                }
+                $raw = trim((string)$input);
+                if ($raw === '') return;
+
+                if ($raw[0] === '[') {
+                    $decoded = json_decode($raw, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                        foreach ($decoded as $v) $walk($v);
+                        return;
+                    }
+                }
+
+                if ($allowCsv && strpos($raw, ',') !== false) {
+                    foreach (explode(',', $raw) as $part) $push($part);
+                    return;
+                }
+
+                $push($raw);
+            };
+
+            $walk($values);
+            $out = array_values(array_unique(array_filter($out, function($v){ return $v !== ''; })));
+            sort($out, SORT_NATURAL | SORT_FLAG_CASE);
+            return $out;
+        }
+
         function handleMetaHistory($db, $issueId, $userId, $key, $newValues, $oldMeta) {
-            $oldVal = $oldMeta[$key] ?? '';
-            $newVal = implode(',', (array)$newValues);
-            if ($oldVal !== $newVal) {
-                $stmt = $db->prepare("INSERT INTO issue_history (issue_id, user_id, field_name, old_value, new_value) VALUES (?, ?, ?, ?, ?)");
-                $stmt->execute([$issueId, $userId, "meta:$key", $oldVal, $newVal]);
-            }
+            $multiKeys = ['qa_status', 'page_ids', 'reporter_ids', 'grouped_urls'];
+            $allowCsv = in_array($key, $multiKeys, true);
+            $oldVals = normalizeHistoryMetaValues($oldMeta[$key] ?? [], $allowCsv);
+            $newVals = normalizeHistoryMetaValues($newValues, $allowCsv);
+
+            if ($oldVals === $newVals) return;
+
+            $oldVal = implode(', ', $oldVals);
+            $newVal = implode(', ', $newVals);
+            $stmt = $db->prepare("INSERT INTO issue_history (issue_id, user_id, field_name, old_value, new_value) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([$issueId, $userId, "meta:$key", $oldVal, $newVal]);
         }
 
         if ($action === 'update') {
@@ -620,9 +884,25 @@ try {
         if (empty($ids)) jsonError('ids required', 400);
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $params = array_merge($ids, [$projectId]);
-        $stmt = $db->prepare("DELETE FROM issues WHERE id IN ($placeholders) AND project_id = ?");
-        $stmt->execute($params);
-        jsonResponse(['success' => true, 'deleted' => $stmt->rowCount()]);
+
+        $db->beginTransaction();
+        try {
+            // Remove dependent rows first to avoid FK failures.
+            $delMeta = $db->prepare("DELETE FROM issue_metadata WHERE issue_id IN ($placeholders)");
+            $delMeta->execute($ids);
+
+            $delCommon = $db->prepare("DELETE FROM common_issues WHERE issue_id IN ($placeholders) AND project_id = ?");
+            $delCommon->execute($params);
+
+            $stmt = $db->prepare("DELETE FROM issues WHERE id IN ($placeholders) AND project_id = ?");
+            $stmt->execute($params);
+
+            $db->commit();
+            jsonResponse(['success' => true, 'deleted' => $stmt->rowCount()]);
+        } catch (Exception $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw $e;
+        }
     }
 
     if ($method === 'GET' && $action === 'common_list') {

@@ -1,18 +1,14 @@
 <?php
 // modules/chat/page_chat.php
 
-// Start session
-session_start();
-
 // Include configuration
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/helpers.php';
 
-// Check login
-if (!isset($_SESSION['user_id'])) {
-    header("Location: " . $baseDir . "/modules/auth/login.php");
-    exit;
-}
+$auth = new Auth();
+$auth->requireLogin();
+$baseDir = getBaseDir();
 
 // Get page ID
 $pageId = isset($_GET['page_id']) ? intval($_GET['page_id']) : 0;

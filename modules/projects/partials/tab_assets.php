@@ -8,6 +8,19 @@
             </div>
 
             <?php 
+            $isActiveAssignedMemberStmt = $db->prepare("
+                SELECT id
+                FROM user_assignments
+                WHERE project_id = ? AND user_id = ? AND (is_removed IS NULL OR is_removed = 0)
+                LIMIT 1
+            ");
+            $isActiveAssignedMemberStmt->execute([$projectId, $userId]);
+            $isActiveAssignedMember = (bool)$isActiveAssignedMemberStmt->fetch();
+            $canManageAssets = in_array($userRole, ['admin', 'super_admin'], true)
+                || ($userRole === 'project_lead' && (int)$project['project_lead_id'] === (int)$userId)
+                || $isActiveAssignedMember
+                || hasAnyProjectPermission($db, $userId, $projectId, ['assets_edit', 'assets_delete']);
+
             // Get project assets
             $assets = $db->prepare("
                 SELECT pa.*, u.full_name as creator_name 
@@ -78,20 +91,32 @@
                                 <br>
                                 <?php echo date('M d, Y', strtotime($asset['created_at'])); ?>
                             </small>
-                            <?php 
-                            $canDelete = in_array($userRole, ['admin', 'super_admin']) || 
-                                         ($userRole === 'project_lead' && $project['project_lead_id'] == $userId);
-                            if ($canDelete): 
-                            ?>
-                            <form method="POST" action="<?php echo $baseDir; ?>/modules/projects/handle_asset.php" 
-                                  onsubmit="var form = this; confirmModal('Are you sure you want to delete this asset?', function(){ form.submit(); }); return false;"
-                                  class="d-inline">
-                                <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
-                                <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
-                                <button type="submit" name="delete_asset" class="btn btn-sm btn-link text-danger p-0 border-0">
-                                    <i class="fas fa-trash"></i>
+                            <?php if ($canManageAssets): ?>
+                            <div class="d-flex align-items-center gap-2">
+                                <button type="button"
+                                        class="btn btn-sm btn-link text-primary p-0 border-0 js-edit-asset"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editAssetModal"
+                                        data-asset-id="<?php echo (int)$asset['id']; ?>"
+                                        data-project-id="<?php echo (int)$projectId; ?>"
+                                        data-asset-name="<?php echo htmlspecialchars($asset['asset_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                        data-asset-type="<?php echo htmlspecialchars($asset['asset_type'], ENT_QUOTES, 'UTF-8'); ?>"
+                                        data-main-url="<?php echo htmlspecialchars($asset['main_url'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                        data-link-type="<?php echo htmlspecialchars($asset['link_type'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                        data-description="<?php echo htmlspecialchars($asset['description'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                        data-text-content="<?php echo htmlspecialchars($asset['text_content'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                                    <i class="fas fa-pen"></i>
                                 </button>
-                            </form>
+                                <form method="POST" action="<?php echo $baseDir; ?>/modules/projects/handle_asset.php" 
+                                      onsubmit="var form = this; confirmModal('Are you sure you want to delete this asset?', function(){ form.submit(); }); return false;"
+                                      class="d-inline">
+                                    <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
+                                    <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
+                                    <button type="submit" name="delete_asset" class="btn btn-sm btn-link text-danger p-0 border-0">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -103,4 +128,146 @@
                 <i class="fas fa-info-circle"></i> No assets uploaded for this project.
             </div>
             <?php endif; ?>
+
+            <?php
+            $assetHistoryStmt = $db->prepare("
+                SELECT al.created_at, al.action, al.details, u.full_name AS actor_name
+                FROM activity_log al
+                LEFT JOIN users u ON al.user_id = u.id
+                WHERE al.entity_type = 'project'
+                  AND al.entity_id = ?
+                  AND al.action IN ('Edited asset', 'Deleted asset')
+                ORDER BY al.created_at DESC
+                LIMIT 100
+            ");
+            $assetHistoryStmt->execute([$projectId]);
+            $assetHistory = $assetHistoryStmt->fetchAll(PDO::FETCH_ASSOC);
+            ?>
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-history"></i> Asset Edit/Delete History</h6>
+                </div>
+                <div class="card-body p-0">
+                    <?php if (!empty($assetHistory)): ?>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Action</th>
+                                    <th>Asset</th>
+                                    <th>By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($assetHistory as $row): ?>
+                                    <?php
+                                    $details = json_decode($row['details'] ?? '', true);
+                                    $assetNameFromLog = $details['asset_name'] ?? '-';
+                                    ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars(date('M d, Y h:i A', strtotime($row['created_at'])), ENT_QUOTES, 'UTF-8'); ?></td>
+                                        <td><?php echo htmlspecialchars($row['action'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                        <td><?php echo htmlspecialchars($assetNameFromLog, ENT_QUOTES, 'UTF-8'); ?></td>
+                                        <td><?php echo htmlspecialchars($row['actor_name'] ?: 'System', ENT_QUOTES, 'UTF-8'); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <?php else: ?>
+                    <div class="p-3 text-muted">No edit/delete history available yet.</div>
+                    <?php endif; ?>
+                </div>
+            </div>
         </div>
+
+        <div class="modal fade" id="editAssetModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="POST" action="<?php echo $baseDir; ?>/modules/projects/handle_asset.php" enctype="multipart/form-data" id="editAssetForm">
+                        <input type="hidden" name="edit_asset" value="1">
+                        <input type="hidden" name="project_id" id="edit_asset_project_id" value="<?php echo (int)$projectId; ?>">
+                        <input type="hidden" name="asset_id" id="edit_asset_id">
+                        <input type="hidden" name="asset_type" id="edit_asset_type">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Edit Asset</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">Asset Name *</label>
+                                <input type="text" name="asset_name" id="edit_asset_name" class="form-control" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Asset Type</label>
+                                <input type="text" id="edit_asset_type_text" class="form-control" readonly>
+                            </div>
+
+                            <div id="edit_asset_link_fields" style="display:none;">
+                                <div class="mb-3">
+                                    <label class="form-label">Link Type</label>
+                                    <input type="text" name="link_type" id="edit_link_type" class="form-control">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">URL *</label>
+                                    <input type="url" name="main_url" id="edit_main_url" class="form-control">
+                                </div>
+                            </div>
+
+                            <div id="edit_asset_text_fields" style="display:none;">
+                                <div class="mb-3">
+                                    <label class="form-label">Category</label>
+                                    <input type="text" name="text_category" id="edit_text_category" class="form-control">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Content *</label>
+                                    <textarea name="text_content" id="edit_text_content" class="form-control" rows="8"></textarea>
+                                </div>
+                            </div>
+
+                            <div id="edit_asset_file_fields" style="display:none;">
+                                <div class="mb-3">
+                                    <label class="form-label">Replace File (Optional)</label>
+                                    <input type="file" name="asset_file" class="form-control">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <script>
+        (function() {
+            function showEditFields(assetType) {
+                var link = document.getElementById('edit_asset_link_fields');
+                var text = document.getElementById('edit_asset_text_fields');
+                var file = document.getElementById('edit_asset_file_fields');
+                if (!link || !text || !file) return;
+                link.style.display = assetType === 'link' ? '' : 'none';
+                text.style.display = assetType === 'text' ? '' : 'none';
+                file.style.display = assetType === 'file' ? '' : 'none';
+            }
+
+            document.querySelectorAll('.js-edit-asset').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var assetType = this.getAttribute('data-asset-type') || '';
+                    document.getElementById('edit_asset_id').value = this.getAttribute('data-asset-id') || '';
+                    document.getElementById('edit_asset_project_id').value = this.getAttribute('data-project-id') || '';
+                    document.getElementById('edit_asset_name').value = this.getAttribute('data-asset-name') || '';
+                    document.getElementById('edit_asset_type').value = assetType;
+                    document.getElementById('edit_asset_type_text').value = assetType;
+                    document.getElementById('edit_main_url').value = this.getAttribute('data-main-url') || '';
+                    document.getElementById('edit_link_type').value = this.getAttribute('data-link-type') || '';
+                    document.getElementById('edit_text_category').value = this.getAttribute('data-link-type') || '';
+                    document.getElementById('edit_text_content').value = this.getAttribute('data-text-content') || this.getAttribute('data-description') || '';
+                    showEditFields(assetType);
+                });
+            });
+        })();
+        </script>

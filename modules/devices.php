@@ -12,6 +12,16 @@ include '../includes/header.php';
             <h2><i class="fas fa-laptop"></i> Device Inventory</h2>
             <p class="text-muted">View all devices and their current assignments</p>
         </div>
+        <?php if (in_array($_SESSION['role'] ?? '', ['admin', 'super_admin'], true)): ?>
+        <div class="col-auto d-flex align-items-start gap-2">
+            <a href="../modules/admin/devices.php" class="btn btn-outline-primary">
+                <i class="fas fa-cogs"></i> Manage Devices
+            </a>
+            <a href="../modules/admin/device_permissions.php" class="btn btn-outline-secondary">
+                <i class="fas fa-user-shield"></i> Device Permissions
+            </a>
+        </div>
+        <?php endif; ?>
     </div>
 
     <!-- My Devices Section -->
@@ -114,17 +124,18 @@ include '../includes/header.php';
     </div>
 </div>
 
-<!-- Request Switch Modal -->
+<!-- Request Device Modal -->
 <div class="modal fade" id="requestModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Request Device Switch</h5>
+                <h5 class="modal-title" id="requestModalTitle">Request Device</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="requestForm">
                     <input type="hidden" id="requestDeviceId" name="device_id">
+                    <input type="hidden" id="requestAction" value="request_switch">
                     
                     <div class="alert alert-info">
                         <strong>Device:</strong> <span id="requestDeviceName"></span><br>
@@ -138,7 +149,7 @@ include '../includes/header.php';
                     </div>
                     
                     <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i> Your request will be sent to the device holder. They can accept your request, or an admin can approve it.
+                        <i class="fas fa-info-circle"></i> <span id="requestHelpText">Your request will be sent to the device holder. They can accept your request, or an admin can approve it.</span>
                     </div>
                 </form>
             </div>
@@ -254,6 +265,11 @@ function renderMyDevices() {
                         <span class="badge bg-success">Assigned to You</span>
                     </div>
                     ${device.notes ? `<div class="mt-2"><small class="text-muted"><i class="fas fa-info-circle"></i> ${device.notes}</small></div>` : ''}
+                    <div class="mt-3 d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-success" onclick="submitDevice(${device.id})">
+                            <i class="fas fa-box-open"></i> Submit to Office
+                        </button>
+                    </div>
                 </div>
             </div>
         `);
@@ -269,12 +285,17 @@ function renderAllDevices() {
         const assignedTo = device.assigned_to_name || '-';
         const isMyDevice = device.assigned_user_id == currentUserId;
         const canRequest = device.status === 'Assigned' && !isMyDevice;
+        const canRequestAvailable = device.status === 'Available';
         
         const actionBtn = canRequest ? 
             `<button class="btn btn-sm btn-primary" onclick="showRequestModal(${device.id})">
                 <i class="fas fa-exchange-alt"></i> Request
             </button>` : 
-            (isMyDevice ? '<span class="badge bg-success">Your Device</span>' : '-');
+            (canRequestAvailable ? 
+                `<button class="btn btn-sm btn-outline-primary" onclick="showRequestModal(${device.id})">
+                    <i class="fas fa-paper-plane"></i> Request
+                </button>` : 
+                (isMyDevice ? '<span class="badge bg-success">Your Device</span>' : '-'));
         
         tbody.append(`
             <tr>
@@ -316,7 +337,7 @@ function renderMyRequests() {
         tbody.append(`
             <tr class="${request.status === 'Approved' ? 'table-success' : (request.status === 'Rejected' ? 'table-danger' : '')}">
                 <td><strong>${request.device_name}</strong><br><small class="text-muted">${request.device_type}</small></td>
-                <td>${request.holder_full_name || request.holder_name}</td>
+                <td>${request.holder_full_name || request.holder_name || 'Office'}</td>
                 <td><small>${request.reason || '-'}</small></td>
                 <td><small>${new Date(request.requested_at).toLocaleString()}</small></td>
                 <td>${statusIcon}${statusBadge}</td>
@@ -389,22 +410,22 @@ function respondToRequest(requestId, action) {
     const notes = action === 'reject' ? prompt('Reason for rejection (optional):') : '';
     
     if (action === 'reject' && notes === null) return; // User cancelled
-    
-    if (!confirm(`Are you sure you want to ${actionText} this request?`)) return;
-    
-    $.post('../api/devices.php', {
-        action: 'respond_to_request',
-        request_id: requestId,
-        response_action: action,
-        response_notes: notes || ''
-    }, function(response) {
-        if (response.success) {
-            showToast(`Request ${action === 'approve' ? 'accepted' : 'rejected'} successfully`, 'success');
-            loadIncomingRequests();
-            loadDevices(); // Refresh device list
-        } else {
-            showToast(response.message, 'danger');
-        }
+
+    confirmAction(`Are you sure you want to ${actionText} this request?`, function() {
+        $.post('../api/devices.php', {
+            action: 'respond_to_request',
+            request_id: requestId,
+            response_action: action,
+            response_notes: notes || ''
+        }, function(response) {
+            if (response.success) {
+                showToast(`Request ${action === 'approve' ? 'accepted' : 'rejected'} successfully`, 'success');
+                loadIncomingRequests();
+                loadDevices(); // Refresh device list
+            } else {
+                showToast(response.message, 'danger');
+            }
+        });
     });
 }
 
@@ -464,7 +485,17 @@ function showRequestModal(deviceId) {
     
     $('#requestDeviceId').val(device.id);
     $('#requestDeviceName').text(`${device.device_name} (${device.device_type})`);
-    $('#requestCurrentHolder').text(device.assigned_to_name || 'Unknown');
+    if (device.status === 'Available') {
+        $('#requestModalTitle').text('Request Available Device');
+        $('#requestAction').val('request_available');
+        $('#requestCurrentHolder').text('Office');
+        $('#requestHelpText').text('Your request will be sent to admin for approval.');
+    } else {
+        $('#requestModalTitle').text('Request Device Switch');
+        $('#requestAction').val('request_switch');
+        $('#requestCurrentHolder').text(device.assigned_to_name || 'Unknown');
+        $('#requestHelpText').text('Your request will be sent to the device holder. They can accept your request, or an admin can approve it.');
+    }
     $('#requestReason').val('');
     $('#requestModal').modal('show');
 }
@@ -477,16 +508,51 @@ function submitRequest() {
     }
     
     const formData = new FormData($('#requestForm')[0]);
-    formData.append('action', 'request_switch');
+    const action = $('#requestAction').val() || 'request_switch';
+    formData.append('action', action);
     
-    $.post('../api/devices.php', formData, function(response) {
-        if (response.success) {
-            alert(response.message);
-            $('#requestModal').modal('hide');
-            loadMyRequests();
-        } else {
-            alert('Error: ' + response.message);
+    $.ajax({
+        url: '../api/devices.php',
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(response) {
+            if (response.success) {
+                alert(response.message);
+                $('#requestModal').modal('hide');
+                loadMyRequests();
+            } else {
+                alert('Error: ' + response.message);
+            }
+        },
+        error: function() {
+            alert('Request failed. Please try again.');
         }
+    });
+}
+
+function confirmAction(message, onConfirm) {
+    if (typeof confirmModal === 'function') {
+        confirmModal(message, onConfirm);
+        return;
+    }
+    if (confirm(message)) onConfirm();
+}
+
+function submitDevice(deviceId) {
+    confirmAction('Submit this device back to office? It will become Available.', function() {
+        $.post('../api/devices.php', {
+            action: 'submit_device',
+            device_id: deviceId
+        }, function(response) {
+            if (response.success) {
+                alert(response.message);
+                loadDevices();
+            } else {
+                alert('Error: ' + response.message);
+            }
+        });
     });
 }
 </script>

@@ -15,11 +15,11 @@ if (session_status() === PHP_SESSION_NONE) {
     ini_set('session.cookie_samesite', $samesite);
     ini_set('session.cookie_secure', isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 1 : 0);
     
-    // Prefer XAMPP tmp folder for sessions; fall back to system temp dir if not writable
-    $preferredSessionPath = 'C:\\xampp\\tmp';
+    // Prefer project-specific temp folder for sessions (more reliable permissions)
+    $preferredSessionPath = __DIR__ . '/../tmp/sessions';
     $sessionPathSet = false;
     
-    // Try to create and set permissions on XAMPP tmp folder
+    // Try to create and set permissions on project session folder
     if (!is_dir($preferredSessionPath)) {
         @mkdir($preferredSessionPath, 0777, true);
     }
@@ -37,26 +37,23 @@ if (session_status() === PHP_SESSION_NONE) {
         }
     }
     
-    // Fallback to system temp directory
+    // Fallback to XAMPP tmp folder
     if (!$sessionPathSet) {
-        $sysTemp = sys_get_temp_dir();
-        if (is_dir($sysTemp) && is_writable($sysTemp)) {
-            session_save_path($sysTemp);
+        $xamppTemp = 'C:\\xampp\\tmp';
+        if (!is_dir($xamppTemp)) {
+            @mkdir($xamppTemp, 0777, true);
+        }
+        if (is_dir($xamppTemp) && is_writable($xamppTemp)) {
+            session_save_path($xamppTemp);
             $sessionPathSet = true;
         }
     }
     
-    // Last resort: try project-specific temp folder
+    // Last resort: system temp directory
     if (!$sessionPathSet) {
-        $projectTemp = __DIR__ . '/../tmp/sessions';
-        if (!is_dir($projectTemp)) {
-            @mkdir($projectTemp, 0777, true);
-        }
-        if (is_dir($projectTemp)) {
-            @chmod($projectTemp, 0777);
-            if (is_writable($projectTemp)) {
-                session_save_path($projectTemp);
-            }
+        $sysTemp = sys_get_temp_dir();
+        if (is_dir($sysTemp) && is_writable($sysTemp)) {
+            session_save_path($sysTemp);
         }
     }
     
@@ -78,6 +75,30 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/helpers.php';
 
+// Keep session permissions in sync with DB (so role/perm updates apply immediately)
+if (isset($_SESSION['user_id'])) {
+    try {
+        $db = Database::getInstance();
+        $stmt = $db->prepare("SELECT role, is_active, force_password_reset, can_manage_issue_config, can_manage_devices FROM users WHERE id = ? LIMIT 1");
+        $stmt->execute([$_SESSION['user_id']]);
+        $u = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($u) {
+            $_SESSION['role'] = $u['role'];
+            $_SESSION['can_manage_issue_config'] = (bool)$u['can_manage_issue_config'];
+            $_SESSION['can_manage_devices'] = !empty($u['can_manage_devices']);
+            $_SESSION['force_reset'] = !empty($u['force_password_reset']);
+            if ((int)$u['is_active'] !== 1) {
+                // user deactivated; force logout
+                session_destroy();
+                header("Location: /modules/auth/login.php");
+                exit;
+            }
+        }
+    } catch (Exception $e) {
+        // non-fatal; keep existing session values
+    }
+}
+
 class Auth {
     private $db;
     
@@ -95,7 +116,7 @@ class Auth {
         $username = filter_var(trim($username), FILTER_SANITIZE_STRING);
         
         $stmt = $this->db->prepare("
-            SELECT id, username, email, password, full_name, role, is_active, force_password_reset, can_manage_issue_config 
+            SELECT id, username, email, password, full_name, role, is_active, force_password_reset, can_manage_issue_config, can_manage_devices
             FROM users 
             WHERE (username = ? OR email = ?) AND is_active = 1
             LIMIT 1
@@ -113,6 +134,7 @@ class Auth {
             $_SESSION['full_name'] = $user['full_name'];
             $_SESSION['role'] = $user['role'];
             $_SESSION['can_manage_issue_config'] = (bool)$user['can_manage_issue_config'];
+            $_SESSION['can_manage_devices'] = !empty($user['can_manage_devices']);
             $_SESSION['force_reset'] = $user['force_password_reset'];
             $_SESSION['login_time'] = time();
             $_SESSION['last_activity'] = time();
@@ -339,6 +361,31 @@ function requireLogin() {
 function requireAdmin() {
     requireLogin();
     if (!in_array($_SESSION['role'] ?? '', ['admin', 'super_admin'])) {
+        $_SESSION['error'] = "You don't have permission to access this page.";
+        require_once __DIR__ . '/helpers.php';
+        $baseDir = getBaseDir();
+        redirect($baseDir . "/");
+        exit;
+    }
+}
+
+function requireDeviceManager() {
+    requireLogin();
+    $role = $_SESSION['role'] ?? '';
+    $canManage = !empty($_SESSION['can_manage_devices']);
+    if (!$canManage && isset($_SESSION['user_id'])) {
+        try {
+            $db = Database::getInstance();
+            $stmt = $db->prepare("SELECT can_manage_devices FROM users WHERE id = ? LIMIT 1");
+            $stmt->execute([$_SESSION['user_id']]);
+            $val = $stmt->fetchColumn();
+            $canManage = !empty($val);
+            $_SESSION['can_manage_devices'] = $canManage;
+        } catch (Exception $_) {
+            // ignore
+        }
+    }
+    if (!in_array($role, ['admin', 'super_admin']) && !$canManage) {
         $_SESSION['error'] = "You don't have permission to access this page.";
         require_once __DIR__ . '/helpers.php';
         $baseDir = getBaseDir();

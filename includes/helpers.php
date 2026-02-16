@@ -1,9 +1,4 @@
 <?php
-// Set timezone to IST (Indian Standard Time) at the very beginning
-if (!ini_get('date.timezone')) {
-    date_default_timezone_set('Asia/Kolkata');
-}
-
 /**
  * Check if current user has admin privileges (admin or super_admin)
  * Admin users should have all rights of project leads, QA, and testers
@@ -157,6 +152,42 @@ function getBaseDir() {
     }
     
     return $baseDir;
+}
+
+/**
+ * Create an in-app notification.
+ *
+ * @param PDO $db
+ * @param int $userId
+ * @param string $type
+ * @param string $message
+ * @param string|null $link
+ * @return bool
+ */
+function createNotification($db, $userId, $type, $message, $link = null) {
+    $userId = (int)$userId;
+    if ($userId <= 0) return false;
+
+    $type = in_array($type, ['mention', 'assignment', 'system'], true) ? $type : 'system';
+    $message = trim((string)$message);
+    $link = $link ? trim((string)$link) : null;
+    if ($link === '') $link = null;
+    if ($link !== null) {
+        // Normalize to app-relative path (avoid double baseDir in renderers)
+        $baseDir = getBaseDir();
+        if ($baseDir && strpos($link, $baseDir . '/') === 0) {
+            $link = substr($link, strlen($baseDir));
+            if ($link === '') $link = '/';
+        }
+    }
+
+    try {
+        $stmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, ?, ?, ?)");
+        return $stmt->execute([$userId, $type, $message, $link]);
+    } catch (Exception $e) {
+        error_log('createNotification error: ' . $e->getMessage());
+        return false;
+    }
 }
 
 /**
@@ -771,29 +802,6 @@ function get_geo_info($ip) {
         return $geo;
     } catch (Exception $e) {
         return [];
-    }
-}
-
-/**
- * Create a notification for a user
- * 
- * @param PDO $db Database connection
- * @param int $userId User ID to notify
- * @param string $type Notification type: 'mention', 'assignment', 'system'
- * @param string $message Notification message
- * @param string|null $link Optional link URL
- * @return bool Success status
- */
-function createNotification($db, $userId, $type, $message, $link = null) {
-    try {
-        $stmt = $db->prepare("
-            INSERT INTO notifications (user_id, type, message, link, is_read, created_at)
-            VALUES (?, ?, ?, ?, 0, NOW())
-        ");
-        return $stmt->execute([$userId, $type, $message, $link]);
-    } catch (Exception $e) {
-        error_log("Failed to create notification: " . $e->getMessage());
-        return false;
     }
 }
 ?>

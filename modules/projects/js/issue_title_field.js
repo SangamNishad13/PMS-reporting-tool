@@ -2,6 +2,14 @@
 // Handles issue title input for Final Issue Modal with Apply Preset button
 
 (function() {
+    // Add once: visible keyboard focus style for highlighted suggestion
+    if (!document.getElementById('issueTitleSuggestionA11yStyle')) {
+        const style = document.createElement('style');
+        style.id = 'issueTitleSuggestionA11yStyle';
+        style.textContent = '.issue-title-suggestion-active{outline:2px solid #0d6efd;outline-offset:-2px;background:#e7f1ff;color:#0a58ca;font-weight:600;}';
+        document.head.appendChild(style);
+    }
+
     function getApiUrl() {
         const base = (window.ProjectConfig && window.ProjectConfig.baseDir) ? window.ProjectConfig.baseDir : '';
         return base + '/api/issue_titles.php';
@@ -41,6 +49,8 @@
         input.placeholder = 'Type or search issue title...';
         input.autocomplete = 'off';
         input.value = defaultValue || '';
+        input.setAttribute('aria-controls', 'issueTitleSuggestions');
+        input.setAttribute('aria-autocomplete', 'list');
         
         // Apply Preset button
         const applyBtn = document.createElement('button');
@@ -53,12 +63,14 @@
         
         // Suggestion dropdown
         const dropdown = document.createElement('div');
-        dropdown.className = 'dropdown-menu w-100';
+        dropdown.className = 'w-100 border bg-white rounded shadow-sm';
         dropdown.style.position = 'absolute';
         dropdown.style.zIndex = 10610;
         dropdown.style.maxHeight = '220px';
         dropdown.style.overflowY = 'auto';
         dropdown.style.display = 'none';
+        dropdown.setAttribute('role', 'listbox');
+        dropdown.id = 'issueTitleSuggestions';
         
         inputGroup.appendChild(input);
         inputGroup.appendChild(applyBtn);
@@ -71,6 +83,8 @@
         let timer = null;
         let isMouseOverDropdown = false;
         let selectedPresetTitle = null;
+        let suggestionItems = [];
+        let highlightedIndex = -1;
         
         // Apply Preset button click handler
         applyBtn.addEventListener('click', function() {
@@ -118,6 +132,42 @@
                 }
             }, 200);
         });
+
+        function handleSuggestionNavigation(e) {
+            if (suggestionItems.length === 0 || dropdown.style.display === 'none') return;
+
+            const key = e.key;
+            const code = e.keyCode || e.which;
+
+            if (key === 'ArrowDown' || code === 40) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                setHighlightedIndex((highlightedIndex + 1) % suggestionItems.length);
+                input.focus();
+            } else if (key === 'ArrowUp' || code === 38) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                setHighlightedIndex((highlightedIndex - 1 + suggestionItems.length) % suggestionItems.length);
+                input.focus();
+            } else if (key === 'Enter' || key === ' ' || code === 13 || code === 32) {
+                if (highlightedIndex >= 0 && highlightedIndex < suggestionItems.length) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    chooseSuggestion(suggestionItems[highlightedIndex]);
+                }
+            } else if (key === 'Tab' || code === 9) {
+                resetSuggestions();
+            } else if (key === 'Escape' || code === 27) {
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                resetSuggestions();
+            }
+        }
+
+        input.addEventListener('keydown', handleSuggestionNavigation, true);
         
         // Track mouse over dropdown to prevent blur from hiding it
         dropdown.addEventListener('mouseenter', function() {
@@ -137,24 +187,25 @@
             fetch(apiUrl + '?q=&project_type=' + encodeURIComponent(projectType) + '&presets_only=1', { credentials: 'same-origin' })
                 .then(res => res.json())
                 .then(data => {
-                    dropdown.innerHTML = '';
+                    resetSuggestions();
                     if (data && Array.isArray(data.titles) && data.titles.length) {
-                        data.titles.forEach(title => {
-                            const item = document.createElement('button');
-                            item.type = 'button';
-                            item.className = 'dropdown-item';
+                        data.titles.forEach((title, idx) => {
+                            const item = document.createElement('div');
+                            item.className = 'px-3 py-2 border-bottom issue-title-suggestion';
                             item.textContent = title;
-                            item.onclick = () => {
-                                input.value = title;
-                                dropdown.style.display = 'none';
-                                // Show Apply Preset button
-                                selectedPresetTitle = title;
-                                applyBtn.style.display = 'block';
-                                };
+                            item.setAttribute('role', 'option');
+                            item.setAttribute('tabindex', '-1');
+                            item.id = 'issueTitleSuggestion_' + idx;
+                            item.style.cursor = 'pointer';
+                            item.onmousedown = function(e) { e.preventDefault(); };
+                            item.onclick = () => chooseSuggestion(item);
                             dropdown.appendChild(item);
+                            suggestionItems.push(item);
                         });
+                        setHighlightedIndex(0);
                         dropdown.style.display = 'block';
                     } else {
+                        resetSuggestions();
                         }
                 })
                 .catch(err => {
@@ -172,30 +223,61 @@
             fetch(apiUrl + '?q=' + encodeURIComponent(query) + '&project_type=' + encodeURIComponent(projectType), { credentials: 'same-origin' })
                 .then(res => res.json())
                 .then(data => {
-                    dropdown.innerHTML = '';
+                    resetSuggestions();
                     if (data && Array.isArray(data.titles) && data.titles.length) {
-                        data.titles.forEach(title => {
-                            const item = document.createElement('button');
-                            item.type = 'button';
-                            item.className = 'dropdown-item';
+                        data.titles.forEach((title, idx) => {
+                            const item = document.createElement('div');
+                            item.className = 'px-3 py-2 border-bottom issue-title-suggestion';
                             item.textContent = title;
-                            item.onclick = () => {
-                                input.value = title;
-                                dropdown.style.display = 'none';
-                                // Show Apply Preset button
-                                selectedPresetTitle = title;
-                                applyBtn.style.display = 'block';
-                                };
+                            item.setAttribute('role', 'option');
+                            item.setAttribute('tabindex', '-1');
+                            item.id = 'issueTitleSuggestion_' + idx;
+                            item.style.cursor = 'pointer';
+                            item.onmousedown = function(e) { e.preventDefault(); };
+                            item.onclick = () => chooseSuggestion(item);
                             dropdown.appendChild(item);
+                            suggestionItems.push(item);
                         });
+                        setHighlightedIndex(0);
                         dropdown.style.display = 'block';
                     } else {
-                        dropdown.style.display = 'none';
+                        resetSuggestions();
                     }
                 })
                 .catch(err => { 
-                    dropdown.style.display = 'none'; 
+                    resetSuggestions();
                 });
+        }
+
+        function chooseSuggestion(item) {
+            const title = (item && item.textContent ? item.textContent : '').trim();
+            if (!title) return;
+            input.value = title;
+            dropdown.style.display = 'none';
+            selectedPresetTitle = title;
+            applyBtn.style.display = 'block';
+            resetSuggestions();
+        }
+
+        function setHighlightedIndex(index) {
+            highlightedIndex = index;
+            suggestionItems.forEach(function(it, idx) {
+                const active = idx === highlightedIndex;
+                it.classList.toggle('issue-title-suggestion-active', active);
+                it.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            if (suggestionItems[highlightedIndex]) {
+                input.setAttribute('aria-activedescendant', suggestionItems[highlightedIndex].id || '');
+                suggestionItems[highlightedIndex].scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        function resetSuggestions() {
+            dropdown.innerHTML = '';
+            dropdown.style.display = 'none';
+            suggestionItems = [];
+            highlightedIndex = -1;
+            input.removeAttribute('aria-activedescendant');
         }
         
         function loadPresetData(title) {
@@ -253,6 +335,11 @@
                                 if (!field && !fieldId.startsWith('finalIssue')) {
                                     field = document.getElementById('finalIssue' + key.charAt(0).toUpperCase() + key.slice(1));
                                 }
+
+                                // Try dynamic metadata field id pattern used in modal
+                                if (!field) {
+                                    field = document.getElementById('finalIssueField_' + key);
+                                }
                                 
                                 // Try looking in metadata container
                                 if (!field) {
@@ -272,9 +359,20 @@
                                         }
                                     } else {
                                         // For single value fields
-                                        field.value = value;
-                                        if (window.jQuery && jQuery.fn.select2) {
-                                            jQuery(field).trigger('change');
+                                        if (field.multiple) {
+                                            const normalized = (value === null || value === undefined || value === '') ? [] : [String(value)];
+                                            if (window.jQuery && jQuery.fn.select2) {
+                                                jQuery(field).val(normalized).trigger('change');
+                                            } else {
+                                                Array.from(field.options).forEach(opt => {
+                                                    opt.selected = normalized.includes(opt.value);
+                                                });
+                                            }
+                                        } else {
+                                            field.value = value;
+                                            if (window.jQuery && jQuery.fn.select2) {
+                                                jQuery(field).trigger('change');
+                                            }
                                         }
                                     }
                                     }

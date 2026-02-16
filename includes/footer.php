@@ -1,3 +1,4 @@
+    </main>
     </div>
     <div class="mt-auto py-3 border-top text-center text-white small" style="background-color: #0f6cbf !important; background-color: var(--primary) !important;">
         <div class="container-fluid">
@@ -111,7 +112,12 @@
                         } else {
                             label = '<i class="fas fa-info-circle"></i> System';
                         }
-                        html += `<li><a class="dropdown-item py-2 border-bottom notification-item" href="<?php echo $baseDir; ?>${n.link}" data-id="${n.id}">
+                        let link = n.link || '#';
+                        const baseDir = '<?php echo $baseDir; ?>';
+                        if (link !== '#' && baseDir && !/^https?:\/\//i.test(link) && link.indexOf(baseDir + '/') !== 0) {
+                            link = baseDir + link;
+                        }
+                        html += `<li><a class="dropdown-item py-2 border-bottom notification-item" href="${link}" data-id="${n.id}">
                             <div class="small fw-bold">${label}</div>
                             <div class="text-wrap" style="font-size: 0.9em;">${n.message}</div>
                             <div class="text-muted smaller" style="font-size: 0.8em;">${n.created_at}</div>
@@ -137,7 +143,12 @@
                                 if (window.Notification && Notification.permission === 'granted') {
                                     const title = (n.type === 'mention') ? 'You were mentioned' : 'New notification';
                                     const notif = new Notification(title, { body: n.message, tag: 'pms_'+nid });
-                                    notif.onclick = function() { window.open('<?php echo $baseDir; ?>' + n.link, '_blank'); };
+                                    let link = n.link || '#';
+                                    const baseDir = '<?php echo $baseDir; ?>';
+                                    if (link !== '#' && baseDir && !/^https?:\/\//i.test(link) && link.indexOf(baseDir + '/') !== 0) {
+                                        link = baseDir + link;
+                                    }
+                                    notif.onclick = function() { window.open(link, '_blank'); };
                                 }
                                 if (nid > newMax) newMax = nid;
                             }

@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($id) {
             try {
                 // Check if status is in use
-                $checkStmt = $db->prepare("SELECT COUNT(*) as count FROM page_environments WHERE status = (SELECT status_key FROM env_status_master WHERE id = ?)");
+                $checkStmt = $db->prepare("SELECT COUNT(*) as count FROM page_environments WHERE BINARY status = (SELECT BINARY status_key FROM env_status_master WHERE id = ?)");
                 $checkStmt->execute([$id]);
                 $usage = $checkStmt->fetch();
                 
@@ -162,7 +162,7 @@ include __DIR__ . '/../../includes/header.php';
                     <tbody>
                         <?php foreach ($statuses as $status): 
                             // Count usage
-                            $usageStmt = $db->prepare("SELECT COUNT(*) as count FROM page_environments WHERE status = ?");
+                            $usageStmt = $db->prepare("SELECT COUNT(*) as count FROM page_environments WHERE BINARY status = BINARY ?");
                             $usageStmt->execute([$status['status_key']]);
                             $usage = $usageStmt->fetch();
                             $usageCount = $usage['count'];
@@ -356,6 +356,26 @@ include __DIR__ . '/../../includes/header.php';
     <input type="hidden" name="id" id="delete_id">
 </form>
 
+<div class="modal fade" id="deleteEnvStatusConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-exclamation-triangle text-warning me-2"></i>Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" id="deleteEnvStatusConfirmText">Are you sure you want to delete this status?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="deleteEnvStatusConfirmBtn">
+                    <i class="fas fa-trash me-1"></i> Delete
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 function editStatus(status) {
     document.getElementById('edit_id').value = status.id;
@@ -375,11 +395,17 @@ function deleteStatus(id, label, usageCount) {
         alert('Cannot delete this status: It is currently in use by ' + usageCount + ' environment(s).');
         return;
     }
-    
-    if (confirm('Are you sure you want to delete the status "' + label + '"?\n\nThis action cannot be undone.')) {
-        document.getElementById('delete_id').value = id;
+
+    document.getElementById('delete_id').value = id;
+    document.getElementById('deleteEnvStatusConfirmText').textContent =
+        'Are you sure you want to delete the status "' + label + '"? This action cannot be undone.';
+
+    var confirmBtn = document.getElementById('deleteEnvStatusConfirmBtn');
+    confirmBtn.onclick = function () {
         document.getElementById('deleteForm').submit();
-    }
+    };
+
+    new bootstrap.Modal(document.getElementById('deleteEnvStatusConfirmModal')).show();
 }
 </script>
 

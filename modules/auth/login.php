@@ -42,33 +42,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 include __DIR__ . '/../../includes/header.php';
 ?>
-<div class="container">
+<div class="container" role="main" id="main-content" tabindex="-1">
     <div class="row justify-content-center mt-5">
         <div class="col-md-6">
             <div class="card">
                 <div class="card-header">
-                    <h4 class="text-center">Login to Project Management System</h4>
+                    <h1 class="text-center">Login to Project Management System</h1>
                 </div>
                 <div class="card-body">
                     <?php if ($error): ?>
-                        <div class="alert alert-danger"><?php echo e($error); ?></div>
+                        <div class="alert alert-danger" role="alert"><?php echo e($error); ?></div>
                     <?php endif; ?>
                     <?php if ($success): ?>
-                        <div class="alert alert-success"><?php echo e($success); ?></div>
+                        <div class="alert alert-success" role="alert"><?php echo e($success); ?></div>
                     <?php endif; ?>
                     
                     <form method="POST">
                         <input type="hidden" name="csrf_token" value="<?php echo e(generateCsrfToken()); ?>">
                         <div class="mb-3">
                             <label for="username" class="form-label">Username or Email</label>
-                            <input type="text" class="form-control" id="username" name="username" required autofocus>
+                            <input type="text" autocomplete="username" class="form-control" id="username" name="username" value="<?php echo e($_POST['username'] ?? ''); ?>" required <?php echo !$error ? 'autofocus' : ''; ?>>
                         </div>
                         <div class="mb-3">
                             <label for="password" class="form-label">Password</label>
-                            <input type="password" class="form-control" id="password" name="password" required>
+                            <input type="password" autocomplete="current-password" class="form-control" id="password" name="password" required>
                         </div>
                         <button type="submit" class="btn btn-primary w-100">Login</button>
                     </form>
+                    
+                    <?php if ($error): ?>
+                    <script>
+                        // Focus on username field when there's an error
+                        document.addEventListener('DOMContentLoaded', function() {
+                            const usernameField = document.getElementById('username');
+                            if (usernameField) {
+                                usernameField.focus();
+                                usernameField.select(); // Also select the text for easy correction
+                            }
+                        });
+                    </script>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

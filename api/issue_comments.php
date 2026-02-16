@@ -41,6 +41,22 @@ function getStatusId($db, $name) {
     return $id ?: null;
 }
 
+function parseMentionsInput($value) {
+    if ($value === null || $value === '') return [];
+    if (is_array($value)) {
+        return array_values(array_unique(array_filter(array_map('intval', $value), function ($v) { return $v > 0; })));
+    }
+    $raw = trim((string)$value);
+    if ($raw === '') return [];
+    if ($raw[0] === '[') {
+        $decoded = json_decode($raw, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return array_values(array_unique(array_filter(array_map('intval', $decoded), function ($v) { return $v > 0; })));
+        }
+    }
+    return array_values(array_unique(array_filter(array_map('intval', explode(',', $raw)), function ($v) { return $v > 0; })));
+}
+
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'] ?? 0;
 $method = $_SERVER['REQUEST_METHOD'];
@@ -109,6 +125,7 @@ try {
         $commentType = $_POST['comment_type'] ?? 'normal';
         $recipientId = (int)($_POST['recipient_id'] ?? 0);
         $replyTo = (int)($_POST['reply_to'] ?? 0);
+        $mentions = parseMentionsInput($_POST['mentions'] ?? []);
         $qaStatusRaw = $_POST['qa_status_id'] ?? '';
         $qaStatusId = is_numeric($qaStatusRaw) ? (int)$qaStatusRaw : (int)(getStatusId($db, $qaStatusRaw) ?: 0);
         if (!$commentHtml) jsonError('comment_html required', 400);
@@ -137,6 +154,27 @@ try {
                 $stmt->execute([$issueId, $userId, $recipientId ?: null, $qaStatusId ?: null, $clean, $replyTo ?: null]);
             } else {
                 throw $e;
+            }
+        }
+
+        // Send notifications for mentions / explicit recipient.
+        $notifyUserIds = $mentions;
+        if ($recipientId > 0) $notifyUserIds[] = $recipientId;
+        $notifyUserIds = array_values(array_unique(array_filter(array_map('intval', $notifyUserIds), function ($id) use ($userId) {
+            return $id > 0 && $id !== (int)$userId;
+        })));
+
+        if (!empty($notifyUserIds)) {
+            $senderName = trim((string)($_SESSION['full_name'] ?? 'A user'));
+            $link = getBaseDir() . '/modules/projects/view.php?id=' . (int)$projectId . '#issues';
+            foreach ($notifyUserIds as $targetUserId) {
+                createNotification(
+                    $db,
+                    (int)$targetUserId,
+                    'mention',
+                    $senderName . ' mentioned you in an issue comment.',
+                    $link
+                );
             }
         }
         

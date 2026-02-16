@@ -64,6 +64,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: qa_status_master.php");
         exit;
     }
+
+    if (isset($_POST['delete_status'])) {
+        $statusId = (int)($_POST['status_id'] ?? 0);
+        if ($statusId <= 0) {
+            $_SESSION['error'] = "Invalid status selected.";
+            header("Location: qa_status_master.php");
+            exit;
+        }
+
+        // Prevent delete when status is in use.
+        $inUseStmt = $db->prepare("SELECT COUNT(*) as count FROM user_qa_performance WHERE qa_status_id = ?");
+        $inUseStmt->execute([$statusId]);
+        $inUse = (int)($inUseStmt->fetch()['count'] ?? 0);
+
+        if ($inUse > 0) {
+            $_SESSION['error'] = "Cannot delete QA status: it is currently used in {$inUse} record(s).";
+            header("Location: qa_status_master.php");
+            exit;
+        }
+
+        $delStmt = $db->prepare("DELETE FROM qa_status_master WHERE id = ?");
+        if ($delStmt->execute([$statusId])) {
+            $_SESSION['success'] = "QA Status deleted successfully!";
+        } else {
+            $_SESSION['error'] = "Failed to delete QA status.";
+        }
+
+        header("Location: qa_status_master.php");
+        exit;
+    }
 }
 
 // Get all QA statuses
@@ -248,6 +278,11 @@ include __DIR__ . '/../../includes/header.php';
                                         data-bs-target="#editModal<?php echo $status['id']; ?>">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                <button type="button" class="btn btn-sm btn-danger"
+                                        onclick="deleteQaStatus(<?php echo (int)$status['id']; ?>, '<?php echo htmlspecialchars($status['status_label'], ENT_QUOTES, 'UTF-8'); ?>', <?php echo (int)$usageStats[$status['id']]; ?>)"
+                                        <?php echo ((int)$usageStats[$status['id']] > 0) ? 'disabled title="Cannot delete: In use"' : ''; ?>>
+                                    <i class="fas fa-trash"></i>
+                                </button>
                             </td>
                         </tr>
 
@@ -374,6 +409,60 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
 </div>
+
+<form method="POST" id="deleteQaStatusForm" style="display:none;">
+    <input type="hidden" name="delete_status" value="1">
+    <input type="hidden" name="status_id" id="deleteQaStatusId">
+</form>
+
+<div class="modal fade" id="deleteQaStatusConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-exclamation-triangle text-warning me-2"></i>Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" id="deleteQaStatusConfirmText">Are you sure you want to delete this QA status?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteQaStatusBtn">
+                    <i class="fas fa-trash me-1"></i> Delete
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function deleteQaStatus(id, label, usageCount) {
+    if (usageCount > 0) {
+        alert('Cannot delete this QA status: It is currently in use by ' + usageCount + ' record(s).');
+        return;
+    }
+
+    var textEl = document.getElementById('deleteQaStatusConfirmText');
+    var idEl = document.getElementById('deleteQaStatusId');
+    var btn = document.getElementById('confirmDeleteQaStatusBtn');
+    var modalEl = document.getElementById('deleteQaStatusConfirmModal');
+
+    if (textEl) {
+        textEl.textContent = 'Are you sure you want to delete QA status "' + label + '"? This action cannot be undone.';
+    }
+    if (idEl) {
+        idEl.value = id;
+    }
+    if (btn) {
+        btn.onclick = function () {
+            document.getElementById('deleteQaStatusForm').submit();
+        };
+    }
+
+    var modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+</script>
 
 <!-- Add Status Modal -->
 <div class="modal fade" id="addStatusModal" tabindex="-1">

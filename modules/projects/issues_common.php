@@ -36,7 +36,7 @@ if (!$project) {
 }
 
 // Pre-fetch project pages
-$pagesStmt = $db->prepare("SELECT id, page_name FROM project_pages WHERE project_id = ? ORDER BY page_name");
+$pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_pages WHERE project_id = ? ORDER BY page_name");
 $pagesStmt->execute([$projectId]);
 $projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -49,8 +49,36 @@ try {
         WHERE gu.project_id = ?
         ORDER BY gu.url
     ");
-    $groupedStmt->execute([$projectId]);
-    $groupedUrls = $groupedStmt->fetchAll(PDO::FETCH_ASSOC);
+$groupedStmt->execute([$projectId]);
+$groupedUrls = $groupedStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Unique page mapping for canonical URL fallback when grouped URLs are missing
+$uniqueIssuePages = [];
+try {
+    $uniqueIssueStmt = $db->prepare("
+        SELECT 
+            up.id AS unique_id,
+            up.name AS unique_name,
+            up.canonical_url,
+            MIN(pp.id) AS mapped_page_id
+        FROM unique_pages up
+        LEFT JOIN grouped_urls gu ON gu.project_id = up.project_id AND gu.unique_page_id = up.id
+        LEFT JOIN project_pages pp ON pp.project_id = up.project_id
+            AND (
+                pp.url = gu.url
+                OR pp.url = gu.normalized_url
+                OR pp.url = up.canonical_url
+                OR pp.page_name = up.name
+                OR pp.page_number = up.name
+            )
+        WHERE up.project_id = ?
+        GROUP BY up.id
+    ");
+    $uniqueIssueStmt->execute([$projectId]);
+    $uniqueIssuePages = $uniqueIssueStmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $uniqueIssuePages = [];
+}
 } catch (Exception $e) {
     $groupedUrls = [];
 }
@@ -79,11 +107,15 @@ try {
 $projectUsers = [];
 try {
     $usersStmt = $db->prepare("
-        SELECT DISTINCT u.id, u.full_name, u.role 
+        SELECT DISTINCT u.id, u.full_name, u.username, u.role 
         FROM users u
         INNER JOIN user_assignments ua ON u.id = ua.user_id
-        WHERE ua.project_id = ? AND (ua.is_removed IS NULL OR ua.is_removed = 0)
-        ORDER BY u.full_name
+        WHERE ua.project_id = ? AND u.is_active = 1 AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+        UNION
+        SELECT u.id, u.full_name, u.username, u.role
+        FROM users u
+        WHERE u.is_active = 1 AND u.role IN ('admin', 'super_admin')
+        ORDER BY full_name
     ");
     $usersStmt->execute([$projectId]);
     $projectUsers = $usersStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -259,6 +291,7 @@ include __DIR__ . '/partials/issues_modals.php';
         baseDir: '<?php echo $baseDir; ?>',
         projectType: '<?php echo $project['type'] ?? 'web'; ?>',
         projectPages: <?php echo json_encode($projectPages ?? []); ?>,
+        uniqueIssuePages: <?php echo json_encode($uniqueIssuePages ?? []); ?>,
         groupedUrls: <?php echo json_encode($groupedUrls ?? []); ?>,
         projectUsers: <?php echo json_encode($projectUsers ?? []); ?>,
         qaStatuses: <?php echo json_encode($qaStatuses ?? []); ?>,

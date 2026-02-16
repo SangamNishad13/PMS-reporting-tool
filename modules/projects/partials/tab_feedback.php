@@ -33,6 +33,7 @@
                                         ua.hours_allocated,
                                         ua.is_removed,
                                         u.full_name,
+                                        u.username,
                                         u.email,
                                         u.role as user_role
                                     FROM user_assignments ua
@@ -49,6 +50,7 @@
                                         NULL as hours_allocated,
                                         NULL as is_removed,
                                         pl.full_name,
+                                        pl.username,
                                         pl.email,
                                         pl.role as user_role
                                     FROM projects p
@@ -62,7 +64,7 @@
                                 $team->execute([$projectId, $projectId, $projectId]);
                                 while ($m = $team->fetch()):
                                 ?>
-                                <option value="<?php echo (int)$m['user_id']; ?>"><?php echo htmlspecialchars($m['full_name']); ?> (<?php echo htmlspecialchars($m['role']); ?>)</option>
+                                <option value="<?php echo (int)$m['user_id']; ?>" data-username="<?php echo htmlspecialchars($m['username'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($m['full_name']); ?> (<?php echo htmlspecialchars($m['role']); ?>)</option>
                                 <?php endwhile; ?>
                             </select>
                         </div>

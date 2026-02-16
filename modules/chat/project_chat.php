@@ -1,18 +1,14 @@
 <?php
 // modules/chat/project_chat.php
 
-// Start session
-session_start();
-
 // Include configuration
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/helpers.php';
 
-// Check login
-if (!isset($_SESSION['user_id'])) {
-    header("Location: " . $baseDir . "/modules/auth/login.php");
-    exit;
-}
+$auth = new Auth();
+$auth->requireLogin();
+$baseDir = getBaseDir();
 
 $embed = isset($_GET['embed']) && $_GET['embed'] === '1';
 
@@ -186,12 +182,16 @@ try {
             SELECT DISTINCT u.id, u.username, u.full_name
             FROM user_assignments ua
             JOIN users u ON ua.user_id = u.id
-            WHERE ua.project_id = ?
+            WHERE ua.project_id = ? AND u.is_active = 1
             UNION
             SELECT u.id, u.username, u.full_name
             FROM projects p
             JOIN users u ON p.project_lead_id = u.id
-            WHERE p.id = ? AND p.project_lead_id IS NOT NULL
+            WHERE p.id = ? AND p.project_lead_id IS NOT NULL AND u.is_active = 1
+            UNION
+            SELECT u.id, u.username, u.full_name
+            FROM users u
+            WHERE u.is_active = 1 AND u.role IN ('admin', 'super_admin')
         ");
         $mentionStmt->execute([$projectId, $projectId]);
     } elseif ($page && !empty($page['project_id'])) {
@@ -199,7 +199,11 @@ try {
             SELECT DISTINCT u.id, u.username, u.full_name
             FROM user_assignments ua
             JOIN users u ON ua.user_id = u.id
-            WHERE ua.project_id = ?
+            WHERE ua.project_id = ? AND u.is_active = 1
+            UNION
+            SELECT u.id, u.username, u.full_name
+            FROM users u
+            WHERE u.is_active = 1 AND u.role IN ('admin', 'super_admin')
         ");
         $mentionStmt->execute([$page['project_id']]);
     } else {
@@ -207,6 +211,16 @@ try {
         $mentionStmt->execute();
     }
     $mentionUsers = $mentionStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    usort($mentionUsers, function($a, $b) {
+        $aU = strtolower((string)($a['username'] ?? ''));
+        $bU = strtolower((string)($b['username'] ?? ''));
+        $aIsAdmin = in_array($aU, ['admin', 'super_admin', 'superadmin'], true);
+        $bIsAdmin = in_array($bU, ['admin', 'super_admin', 'superadmin'], true);
+        if ($aIsAdmin !== $bIsAdmin) {
+            return $aIsAdmin ? -1 : 1;
+        }
+        return strcasecmp((string)($a['full_name'] ?? ''), (string)($b['full_name'] ?? ''));
+    });
 } catch (Exception $e) {
     $mentionUsers = [];
 }

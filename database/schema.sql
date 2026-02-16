@@ -1514,6 +1514,7 @@ CREATE TABLE `users` (
   `is_active` tinyint(1) DEFAULT 1,
   `force_password_reset` tinyint(1) DEFAULT 0,
   `can_manage_issue_config` tinyint(1) NOT NULL DEFAULT 0,
+  `can_manage_devices` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
   UNIQUE KEY `email` (`email`)

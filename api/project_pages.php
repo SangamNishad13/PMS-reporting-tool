@@ -24,6 +24,17 @@ function jsonRes($data, $code = 200) {
     exit;
 }
 
+function isProjectPagesView($db) {
+    try {
+        $stmt = $db->prepare("SELECT TABLE_TYPE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_pages' LIMIT 1");
+        $stmt->execute();
+        $type = $stmt->fetchColumn();
+        return strtoupper((string)$type) === 'VIEW';
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
 // Helper: delete grouped urls by ids (ensures permission and logs activity)
 function delete_grouped_ids($db, $userId, $projectId, array $idsArr) {
     if (empty($idsArr)) return 0;
@@ -218,6 +229,12 @@ try {
 
             // Otherwise create a new project_page for this unique
             if ($field === 'page_name') {
+                if (isProjectPagesView($db)) {
+                    $upd = $db->prepare('UPDATE unique_pages SET name = ? WHERE id = ?');
+                    $upd->execute([$newName, $uniqueId]);
+                    try { logActivity($db, $_SESSION['user_id'], 'update_unique_name', 'project', $projectId, ['unique_id'=>$uniqueId, $field=>$newName]); } catch (Exception $e) {}
+                    jsonRes(['success' => true, 'unique_id' => $uniqueId, 'page_id' => $uniqueId, $field => $newName]);
+                }
                 $create = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
                 $pageNumberLabel = preg_match('/^Page\s+\d+/i', $uniqueName) ? $uniqueName : null;
                 $create->execute([$projectId, $newName, $pageNumberLabel, $uniqueCanonical ?: null, $_SESSION['user_id']]);
@@ -270,11 +287,26 @@ try {
                 $name = $pageLabel;
             }
 
-            $ins = $db->prepare('INSERT INTO unique_pages (project_id, name, canonical_url, page_number, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
-            $ins->execute([$projectId, $name, $canonical ?: null, $pageLabel, $_SESSION['user_id'] ?? null]);
-            $id = (int)$db->lastInsertId();
-            
-            jsonRes(['success' => true, 'id' => $id, 'page_number_label' => $pageLabel], 201);
+            try {
+                $ins = $db->prepare('INSERT INTO unique_pages (project_id, name, canonical_url, page_number, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
+                $ins->execute([$projectId, $name, $canonical ?: null, $pageLabel, $_SESSION['user_id'] ?? null]);
+                $id = (int)$db->lastInsertId();
+            } catch (PDOException $e) {
+                if ($e->getCode() === '23000') {
+                    jsonRes(['error' => 'A page with this name already exists in the project.'], 409);
+                }
+                throw $e;
+            }
+
+            $createdPageId = $id;
+            if (!isProjectPagesView($db)) {
+                // Create mapped project page so Assign actions are available immediately
+                $create = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
+                $create->execute([$projectId, $name, $pageLabel, $canonical ?: null, $_SESSION['user_id'] ?? null]);
+                $createdPageId = (int)$db->lastInsertId();
+            }
+
+            jsonRes(['success' => true, 'id' => $id, 'page_number_label' => $pageLabel, 'created_page_id' => $createdPageId], 201);
         }
 
         if ($action === 'map_url') {
