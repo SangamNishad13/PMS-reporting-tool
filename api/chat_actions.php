@@ -17,6 +17,18 @@ $action = $_GET['action'] ?? '';
 
 header('Content-Type: application/json');
 
+function chatMessagesHasReplyTo($db) {
+    static $hasColumn = null;
+    if ($hasColumn !== null) return $hasColumn;
+    try {
+        $stmt = $db->query("SHOW COLUMNS FROM chat_messages LIKE 'reply_to'");
+        $hasColumn = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $hasColumn = false;
+    }
+    return $hasColumn;
+}
+
 switch ($action) {
     case 'send_message':
         $projectId = (isset($_POST['project_id']) && $_POST['project_id'] !== '' && $_POST['project_id'] !== 'null' && $_POST['project_id'] !== '0') ? intval($_POST['project_id']) : null;
@@ -54,21 +66,8 @@ switch ($action) {
             }
         }
         
-        // Ensure reply_to column exists if needed
-        if ($replyTo !== null) {
-            try {
-                $db->exec("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to INT NULL");
-            } catch (Exception $e) {
-                // Some MySQL versions don't support IF NOT EXISTS for ALTER ADD COLUMN; ignore errors
-                try {
-                    $db->exec("ALTER TABLE chat_messages ADD COLUMN reply_to INT NULL");
-                } catch (Exception $e) {
-                    // ignore
-                }
-            }
-        }
-
-        if ($replyTo !== null) {
+        $canSaveReplyRef = ($replyTo !== null && chatMessagesHasReplyTo($db));
+        if ($canSaveReplyRef) {
             $stmt = $db->prepare("INSERT INTO chat_messages (project_id, page_id, user_id, message, mentions, reply_to) VALUES (?, ?, ?, ?, ?, ?)");
             $executed = $stmt->execute([$projectId, $pageId, $userId, $message, json_encode($mentions), $replyTo]);
         } else {

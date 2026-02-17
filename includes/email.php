@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config/settings.php';
 
 class EmailSender {
     private $settings;
+    private $smtpTimeout = 20;
     
     public function __construct() {
         $this->settings = include(__DIR__ . '/../config/settings.php');
@@ -14,40 +15,143 @@ class EmailSender {
             error_log("Invalid email address: $to");
             return false;
         }
-        
-        // Sanitize subject and from fields
-        $subject = filter_var($subject, FILTER_SANITIZE_STRING);
-        $fromEmail = filter_var($this->settings['mail_from'], FILTER_VALIDATE_EMAIL);
-        $fromName = filter_var($this->settings['mail_from_name'], FILTER_SANITIZE_STRING);
-        
+
+        // Normalize and sanitize fields
+        $subject = trim(preg_replace('/[\r\n]+/', ' ', (string)$subject));
+        $fromEmail = filter_var($this->settings['mail_from'] ?? '', FILTER_VALIDATE_EMAIL);
+        $fromName = trim(preg_replace('/[\r\n]+/', ' ', (string)($this->settings['mail_from_name'] ?? '')));
+        if ($fromName === '') {
+            $fromName = 'Project Management System';
+        }
+
         if (!$fromEmail) {
             error_log("Invalid from email address in settings");
             return false;
         }
-        
-        // Use PHPMailer or similar in production
-        // This is a basic implementation
-        
-        $headers = [];
-        
-        if ($isHtml) {
-            $headers[] = 'MIME-Version: 1.0';
-            $headers[] = 'Content-type: text/html; charset=utf-8';
-        } else {
-            $headers[] = 'Content-type: text/plain; charset=utf-8';
+
+        // Prefer SMTP for shared hosting reliability.
+        if ($this->isSmtpConfigured()) {
+            try {
+                return $this->sendViaSmtp($to, $subject, $body, $isHtml, $fromEmail, $fromName);
+            } catch (Throwable $e) {
+                error_log('SMTP send failed: ' . $e->getMessage());
+            }
         }
-        
+
+        // Fallback to mail() if SMTP is unavailable.
+        try {
+            $headers = [];
+            $headers[] = 'MIME-Version: 1.0';
+            $headers[] = $isHtml ? 'Content-type: text/html; charset=utf-8' : 'Content-type: text/plain; charset=utf-8';
+            $headers[] = 'From: ' . $fromName . ' <' . $fromEmail . '>';
+            $headers[] = 'Reply-To: ' . $fromEmail;
+            $headers[] = 'X-Mailer: PHP/' . phpversion();
+            $headers[] = 'X-Priority: 3';
+            $fullHeaders = implode("\r\n", $headers);
+            return mail($to, $subject, $body, $fullHeaders);
+        } catch (Throwable $e) {
+            error_log('Mail send failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    private function isSmtpConfigured() {
+        $host = trim((string)($this->settings['smtp_host'] ?? ''));
+        $username = trim((string)($this->settings['smtp_username'] ?? ''));
+        $password = (string)($this->settings['smtp_password'] ?? '');
+        return $host !== '' && $username !== '' && $password !== '';
+    }
+
+    private function sendViaSmtp($to, $subject, $body, $isHtml, $fromEmail, $fromName) {
+        $host = trim((string)$this->settings['smtp_host']);
+        $port = (int)($this->settings['smtp_port'] ?? 587);
+        $secure = strtolower(trim((string)($this->settings['smtp_secure'] ?? 'tls')));
+        $authValue = $this->settings['smtp_auth'] ?? true;
+        if (is_string($authValue)) {
+            $auth = !in_array(strtolower(trim($authValue)), ['0', 'false', 'no', 'off'], true);
+        } else {
+            $auth = (bool)$authValue;
+        }
+        $username = (string)($this->settings['smtp_username'] ?? '');
+        $password = (string)($this->settings['smtp_password'] ?? '');
+
+        $remoteHost = ($secure === 'ssl') ? ('ssl://' . $host) : $host;
+        $fp = @stream_socket_client($remoteHost . ':' . $port, $errno, $errstr, $this->smtpTimeout, STREAM_CLIENT_CONNECT);
+        if (!$fp) {
+            throw new Exception('SMTP connect failed: ' . $errstr . ' (' . $errno . ')');
+        }
+
+        stream_set_timeout($fp, $this->smtpTimeout);
+        $this->expectCode($fp, [220]);
+
+        $hostname = preg_replace('/[^a-zA-Z0-9\.\-]/', '', ($_SERVER['HTTP_HOST'] ?? 'localhost'));
+        if ($hostname === '') $hostname = 'localhost';
+
+        $this->sendCommand($fp, 'EHLO ' . $hostname, [250]);
+
+        if ($secure === 'tls') {
+            $this->sendCommand($fp, 'STARTTLS', [220]);
+            if (!@stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                fclose($fp);
+                throw new Exception('Unable to enable STARTTLS');
+            }
+            $this->sendCommand($fp, 'EHLO ' . $hostname, [250]);
+        }
+
+        if ($auth) {
+            $this->sendCommand($fp, 'AUTH LOGIN', [334]);
+            $this->sendCommand($fp, base64_encode($username), [334]);
+            $this->sendCommand($fp, base64_encode($password), [235]);
+        }
+
+        $this->sendCommand($fp, 'MAIL FROM:<' . $fromEmail . '>', [250]);
+        $this->sendCommand($fp, 'RCPT TO:<' . $to . '>', [250, 251]);
+        $this->sendCommand($fp, 'DATA', [354]);
+
+        $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+        $headers = [];
+        $headers[] = 'Date: ' . date('r');
         $headers[] = 'From: ' . $fromName . ' <' . $fromEmail . '>';
-        $headers[] = 'Reply-To: ' . $fromEmail;
-        $headers[] = 'X-Mailer: PHP/' . phpversion();
-        $headers[] = 'X-Priority: 3';
-        
-        $fullHeaders = implode("\r\n", $headers);
-        
-        // Use additional parameters for security
-        $additionalParams = '-f ' . escapeshellarg($fromEmail);
-        
-        return mail($to, $subject, $body, $fullHeaders, $additionalParams);
+        $headers[] = 'To: <' . $to . '>';
+        $headers[] = 'Subject: ' . $encodedSubject;
+        $headers[] = 'MIME-Version: 1.0';
+        $headers[] = $isHtml ? 'Content-Type: text/html; charset=UTF-8' : 'Content-Type: text/plain; charset=UTF-8';
+        $headers[] = 'Content-Transfer-Encoding: 8bit';
+        $headers[] = 'X-Mailer: PMS SMTP';
+
+        $normalizedBody = str_replace(["\r\n", "\r"], "\n", (string)$body);
+        $normalizedBody = preg_replace('/^\./m', '..', $normalizedBody); // dot-stuffing
+        $data = implode("\r\n", $headers) . "\r\n\r\n" . str_replace("\n", "\r\n", $normalizedBody) . "\r\n.\r\n";
+        fwrite($fp, $data);
+        $this->expectCode($fp, [250]);
+
+        $this->sendCommand($fp, 'QUIT', [221]);
+        fclose($fp);
+        return true;
+    }
+
+    private function sendCommand($fp, $command, $expectedCodes) {
+        fwrite($fp, $command . "\r\n");
+        $this->expectCode($fp, $expectedCodes);
+    }
+
+    private function expectCode($fp, $expectedCodes) {
+        $response = '';
+        while (($line = fgets($fp, 515)) !== false) {
+            $response .= $line;
+            if (preg_match('/^\d{3}\s/', $line)) {
+                break;
+            }
+        }
+
+        if ($response === '') {
+            throw new Exception('Empty SMTP response');
+        }
+
+        $code = (int)substr($response, 0, 3);
+        if (!in_array($code, $expectedCodes, true)) {
+            throw new Exception('SMTP error ' . $code . ': ' . trim($response));
+        }
     }
     
     public function sendWelcomeEmail($userEmail, $userName) {

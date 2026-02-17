@@ -37,18 +37,12 @@ if (session_status() === PHP_SESSION_NONE) {
         }
     }
     
-    // Fallback to XAMPP tmp folder
-    if (!$sessionPathSet) {
-        $xamppTemp = 'C:\\xampp\\tmp';
-        if (!is_dir($xamppTemp)) {
-            @mkdir($xamppTemp, 0777, true);
-        }
-        if (is_dir($xamppTemp) && is_writable($xamppTemp)) {
-            session_save_path($xamppTemp);
-            $sessionPathSet = true;
-        }
+    // Fallback: common Linux temp path on shared hosting.
+    if (!$sessionPathSet && is_dir('/tmp') && is_writable('/tmp')) {
+        session_save_path('/tmp');
+        $sessionPathSet = true;
     }
-    
+
     // Last resort: system temp directory
     if (!$sessionPathSet) {
         $sysTemp = sys_get_temp_dir();

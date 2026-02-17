@@ -110,39 +110,29 @@ function getIssueKey($db, $projectId) {
 }
 
 function ensureIssuePresenceTable($db) {
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS issue_active_editors (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            project_id INT NOT NULL,
-            issue_id INT NOT NULL,
-            user_id INT NOT NULL,
-            last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uniq_issue_user (issue_id, user_id),
-            KEY idx_presence_project_issue (project_id, issue_id),
-            KEY idx_presence_last_seen (last_seen)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
+    static $isReady = null;
+    if ($isReady !== null) return $isReady;
+    try {
+        $stmt = $db->prepare("SHOW TABLES LIKE ?");
+        $stmt->execute(['issue_active_editors']);
+        $isReady = (bool)$stmt->fetchColumn();
+    } catch (Exception $e) {
+        $isReady = false;
+    }
+    return $isReady;
 }
 
 function ensureIssuePresenceSessionsTable($db) {
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS issue_presence_sessions (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            project_id INT NOT NULL,
-            issue_id INT NOT NULL,
-            user_id INT NOT NULL,
-            session_token VARCHAR(64) NOT NULL,
-            opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            closed_at DATETIME NULL,
-            duration_seconds INT NULL,
-            UNIQUE KEY uniq_session_token (session_token),
-            KEY idx_session_issue (project_id, issue_id),
-            KEY idx_session_user (user_id),
-            KEY idx_session_opened (opened_at),
-            KEY idx_session_closed (closed_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
+    static $isReady = null;
+    if ($isReady !== null) return $isReady;
+    try {
+        $stmt = $db->prepare("SHOW TABLES LIKE ?");
+        $stmt->execute(['issue_presence_sessions']);
+        $isReady = (bool)$stmt->fetchColumn();
+    } catch (Exception $e) {
+        $isReady = false;
+    }
+    return $isReady;
 }
 
 function generatePresenceSessionToken() {
@@ -160,10 +150,12 @@ function issueBelongsToProject($db, $issueId, $projectId) {
 }
 
 function cleanupIssuePresence($db) {
+    if (!ensureIssuePresenceTable($db)) return;
     $db->exec("DELETE FROM issue_active_editors WHERE last_seen < (NOW() - INTERVAL 6 SECOND)");
 }
 
 function cleanupIssuePresenceSessions($db) {
+    if (!ensureIssuePresenceSessionsTable($db)) return;
     // Auto-close stale open sessions (e.g., browser/tab closed unexpectedly).
     $db->exec("
         UPDATE issue_presence_sessions
@@ -175,6 +167,7 @@ function cleanupIssuePresenceSessions($db) {
 }
 
 function getIssuePresenceUsers($db, $projectId, $issueId, $excludeUserId = 0) {
+    if (!ensureIssuePresenceTable($db)) return [];
     $sql = "
         SELECT p.user_id, u.full_name, p.last_seen
         FROM issue_active_editors p
@@ -193,6 +186,7 @@ function getIssuePresenceUsers($db, $projectId, $issueId, $excludeUserId = 0) {
 }
 
 function getIssuePresenceSessions($db, $projectId, $issueId) {
+    if (!ensureIssuePresenceSessionsTable($db)) return [];
     $stmt = $db->prepare("
         SELECT s.user_id, u.full_name, s.opened_at, s.closed_at, s.duration_seconds
         FROM issue_presence_sessions s
@@ -550,7 +544,9 @@ try {
         if (!$issueId) jsonError('issue_id is required', 400);
         if (!issueBelongsToProject($db, $issueId, $projectId)) jsonError('Issue not found', 404);
 
-        ensureIssuePresenceTable($db);
+        if (!ensureIssuePresenceTable($db)) {
+            jsonResponse(['success' => true, 'users' => []]);
+        }
         cleanupIssuePresence($db);
         $users = getIssuePresenceUsers($db, $projectId, $issueId, $userId);
         jsonResponse(['success' => true, 'users' => $users]);
@@ -561,7 +557,9 @@ try {
         if (!$issueId) jsonError('issue_id is required', 400);
         if (!issueBelongsToProject($db, $issueId, $projectId)) jsonError('Issue not found', 404);
 
-        ensureIssuePresenceSessionsTable($db);
+        if (!ensureIssuePresenceSessionsTable($db)) {
+            jsonResponse(['success' => true, 'sessions' => []]);
+        }
         cleanupIssuePresenceSessions($db);
         $sessions = getIssuePresenceSessions($db, $projectId, $issueId);
         jsonResponse(['success' => true, 'sessions' => $sessions]);
@@ -572,7 +570,9 @@ try {
         if (!$issueId) jsonError('issue_id is required', 400);
         if (!issueBelongsToProject($db, $issueId, $projectId)) jsonError('Issue not found', 404);
 
-        ensureIssuePresenceSessionsTable($db);
+        if (!ensureIssuePresenceSessionsTable($db)) {
+            jsonResponse(['success' => true, 'session_token' => '']);
+        }
         cleanupIssuePresenceSessions($db);
 
         $sessionToken = generatePresenceSessionToken();
@@ -593,7 +593,9 @@ try {
         if (!$issueId) jsonError('issue_id is required', 400);
         if (!issueBelongsToProject($db, $issueId, $projectId)) jsonError('Issue not found', 404);
 
-        ensureIssuePresenceTable($db);
+        if (!ensureIssuePresenceTable($db)) {
+            jsonResponse(['success' => true, 'users' => []]);
+        }
         cleanupIssuePresence($db);
         $db->prepare("DELETE FROM issue_active_editors WHERE project_id = ? AND issue_id = ? AND last_seen < (NOW() - INTERVAL 6 SECOND)")
             ->execute([(int)$projectId, (int)$issueId]);
@@ -606,13 +608,14 @@ try {
         $upsert->execute([(int)$projectId, (int)$issueId, (int)$userId]);
 
         if ($sessionToken !== '') {
-            ensureIssuePresenceSessionsTable($db);
-            $touch = $db->prepare("
-                UPDATE issue_presence_sessions
-                SET last_seen = NOW()
-                WHERE session_token = ? AND project_id = ? AND issue_id = ? AND user_id = ? AND closed_at IS NULL
-            ");
-            $touch->execute([$sessionToken, (int)$projectId, (int)$issueId, (int)$userId]);
+            if (ensureIssuePresenceSessionsTable($db)) {
+                $touch = $db->prepare("
+                    UPDATE issue_presence_sessions
+                    SET last_seen = NOW()
+                    WHERE session_token = ? AND project_id = ? AND issue_id = ? AND user_id = ? AND closed_at IS NULL
+                ");
+                $touch->execute([$sessionToken, (int)$projectId, (int)$issueId, (int)$userId]);
+            }
         }
 
         $users = getIssuePresenceUsers($db, $projectId, $issueId, $userId);
@@ -625,29 +628,31 @@ try {
         if (!$issueId) jsonError('issue_id is required', 400);
         if (!issueBelongsToProject($db, $issueId, $projectId)) jsonError('Issue not found', 404);
 
-        ensureIssuePresenceTable($db);
-        $del = $db->prepare("DELETE FROM issue_active_editors WHERE project_id = ? AND issue_id = ? AND user_id = ?");
-        $del->execute([(int)$projectId, (int)$issueId, (int)$userId]);
+        if (ensureIssuePresenceTable($db)) {
+            $del = $db->prepare("DELETE FROM issue_active_editors WHERE project_id = ? AND issue_id = ? AND user_id = ?");
+            $del->execute([(int)$projectId, (int)$issueId, (int)$userId]);
+        }
 
-        ensureIssuePresenceSessionsTable($db);
-        if ($sessionToken !== '') {
-            $close = $db->prepare("
-                UPDATE issue_presence_sessions
-                SET closed_at = NOW(),
-                    duration_seconds = TIMESTAMPDIFF(SECOND, opened_at, NOW()),
-                    last_seen = NOW()
-                WHERE session_token = ? AND project_id = ? AND issue_id = ? AND user_id = ? AND closed_at IS NULL
-            ");
-            $close->execute([$sessionToken, (int)$projectId, (int)$issueId, (int)$userId]);
-        } else {
-            $closeAny = $db->prepare("
-                UPDATE issue_presence_sessions
-                SET closed_at = NOW(),
-                    duration_seconds = TIMESTAMPDIFF(SECOND, opened_at, NOW()),
-                    last_seen = NOW()
-                WHERE project_id = ? AND issue_id = ? AND user_id = ? AND closed_at IS NULL
-            ");
-            $closeAny->execute([(int)$projectId, (int)$issueId, (int)$userId]);
+        if (ensureIssuePresenceSessionsTable($db)) {
+            if ($sessionToken !== '') {
+                $close = $db->prepare("
+                    UPDATE issue_presence_sessions
+                    SET closed_at = NOW(),
+                        duration_seconds = TIMESTAMPDIFF(SECOND, opened_at, NOW()),
+                        last_seen = NOW()
+                    WHERE session_token = ? AND project_id = ? AND issue_id = ? AND user_id = ? AND closed_at IS NULL
+                ");
+                $close->execute([$sessionToken, (int)$projectId, (int)$issueId, (int)$userId]);
+            } else {
+                $closeAny = $db->prepare("
+                    UPDATE issue_presence_sessions
+                    SET closed_at = NOW(),
+                        duration_seconds = TIMESTAMPDIFF(SECOND, opened_at, NOW()),
+                        last_seen = NOW()
+                    WHERE project_id = ? AND issue_id = ? AND user_id = ? AND closed_at IS NULL
+                ");
+                $closeAny->execute([(int)$projectId, (int)$issueId, (int)$userId]);
+            }
         }
         jsonResponse(['success' => true]);
     }

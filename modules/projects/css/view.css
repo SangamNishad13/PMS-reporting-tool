@@ -1281,13 +1281,10 @@ select.form-select option {
     z-index: 100;
 }
 
-/* Keep autoscan <pre><code> exactly in same color family as editor code style */
+/* Keep issue code blocks in same color family as editor code style */
 .note-editor .note-editable pre,
 .note-editor .note-editable pre code,
 .note-editor .note-editable code,
-#reviewIssuesBody .card-body pre,
-#reviewIssuesBody .card-body pre code,
-#reviewIssuesBody .card-body code,
 #finalIssuesBody .card-body pre,
 #finalIssuesBody .card-body pre code,
 #finalIssuesBody .card-body code,
@@ -1299,14 +1296,13 @@ select.form-select option {
 }
 
 .note-editor .note-editable pre,
-#reviewIssuesBody .card-body pre,
 #finalIssuesBody .card-body pre,
 #commonIssuesBody .card-body pre {
     white-space: pre-wrap;
     word-break: break-word;
 }
 
-/* Keep failure text and instance lines visually consistent in auto-scan issue details */
+/* Keep failure text and instance lines visually consistent in issue details */
 .review-actual-results-text,
 .review-actual-results-list,
 .review-actual-results-list li {

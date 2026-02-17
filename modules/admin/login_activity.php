@@ -8,6 +8,83 @@ $auth->requireRole(['admin','super_admin']);
 
 $db = Database::getInstance();
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $postAction = trim((string)($_POST['cleanup_action'] ?? ''));
+    $redirectTo = strtok($_SERVER['REQUEST_URI'], '?');
+    $queryString = $_SERVER['QUERY_STRING'] ?? '';
+    if ($queryString !== '') {
+        $redirectTo .= '?' . $queryString;
+    }
+
+    if ($postAction === 'delete_selected') {
+        $idsRaw = $_POST['log_ids'] ?? [];
+        $ids = [];
+        if (is_array($idsRaw)) {
+            foreach ($idsRaw as $id) {
+                $i = (int)$id;
+                if ($i > 0) {
+                    $ids[] = $i;
+                }
+            }
+        }
+        $ids = array_values(array_unique($ids));
+        if (empty($ids)) {
+            $_SESSION['error'] = 'No activity rows selected.';
+        } else {
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $sql = "DELETE FROM activity_log WHERE id IN ($placeholders) AND action IN ('login','logout')";
+            $stmt = $db->prepare($sql);
+            $stmt->execute($ids);
+            $deleted = (int)$stmt->rowCount();
+            $_SESSION['success'] = $deleted . ' login activity record(s) deleted.';
+            try {
+                logActivity($db, (int)$_SESSION['user_id'], 'admin_cleanup_login_activity', 'activity_log', 0, [
+                    'deleted_ids_count' => count($ids),
+                    'deleted_rows' => $deleted
+                ]);
+            } catch (Throwable $_) {
+                // non-fatal
+            }
+        }
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    if ($postAction === 'purge_old') {
+        $beforeDate = trim((string)($_POST['before_date'] ?? ''));
+        $type = trim((string)($_POST['action_type'] ?? 'all'));
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $beforeDate)) {
+            $_SESSION['error'] = 'Please select a valid date.';
+            header('Location: ' . $redirectTo);
+            exit;
+        }
+
+        $params = [$beforeDate . ' 00:00:00'];
+        $sql = "DELETE FROM activity_log WHERE created_at < ? AND action IN ('login','logout')";
+        if ($type === 'login' || $type === 'logout') {
+            $sql .= " AND action = ?";
+            $params[] = $type;
+        }
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $deleted = (int)$stmt->rowCount();
+        $_SESSION['success'] = $deleted . ' old login activity record(s) deleted.';
+        try {
+            logActivity($db, (int)$_SESSION['user_id'], 'admin_purge_login_activity', 'activity_log', 0, [
+                'before_date' => $beforeDate,
+                'action_type' => $type,
+                'deleted_rows' => $deleted
+            ]);
+        } catch (Throwable $_) {
+            // non-fatal
+        }
+
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+}
+
 // Filters & pagination
 $params = [];
 $where = [];
@@ -57,6 +134,30 @@ require_once __DIR__ . '/../../includes/header.php';
     <h3>Login / Logout Activity</h3>
     <p class="text-muted">Showing <?php echo $total; ?> events.</p>
 
+    <div class="card mb-3 border-warning">
+        <div class="card-body py-3">
+            <div class="fw-semibold mb-2">Storage Cleanup</div>
+            <form method="post" class="row g-2 align-items-end" data-confirm="Delete old login/logout records?">
+                <input type="hidden" name="cleanup_action" value="purge_old">
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">Delete records older than</label>
+                    <input type="date" name="before_date" class="form-control form-control-sm" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">Action type</label>
+                    <select name="action_type" class="form-select form-select-sm">
+                        <option value="all">Login + Logout</option>
+                        <option value="login">Only Login</option>
+                        <option value="logout">Only Logout</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-sm btn-danger">Purge Old Records</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <form method="get" class="row g-2 mb-3">
         <div class="col-auto">
             <input type="text" name="q" value="<?php echo htmlspecialchars($q); ?>" class="form-control form-control-sm" placeholder="Search user, email, details">
@@ -85,10 +186,17 @@ require_once __DIR__ . '/../../includes/header.php';
 
     <p class="text-muted">Showing <?php echo count($rows); ?> of <?php echo $total; ?> events (Page <?php echo $page; ?> of <?php echo $totalPages; ?>).</p>
 
+    <form method="post" data-confirm="Delete selected login activity records?">
+    <input type="hidden" name="cleanup_action" value="delete_selected">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="small text-muted">Select rows and delete selected records if needed.</div>
+        <button type="submit" class="btn btn-sm btn-outline-danger">Delete Selected</button>
+    </div>
     <div class="table-responsive">
     <table class="table table-striped table-sm">
         <thead>
             <tr>
+                <th><input type="checkbox" id="selectAllLoginLogs"></th>
                 <th>When</th>
                 <th>User</th>
                 <th>Action</th>
@@ -109,6 +217,7 @@ require_once __DIR__ . '/../../includes/header.php';
             $sections = $details['user_sections'] ?? [];
         ?>
             <tr>
+                <td><input type="checkbox" name="log_ids[]" value="<?php echo (int)$r['id']; ?>"></td>
                 <td><?php echo htmlspecialchars($r['created_at']); ?></td>
                 <td>
                     <?php if (!empty($r['user_id'])): ?>
@@ -170,6 +279,7 @@ require_once __DIR__ . '/../../includes/header.php';
         </tbody>
     </table>
     </div>
+    </form>
 
     <nav aria-label="Page navigation">
         <ul class="pagination pagination-sm">
@@ -288,6 +398,33 @@ document.addEventListener('click', function(e){
 });
 window.addEventListener('load', ensureUaButtonsLogin);
 window.addEventListener('resize', function(){ setTimeout(ensureUaButtonsLogin, 150); });
+
+var selectAllLoginLogs = document.getElementById('selectAllLoginLogs');
+if (selectAllLoginLogs) {
+    selectAllLoginLogs.addEventListener('change', function() {
+        var checked = !!this.checked;
+        document.querySelectorAll('input[name="log_ids[]"]').forEach(function(cb) {
+            cb.checked = checked;
+        });
+    });
+}
+
+document.querySelectorAll('form[data-confirm]').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        var msg = form.getAttribute('data-confirm') || 'Are you sure?';
+        e.preventDefault();
+        if (typeof window.confirmModal === 'function') {
+            window.confirmModal(msg, function() {
+                form.submit();
+            });
+            return;
+        }
+        var confirmFn = (typeof window._origConfirm === 'function') ? window._origConfirm : window.confirm;
+        if (confirmFn(msg)) {
+            form.submit();
+        }
+    });
+});
 </script>
 <?php require_once __DIR__ . '/../../includes/footer.php';
 

@@ -225,6 +225,50 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
                             $sid = session_id();
                             $upd = $db->prepare("UPDATE user_sessions SET last_activity = NOW() WHERE session_id = ? AND user_id = ?");
                             $upd->execute([$sid, $_SESSION['user_id']]);
+
+                            // One-time self-heal: if project_pages is a VIEW, convert it to a normal table.
+                            // App uses project_pages with full CRUD, so table mode is required.
+                            if (empty($_SESSION['project_pages_table_checked'])) {
+                                $tt = $db->query("SELECT TABLE_TYPE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_pages' LIMIT 1")->fetchColumn();
+                                if (strtoupper((string)$tt) === 'VIEW') {
+                                    $db->exec("
+                                        CREATE TABLE IF NOT EXISTS project_pages_tmp_no_view (
+                                            id int(11) NOT NULL AUTO_INCREMENT,
+                                            project_id int(11) DEFAULT NULL,
+                                            page_name varchar(200) NOT NULL,
+                                            page_number varchar(50) DEFAULT NULL,
+                                            url varchar(500) DEFAULT NULL,
+                                            screen_name varchar(200) DEFAULT NULL,
+                                            status enum('not_started','in_progress','on_hold','qa_in_progress','in_fixing','needs_review','completed') DEFAULT 'not_started',
+                                            at_tester_id int(11) DEFAULT NULL,
+                                            ft_tester_id int(11) DEFAULT NULL,
+                                            qa_id int(11) DEFAULT NULL,
+                                            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+                                            created_by int(11) DEFAULT NULL,
+                                            at_tester_ids longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+                                            ft_tester_ids longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+                                            updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                                            notes text DEFAULT NULL,
+                                            PRIMARY KEY (id),
+                                            KEY idx_project_pages_project_id (project_id)
+                                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                                    ");
+                                    $db->exec("
+                                        INSERT INTO project_pages_tmp_no_view
+                                            (id, project_id, page_name, page_number, url, screen_name, status, at_tester_id, ft_tester_id, qa_id, created_at, created_by, at_tester_ids, ft_tester_ids, updated_at, notes)
+                                        SELECT
+                                            up.id, up.project_id, up.name, up.page_number, up.canonical_url, up.screen_name,
+                                            up.status, up.at_tester_id, up.ft_tester_id, up.qa_id, up.created_at, up.created_by,
+                                            up.at_tester_ids, up.ft_tester_ids, up.updated_at, up.notes
+                                        FROM unique_pages up
+                                        LEFT JOIN project_pages_tmp_no_view t ON t.id = up.id
+                                        WHERE t.id IS NULL
+                                    ");
+                                    $db->exec("DROP VIEW project_pages");
+                                    $db->exec("RENAME TABLE project_pages_tmp_no_view TO project_pages");
+                                }
+                                $_SESSION['project_pages_table_checked'] = 1;
+                            }
                         } catch (Exception $_) {
                             // non-fatal
                         }
@@ -322,11 +366,12 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
                                 <?php if ($_SESSION['role'] === 'super_admin' || $_SESSION['role'] === 'admin'): ?>
                                 <li class="nav-item dropdown">
                                     <a class="nav-link dropdown-toggle text-white" href="#" id="loginActivityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                                        Login Activity
+                                        Monitoring
                                     </a>
                                     <ul class="dropdown-menu shadow-sm" aria-labelledby="loginActivityDropdown">
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/login_activity.php">Login Activity</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/active_sessions.php">Active Sessions</a></li>
+                                        <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/uploads_manager.php">Uploads Manager</a></li>
                                     </ul>
                                 </li>
 

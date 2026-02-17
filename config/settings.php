@@ -1,10 +1,19 @@
 <?php
+// Derive app URL dynamically when APP_URL is not provided.
+$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$scriptDir = isset($_SERVER['SCRIPT_NAME']) ? str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])) : '';
+if ($scriptDir === '/' || $scriptDir === '\\' || $scriptDir === '.') {
+    $scriptDir = '';
+}
+$derivedAppUrl = rtrim($scheme . '://' . $host . $scriptDir, '/');
+
 // Application Settings
 return [
     // Application
     'app_name' => 'Project Management System',
     'app_version' => '1.0.0',
-    'app_url' => 'http://localhost/project-management-system',
+    'app_url' => getenv('APP_URL') ?: $derivedAppUrl,
     
     // Security
     'session_timeout' => 1800, // 30 minutes

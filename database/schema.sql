@@ -916,11 +916,43 @@ CREATE TABLE `project_assets` (
 
 -- Table: project_hours_summary
 DROP TABLE IF EXISTS `project_hours_summary`;
-CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `project_hours_summary` AS select `p`.`id` AS `project_id`,`p`.`title` AS `title`,`p`.`po_number` AS `po_number`,`p`.`total_hours` AS `total_hours`,coalesce(sum(`ua`.`hours_allocated`),0) AS `allocated_hours`,coalesce(sum(`ptl`.`hours_spent`),0) AS `utilized_hours`,`p`.`total_hours` - coalesce(sum(`ua`.`hours_allocated`),0) AS `available_hours`,case when `p`.`total_hours` > 0 then coalesce(sum(`ptl`.`hours_spent`),0) / `p`.`total_hours` * 100 else 0 end AS `utilization_percentage` from ((`projects` `p` left join `user_assignments` `ua` on(`p`.`id` = `ua`.`project_id`)) left join `project_time_logs` `ptl` on(`p`.`id` = `ptl`.`project_id` and `ptl`.`is_utilized` = 1)) group by `p`.`id`,`p`.`title`,`p`.`po_number`,`p`.`total_hours`;
+CREATE TABLE `project_hours_summary` (
+  `project_id` int(11) NOT NULL,
+  `title` varchar(255) DEFAULT NULL,
+  `po_number` varchar(100) DEFAULT NULL,
+  `total_hours` decimal(10,2) DEFAULT NULL,
+  `allocated_hours` decimal(14,2) DEFAULT 0.00,
+  `utilized_hours` decimal(14,2) DEFAULT 0.00,
+  `available_hours` decimal(14,2) DEFAULT 0.00,
+  `utilization_percentage` decimal(8,2) DEFAULT 0.00,
+  PRIMARY KEY (`project_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Table: project_pages
 DROP TABLE IF EXISTS `project_pages`;
-CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `project_pages` AS select `unique_pages`.`id` AS `id`,`unique_pages`.`project_id` AS `project_id`,`unique_pages`.`name` AS `page_name`,`unique_pages`.`page_number` AS `page_number`,`unique_pages`.`canonical_url` AS `url`,`unique_pages`.`screen_name` AS `screen_name`,`unique_pages`.`status` AS `status`,`unique_pages`.`at_tester_id` AS `at_tester_id`,`unique_pages`.`ft_tester_id` AS `ft_tester_id`,`unique_pages`.`qa_id` AS `qa_id`,`unique_pages`.`at_tester_ids` AS `at_tester_ids`,`unique_pages`.`ft_tester_ids` AS `ft_tester_ids`,`unique_pages`.`created_by` AS `created_by`,`unique_pages`.`created_at` AS `created_at`,`unique_pages`.`updated_at` AS `updated_at`,`unique_pages`.`notes` AS `notes` from `unique_pages`;
+CREATE TABLE `project_pages` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `project_id` int(11) DEFAULT NULL,
+  `page_name` varchar(200) NOT NULL,
+  `page_number` varchar(50) DEFAULT NULL,
+  `url` varchar(500) DEFAULT NULL,
+  `screen_name` varchar(200) DEFAULT NULL,
+  `status` enum('not_started','in_progress','on_hold','qa_in_progress','in_fixing','needs_review','completed') DEFAULT 'not_started',
+  `at_tester_id` int(11) DEFAULT NULL,
+  `ft_tester_id` int(11) DEFAULT NULL,
+  `qa_id` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `created_by` int(11) DEFAULT NULL,
+  `at_tester_ids` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`at_tester_ids`)),
+  `ft_tester_ids` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`ft_tester_ids`)),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `notes` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `project_pages_ibfk_1` (`project_id`),
+  KEY `idx_project_pages_project_id` (`project_id`),
+  KEY `idx_project_pages_page_number` (`project_id`,`page_number`),
+  CONSTRAINT `project_pages_ibfk_1` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Table: project_pages_backup_046
 DROP TABLE IF EXISTS `project_pages_backup_046`;

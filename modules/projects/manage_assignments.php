@@ -693,7 +693,7 @@ if (!$projectId) {
     $removedTeam->execute([$projectId, $projectId]);
     $removedMembers = $removedTeam->fetchAll();
 
-    // project_pages table se pages ka data ab use nahi ho raha (delete/ignore)
+    // project_pages table data is no longer used here (delete/ignore)
 
     // Fetch pages for this project (now using only project_pages table)
     $pagesStmt = $db->prepare("SELECT id, page_name, url, screen_name, at_tester_id, ft_tester_id, qa_id FROM project_pages WHERE project_id = ? ORDER BY id ASC");

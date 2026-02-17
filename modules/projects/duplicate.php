@@ -1,22 +1,14 @@
 <?php
-// modules/projects/duplicate.php
-
-session_start();
-
-// Include configuration
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 
+$auth = new Auth();
+$auth->requireRole(['super_admin', 'admin']);
+
 $baseDir = getBaseDir();
-
-// Check login and role
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['super_admin', 'admin'])) {
-    redirect($baseDir . "/modules/auth/login.php");
-    exit;
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['duplicate_project'])) {
+$projectId = (int)($_POST['project_id'] ?? 0);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $projectId > 0) {
     $projectId = isset($_POST['project_id']) ? intval($_POST['project_id']) : 0;
     $newPoNumber = isset($_POST['new_po_number']) ? trim($_POST['new_po_number']) : '';
     $newTitle = isset($_POST['new_title']) ? trim($_POST['new_title']) : '';
@@ -52,18 +44,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['duplicate_project']))
             
             // Insert new project
             $insertStmt = $db->prepare("
-                INSERT INTO projects (po_number, title, description, project_type, client_id, 
+                INSERT INTO projects (po_number, project_code, title, description, project_type, client_id, 
                                      priority, status, total_hours, project_lead_id, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, 'not_started', ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'not_started', ?, ?, ?)
             ");
             
             $insertStmt->execute([
                 $newPoNumber,
+                $newPoNumber,
                 $newTitle,
                 $original['description'],
-                $original['project_type'],
+                ($original['project_type'] ?: 'web'),
                 $original['client_id'],
-                $original['priority'],
+                ($original['priority'] ?: 'medium'),
                 $original['total_hours'],
                 $copyTeam ? $original['project_lead_id'] : null,
                 $_SESSION['user_id']

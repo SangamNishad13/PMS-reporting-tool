@@ -58,31 +58,132 @@ try {
     die("Error loading user: " . $e->getMessage());
 }
 
-// Get user's recent projects
+// Get user's assigned projects with robust multi-source lookup
+$projects = [];
 try {
-    $stmt = $db->prepare("\
-        SELECT DISTINCT p.id, p.title, p.status, p.priority, p.created_at,
-               (SELECT phase_name FROM project_phases ph WHERE ph.project_id = p.id AND ph.status = 'in_progress' ORDER BY ph.start_date DESC LIMIT 1) as current_phase,
-               CASE
-                   WHEN p.project_lead_id = ? THEN 'Project Lead'
-                   WHEN EXISTS (SELECT 1 FROM project_pages pp WHERE pp.project_id = p.id AND pp.at_tester_id = ?) THEN 'AT Tester'
-                   WHEN EXISTS (SELECT 1 FROM project_pages pp WHERE pp.project_id = p.id AND pp.ft_tester_id = ?) THEN 'FT Tester'
-                   WHEN EXISTS (SELECT 1 FROM project_pages pp WHERE pp.project_id = p.id AND pp.qa_id = ?) THEN 'QA'
-                   ELSE 'Team Member'
-               END as role_in_project
-        FROM projects p
-        WHERE p.project_lead_id = ? OR EXISTS (
-            SELECT 1 FROM project_pages pp
-            WHERE pp.project_id = p.id AND (pp.at_tester_id = ? OR pp.ft_tester_id = ? OR pp.qa_id = ?)
-        )
-        ORDER BY p.created_at DESC
-        LIMIT 10
-    ");
-    $stmt->execute([$userId, $userId, $userId, $userId, $userId, $userId, $userId, $userId]);
-    $projects = $stmt->fetchAll();
+    $projectRoleMap = [];
+    $rolePriority = [
+        'Project Lead' => 1,
+        'QA' => 2,
+        'AT Tester' => 3,
+        'FT Tester' => 4,
+        'Tester' => 5,
+        'Team Member' => 99
+    ];
+    $setRole = function ($projectId, $role) use (&$projectRoleMap, $rolePriority) {
+        $projectId = (int)$projectId;
+        if ($projectId <= 0) return;
+        if (!isset($projectRoleMap[$projectId]) || ($rolePriority[$role] ?? 999) < ($rolePriority[$projectRoleMap[$projectId]] ?? 999)) {
+            $projectRoleMap[$projectId] = $role;
+        }
+    };
 
+    $stmt = $db->prepare("SELECT id FROM projects WHERE project_lead_id = ?");
+    $stmt->execute([$userId]);
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $pid) {
+        $setRole($pid, 'Project Lead');
+    }
+
+    $stmt = $db->prepare("SELECT project_id, role FROM user_assignments WHERE user_id = ? AND (is_removed IS NULL OR is_removed = 0)");
+    $stmt->execute([$userId]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $rawRole = strtolower((string)($r['role'] ?? ''));
+        $label = $rawRole === 'qa' ? 'QA' : ($rawRole === 'at_tester' ? 'AT Tester' : ($rawRole === 'ft_tester' ? 'FT Tester' : 'Team Member'));
+        $setRole($r['project_id'], $label);
+    }
+
+    $stmt = $db->prepare("
+        SELECT DISTINCT project_id,
+               CASE
+                   WHEN at_tester_id = ? THEN 'AT Tester'
+                   WHEN ft_tester_id = ? THEN 'FT Tester'
+                   WHEN qa_id = ? THEN 'QA'
+                   ELSE 'Team Member'
+               END AS role_name
+        FROM project_pages
+        WHERE at_tester_id = ? OR ft_tester_id = ? OR qa_id = ?
+    ");
+    $stmt->execute([$userId, $userId, $userId, $userId, $userId, $userId]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $setRole($r['project_id'], $r['role_name']);
+    }
+
+    $stmt = $db->prepare("
+        SELECT DISTINCT pp.project_id,
+               CASE
+                   WHEN pe.at_tester_id = ? THEN 'AT Tester'
+                   WHEN pe.ft_tester_id = ? THEN 'FT Tester'
+                   WHEN pe.qa_id = ? THEN 'QA'
+                   ELSE 'Team Member'
+               END AS role_name
+        FROM page_environments pe
+        JOIN project_pages pp ON pp.id = pe.page_id
+        WHERE pe.at_tester_id = ? OR pe.ft_tester_id = ? OR pe.qa_id = ?
+    ");
+    $stmt->execute([$userId, $userId, $userId, $userId, $userId, $userId]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $setRole($r['project_id'], $r['role_name']);
+    }
+
+    if (!empty($projectRoleMap)) {
+        $projectIds = array_keys($projectRoleMap);
+        $placeholders = implode(',', array_fill(0, count($projectIds), '?'));
+        $projStmt = $db->prepare("
+            SELECT p.id, p.title, p.status, p.priority, p.created_at,
+                   (SELECT phase_name FROM project_phases ph WHERE ph.project_id = p.id AND ph.status = 'in_progress' ORDER BY ph.start_date DESC LIMIT 1) AS current_phase
+            FROM projects p
+            WHERE p.id IN ($placeholders)
+            ORDER BY p.created_at DESC
+        ");
+        $projStmt->execute($projectIds);
+        $projects = $projStmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($projects as &$p) {
+            $p['role_in_project'] = $projectRoleMap[(int)$p['id']] ?? 'Team Member';
+        }
+        unset($p);
+    }
+
+    $user['total_projects'] = count($projects);
+    $completedCount = 0;
+    foreach ($projects as $p) {
+        if (($p['status'] ?? '') === 'completed') {
+            $completedCount++;
+        }
+    }
+    $user['completed_projects'] = $completedCount;
 } catch (Exception $e) {
+    error_log('Profile projects query failed for user ' . (int)$userId . ': ' . $e->getMessage());
     $projects = [];
+}
+
+// Get assigned task list (project pages/environment tasks)
+try {
+    $taskStmt = $db->prepare("
+        SELECT
+            pp.id AS page_id,
+            pp.page_name,
+            pp.status AS page_status,
+            p.id AS project_id,
+            p.title AS project_title
+        FROM project_pages pp
+        JOIN projects p ON p.id = pp.project_id
+        WHERE
+            pp.at_tester_id = ? OR pp.ft_tester_id = ? OR pp.qa_id = ?
+            OR EXISTS (
+                SELECT 1
+                FROM page_environments pe
+                WHERE pe.page_id = pp.id
+                  AND (pe.at_tester_id = ? OR pe.ft_tester_id = ? OR pe.qa_id = ?)
+            )
+        GROUP BY pp.id, pp.page_name, pp.status, p.id, p.title
+        ORDER BY p.created_at DESC, pp.id DESC
+        LIMIT 30
+    ");
+    $taskStmt->execute([$userId, $userId, $userId, $userId, $userId, $userId]);
+    $assignedTasks = $taskStmt->fetchAll();
+} catch (Exception $e) {
+    error_log('Profile tasks query failed for user ' . (int)$userId . ': ' . $e->getMessage());
+    $assignedTasks = [];
 }
 
 // Get user's recent activity (include activity_log and project_time_logs)
@@ -214,6 +315,7 @@ include __DIR__ . '/../includes/header.php';
                                         <th>Role</th>
                                         <th>Status</th>
                                         <th>Priority</th>
+                                        <th>Current Phase</th>
                                         <th>Created</th>
                                     </tr>
                                 </thead>
@@ -255,6 +357,53 @@ include __DIR__ . '/../includes/header.php';
                                                 <?php endif; ?>
                                             </td>
                                             <td><?php echo date('M d, Y', strtotime($project['created_at'])); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Assigned Tasks -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-tasks"></i> Assigned Tasks (<?php echo count($assignedTasks); ?>)</h5>
+                </div>
+                <div class="card-body">
+                    <?php if (empty($assignedTasks)): ?>
+                        <p class="text-muted">No assigned tasks found.</p>
+                    <?php else: ?>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Project</th>
+                                        <th>Task/Page</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($assignedTasks as $task): ?>
+                                        <tr>
+                                            <td>
+                                                <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo intval($task['project_id']); ?>">
+                                                    <?php echo htmlspecialchars($task['project_title']); ?>
+                                                </a>
+                                            </td>
+                                            <td><?php echo htmlspecialchars($task['page_name'] ?: ('Page #' . intval($task['page_id']))); ?></td>
+                                            <td>
+                                                <span class="badge bg-<?php echo (($task['page_status'] ?? '') === 'completed') ? 'success' : 'secondary'; ?>">
+                                                    <?php echo htmlspecialchars(formatProjectStatusLabel($task['page_status'] ?: 'not_started')); ?>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <a class="btn btn-sm btn-outline-primary" href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo intval($task['project_id']); ?>">
+                                                    Open
+                                                </a>
+                                            </td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>

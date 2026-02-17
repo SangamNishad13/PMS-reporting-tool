@@ -35,6 +35,63 @@ function isProjectPagesView($db) {
     }
 }
 
+function ensureProjectPagesTable($db) {
+    if (!isProjectPagesView($db)) {
+        return;
+    }
+
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS project_pages_tmp_no_view (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            project_id int(11) DEFAULT NULL,
+            page_name varchar(200) NOT NULL,
+            page_number varchar(50) DEFAULT NULL,
+            url varchar(500) DEFAULT NULL,
+            screen_name varchar(200) DEFAULT NULL,
+            status enum('not_started','in_progress','on_hold','qa_in_progress','in_fixing','needs_review','completed') DEFAULT 'not_started',
+            at_tester_id int(11) DEFAULT NULL,
+            ft_tester_id int(11) DEFAULT NULL,
+            qa_id int(11) DEFAULT NULL,
+            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+            created_by int(11) DEFAULT NULL,
+            at_tester_ids longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+            ft_tester_ids longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+            updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+            notes text DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY idx_project_pages_project_id (project_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    ");
+
+    $db->exec("
+        INSERT INTO project_pages_tmp_no_view
+            (id, project_id, page_name, page_number, url, screen_name, status, at_tester_id, ft_tester_id, qa_id, created_at, created_by, at_tester_ids, ft_tester_ids, updated_at, notes)
+        SELECT
+            up.id,
+            up.project_id,
+            up.name,
+            up.page_number,
+            up.canonical_url,
+            up.screen_name,
+            up.status,
+            up.at_tester_id,
+            up.ft_tester_id,
+            up.qa_id,
+            up.created_at,
+            up.created_by,
+            up.at_tester_ids,
+            up.ft_tester_ids,
+            up.updated_at,
+            up.notes
+        FROM unique_pages up
+        LEFT JOIN project_pages_tmp_no_view t ON t.id = up.id
+        WHERE t.id IS NULL
+    ");
+
+    $db->exec("DROP VIEW project_pages");
+    $db->exec("RENAME TABLE project_pages_tmp_no_view TO project_pages");
+}
+
 // Helper: delete grouped urls by ids (ensures permission and logs activity)
 function delete_grouped_ids($db, $userId, $projectId, array $idsArr) {
     if (empty($idsArr)) return 0;
@@ -54,6 +111,7 @@ function delete_grouped_ids($db, $userId, $projectId, array $idsArr) {
 }
 
 try {
+    ensureProjectPagesTable($db);
     // Read raw input early so JSON POST bodies can provide an action
     $rawBody = @file_get_contents('php://input');
     $jsonBody = null;
@@ -229,12 +287,6 @@ try {
 
             // Otherwise create a new project_page for this unique
             if ($field === 'page_name') {
-                if (isProjectPagesView($db)) {
-                    $upd = $db->prepare('UPDATE unique_pages SET name = ? WHERE id = ?');
-                    $upd->execute([$newName, $uniqueId]);
-                    try { logActivity($db, $_SESSION['user_id'], 'update_unique_name', 'project', $projectId, ['unique_id'=>$uniqueId, $field=>$newName]); } catch (Exception $e) {}
-                    jsonRes(['success' => true, 'unique_id' => $uniqueId, 'page_id' => $uniqueId, $field => $newName]);
-                }
                 $create = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
                 $pageNumberLabel = preg_match('/^Page\s+\d+/i', $uniqueName) ? $uniqueName : null;
                 $create->execute([$projectId, $newName, $pageNumberLabel, $uniqueCanonical ?: null, $_SESSION['user_id']]);
@@ -299,12 +351,10 @@ try {
             }
 
             $createdPageId = $id;
-            if (!isProjectPagesView($db)) {
-                // Create mapped project page so Assign actions are available immediately
-                $create = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
-                $create->execute([$projectId, $name, $pageLabel, $canonical ?: null, $_SESSION['user_id'] ?? null]);
-                $createdPageId = (int)$db->lastInsertId();
-            }
+            // Create mapped project page so Assign actions are available immediately
+            $create = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
+            $create->execute([$projectId, $name, $pageLabel, $canonical ?: null, $_SESSION['user_id'] ?? null]);
+            $createdPageId = (int)$db->lastInsertId();
 
             jsonRes(['success' => true, 'id' => $id, 'page_number_label' => $pageLabel, 'created_page_id' => $createdPageId], 201);
         }

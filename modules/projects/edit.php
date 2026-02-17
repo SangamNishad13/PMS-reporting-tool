@@ -1,56 +1,12 @@
 <?php
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/helpers.php';
 
-// Start session
-session_start();
+$auth = new Auth();
+$auth->requireRole(['admin', 'super_admin']);
 
-// Get base path - Better approach
-$base_path = dirname(__DIR__, 2); // Go up two levels from current directory
-// Convert to URL path
-$base_url = str_replace('\\', '/', $base_path);
-$base_url = str_replace($_SERVER['DOCUMENT_ROOT'], '', $base_url);
-
-// For file includes, use filesystem path
-$config_path = $base_path . '/config/database.php';
-$functions_path = $base_path . '/includes/functions.php';
-$helpers_path = $base_path . '/includes/helpers.php';
-
-// Ensure required include files exist
-
-// Check if files exist before including
-if (!file_exists($config_path)) {
-    die("Error: Config file not found at: " . $config_path . "<br>Please check file paths.");
-}
-
-if (!file_exists($functions_path)) {
-    die("Error: Functions file not found at: " . $functions_path);
-}
-if (!file_exists($helpers_path)) {
-    die("Error: Helpers file not found at: " . $helpers_path);
-}
-
-// Include configuration
-require_once $config_path;
-require_once $functions_path;
-require_once $helpers_path;
-
-// For URLs, ensure $base_url starts with /
-if ($base_url === '' || $base_url[0] !== '/') {
-    $base_url = '/' . $base_url;
-}
-
-// Check login
-if (!isset($_SESSION['user_id'])) {
-    header("Location: " . $base_url . "/modules/auth/login.php");
-    exit;
-}
-
-// Check role - Only admin and super_admin can edit projects
-$allowed_roles = ['super_admin', 'admin'];
-if (!hasAdminPrivileges()) {
-    $_SESSION['error'] = "You don't have permission to edit projects.";
-    header("Location: " . $base_url . "/modules/admin/projects.php");
-    exit;
-}
+$base_url = getBaseDir();
 
 // Get project ID
 $projectId = isset($_GET['id']) ? intval($_GET['id']) : 0;
@@ -60,12 +16,7 @@ if (!$projectId) {
     exit;
 }
 
-// Connect to database
-try {
-    $db = Database::getInstance();
-} catch (Exception $e) {
-    die("Database connection failed: " . $e->getMessage());
-}
+$db = Database::getInstance();
 
 // Get project details
 try {
@@ -91,6 +42,8 @@ try {
 } catch (Exception $e) {
     die("Error loading project: " . $e->getMessage());
 }
+
+$duplicateCodeDefault = 'COPY-' . ($project['po_number'] ?? ('PRJ-' . $projectId)) . '-' . date('Y-m-d');
 
 // Handle update
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -381,6 +334,7 @@ try {
             <div class="modal-content">
                 <form method="POST" action="<?php echo $base_url; ?>/modules/projects/delete.php">
                     <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
+                    <input type="hidden" name="delete_project" value="1">
                     <div class="modal-header bg-danger text-white">
                         <h5 class="modal-title">
                             <i class="fas fa-exclamation-triangle"></i> Delete Project
@@ -401,7 +355,7 @@ try {
                             <li>All project assets and files</li>
                         </ul>
                         <div class="form-check mt-3">
-                            <input class="form-check-input" type="checkbox" id="confirmDelete" required>
+                            <input class="form-check-input" type="checkbox" id="confirmDelete">
                             <label class="form-check-label" for="confirmDelete">
                                 I understand this action is permanent and cannot be undone
                             </label>
@@ -409,7 +363,7 @@ try {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" name="delete_project" class="btn btn-danger">
+                        <button type="submit" class="btn btn-danger">
                             <i class="fas fa-trash"></i> Delete Project
                         </button>
                     </div>
@@ -424,6 +378,7 @@ try {
             <div class="modal-content">
                 <form method="POST" action="<?php echo $base_url; ?>/modules/projects/archive.php">
                     <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
+                    <input type="hidden" name="archive_project" value="1">
                     <div class="modal-header">
                         <h5 class="modal-title">Archive Project</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -431,7 +386,7 @@ try {
                     <div class="modal-body">
                         <p>Archiving will mark the project as completed and remove it from active project lists.</p>
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="archiveConfirm" required>
+                            <input class="form-check-input" type="checkbox" id="archiveConfirm">
                             <label class="form-check-label" for="archiveConfirm">
                                 Confirm archiving project
                             </label>
@@ -439,7 +394,7 @@ try {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" name="archive_project" class="btn btn-warning">
+                        <button type="submit" class="btn btn-warning">
                             <i class="fas fa-archive"></i> Archive Project
                         </button>
                     </div>
@@ -454,6 +409,7 @@ try {
             <div class="modal-content">
                 <form method="POST" action="<?php echo $base_url; ?>/modules/projects/duplicate.php">
                     <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
+                    <input type="hidden" name="duplicate_project" value="1">
                     <div class="modal-header">
                         <h5 class="modal-title">Duplicate Project</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -461,7 +417,7 @@ try {
                     <div class="modal-body">
                         <div class="mb-3">
                             <label for="new_po_number" class="form-label required">New Project Code</label>
-                            <input type="text" id="new_po_number" name="new_po_number" class="form-control" required>
+                            <input type="text" id="new_po_number" name="new_po_number" class="form-control" value="<?php echo htmlspecialchars($duplicateCodeDefault, ENT_QUOTES, 'UTF-8'); ?>" required>
                         </div>
                         <div class="mb-3">
                             <label for="new_title" class="form-label required">New Project Title</label>
@@ -483,7 +439,7 @@ try {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" name="duplicate_project" class="btn btn-primary">
+                        <button type="submit" class="btn btn-primary">
                             <i class="fas fa-copy"></i> Duplicate Project
                         </button>
                     </div>
@@ -522,15 +478,7 @@ try {
             $('#confirmDelete').prop('checked', false);
         });
         
-        // Auto-generate Project Code for duplicate
-        $('#duplicateModal').on('show.bs.modal', function() {
-            const poNumber = "<?php echo htmlspecialchars($project['po_number']); ?>";
-            const today = new Date();
-            const dateStr = today.getFullYear() + '-' + 
-                           String(today.getMonth() + 1).padStart(2, '0') + '-' + 
-                           String(today.getDate()).padStart(2, '0');
-            $('#new_po_number').val('COPY-' + poNumber + '-' + dateStr);
-        });
+        // Keep duplicate code input prefilled from server-side default.
     });
     </script>
 </body>

@@ -585,7 +585,7 @@ include __DIR__ . '/../../includes/header.php';
                 <div class="small text-muted">Created by <strong><?php echo htmlspecialchars($project['created_by_name'] ?? ''); ?></strong> on <?php echo date('M d, Y', strtotime($project['created_at'])); ?></div>
             </div>
             <div class="col-lg-4 col-md-5 mt-3 mt-md-0">
-                <?php if (in_array($userRole, ['admin','super_admin']) || ($userRole === 'project_lead' && $project['project_lead_id'] == $userId)): ?>
+                <?php if (in_array($userRole, ['admin','super_admin'], true)): ?>
                 <div class="d-flex justify-content-md-end mb-2">
                     <a href="<?php echo $baseDir; ?>/modules/projects/edit.php?id=<?php echo $projectId; ?>" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit"></i> Edit</a>
                 </div>

@@ -668,7 +668,7 @@ include __DIR__ . '/../../includes/header.php';
 })();
 
 // Compatibility guard: some legacy templates still call openImagePopup/closeImagePopup.
-// Keep these null-safe so a missing element never breaks other page scripts (e.g. scan actions).
+// Keep these null-safe so a missing element never breaks other page scripts.
 (function () {
     function setElementHidden(el, hidden) {
         if (!el) return;

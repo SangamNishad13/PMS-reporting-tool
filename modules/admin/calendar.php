@@ -293,6 +293,35 @@ $allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND 
         font-size: 0.7rem;
         padding: 2px 6px;
     }
+    /* Keep Summernote fully contained inside admin edit modal columns */
+    #adminEditModal .modal-body {
+        overflow-x: hidden;
+    }
+    #adminEditModal .note-editor.note-frame {
+        width: 100%;
+        max-width: 100%;
+    }
+    #adminEditModal .note-editor .note-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+    #adminEditModal .note-editor .note-toolbar > .note-btn-group {
+        float: none;
+        margin-right: 0;
+    }
+    #adminEditModal .note-editor .note-editing-area,
+    #adminEditModal .note-editor .note-statusbar {
+        overflow: hidden;
+    }
+    #adminEditModal .note-editor .note-editable {
+        word-break: break-word;
+    }
+    /* In readonly mode hide controls to avoid toolbar overflow and keep clean view */
+    #adminEditModal.admin-editor-readonly .note-toolbar,
+    #adminEditModal.admin-editor-readonly .note-statusbar {
+        display: none;
+    }
 </style>
 
 <div class="container-fluid">
@@ -744,6 +773,122 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <script>
+function enableAdminToolbarKeyboardA11y($el) {
+    if (!window.jQuery || !$el || !$el.length) return;
+    var $toolbar = $el.next('.note-editor').find('.note-toolbar').first();
+    if (!$toolbar.length || $toolbar.data('kbdA11yBound')) return;
+
+    function getItems() {
+        return $toolbar.find('.note-btn-group button').filter(function() {
+            var $b = jQuery(this);
+            if ($b.is(':hidden')) return false;
+            if ($b.prop('disabled')) return false;
+            if ($b.closest('.dropdown-menu').length) return false;
+            if ($b.attr('aria-hidden') === 'true') return false;
+            return true;
+        });
+    }
+
+    function setActiveIndex(idx) {
+        var $items = getItems();
+        if (!$items.length) return;
+        var next = Math.max(0, Math.min(idx, $items.length - 1));
+        $items.attr('tabindex', '-1');
+        $items.eq(next).attr('tabindex', '0');
+        $toolbar.data('kbdIndex', next);
+    }
+
+    function ensureOneTabStop() {
+        var $items = getItems();
+        if (!$items.length) return;
+        if (!$items.filter('[tabindex="0"]').length) {
+            $items.attr('tabindex', '-1');
+            $items.eq(0).attr('tabindex', '0');
+        }
+    }
+
+    function handleToolbarArrowNav(e) {
+        var key = e.key || (e.originalEvent && e.originalEvent.key);
+        if (key !== 'ArrowRight' && key !== 'ArrowLeft' && key !== 'Home' && key !== 'End') return;
+
+        var $items = getItems();
+        if (!$items.length) return;
+        var activeEl = document.activeElement;
+        var idx = $items.index(activeEl);
+        if (idx < 0 && activeEl && activeEl.closest) {
+            var parentBtn = activeEl.closest('button');
+            if (parentBtn) idx = $items.index(parentBtn);
+        }
+        if (idx < 0) {
+            var savedIdx = parseInt($toolbar.data('kbdIndex'), 10);
+            if (!isNaN(savedIdx) && savedIdx >= 0 && savedIdx < $items.length) idx = savedIdx;
+        }
+        if (idx < 0) idx = $items.index($items.filter('[tabindex="0"]').first());
+        if (idx < 0) idx = 0;
+
+        e.preventDefault();
+        if (e.stopPropagation) e.stopPropagation();
+        if (key === 'Home') idx = 0;
+        else if (key === 'End') idx = $items.length - 1;
+        else if (key === 'ArrowRight') idx = (idx + 1) % $items.length;
+        else if (key === 'ArrowLeft') idx = (idx - 1 + $items.length) % $items.length;
+
+        setActiveIndex(idx);
+        var $target = $items.eq(idx);
+        $target.focus();
+        if (document.activeElement !== $target.get(0)) {
+            setTimeout(function() { $target.focus(); }, 0);
+        }
+    }
+
+    $toolbar.attr('role', 'toolbar');
+    if (!$toolbar.attr('aria-label')) {
+        $toolbar.attr('aria-label', 'Editor toolbar');
+    }
+
+    setActiveIndex(0);
+    $toolbar.on('focusin', 'button', function() {
+        var $items = getItems();
+        var idx = $items.index(this);
+        if (idx >= 0) setActiveIndex(idx);
+    });
+    $toolbar.on('click', 'button', function() {
+        var $items = getItems();
+        var idx = $items.index(this);
+        if (idx >= 0) setActiveIndex(idx);
+    });
+    $toolbar.on('keydown', handleToolbarArrowNav);
+    if (!$toolbar.data('kbdA11yNativeKeyBound')) {
+        $toolbar.get(0).addEventListener('keydown', handleToolbarArrowNav, true);
+        $toolbar.data('kbdA11yNativeKeyBound', true);
+    }
+
+    var observer = new MutationObserver(function() { ensureOneTabStop(); });
+    observer.observe($toolbar[0], { subtree: true, attributes: true, attributeFilter: ['tabindex', 'class', 'disabled'] });
+    $toolbar.data('kbdA11yObserver', observer);
+    var fixTimer = setInterval(ensureOneTabStop, 1000);
+    $toolbar.data('kbdA11yTimer', fixTimer);
+    ensureOneTabStop();
+    $toolbar.data('kbdA11yBound', true);
+}
+
+function focusAdminEditorToolbar($el) {
+    if (!window.jQuery || !$el || !$el.length) return;
+    var $toolbar = $el.next('.note-editor').find('.note-toolbar').first();
+    if (!$toolbar.length) return;
+    var $items = $toolbar.find('.note-btn-group button').filter(function() {
+        var $b = jQuery(this);
+        if ($b.is(':hidden')) return false;
+        if ($b.prop('disabled')) return false;
+        if ($b.closest('.dropdown-menu').length) return false;
+        if ($b.attr('aria-hidden') === 'true') return false;
+        return true;
+    });
+    if (!$items.length) return;
+    $items.attr('tabindex', '-1');
+    $items.eq(0).attr('tabindex', '0').focus();
+}
+
 // initialize summernote on admin modal
 $(document).ready(function(){
     try {
@@ -758,7 +903,20 @@ $(document).ready(function(){
                         ['para', ['ul', 'ol', 'paragraph']],
                         ['insert', ['link']],
                         ['view', ['codeview']]
-                    ]
+                    ],
+                    callbacks: {
+                        onInit: function() {
+                            var $editor = $('#a_personal_note');
+                            setTimeout(function() { enableAdminToolbarKeyboardA11y($editor); }, 0);
+                            setTimeout(function() { enableAdminToolbarKeyboardA11y($editor); }, 200);
+                        },
+                        onKeydown: function(e) {
+                            if (e && e.altKey && (e.key === 'F10' || e.keyCode === 121)) {
+                                e.preventDefault();
+                                focusAdminEditorToolbar($('#a_personal_note'));
+                            }
+                        }
+                    }
                 });
                 $('#a_notes').summernote({
                     height: 120,
@@ -768,7 +926,20 @@ $(document).ready(function(){
                         ['para', ['ul', 'ol', 'paragraph']],
                         ['insert', ['link']],
                         ['view', ['codeview']]
-                    ]
+                    ],
+                    callbacks: {
+                        onInit: function() {
+                            var $editor = $('#a_notes');
+                            setTimeout(function() { enableAdminToolbarKeyboardA11y($editor); }, 0);
+                            setTimeout(function() { enableAdminToolbarKeyboardA11y($editor); }, 200);
+                        },
+                        onKeydown: function(e) {
+                            if (e && e.altKey && (e.key === 'F10' || e.keyCode === 121)) {
+                                e.preventDefault();
+                                focusAdminEditorToolbar($('#a_notes'));
+                            }
+                        }
+                    }
                 });
                 
                 // Initially disable editing
@@ -793,12 +964,18 @@ $(document).ready(function(){
 // Enable editing mode for admin
 function enableAdminEditing() {
     document.getElementById('a_status').disabled = false;
+    var modal = document.getElementById('adminEditModal');
+    if (modal) {
+        modal.classList.remove('admin-editor-readonly');
+    }
     
     // Wait a bit for Summernote to be initialized
     setTimeout(function() {
         if ($.fn.summernote && $('#a_notes').summernote('code') !== undefined) {
             $('#a_notes').summernote('enable');
             $('#a_personal_note').summernote('enable');
+            enableAdminToolbarKeyboardA11y($('#a_notes'));
+            enableAdminToolbarKeyboardA11y($('#a_personal_note'));
         } else {
             document.getElementById('a_notes').readOnly = false;
             document.getElementById('a_personal_note').readOnly = false;
@@ -809,6 +986,10 @@ function enableAdminEditing() {
 // Disable editing mode for admin
 function disableAdminEditing() {
     document.getElementById('a_status').disabled = true;
+    var modal = document.getElementById('adminEditModal');
+    if (modal) {
+        modal.classList.add('admin-editor-readonly');
+    }
     
     // Wait a bit for Summernote to be initialized
     setTimeout(function() {

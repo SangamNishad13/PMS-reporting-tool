@@ -1,38 +1,20 @@
-# Disable directory listing
 Options -Indexes
 
-# Prevent direct access to this directory
-# Only allow access to image files, not directory browsing
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-    
-    # Block access to directory listing
-    RewriteCond %{REQUEST_FILENAME} -d
-    RewriteRule ^ - [F,L]
-</IfModule>
-
-# Disable directory browsing (backup method)
 <IfModule mod_autoindex.c>
     IndexIgnore *
 </IfModule>
 
-# Allow only image files to be accessed
-<FilesMatch "\.(jpg|jpeg|png|gif|webp)$">
-    Require all granted
-</FilesMatch>
+<IfModule mod_rewrite.c>
+    RewriteEngine On
 
-# Deny access to .htaccess itself
-<Files ".htaccess">
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [F,L]
+
+    RewriteCond %{REQUEST_URI} ^/([^/]+)/uploads/chat/ [NC]
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^(.+)$ /%1/api/secure_file.php?path=uploads/chat/$1 [L,QSA]
+</IfModule>
+
+<FilesMatch "^\.">
     Require all denied
-</Files>
-
-# Deny access to all other files
-<FilesMatch "^(?!.*\.(jpg|jpeg|png|gif|webp)$).*$">
-    Require all denied
 </FilesMatch>
-
-# Prevent hotlinking (optional - uncomment if needed)
-# RewriteEngine On
-# RewriteCond %{HTTP_REFERER} !^$
-# RewriteCond %{HTTP_REFERER} !^https?://(www\.)?yourdomain\.com [NC]
-# RewriteRule \.(jpg|jpeg|png|gif|webp)$ - [F,L]

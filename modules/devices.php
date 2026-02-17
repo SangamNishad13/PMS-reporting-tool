@@ -20,6 +20,9 @@ include '../includes/header.php';
             <a href="../modules/admin/device_permissions.php" class="btn btn-outline-secondary">
                 <i class="fas fa-user-shield"></i> Device Permissions
             </a>
+            <a href="../modules/admin/uploads_manager.php" class="btn btn-outline-danger">
+                <i class="fas fa-folder-open"></i> Uploads Manager
+            </a>
         </div>
         <?php endif; ?>
     </div>

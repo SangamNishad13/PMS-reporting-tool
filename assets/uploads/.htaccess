@@ -1,7 +1,6 @@
-# Disable directory listing for uploads folder
+# Disable directory listing
 Options -Indexes
 
-# Prevent browsing of subdirectories
 <IfModule mod_autoindex.c>
     IndexIgnore *
 </IfModule>
@@ -10,17 +9,17 @@ Options -Indexes
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
-    # Keep directories blocked (no folder browsing)
+    # Block direct directory access
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [F,L]
 
     # Serve files only via secure endpoint (requires logged-in session)
-    RewriteCond %{REQUEST_URI} ^/([^/]+)/uploads/ [NC]
+    RewriteCond %{REQUEST_URI} ^/([^/]+)/assets/uploads/ [NC]
     RewriteCond %{REQUEST_FILENAME} -f
-    RewriteRule ^(.+)$ /%1/api/secure_file.php?path=uploads/$1 [L,QSA]
+    RewriteRule ^(.+)$ /%1/api/secure_file.php?path=assets/uploads/$1 [L,QSA]
 </IfModule>
 
-# Protect hidden files
 <FilesMatch "^\.">
     Require all denied
 </FilesMatch>
+

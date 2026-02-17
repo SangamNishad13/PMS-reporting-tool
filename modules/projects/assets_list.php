@@ -81,7 +81,8 @@ if ($stmt->rowCount() > 0) {
             echo '<form id="' . $formId . '" method="POST" action="' . $baseDir . '/modules/projects/handle_asset.php" onsubmit="confirmModal(\'Are you sure you want to delete this asset?\', function(){ document.getElementById(\'' . $formId . '\').submit(); }); return false;" class="d-inline">';
             echo '<input type="hidden" name="project_id" value="' . $projectId . '">';
             echo '<input type="hidden" name="asset_id" value="' . $asset['id'] . '">';
-            echo '<button type="submit" name="delete_asset" class="btn btn-sm btn-link text-danger p-0 border-0"><i class="fas fa-trash"></i></button>';
+            echo '<input type="hidden" name="delete_asset" value="1">';
+            echo '<button type="submit" class="btn btn-sm btn-link text-danger p-0 border-0"><i class="fas fa-trash"></i></button>';
             echo '</form>';
         }
 

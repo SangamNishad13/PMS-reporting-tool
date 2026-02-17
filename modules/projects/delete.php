@@ -1,22 +1,16 @@
 <?php
-// modules/projects/delete.php
-
-session_start();
-
-// Include configuration
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 
+$auth = new Auth();
+$auth->requireRole(['admin', 'super_admin']);
+
 $baseDir = getBaseDir();
 $userRole = $_SESSION['role'] ?? '';
+$projectId = (int)($_POST['project_id'] ?? 0);
 
-// Check login and role
-if (!isset($_SESSION['user_id']) || !hasAdminPrivileges()) {
-    redirect($baseDir . "/modules/auth/login.php");
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_project'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $projectId > 0) {
     $projectId = isset($_POST['project_id']) ? intval($_POST['project_id']) : 0;
     
     if ($projectId > 0) {
@@ -25,6 +19,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_project'])) {
             
             // Start transaction
             $db->beginTransaction();
+
+            // Required due to FK rule: project_time_logs.project_id => RESTRICT
+            $cleanupLogs = $db->prepare("DELETE FROM project_time_logs WHERE project_id = ?");
+            $cleanupLogs->execute([$projectId]);
+
+            // Best-effort cleanup for summary snapshot table (if present)
+            try {
+                $cleanupSummary = $db->prepare("DELETE FROM project_hours_summary WHERE project_id = ?");
+                $cleanupSummary->execute([$projectId]);
+            } catch (Exception $_) {
+                // Ignore if table does not exist or structure differs
+            }
             
             // Delete project and related data (cascade should handle most)
             $stmt = $db->prepare("DELETE FROM projects WHERE id = ?");

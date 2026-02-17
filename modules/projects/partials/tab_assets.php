@@ -112,7 +112,8 @@
                                       class="d-inline">
                                     <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
                                     <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
-                                    <button type="submit" name="delete_asset" class="btn btn-sm btn-link text-danger p-0 border-0">
+                                    <input type="hidden" name="delete_asset" value="1">
+                                    <button type="submit" class="btn btn-sm btn-link text-danger p-0 border-0">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </form>

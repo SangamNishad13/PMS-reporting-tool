@@ -1,5 +1,5 @@
 <?php
-// Database configuration - consider using environment variables in production
+// Database configuration - prefer environment variables on production hosts.
 define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
 define('DB_NAME', getenv('DB_NAME') ?: 'project_management');
 define('DB_USER', getenv('DB_USER') ?: 'root');

@@ -8,6 +8,150 @@ $auth->requireRole(['admin','super_admin']);
 
 $db = Database::getInstance();
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $postAction = trim((string)($_POST['cleanup_action'] ?? ''));
+    $redirectTo = strtok($_SERVER['REQUEST_URI'], '?');
+    $queryString = $_SERVER['QUERY_STRING'] ?? '';
+    if ($queryString !== '') {
+        $redirectTo .= '?' . $queryString;
+    }
+
+    if ($postAction === 'delete_selected') {
+        $sessionIdsRaw = $_POST['session_ids'] ?? [];
+        $sessionIds = [];
+        if (is_array($sessionIdsRaw)) {
+            foreach ($sessionIdsRaw as $sid) {
+                $sid = trim((string)$sid);
+                if ($sid !== '') {
+                    $sessionIds[] = $sid;
+                }
+            }
+        }
+        $sessionIds = array_values(array_unique($sessionIds));
+        if (empty($sessionIds)) {
+            $_SESSION['error'] = 'No session rows selected.';
+        } else {
+            $placeholders = implode(',', array_fill(0, count($sessionIds), '?'));
+            $sql = "DELETE FROM user_sessions WHERE session_id IN ($placeholders) AND session_id <> ?";
+            $params = array_merge($sessionIds, [session_id()]);
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            $deleted = (int)$stmt->rowCount();
+            $_SESSION['success'] = $deleted . ' session record(s) deleted.';
+            try {
+                logActivity($db, (int)$_SESSION['user_id'], 'admin_cleanup_sessions', 'user_sessions', 0, [
+                    'selected_count' => count($sessionIds),
+                    'deleted_rows' => $deleted
+                ]);
+            } catch (Throwable $_) {
+                // non-fatal
+            }
+        }
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    if ($postAction === 'purge_old') {
+        $beforeDate = trim((string)($_POST['before_date'] ?? ''));
+        $mode = trim((string)($_POST['purge_mode'] ?? 'inactive_only'));
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $beforeDate)) {
+            $_SESSION['error'] = 'Please select a valid date.';
+            header('Location: ' . $redirectTo);
+            exit;
+        }
+        $sql = "DELETE FROM user_sessions WHERE last_activity < ? AND session_id <> ?";
+        $params = [$beforeDate . ' 00:00:00', session_id()];
+        if ($mode === 'inactive_only') {
+            $sql .= " AND active = 0";
+        }
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $deleted = (int)$stmt->rowCount();
+        $_SESSION['success'] = $deleted . ' old session record(s) deleted.';
+        try {
+            logActivity($db, (int)$_SESSION['user_id'], 'admin_purge_sessions', 'user_sessions', 0, [
+                'before_date' => $beforeDate,
+                'purge_mode' => $mode,
+                'deleted_rows' => $deleted
+            ]);
+        } catch (Throwable $_) {
+            // non-fatal
+        }
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    if ($postAction === 'delete_by_scope') {
+        $scopeType = trim((string)($_POST['scope_type'] ?? ''));
+        $targetId = (int)($_POST['target_id'] ?? 0);
+        $mode = trim((string)($_POST['scope_mode'] ?? 'all'));
+
+        if ($targetId <= 0) {
+            $_SESSION['error'] = 'Please select a valid scope target.';
+            header('Location: ' . $redirectTo);
+            exit;
+        }
+
+        $userIds = [];
+        if ($scopeType === 'user') {
+            $userIds[] = $targetId;
+        } elseif ($scopeType === 'project') {
+            $uStmt = $db->prepare("
+                SELECT DISTINCT ua.user_id
+                FROM user_assignments ua
+                WHERE ua.project_id = ? AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+            ");
+            $uStmt->execute([$targetId]);
+            $userIds = array_map('intval', $uStmt->fetchAll(PDO::FETCH_COLUMN));
+
+            $leadStmt = $db->prepare("SELECT project_lead_id FROM projects WHERE id = ? LIMIT 1");
+            $leadStmt->execute([$targetId]);
+            $leadId = (int)$leadStmt->fetchColumn();
+            if ($leadId > 0) {
+                $userIds[] = $leadId;
+            }
+            $userIds = array_values(array_unique(array_filter($userIds)));
+        } else {
+            $_SESSION['error'] = 'Invalid scope type.';
+            header('Location: ' . $redirectTo);
+            exit;
+        }
+
+        if (empty($userIds)) {
+            $_SESSION['error'] = 'No users found for selected scope.';
+            header('Location: ' . $redirectTo);
+            exit;
+        }
+
+        $ph = implode(',', array_fill(0, count($userIds), '?'));
+        $sql = "DELETE FROM user_sessions WHERE user_id IN ($ph) AND session_id <> ?";
+        $params = array_merge($userIds, [session_id()]);
+        if ($mode === 'inactive_only') {
+            $sql .= " AND active = 0";
+        } elseif ($mode === 'active_only') {
+            $sql .= " AND active = 1";
+        }
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $deleted = (int)$stmt->rowCount();
+        $_SESSION['success'] = $deleted . ' session record(s) deleted for selected scope.';
+        try {
+            logActivity($db, (int)$_SESSION['user_id'], 'admin_cleanup_sessions_by_scope', 'user_sessions', 0, [
+                'scope_type' => $scopeType,
+                'target_id' => $targetId,
+                'scope_mode' => $mode,
+                'user_count' => count($userIds),
+                'deleted_rows' => $deleted
+            ]);
+        } catch (Throwable $_) {
+            // non-fatal
+        }
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+}
+
 // Build filters and pagination
 $params = [];
 $where = [];
@@ -64,12 +208,81 @@ $stmt->execute($paramsWithLimit);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $totalPages = max(1, (int)ceil($total / $perPage));
+$allUsers = $db->query("SELECT id, full_name, email FROM users ORDER BY full_name ASC")->fetchAll(PDO::FETCH_ASSOC);
+$allProjects = $db->query("SELECT id, title FROM projects ORDER BY title ASC")->fetchAll(PDO::FETCH_ASSOC);
 
 require_once __DIR__ . '/../../includes/header.php';
 ?>
 <div class="container mt-4">
     <h3>Active Sessions</h3>
     <p class="text-muted">Shows recent sessions (active & inactive). Use Force Logout to terminate a session.</p>
+
+    <div class="card mb-3 border-warning">
+        <div class="card-body py-3">
+            <div class="fw-semibold mb-2">Session Storage Cleanup</div>
+            <form method="post" class="row g-2 align-items-end" data-confirm="Delete old session records?">
+                <input type="hidden" name="cleanup_action" value="purge_old">
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">Delete sessions older than</label>
+                    <input type="date" name="before_date" class="form-control form-control-sm" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">Delete mode</label>
+                    <select name="purge_mode" class="form-select form-select-sm">
+                        <option value="inactive_only">Only logged-out sessions</option>
+                        <option value="all">All sessions (except current)</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-sm btn-danger">Purge Session Records</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="card mb-3 border-warning">
+        <div class="card-body py-3">
+            <div class="fw-semibold mb-2">User/Project Wise Session Cleanup</div>
+            <form method="post" class="row g-2 align-items-end" data-confirm="Delete sessions for the selected scope?">
+                <input type="hidden" name="cleanup_action" value="delete_by_scope">
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Scope</label>
+                    <select class="form-select form-select-sm" name="scope_type" id="sessionScopeType">
+                        <option value="user">User Wise</option>
+                        <option value="project">Project Team Wise</option>
+                    </select>
+                </div>
+                <div class="col-md-4" id="sessionUserTargetWrap">
+                    <label class="form-label form-label-sm">User</label>
+                    <select class="form-select form-select-sm" name="target_id" id="sessionUserTarget">
+                        <option value="">Select user</option>
+                        <?php foreach ($allUsers as $u): ?>
+                            <option value="<?php echo (int)$u['id']; ?>"><?php echo htmlspecialchars((string)$u['full_name'] . ' (' . (string)$u['email'] . ')'); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-4 d-none" id="sessionProjectTargetWrap">
+                    <label class="form-label form-label-sm">Project</label>
+                    <select class="form-select form-select-sm" id="sessionProjectTarget">
+                        <option value="">Select project</option>
+                        <?php foreach ($allProjects as $p): ?>
+                            <option value="<?php echo (int)$p['id']; ?>"><?php echo htmlspecialchars((string)$p['title']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Mode</label>
+                    <select class="form-select form-select-sm" name="scope_mode">
+                        <option value="all">All sessions</option>
+                        <option value="inactive_only">Only logged-out</option>
+                        <option value="active_only">Only active</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-sm btn-danger">Delete By Scope</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <form method="get" class="row g-2 mb-3">
         <div class="col-auto">
@@ -106,10 +319,17 @@ require_once __DIR__ . '/../../includes/header.php';
         </div>
     </form>
 
+    <form method="post" data-confirm="Delete selected sessions?">
+    <input type="hidden" name="cleanup_action" value="delete_selected">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="small text-muted">Select session rows to delete DB records directly.</div>
+        <button type="submit" class="btn btn-sm btn-outline-danger">Delete Selected</button>
+    </div>
     <div class="table-responsive">
     <table class="table table-sm table-striped">
         <thead>
             <tr>
+                <th><input type="checkbox" id="selectAllSessions"></th>
                 <th>User</th>
                 <th>Email</th>
                 <th>Session ID</th>
@@ -127,6 +347,13 @@ require_once __DIR__ . '/../../includes/header.php';
         <tbody>
         <?php foreach ($rows as $r): ?>
             <tr id="sess-<?php echo htmlspecialchars($r['session_id']); ?>">
+                <td>
+                    <?php if ((string)$r['session_id'] === (string)session_id()): ?>
+                        <span class="text-muted small">Current</span>
+                    <?php else: ?>
+                        <input type="checkbox" name="session_ids[]" value="<?php echo htmlspecialchars($r['session_id']); ?>">
+                    <?php endif; ?>
+                </td>
                 <td>
                     <?php if (!empty($r['user_id'])): ?>
                         <a href="<?php echo htmlspecialchars(getBaseDir()); ?>/modules/profile.php?id=<?php echo intval($r['user_id']); ?>"><?php echo htmlspecialchars($r['full_name'] ?? 'User'); ?></a>
@@ -206,6 +433,7 @@ require_once __DIR__ . '/../../includes/header.php';
         </tbody>
     </table>
     </div>
+    </form>
 
     <nav aria-label="Page navigation">
         <ul class="pagination pagination-sm">
@@ -368,6 +596,58 @@ require_once __DIR__ . '/../../includes/header.php';
         // run on load and on window resize to ensure buttons show when snippet is visually truncated
         window.addEventListener('load', ensureUaButtons);
         window.addEventListener('resize', function(){ setTimeout(ensureUaButtons, 150); });
+
+        var selectAllSessions = document.getElementById('selectAllSessions');
+        if (selectAllSessions) {
+            selectAllSessions.addEventListener('change', function() {
+                var checked = !!this.checked;
+                document.querySelectorAll('input[name="session_ids[]"]').forEach(function(cb) {
+                    cb.checked = checked;
+                });
+            });
+        }
+
+        (function() {
+            var scopeType = document.getElementById('sessionScopeType');
+            var userWrap = document.getElementById('sessionUserTargetWrap');
+            var projectWrap = document.getElementById('sessionProjectTargetWrap');
+            var userSelect = document.getElementById('sessionUserTarget');
+            var projectSelect = document.getElementById('sessionProjectTarget');
+            if (!scopeType || !userWrap || !projectWrap || !userSelect || !projectSelect) return;
+
+            function syncScope() {
+                if (scopeType.value === 'project') {
+                    userWrap.classList.add('d-none');
+                    projectWrap.classList.remove('d-none');
+                    userSelect.name = '';
+                    projectSelect.name = 'target_id';
+                } else {
+                    projectWrap.classList.add('d-none');
+                    userWrap.classList.remove('d-none');
+                    projectSelect.name = '';
+                    userSelect.name = 'target_id';
+                }
+            }
+            scopeType.addEventListener('change', syncScope);
+            syncScope();
+        })();
+
+        document.querySelectorAll('form[data-confirm]').forEach(function(form) {
+            form.addEventListener('submit', function(e) {
+                var msg = form.getAttribute('data-confirm') || 'Are you sure?';
+                e.preventDefault();
+                if (typeof window.confirmModal === 'function') {
+                    window.confirmModal(msg, function() {
+                        form.submit();
+                    });
+                    return;
+                }
+                var confirmFn = (typeof window._origConfirm === 'function') ? window._origConfirm : window.confirm;
+                if (confirmFn(msg)) {
+                    form.submit();
+                }
+            });
+        });
     </script>
 
 <?php require_once __DIR__ . '/../../includes/footer.php'; ?>

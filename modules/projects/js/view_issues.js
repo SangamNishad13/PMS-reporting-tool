@@ -29,7 +29,6 @@
     var groupedUrls = ProjectConfig.groupedUrls || [];
     var projectId = ProjectConfig.projectId;
     var projectType = ProjectConfig.projectType || 'web';
-    var axeCoreCdnUrl = 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.3/axe.min.js';
     var issuesApiBase = ProjectConfig.baseDir + '/api/issues.php';
     var issueImageUploadUrl = ProjectConfig.baseDir + '/api/issue_upload_image.php';
     var issueTemplatesApi = ProjectConfig.baseDir + '/api/issue_templates.php';
@@ -81,10 +80,8 @@
     var ISSUE_PRESENCE_PING_MS = 2000;
     var reviewPageSize = 25;
     var reviewCurrentPage = 1;
-    var pendingScanUrl = '';
     var reviewFeaturesEnabled = false;
     var reviewStorageKey = 'pms_review_findings_v1_' + String(projectId || '0');
-    var browserScanRestrictionShown = false;
     var reviewIssueInitialFormState = null;
     var reviewIssueBypassCloseConfirm = false;
 
@@ -276,7 +273,7 @@
         }
         if (out.length) return out;
 
-        // Support plain <code> blocks too (for autoscan-rendered code format).
+        // Support plain <code> blocks too.
         var codeRe = /<code[^>]*>([\s\S]*?)<\/code>/ig;
         while ((m = codeRe.exec(src)) !== null) {
             var snippet3 = cleanIncorrectCodeSnippet(m[1] || '');
@@ -297,10 +294,10 @@
     }
 
     function renderIncorrectCodeBlocks(codeList) {
-        if (!Array.isArray(codeList) || !codeList.length) return '<p><code class="autoscan-incorrect-code"></code></p>';
+        if (!Array.isArray(codeList) || !codeList.length) return '<p><code class="issue-incorrect-code"></code></p>';
         return codeList.map(function (c) {
             var safe = escapeHtml(String(c || '')).replace(/\n/g, '<br>');
-            return '<p><code class="autoscan-incorrect-code">' + safe + '</code></p>';
+            return '<p><code class="issue-incorrect-code">' + safe + '</code></p>';
         }).join('');
     }
 
@@ -495,9 +492,7 @@
         return parts.join('');
     }
 
-    // Automated scan/review system removed.
-    function showScanConfigModal() {}
-    async function runAutomatedScanForSelectedPage() { return 0; }
+    // Review scanning system removed.
     async function loadReviewFindings() { return; }
 
     async function loadFinalIssues(pageId) {

@@ -1,22 +1,14 @@
 <?php
-// modules/projects/archive.php
-
-session_start();
-
-// Include configuration
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 
+$auth = new Auth();
+$auth->requireRole(['super_admin', 'admin', 'project_lead']);
+
 $baseDir = getBaseDir();
-
-// Check login and role
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['super_admin', 'admin', 'project_lead'])) {
-    redirect($baseDir . "/modules/auth/login.php");
-    exit;
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['archive_project'])) {
+$projectId = (int)($_POST['project_id'] ?? 0);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $projectId > 0) {
     $projectId = isset($_POST['project_id']) ? intval($_POST['project_id']) : 0;
     
     if ($projectId > 0) {
@@ -45,7 +37,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['archive_project'])) {
     }
 }
 
-// Redirect back to appropriate page based on user role
+// Redirect back to project edit when project_id is provided
+if ($projectId > 0) {
+    redirect($baseDir . "/modules/projects/edit.php?id=" . $projectId);
+    exit;
+}
+
+// Fallback role-specific redirects
 $userRole = $_SESSION['role'] ?? '';
 if (in_array($userRole, ['admin', 'super_admin'])) {
     redirect($baseDir . "/modules/admin/projects.php");
