@@ -897,7 +897,7 @@ function sanitizeExportHtml($html) {
 
 function applyImageHandlingToHtml($html, $imageHandling, $context = 'pdf') {
     return preg_replace_callback("/<img\\b[^>]*src=[\"']([^\"']+)[\"'][^>]*>/i", function ($matches) use ($imageHandling, $context) {
-        $src = toAbsoluteUrl($matches[1]);
+        $src = toExportImageUrl($matches[1]);
 
         if ($imageHandling === 'none') {
             return '';
@@ -915,6 +915,19 @@ function applyImageHandlingToHtml($html, $imageHandling, $context = 'pdf') {
 
         return '<img src="' . $safeSrc . '" alt="Issue image" style="' . $imgStyle . '">';
     }, $html);
+}
+
+function toExportImageUrl($src) {
+    $src = trim((string)$src);
+    if ($src === '') return '';
+
+    if (function_exists('build_public_image_url_from_src')) {
+        $public = build_public_image_url_from_src($src);
+        if (trim((string)$public) !== '') {
+            $src = $public;
+        }
+    }
+    return toAbsoluteUrl($src);
 }
 
 function toAbsoluteUrl($src) {

@@ -347,6 +347,108 @@ function delete_local_upload_files_from_html($html, $allowedPrefixes = ['uploads
     return ['deleted' => $deleted, 'paths' => $deletedPaths];
 }
 
+function base64url_encode($data) {
+    return rtrim(strtr(base64_encode((string)$data), '+/', '-_'), '=');
+}
+
+function base64url_decode($data) {
+    $s = strtr((string)$data, '-_', '+/');
+    $pad = strlen($s) % 4;
+    if ($pad > 0) {
+        $s .= str_repeat('=', 4 - $pad);
+    }
+    return base64_decode($s, true);
+}
+
+function get_public_image_token_secret() {
+    static $secret = null;
+    if ($secret !== null) return $secret;
+
+    $fromEnv = trim((string)getenv('PMS_PUBLIC_IMAGE_SECRET'));
+    if ($fromEnv !== '') {
+        $secret = $fromEnv;
+        return $secret;
+    }
+
+    $parts = [
+        (string)DB_HOST,
+        (string)DB_NAME,
+        (string)DB_USER,
+        (string)DB_PASS,
+        __DIR__
+    ];
+    $secret = hash('sha256', implode('|', $parts));
+    return $secret;
+}
+
+function normalize_local_upload_path_from_src($src, $allowedPrefixes = ['uploads/', 'assets/uploads/']) {
+    $src = html_entity_decode(trim((string)$src), ENT_QUOTES, 'UTF-8');
+    if ($src === '') return null;
+
+    $urlPath = (string)(parse_url($src, PHP_URL_PATH) ?? '');
+    $query = (string)(parse_url($src, PHP_URL_QUERY) ?? '');
+
+    $path = '';
+    if ($urlPath !== '' && stripos($urlPath, '/api/secure_file.php') !== false) {
+        $qp = [];
+        parse_str($query, $qp);
+        $path = rawurldecode((string)($qp['path'] ?? ''));
+    } else {
+        $candidate = $urlPath !== '' ? $urlPath : $src;
+        $candidate = str_replace('\\', '/', $candidate);
+        $candidate = ltrim($candidate, '/');
+        $posUploads = strpos($candidate, 'uploads/');
+        $posAssetsUploads = strpos($candidate, 'assets/uploads/');
+        if ($posUploads !== false) {
+            $path = substr($candidate, $posUploads);
+        } elseif ($posAssetsUploads !== false) {
+            $path = substr($candidate, $posAssetsUploads);
+        }
+    }
+
+    $path = ltrim(str_replace('\\', '/', (string)$path), '/');
+    if ($path === '' || strpos($path, "\0") !== false || strpos($path, '..') !== false) {
+        return null;
+    }
+
+    $allowed = false;
+    foreach ((array)$allowedPrefixes as $prefix) {
+        $prefix = ltrim(str_replace('\\', '/', (string)$prefix), '/');
+        if ($prefix !== '' && strpos($path, $prefix) === 0) {
+            $allowed = true;
+            break;
+        }
+    }
+    if (!$allowed) return null;
+
+    $ext = strtolower((string)pathinfo($path, PATHINFO_EXTENSION));
+    $imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'];
+    if (!in_array($ext, $imageExts, true)) return null;
+
+    return $path;
+}
+
+function build_public_image_url_from_src($src) {
+    $relPath = normalize_local_upload_path_from_src($src, ['uploads/issues/', 'uploads/chat/', 'assets/uploads/']);
+    if ($relPath === null) {
+        return (string)$src;
+    }
+
+    $payload = json_encode(['p' => $relPath], JSON_UNESCAPED_SLASHES);
+    if ($payload === false) {
+        return (string)$src;
+    }
+    $payloadB64 = base64url_encode($payload);
+    $sig = hash_hmac('sha256', $payloadB64, get_public_image_token_secret());
+    $token = $payloadB64 . '.' . $sig;
+
+    $baseDir = '';
+    if (function_exists('getBaseDir')) {
+        try { $baseDir = (string)getBaseDir(); } catch (Exception $e) { $baseDir = ''; }
+    }
+    return rtrim($baseDir, '/') . '/api/public_image.php?t=' . rawurlencode($token);
+}
+
 /**
  * Render a user's full name as a link to their profile unless the user is an admin/super_admin.
  * Accepts either a user id or an array with keys ['id','full_name','role'].

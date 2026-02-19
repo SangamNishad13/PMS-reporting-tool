@@ -94,10 +94,10 @@ if ($ext === '') {
     exit;
 }
 
-$maxSize = 5 * 1024 * 1024; // 5MB
+$maxSize = 10 * 1024 * 1024; // 10MB (match issue upload behavior)
 if ($file['size'] > $maxSize) {
     http_response_code(400);
-    echo json_encode(['error' => 'Image too large (max 5MB)']);
+    echo json_encode(['error' => 'Image too large (max 10MB)']);
     exit;
 }
 

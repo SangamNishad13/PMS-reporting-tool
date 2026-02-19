@@ -1266,13 +1266,26 @@ if (!$embed) {
 
         // Upload image and insert URL into target summernote editor
         function uploadAndInsertImage(file, $targetEditor) {
-            if (!file || !file.type || !file.type.startsWith('image/')) return;
+            if (!file) return;
+            if (file.type && !file.type.startsWith('image/')) {
+                showToast('Only image files are allowed', 'warning');
+                return;
+            }
             const formData = new FormData();
             formData.append('image', file);
             return fetch('<?php echo $baseDir; ?>/api/chat_upload_image.php', {
                 method: 'POST',
-                body: formData
-            }).then(res => res.json()).then(res => {
+                body: formData,
+                credentials: 'same-origin'
+            }).then(res => {
+                return res.text().then(txt => {
+                    try {
+                        return JSON.parse(txt);
+                    } catch (e) {
+                        return { error: 'Upload failed (invalid server response)' };
+                    }
+                });
+            }).then(res => {
                 if (res && res.success && res.url) {
                     const $target = ($targetEditor && $targetEditor.length) ? $targetEditor : $msg;
                     if ($target && $target.length && $target.data('summernote')) {
