@@ -26,17 +26,71 @@ if ($file['error'] !== UPLOAD_ERR_OK) {
     exit;
 }
 
-// Basic validations
-$allowedTypes = [
+// Basic validations (robust on shared hosting with limited PHP extensions)
+$allowedMimeTypes = [
     'image/jpeg' => '.jpg',
+    'image/jpg' => '.jpg',
+    'image/pjpeg' => '.jpg',
     'image/png'  => '.png',
+    'image/x-png' => '.png',
     'image/gif'  => '.gif',
     'image/webp' => '.webp'
 ];
-$mime = mime_content_type($file['tmp_name']);
-if (!isset($allowedTypes[$mime])) {
+$allowedNameExt = [
+    'jpg' => '.jpg',
+    'jpeg' => '.jpg',
+    'png' => '.png',
+    'gif' => '.gif',
+    'webp' => '.webp'
+];
+
+$mime = '';
+if (function_exists('finfo_open')) {
+    $finfo = @finfo_open(FILEINFO_MIME_TYPE);
+    if ($finfo) {
+        $detected = @finfo_file($finfo, $file['tmp_name']);
+        if (is_string($detected)) {
+            $mime = $detected;
+        }
+        @finfo_close($finfo);
+    }
+}
+if ($mime === '' && function_exists('mime_content_type')) {
+    $detected = @mime_content_type($file['tmp_name']);
+    if (is_string($detected)) {
+        $mime = $detected;
+    }
+}
+if ($mime === '') {
+    $imgInfo = @getimagesize($file['tmp_name']);
+    if (is_array($imgInfo) && isset($imgInfo['mime']) && is_string($imgInfo['mime'])) {
+        $mime = $imgInfo['mime'];
+    }
+}
+if ($mime === '' && function_exists('exif_imagetype')) {
+    $imgType = @exif_imagetype($file['tmp_name']);
+    if ($imgType) {
+        $detected = @image_type_to_mime_type($imgType);
+        if (is_string($detected)) {
+            $mime = $detected;
+        }
+    }
+}
+$mime = strtolower(trim(explode(';', (string)$mime)[0]));
+$nameExt = strtolower(pathinfo((string)($file['name'] ?? ''), PATHINFO_EXTENSION));
+$ext = '';
+if ($mime !== '' && isset($allowedMimeTypes[$mime])) {
+    $ext = $allowedMimeTypes[$mime];
+} elseif ($nameExt !== '' && isset($allowedNameExt[$nameExt])) {
+    $imgInfo = @getimagesize($file['tmp_name']);
+    if (is_array($imgInfo)) {
+        $ext = $allowedNameExt[$nameExt];
+    }
+}
+
+if ($ext === '') {
     http_response_code(400);
-    echo json_encode(['error' => 'Only JPG, PNG, GIF, WEBP allowed']);
+    echo json_encode(['error' => 'Only JPG, PNG, GIF, WEBP allowed', 'detected_mime' => $mime]);
     exit;
 }
 
@@ -47,10 +101,13 @@ if ($file['size'] > $maxSize) {
     exit;
 }
 
-$ext = $allowedTypes[$mime];
 $folder = __DIR__ . '/../uploads/chat/' . date('Ymd');
 if (!is_dir($folder)) {
-    mkdir($folder, 0755, true);
+    if (!@mkdir($folder, 0755, true) && !is_dir($folder)) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Upload directory is not writable']);
+        exit;
+    }
 }
 $filename = uniqid('chat_', true) . $ext;
 $dest = $folder . '/' . $filename;

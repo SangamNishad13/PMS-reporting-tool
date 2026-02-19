@@ -297,9 +297,13 @@ try {
             jsonResponse(['success' => true]);
         }
 
+        $oldCommentHtml = (string)($row['comment_html'] ?? '');
         $deletedHtml = '<p><em>Comment deleted</em></p>';
         $upd = $db->prepare("UPDATE issue_comments SET comment_html = ?, deleted_at = NOW(), deleted_by = ? WHERE id = ?");
         if (!$upd->execute([$deletedHtml, $userId, $commentId])) jsonError('Failed to delete comment', 500);
+        if (function_exists('delete_local_upload_files_from_html') && trim($oldCommentHtml) !== '') {
+            delete_local_upload_files_from_html($oldCommentHtml, ['uploads/issues/', 'uploads/chat/']);
+        }
 
         try {
             $h = $db->prepare("INSERT INTO issue_comment_history (comment_id, action_type, old_comment_html, new_comment_html, acted_by) VALUES (?, 'delete', ?, ?, ?)");

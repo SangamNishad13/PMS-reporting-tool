@@ -348,10 +348,14 @@ switch ($action) {
             echo json_encode(['success' => true]);
             exit;
         }
+        $oldMessageHtml = (string)($row['message'] ?? '');
         $deletedMsg = '<p><em>Message deleted</em></p>';
         $upd = $db->prepare("UPDATE chat_messages SET message = ?, deleted_at = NOW(), deleted_by = ? WHERE id = ?");
         $ok = $upd->execute([$deletedMsg, $userId, $messageId]);
         if ($ok) {
+            if (function_exists('delete_local_upload_files_from_html') && trim($oldMessageHtml) !== '') {
+                delete_local_upload_files_from_html($oldMessageHtml, ['uploads/chat/', 'uploads/issues/']);
+            }
             try {
                 $h = $db->prepare("INSERT INTO chat_message_history (message_id, action_type, old_message, new_message, acted_by) VALUES (?, 'delete', ?, ?, ?)");
                 $h->execute([$messageId, $row['message'] ?? '', $deletedMsg, $userId]);

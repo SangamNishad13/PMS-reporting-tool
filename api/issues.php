@@ -260,6 +260,44 @@ function getTesterBlockedIssueIdsForDelete(PDO $db, int $projectId, array $issue
     return $blocked;
 }
 
+function collectIssueDeleteHtmlBlocks(PDO $db, int $projectId, array $issueIds): array {
+    $issueIds = array_values(array_unique(array_map('intval', $issueIds)));
+    $issueIds = array_values(array_filter($issueIds, function ($id) { return $id > 0; }));
+    if (empty($issueIds)) return [];
+
+    $placeholders = implode(',', array_fill(0, count($issueIds), '?'));
+    $params = array_merge($issueIds, [$projectId]);
+    $blocks = [];
+
+    $issueStmt = $db->prepare("SELECT description FROM issues WHERE id IN ($placeholders) AND project_id = ?");
+    $issueStmt->execute($params);
+    while ($row = $issueStmt->fetch(PDO::FETCH_ASSOC)) {
+        $html = (string)($row['description'] ?? '');
+        if (trim($html) !== '') $blocks[] = $html;
+    }
+
+    $commentStmt = $db->prepare("
+        SELECT ic.comment_html
+        FROM issue_comments ic
+        INNER JOIN issues i ON i.id = ic.issue_id
+        WHERE ic.issue_id IN ($placeholders) AND i.project_id = ?
+    ");
+    $commentStmt->execute($params);
+    while ($row = $commentStmt->fetch(PDO::FETCH_ASSOC)) {
+        $html = (string)($row['comment_html'] ?? '');
+        if (trim($html) !== '') $blocks[] = $html;
+    }
+
+    return $blocks;
+}
+
+function cleanupIssueUploadsFromHtmlBlocks(array $htmlBlocks): void {
+    if (!function_exists('delete_local_upload_files_from_html')) return;
+    foreach ($htmlBlocks as $html) {
+        delete_local_upload_files_from_html((string)$html, ['uploads/issues/', 'uploads/chat/']);
+    }
+}
+
 function ensureIssuePresenceSessionsTable($db) {
     static $isReady = null;
     if ($isReady !== null) return $isReady;
@@ -1118,6 +1156,7 @@ try {
         $idsRaw = $_POST['ids'] ?? '';
         $ids = is_array($idsRaw) ? $idsRaw : array_filter(array_map('intval', explode(',', $idsRaw)));
         if (empty($ids)) jsonError('ids required', 400);
+        $htmlBlocksForCleanup = collectIssueDeleteHtmlBlocks($db, $projectId, $ids);
 
         if ($isTesterRole) {
             $blockedIds = getTesterBlockedIssueIdsForDelete($db, $projectId, $ids);
@@ -1145,6 +1184,7 @@ try {
             $stmt->execute($params);
 
             $db->commit();
+            cleanupIssueUploadsFromHtmlBlocks($htmlBlocksForCleanup);
             jsonResponse(['success' => true, 'deleted' => $stmt->rowCount()]);
         } catch (Exception $e) {
             if ($db->inTransaction()) $db->rollBack();
@@ -1253,6 +1293,7 @@ try {
         $stmt = $db->prepare("SELECT issue_id FROM common_issues WHERE id IN ($placeholders) AND project_id = ?");
         $stmt->execute(array_merge($ids, [$projectId]));
         $issueIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        $htmlBlocksForCleanup = !empty($issueIds) ? collectIssueDeleteHtmlBlocks($db, $projectId, array_map('intval', $issueIds)) : [];
 
         if ($isTesterRole && !empty($issueIds)) {
             $issueIds = array_map('intval', $issueIds);
@@ -1272,6 +1313,7 @@ try {
             $ph = implode(',', array_fill(0, count($issueIds), '?'));
             $db->prepare("DELETE FROM issues WHERE id IN ($ph) AND project_id = ?")->execute(array_merge($issueIds, [$projectId]));
         }
+        cleanupIssueUploadsFromHtmlBlocks($htmlBlocksForCleanup);
         jsonResponse(['success' => true]);
     }
 

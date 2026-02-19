@@ -243,6 +243,111 @@ function rewrite_upload_urls_to_secure($html) {
 }
 
 /**
+ * Extract local upload-relative paths from HTML src/href attributes.
+ * Supports direct /uploads URLs and secure_file.php?path=... URLs.
+ */
+function extract_local_upload_paths_from_html($html, $allowedPrefixes = ['uploads/', 'assets/uploads/']) {
+    $html = (string)$html;
+    if (trim($html) === '') return [];
+
+    $paths = [];
+    $matches = [];
+    preg_match_all('/\b(?:src|href)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))/i', $html, $matches, PREG_SET_ORDER);
+
+    $normalize = function ($rawUrl) use ($allowedPrefixes) {
+        $url = html_entity_decode(trim((string)$rawUrl), ENT_QUOTES, 'UTF-8');
+        if ($url === '' || preg_match('#^(data:|javascript:|mailto:|tel:)#i', $url)) return '';
+
+        $path = '';
+        $urlPath = (string)(parse_url($url, PHP_URL_PATH) ?? '');
+        $query = (string)(parse_url($url, PHP_URL_QUERY) ?? '');
+
+        if ($urlPath !== '' && stripos($urlPath, '/api/secure_file.php') !== false) {
+            $qp = [];
+            parse_str($query, $qp);
+            $path = (string)($qp['path'] ?? '');
+            $path = rawurldecode($path);
+        } else {
+            $candidate = $urlPath !== '' ? $urlPath : $url;
+            $candidate = str_replace('\\', '/', $candidate);
+            $candidate = ltrim($candidate, '/');
+
+            $posUploads = strpos($candidate, 'uploads/');
+            $posAssets = strpos($candidate, 'assets/uploads/');
+            if ($posUploads !== false) {
+                $path = substr($candidate, $posUploads);
+            } elseif ($posAssets !== false) {
+                $path = substr($candidate, $posAssets);
+            }
+        }
+
+        $path = ltrim(str_replace('\\', '/', (string)$path), '/');
+        if ($path === '' || strpos($path, "\0") !== false || strpos($path, '..') !== false) return '';
+
+        $allowed = false;
+        foreach ((array)$allowedPrefixes as $prefix) {
+            $prefix = ltrim(str_replace('\\', '/', (string)$prefix), '/');
+            if ($prefix !== '' && strpos($path, $prefix) === 0) {
+                $allowed = true;
+                break;
+            }
+        }
+        if (!$allowed) return '';
+
+        $ext = strtolower((string)pathinfo($path, PATHINFO_EXTENSION));
+        $imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'];
+        if (!in_array($ext, $imageExts, true)) return '';
+
+        return $path;
+    };
+
+    foreach ($matches as $m) {
+        $url = $m[1] !== '' ? $m[1] : ($m[2] !== '' ? $m[2] : ($m[3] ?? ''));
+        $rel = $normalize($url);
+        if ($rel !== '') $paths[$rel] = true;
+    }
+
+    return array_keys($paths);
+}
+
+/**
+ * Delete local upload files referenced in HTML. Missing files are ignored.
+ */
+function delete_local_upload_files_from_html($html, $allowedPrefixes = ['uploads/', 'assets/uploads/']) {
+    $relPaths = extract_local_upload_paths_from_html($html, $allowedPrefixes);
+    if (empty($relPaths)) return ['deleted' => 0, 'paths' => []];
+
+    $baseDir = realpath(__DIR__ . '/..');
+    if ($baseDir === false) return ['deleted' => 0, 'paths' => []];
+    $baseNorm = rtrim(str_replace('\\', '/', $baseDir), '/');
+    $deleted = 0;
+    $deletedPaths = [];
+
+    foreach ($relPaths as $rel) {
+        $rel = ltrim(str_replace('\\', '/', (string)$rel), '/');
+        if ($rel === '' || strpos($rel, '..') !== false) continue;
+
+        $candidate = $baseNorm . '/' . $rel;
+        $full = realpath($candidate);
+        if ($full === false) {
+            if (!is_file($candidate)) continue;
+            $full = $candidate;
+        }
+
+        $fullNorm = str_replace('\\', '/', $full);
+        if (strpos($fullNorm, $baseNorm . '/uploads/') !== 0 && strpos($fullNorm, $baseNorm . '/assets/uploads/') !== 0) {
+            continue;
+        }
+        if (is_file($fullNorm) && @unlink($fullNorm)) {
+            $deleted++;
+            $deletedPaths[] = $rel;
+        }
+    }
+
+    return ['deleted' => $deleted, 'paths' => $deletedPaths];
+}
+
+/**
  * Render a user's full name as a link to their profile unless the user is an admin/super_admin.
  * Accepts either a user id or an array with keys ['id','full_name','role'].
  */

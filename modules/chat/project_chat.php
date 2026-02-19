@@ -168,6 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_message'])) {
         exit;
     }
 
+    $oldMessageHtml = (string)($row['message'] ?? '');
     $deletedMsg = '<p><em>Message deleted</em></p>';
     $updated = false;
     try {
@@ -185,6 +186,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_message'])) {
         header('Content-Type: application/json');
         echo json_encode(['success' => false, 'error' => 'Failed to delete message']);
         exit;
+    }
+    if (function_exists('delete_local_upload_files_from_html') && trim($oldMessageHtml) !== '') {
+        delete_local_upload_files_from_html($oldMessageHtml, ['uploads/chat/', 'uploads/issues/']);
     }
 
     try {
