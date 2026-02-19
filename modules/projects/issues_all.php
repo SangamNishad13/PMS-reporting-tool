@@ -333,7 +333,6 @@ let allIssues = [];
 let filteredIssues = [];
 let autoRefreshTimer = null;
 let autoRefreshInFlight = false;
-const AUTO_REFRESH_MS = 15000;
 
 // Load all issues
 function loadIssues(options) {
@@ -363,28 +362,12 @@ function loadIssues(options) {
 }
 
 function startIssuesAutoRefresh() {
-    if (autoRefreshTimer) return;
-    autoRefreshTimer = setInterval(function () {
-        if (document.hidden || autoRefreshInFlight) return;
-        const modal = document.getElementById('finalIssueModal');
-        if (modal && modal.classList.contains('show')) return;
-
-        autoRefreshInFlight = true;
-        loadIssues({ preserveFilters: true, silentErrors: true })
-            .finally(function () {
-                autoRefreshInFlight = false;
-            });
-    }, AUTO_REFRESH_MS);
-
-    document.addEventListener('visibilitychange', function () {
-        if (!document.hidden && !autoRefreshInFlight) {
-            autoRefreshInFlight = true;
-            loadIssues({ preserveFilters: true, silentErrors: true })
-                .finally(function () {
-                    autoRefreshInFlight = false;
-                });
-        }
-    });
+    // Disabled periodic background polling to avoid automatic list refresh/flicker.
+    // Data still refreshes on explicit actions (save/delete/manual refresh button).
+    if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
 }
 
 // Render issues table

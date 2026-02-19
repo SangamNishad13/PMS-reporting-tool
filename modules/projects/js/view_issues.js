@@ -37,6 +37,7 @@
     var uniqueIssuePages = ProjectConfig.uniqueIssuePages || [];
     var userRole = String(ProjectConfig.userRole || '').toLowerCase();
     var isAdminUser = userRole === 'admin' || userRole === 'super_admin' || userRole === 'superadmin';
+    var isTesterRole = userRole === 'at_tester' || userRole === 'ft_tester';
     var canUpdateIssueQaStatus = !!ProjectConfig.canUpdateIssueQaStatus;
 
     var issueData = {
@@ -76,7 +77,7 @@
     var isSyncingUrlModal = false;
     var liveIssueSyncTimer = null;
     var liveIssueSyncInFlight = false;
-    var LIVE_ISSUE_SYNC_INTERVAL_MS = 15000;
+    var LIVE_ISSUE_SYNC_INTERVAL_MS = 5000;
     var issuePresenceTimer = null;
     var issuePresenceIssueId = null;
     var issuePresenceSessionToken = null;
@@ -87,6 +88,15 @@
     var reviewStorageKey = 'pms_review_findings_v1_' + String(projectId || '0');
     var reviewIssueInitialFormState = null;
     var reviewIssueBypassCloseConfirm = false;
+    var finalIssueBypassCloseConfirm = false;
+
+    function cleanupModalOverlayState() {
+        if (document.querySelectorAll('.modal.show').length > 0) return;
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('overflow');
+        document.body.style.removeProperty('padding-right');
+        document.querySelectorAll('.modal-backdrop').forEach(function (el) { el.remove(); });
+    }
 
     function issueNotify(message, type) {
         if (typeof window.showToast === 'function') {
@@ -95,6 +105,70 @@
             if ((type || '').toLowerCase() === 'danger') console.error(message);
             else console.log(message);
         }
+    }
+
+    function clearIssueConflictNotice() {
+        var existing = document.getElementById('finalIssueConflictNotice');
+        if (existing) existing.remove();
+    }
+
+    function showIssueConflictNotice(message) {
+        var modalBody = document.querySelector('#finalIssueModal .modal-body');
+        if (!modalBody) return;
+        clearIssueConflictNotice();
+        var box = document.createElement('div');
+        box.id = 'finalIssueConflictNotice';
+        box.className = 'alert alert-warning d-flex align-items-start gap-2 mb-3';
+        box.setAttribute('role', 'alert');
+        box.innerHTML =
+            '<i class="fas fa-exclamation-triangle mt-1" aria-hidden="true"></i>' +
+            '<div><strong>Issue Updated By Another User.</strong><br>' +
+            escapeHtml(message || 'Latest data has been loaded. Please review and save again.') +
+            '</div>';
+        modalBody.insertBefore(box, modalBody.firstChild);
+    }
+
+    function showIssueConflictDialog(message, onOk) {
+        var existing = document.getElementById('issueConflictModal');
+        if (existing) {
+            try {
+                var existingInst = bootstrap.Modal.getInstance(existing);
+                if (existingInst) existingInst.dispose();
+            } catch (e) { }
+            existing.remove();
+        }
+
+        var html = '' +
+            '<div class="modal fade" id="issueConflictModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">' +
+            '  <div class="modal-dialog modal-dialog-centered">' +
+            '    <div class="modal-content">' +
+            '      <div class="modal-header bg-warning-subtle">' +
+            '        <h5 class="modal-title"><i class="fas fa-exclamation-triangle text-warning me-2"></i>Conflict Detected</h5>' +
+            '      </div>' +
+            '      <div class="modal-body">' +
+            '        <p class="mb-0">' + escapeHtml(message || 'This issue was modified by another user. Latest data has been loaded. Please review and save again.') + '</p>' +
+            '      </div>' +
+            '      <div class="modal-footer">' +
+            '        <button type="button" class="btn btn-primary" id="issueConflictOkBtn">OK</button>' +
+            '      </div>' +
+            '    </div>' +
+            '  </div>' +
+            '</div>';
+
+        document.body.insertAdjacentHTML('beforeend', html);
+        var modalEl = document.getElementById('issueConflictModal');
+        var okBtn = document.getElementById('issueConflictOkBtn');
+        var modal = new bootstrap.Modal(modalEl);
+
+        okBtn.addEventListener('click', function () {
+            modal.hide();
+            if (typeof onOk === 'function') onOk();
+        });
+        modalEl.addEventListener('hidden.bs.modal', function () {
+            modalEl.remove();
+            cleanupModalOverlayState();
+        });
+        modal.show();
     }
 
     function applyIssueQaPermissionState() {
@@ -524,10 +598,11 @@
     // Review scanning system removed.
     async function loadReviewFindings() { return; }
 
-    async function loadFinalIssues(pageId) {
+    async function loadFinalIssues(pageId, options) {
+        var opts = options || {};
         if (!pageId) return;
         var tbody = document.getElementById('finalIssuesBody');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="text-muted text-center">Loading final issues...</td></tr>';
+        if (tbody && !opts.silent) tbody.innerHTML = '<tr><td colspan="11" class="text-muted text-center">Loading final issues...</td></tr>';
         var store = issueData.pages;
         ensurePageStore(store, pageId);
         try {
@@ -535,7 +610,7 @@
             var res = await fetch(url, { credentials: 'same-origin' });
             var json = await res.json();
             var items = (json && json.issues) ? json.issues : [];
-            store[pageId].final = items.map(function (it) {
+            var nextFinal = items.map(function (it) {
                 return {
                     id: String(it.id),
                     issue_key: it.issue_key || '',
@@ -560,37 +635,51 @@
                     is17802: it.is17802 || [],
                     common_title: it.common_title || '',
                     reporters: it.reporters || [],
+                    has_comments: !!it.has_comments,
+                    can_tester_delete: (it.can_tester_delete !== false),
                     // Add created_at and updated_at timestamps
                     created_at: it.created_at || null,
-                    updated_at: it.updated_at || null
+                    updated_at: it.updated_at || null,
+                    latest_history_id: (it.latest_history_id != null ? Number(it.latest_history_id) : 0)
                 };
             });
+            var prevSerialized = JSON.stringify(store[pageId].final || []);
+            var nextSerialized = JSON.stringify(nextFinal || []);
+            if (opts.onlyIfChanged && prevSerialized === nextSerialized) return;
+            store[pageId].final = nextFinal;
             renderFinalIssues();
         } catch (e) {
-            if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="text-muted text-center">Unable to load final issues.</td></tr>';
+            if (tbody && !opts.silent) tbody.innerHTML = '<tr><td colspan="11" class="text-muted text-center">Unable to load final issues.</td></tr>';
         }
     }
 
-    async function loadCommonIssues() {
+    async function loadCommonIssues(options) {
+        var opts = options || {};
         var tbody = document.getElementById('commonIssuesBody');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">Loading common issues...</td></tr>';
+        if (tbody && !opts.silent) tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">Loading common issues...</td></tr>';
         try {
             var url = issuesApiBase + '?action=common_list&project_id=' + encodeURIComponent(projectId);
             var res = await fetch(url, { credentials: 'same-origin' });
             var json = await res.json();
             var items = (json && json.common) ? json.common : [];
-            issueData.common = items.map(function (it) {
+            var nextCommon = items.map(function (it) {
                 return {
                     id: String(it.id),
                     issue_id: it.issue_id,
                     title: it.title || 'Common Issue',
                     description: it.description || '',
-                    pages: it.pages || []
+                    pages: it.pages || [],
+                    has_comments: !!it.has_comments,
+                    can_tester_delete: (it.can_tester_delete !== false)
                 };
             });
+            var prevSerialized = JSON.stringify(issueData.common || []);
+            var nextSerialized = JSON.stringify(nextCommon || []);
+            if (opts.onlyIfChanged && prevSerialized === nextSerialized) return;
+            issueData.common = nextCommon;
             renderCommonIssues();
         } catch (e) {
-            if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">Unable to load common issues.</td></tr>';
+            if (tbody && !opts.silent) tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">Unable to load common issues.</td></tr>';
         }
     }
 
@@ -1523,6 +1612,7 @@
             var inst = bootstrap.Modal.getInstance(el);
             if (inst) inst.hide();
         });
+        setTimeout(cleanupModalOverlayState, 250);
     }
 
     function toggleFinalIssueFields(enable) {
@@ -1613,15 +1703,18 @@
         }, 200);
     }
 
-    async function openFinalEditor(issue) {
+    async function openFinalEditor(issue, options) {
+        var opts = options || {};
         var modalEl = document.getElementById('finalIssueModal');
         if (!modalEl) return;
+        clearIssueConflictNotice();
 
         toggleFinalIssueFields(true);
         document.getElementById('finalEditorTitle').textContent = issue ? 'Edit Final Issue' : 'New Final Issue';
         document.getElementById('finalIssueEditId').value = issue ? issue.id : '';
         var expectedUpdatedAtEl = document.getElementById('finalIssueExpectedUpdatedAt');
         if (expectedUpdatedAtEl) expectedUpdatedAtEl.value = issue && issue.updated_at ? issue.updated_at : '';
+        modalEl.dataset.expectedHistoryId = issue && issue.latest_history_id != null ? String(issue.latest_history_id) : '0';
         startIssuePresenceTracking(issue && issue.id ? issue.id : null);
 
         // Ensure save button is visible and edit button is hidden
@@ -1687,28 +1780,36 @@
         // Set pages immediately (this usually works)
         jQuery('#finalIssuePages').val(pageIds).trigger('change');
 
-        // Wait for modal to be fully shown before setting Select2 values
-        var modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        // Wait for modal to be fully shown before setting Select2 values.
+        var modalAlreadyOpen = modalEl.classList.contains('show');
+        var skipShow = !!opts.skipShow || modalAlreadyOpen;
+        var modal = bootstrap.Modal.getInstance(modalEl);
+        if (!modal && !skipShow) {
+            modal = new bootstrap.Modal(modalEl);
+        }
 
-        // Remove any existing event listeners to avoid duplicates
-        modalEl.removeEventListener('shown.bs.modal', modalEl._select2SetterHandler);
-
-        // Create new handler
-        modalEl._select2SetterHandler = function () {
-            // Set QA Status
+        function applySelectValuesNow() {
             setTimeout(function () {
                 jQuery('#finalIssueQaStatus').val(qaStatusValue).trigger('change');
                 applyIssueQaPermissionState();
-            }, 100);
-
-            // Set Reporters
+            }, 50);
             setTimeout(function () {
                 jQuery('#finalIssueReporters').val(reportersValue).trigger('change');
-            }, 100);
-        };
+            }, 60);
+        }
 
-        // Attach the handler
-        modalEl.addEventListener('shown.bs.modal', modalEl._select2SetterHandler, { once: true });
+        if (skipShow) {
+            applySelectValuesNow();
+        } else {
+            // Remove any existing event listeners to avoid duplicates
+            modalEl.removeEventListener('shown.bs.modal', modalEl._select2SetterHandler);
+            // Create new handler
+            modalEl._select2SetterHandler = function () {
+                applySelectValuesNow();
+            };
+            // Attach the handler
+            modalEl.addEventListener('shown.bs.modal', modalEl._select2SetterHandler, { once: true });
+        }
 
         // Populate metadata fields with a slight delay to ensure Select2 is initialized
         setTimeout(function () {
@@ -1757,8 +1858,9 @@
             if (!issue) startDraftAutosave();
         }, 500);
 
-        var modal = new bootstrap.Modal(modalEl);
-        modal.show();
+        if (!skipShow && modal) {
+            modal.show();
+        }
         // Removed the condition - always ensure metadata fields are properly initialized
         setTimeout(function () { var at = modalEl.querySelector('.nav-link.active'); if (at) at.dispatchEvent(new Event('shown.bs.tab', { bubbles: true })); }, 200);
     }
@@ -2339,10 +2441,14 @@
             var titlePreview = stripHtml(issue.details).substring(0, 100);
             if (titlePreview && stripHtml(issue.details).length > 100) titlePreview += '...';
             var uniqueId = 'issue-details-' + issue.id;
+            var testerDeleteBlocked = !!(isTesterRole && issue.can_tester_delete === false);
+            var deleteTitle = testerDeleteBlocked
+                ? 'Testers cannot delete this issue because it has comments or QA status is set on an Open issue.'
+                : 'Delete Issue';
 
             // Main row - NOT directly clickable, only chevron button is
             var mainRow = '<tr class="align-middle issue-expandable-row" data-collapse-target="#' + uniqueId + '">' +
-                '<td class="checkbox-cell"><input type="checkbox" class="final-select" value="' + issue.id + '"></td>' +
+                '<td class="checkbox-cell"><input type="checkbox" class="final-select" value="' + issue.id + '"' + (testerDeleteBlocked ? ' disabled' : '') + '></td>' +
                 '<td><span class="badge bg-primary">' + escapeHtml(issueKey) + '</span></td>' +
                 '<td style="min-width: 250px; max-width: 400px;">' +
                 '<div class="d-flex align-items-center">' +
@@ -2380,7 +2486,7 @@
                 '<button class="btn btn-sm btn-outline-primary me-1 final-edit" data-id="' + issue.id + '" type="button" title="Edit Issue">' +
                 '<i class="fas fa-edit"></i>' +
                 '</button>' +
-                '<button class="btn btn-sm btn-outline-danger final-delete" data-id="' + issue.id + '" type="button" title="Delete Issue">' +
+                '<button class="btn btn-sm btn-outline-danger final-delete" data-id="' + issue.id + '" type="button" title="' + escapeAttr(deleteTitle) + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
                 '<i class="fas fa-trash"></i>' +
                 '</button>' +
                 '</td>' +
@@ -2932,6 +3038,10 @@
             var pageCount = (it.pages || []).length;
             var descriptionPreview = stripHtml(it.description || '').substring(0, 100);
             if (descriptionPreview && stripHtml(it.description || '').length > 100) descriptionPreview += '...';
+            var testerDeleteBlocked = !!(isTesterRole && it.can_tester_delete === false);
+            var deleteTitle = testerDeleteBlocked
+                ? 'Testers cannot delete this issue because it has comments or QA status is set on an Open issue.'
+                : 'Delete Common Issue';
 
             // Try to find the actual issue data from loaded pages
             var actualIssue = null;
@@ -2947,7 +3057,7 @@
             // Main row with expand button
             var mainRow = '<tr class="align-middle issue-expandable-row" data-collapse-target="#' + uniqueId + '">' +
                 '<td class="text-center checkbox-cell">' +
-                '<input type="checkbox" class="form-check-input common-select" data-id="' + it.id + '">' +
+                '<input type="checkbox" class="form-check-input common-select" data-id="' + it.id + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
                 '</td>' +
                 '<td style="min-width: 250px; max-width: 400px;">' +
                 '<div class="d-flex align-items-center">' +
@@ -2971,7 +3081,7 @@
                 '<button class="btn btn-sm btn-outline-primary common-edit bg-white" data-id="' + it.id + '" title="Edit Common Issue">' +
                 '<i class="fas fa-pencil-alt"></i>' +
                 '</button>' +
-                '<button class="btn btn-sm btn-outline-danger common-delete bg-white" data-id="' + it.id + '" title="Delete Common Issue">' +
+                '<button class="btn btn-sm btn-outline-danger common-delete bg-white" data-id="' + it.id + '" title="' + escapeAttr(deleteTitle) + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
                 '<i class="far fa-trash-alt"></i>' +
                 '</button>' +
                 '</div>' +
@@ -3275,15 +3385,18 @@
         var el = document.getElementById('finalIssuePresenceIndicator');
         if (!el) return;
         var currentUserId = String(ProjectConfig.userId || '');
+        var totalActive = Array.isArray(users) ? users.length : 0;
         var others = Array.isArray(users) ? users.filter(function (u) { return String(u.user_id || '') !== currentUserId; }) : [];
         if (!others.length) {
             el.className = 'small mt-1 text-muted';
-            el.textContent = 'No other active viewers/editors on this issue.';
+            el.textContent = totalActive > 0
+                ? 'Active on this issue: You'
+                : 'No active viewers/editors on this issue.';
             return;
         }
         var names = others.map(function (u) { return u.full_name || 'User'; });
         el.className = 'small mt-1 text-warning';
-        el.textContent = 'Currently active on this issue: ' + names.join(', ');
+        el.textContent = 'Currently active on this issue: You, ' + names.join(', ');
     }
 
     async function pingIssuePresence(issueId) {
@@ -3407,11 +3520,11 @@
             // Do not refresh Final Issues while any row is expanded; prevents auto-collapse.
             var hasExpandedFinalRows = !!document.querySelector('#finalIssuesBody tr.collapse.show');
             if (!hasExpandedFinalRows) {
-                tasks.push(loadFinalIssues(issueData.selectedPageId));
+                tasks.push(loadFinalIssues(issueData.selectedPageId, { silent: true, onlyIfChanged: true }));
             }
         }
         if (document.getElementById('commonIssuesBody')) {
-            tasks.push(loadCommonIssues());
+            tasks.push(loadCommonIssues({ silent: true, onlyIfChanged: true }));
         }
         if (!tasks.length) return;
 
@@ -3426,6 +3539,7 @@
     }
 
     function startLiveIssueSync() {
+        // In-place live updates (no page reload) so multi-user issue changes appear automatically.
         if (liveIssueSyncTimer) return;
         liveIssueSyncTimer = setInterval(runLiveIssueSync, LIVE_ISSUE_SYNC_INTERVAL_MS);
         document.addEventListener('visibilitychange', function () {
@@ -4194,6 +4308,7 @@
             fd.append('project_id', projectId);
             if (editId) fd.append('id', editId);
             if (editId && expectedUpdatedAt) fd.append('expected_updated_at', expectedUpdatedAt);
+            if (editId) fd.append('expected_history_id', (document.getElementById('finalIssueModal') || {}).dataset.expectedHistoryId || '0');
             fd.append('page_id', selectedPageId);
             fd.append('metadata', JSON.stringify(metadata));
 
@@ -4239,6 +4354,7 @@
             if (!editId) await deleteDraft();
             stopDraftAutosave();
             issueData.initialFormState = null;
+            finalIssueBypassCloseConfirm = true;
             hideEditors();
             await loadFinalIssues(selectedPageId);
             await loadCommonIssues();
@@ -4250,11 +4366,17 @@
             });
         } catch (e) {
             if (String(e.message || '').toLowerCase().indexOf('modified by another user') !== -1) {
-                issueNotify('Issue was updated by another user. Latest version loaded. Please review and save again.', 'warning');
+                var conflictMsg = 'Latest data has been loaded. Please review and save again.';
                 await loadFinalIssues(selectedPageId);
                 var freshList = (issueData.pages[selectedPageId] && issueData.pages[selectedPageId].final) ? issueData.pages[selectedPageId].final : [];
                 var freshIssue = freshList.find(function (it) { return String(it.id) === String(editId); });
-                if (freshIssue) openFinalEditor(freshIssue);
+                showIssueConflictDialog('This issue was modified by another user. ' + conflictMsg, function () {
+                    if (freshIssue) {
+                        var modalEl = document.getElementById('finalIssueModal');
+                        var isOpen = !!(modalEl && modalEl.classList.contains('show'));
+                        openFinalEditor(freshIssue, { skipShow: isOpen });
+                    }
+                });
                 return;
             }
             issueNotify('Unable to save issue: ' + e.message, 'danger');
@@ -4395,7 +4517,7 @@
                 ids: ids.slice(),
                 page_id: String(issueData.selectedPageId || '')
             });
-        } catch (e) { issueNotify('Unable to delete issues.', 'danger'); }
+        } catch (e) { issueNotify((e && e.message) ? e.message : 'Unable to delete issues.', 'danger'); }
     }
 
     async function deleteCommonIds(ids) {
@@ -4411,7 +4533,7 @@
                 type: 'common',
                 ids: ids.slice()
             });
-        } catch (e) { issueNotify('Unable to delete common issues.', 'danger'); }
+        } catch (e) { issueNotify((e && e.message) ? e.message : 'Unable to delete common issues.', 'danger'); }
     }
 
     async function deleteSelected(type) {
@@ -4527,10 +4649,56 @@
         });
     }
 
+    function isVisibleAndEnabled(el) {
+        if (!el) return false;
+        if (el.disabled) return false;
+        if (el.classList.contains('d-none')) return false;
+        var style = window.getComputedStyle(el);
+        if (!style) return true;
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        return true;
+    }
+
     var addF = document.getElementById('issueAddFinalBtn'); if (addF) addF.addEventListener('click', function () { openFinalEditor(null); });
+
+    // Alt+N shortcut: trigger Add Issue / Add Common Issue on pages where these buttons exist.
+    document.addEventListener('keydown', function (e) {
+        if (!e || !e.altKey) return;
+        if (String(e.key || '').toLowerCase() !== 'n') return;
+
+        // If any modal is open, skip global "new" shortcut.
+        if (document.querySelector('.modal.show')) return;
+
+        var finalBtn = document.getElementById('issueAddFinalBtn');
+        var commonBtn = document.getElementById('commonAddBtn');
+
+        // Prefer the visible/active action button.
+        if (isVisibleAndEnabled(finalBtn)) {
+            e.preventDefault();
+            e.stopPropagation();
+            finalBtn.click();
+            return;
+        }
+        if (isVisibleAndEnabled(commonBtn)) {
+            e.preventDefault();
+            e.stopPropagation();
+            commonBtn.click();
+        }
+    });
 
     var finalIssueModalEl = document.getElementById('finalIssueModal');
     if (finalIssueModalEl) {
+        finalIssueModalEl.addEventListener('keydown', function (e) {
+            if (!e || !e.altKey) return;
+            if (String(e.key || '').toLowerCase() !== 's') return;
+            if (!finalIssueModalEl.classList.contains('show')) return;
+            var saveBtn = document.getElementById('finalIssueSaveBtn');
+            if (!saveBtn || saveBtn.disabled || saveBtn.classList.contains('d-none')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            saveBtn.click();
+        });
+
         finalIssueModalEl.addEventListener('click', function (e) {
             var dismissBtn = e.target && e.target.closest ? e.target.closest('[data-bs-dismiss="modal"]') : null;
             if (dismissBtn) {
@@ -4539,6 +4707,13 @@
             }
         });
         finalIssueModalEl.addEventListener('hide.bs.modal', function (e) {
+            if (finalIssueBypassCloseConfirm) {
+                finalIssueBypassCloseConfirm = false;
+                stopDraftAutosave();
+                issueData.initialFormState = null;
+                stopIssuePresenceTracking();
+                return;
+            }
             var editId = document.getElementById('finalIssueEditId').value;
             // Check for changes in both NEW and EDIT modes
             if (hasFormChanges()) {
@@ -4554,6 +4729,7 @@
                                 stopDraftAutosave();
                                 issueData.initialFormState = null;
                                 var modal = bootstrap.Modal.getInstance(finalIssueModalEl);
+                                finalIssueBypassCloseConfirm = true;
                                 if (modal) modal.hide();
                             });
                         } else {
@@ -4574,6 +4750,7 @@
                             stopDraftAutosave();
                             issueData.initialFormState = null;
                             var modal = bootstrap.Modal.getInstance(finalIssueModalEl);
+                            finalIssueBypassCloseConfirm = true;
                             if (modal) modal.hide();
                         }
                     }
@@ -4587,11 +4764,14 @@
         });
         finalIssueModalEl.addEventListener('hidden.bs.modal', function () {
             stopIssuePresenceTracking();
+            clearIssueConflictNotice();
+            cleanupModalOverlayState();
         });
     }
     document.addEventListener('hidden.bs.modal', function (e) {
         if (e && e.target && e.target.id === 'finalIssueModal') {
             stopIssuePresenceTracking();
+            cleanupModalOverlayState();
         }
     });
 
@@ -4632,7 +4812,14 @@
 
         // Remove existing modal if any
         var existing = document.getElementById('draftConfirmModal');
-        if (existing) existing.remove();
+        if (existing) {
+            try {
+                var existingInst = bootstrap.Modal.getInstance(existing);
+                if (existingInst) existingInst.dispose();
+            } catch (e) { }
+            existing.remove();
+            cleanupModalOverlayState();
+        }
 
         // Add modal to body
         document.body.insertAdjacentHTML('beforeend', modalHtml);
@@ -4659,6 +4846,7 @@
         // Cleanup after modal is hidden
         confirmModal.addEventListener('hidden.bs.modal', function () {
             confirmModal.remove();
+            cleanupModalOverlayState();
         });
 
         bsModal.show();
@@ -5069,29 +5257,35 @@
         updateIssueTabCounts();
     }
 
-    var visitBtn = document.getElementById('btnShowVisitHistory');
-    if (visitBtn) {
-        visitBtn.addEventListener('shown.bs.tab', function () {
-            var wrap = document.getElementById('visitHistoryEntries');
-            if (wrap) wrap.innerHTML = '<div class="text-center py-4 text-muted">Loading visit history...</div>';
-            var id = document.getElementById('finalIssueEditId').value;
-            if (!id) {
-                if (wrap) wrap.innerHTML = '<div class="text-center py-4 text-muted">No visit history for new issues.</div>';
-                return;
-            }
-            var url = issuesApiBase + '?action=presence_session_list&project_id=' + encodeURIComponent(projectId) + '&issue_id=' + encodeURIComponent(id);
-            fetch(url, { credentials: 'same-origin' })
-                .then(function (res) { return res.json(); })
-                .then(function (res) {
-                    if (!res || !res.success) {
-                        renderVisitHistory([]);
-                        return;
-                    }
-                    renderVisitHistory(res.sessions || []);
-                })
-                .catch(function () { renderVisitHistory([]); });
-        });
+    function loadVisitHistoryTab() {
+        var wrap = document.getElementById('visitHistoryEntries');
+        if (wrap) wrap.innerHTML = '<div class="text-center py-4 text-muted">Loading visit history...</div>';
+        var id = (document.getElementById('finalIssueEditId') || {}).value;
+        if (!id) {
+            if (wrap) wrap.innerHTML = '<div class="text-center py-4 text-muted">No visit history for new issues.</div>';
+            return;
+        }
+        var url = issuesApiBase + '?action=presence_session_list&project_id=' + encodeURIComponent(projectId) + '&issue_id=' + encodeURIComponent(id);
+        fetch(url, { credentials: 'same-origin' })
+            .then(function (res) { return res.json(); })
+            .then(function (res) {
+                if (!res || !res.success) {
+                    renderVisitHistory([]);
+                    return;
+                }
+                renderVisitHistory(res.sessions || []);
+            })
+            .catch(function () { renderVisitHistory([]); });
     }
+
+    document.addEventListener('shown.bs.tab', function (e) {
+        var target = e && e.target ? e.target : null;
+        if (!target) return;
+        var targetPane = target.getAttribute('data-bs-target') || target.getAttribute('href') || '';
+        if (target.id === 'btnShowVisitHistory' || targetPane === '#tabVisitHistory') {
+            loadVisitHistoryTab();
+        }
+    });
 
     var chatBtn = document.getElementById('btnShowChat');
     if (chatBtn) {
@@ -5152,7 +5346,7 @@
     ['common', 'final'].forEach(function (t) {
         var c = document.getElementById(t + 'SelectAll');
         if (c) c.addEventListener('change', function (e) {
-            document.querySelectorAll('.' + t + '-select').forEach(function (cb) { cb.checked = e.target.checked; });
+            document.querySelectorAll('.' + t + '-select:not([disabled])').forEach(function (cb) { cb.checked = e.target.checked; });
             updateSelectionButtons();
         });
         var body = document.getElementById(t + 'IssuesBody');
@@ -5161,6 +5355,7 @@
             body.addEventListener('click', function (e) {
                 var target = e.target.closest('.' + t + '-edit, .' + t + '-delete, .issue-open');
                 if (!target) return;
+                if (target.hasAttribute('disabled')) return;
 
                 var id = target.getAttribute('data-id');
                     if (target.classList.contains(t + '-edit') || target.classList.contains('issue-open')) {
@@ -5225,6 +5420,10 @@
         finalIssueModalEl.addEventListener('shown.bs.modal', function () {
             // No auto-focus - let modal container handle focus
             applyIssueQaPermissionState();
+            var currentIssueId = (document.getElementById('finalIssueEditId') || {}).value;
+            if (currentIssueId) {
+                startIssuePresenceTracking(currentIssueId);
+            }
 
             // Legacy code for old select field (if it exists)
             var sel = document.getElementById('finalIssueTitle');

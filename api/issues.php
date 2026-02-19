@@ -113,24 +113,214 @@ function ensureIssuePresenceTable($db) {
     static $isReady = null;
     if ($isReady !== null) return $isReady;
     try {
-        $stmt = $db->prepare("SHOW TABLES LIKE ?");
-        $stmt->execute(['issue_active_editors']);
-        $isReady = (bool)$stmt->fetchColumn();
+        $isReady = (bool)$db->query("SHOW TABLES LIKE " . $db->quote('issue_active_editors'))->fetchColumn();
+        if (!$isReady) {
+            $db->exec("
+                CREATE TABLE IF NOT EXISTS issue_active_editors (
+                    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    project_id INT NOT NULL,
+                    issue_id INT NOT NULL,
+                    user_id INT NOT NULL,
+                    last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    UNIQUE KEY ux_issue_active_editor (project_id, issue_id, user_id),
+                    KEY idx_issue_active_last_seen (last_seen),
+                    KEY idx_issue_active_issue (project_id, issue_id, last_seen)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ");
+            $isReady = (bool)$db->query("SHOW TABLES LIKE " . $db->quote('issue_active_editors'))->fetchColumn();
+        }
+        if ($isReady) {
+            $cols = [];
+            $colStmt = $db->query("SHOW COLUMNS FROM issue_active_editors");
+            while ($c = $colStmt->fetch(PDO::FETCH_ASSOC)) {
+                $cols[strtolower((string)$c['Field'])] = true;
+            }
+            if (!isset($cols['project_id'])) {
+                $db->exec("ALTER TABLE issue_active_editors ADD COLUMN project_id INT NOT NULL DEFAULT 0");
+            }
+            if (!isset($cols['issue_id'])) {
+                $db->exec("ALTER TABLE issue_active_editors ADD COLUMN issue_id INT NOT NULL DEFAULT 0");
+            }
+            if (!isset($cols['user_id'])) {
+                $db->exec("ALTER TABLE issue_active_editors ADD COLUMN user_id INT NOT NULL DEFAULT 0");
+            }
+            if (!isset($cols['last_seen'])) {
+                $db->exec("ALTER TABLE issue_active_editors ADD COLUMN last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+            }
+            try {
+                $db->exec("ALTER TABLE issue_active_editors ADD UNIQUE KEY ux_issue_active_editor (project_id, issue_id, user_id)");
+            } catch (Exception $e) { }
+        }
     } catch (Exception $e) {
-        $isReady = false;
+        error_log('ensureIssuePresenceTable error: ' . $e->getMessage());
+        try {
+            $isReady = (bool)$db->query("SHOW TABLES LIKE " . $db->quote('issue_active_editors'))->fetchColumn();
+        } catch (Exception $e2) {
+            $isReady = false;
+        }
     }
     return $isReady;
+}
+
+function normalizeIssueStatusValue($value) {
+    $raw = trim((string)$value);
+    if ($raw !== '' && $raw[0] === '[') {
+        $decoded = json_decode($raw, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $raw = trim((string)($decoded[0] ?? ''));
+        }
+    }
+    $v = strtolower($raw);
+    if ($v === '') return '';
+    $v = str_replace('-', '_', $v);
+    $v = preg_replace('/\s+/', '_', $v);
+    return $v;
+}
+
+function isIssueOpenStatusValue($value) {
+    return normalizeIssueStatusValue($value) === 'open';
+}
+
+function isQaStatusMetaFilled($qaValues) {
+    if ($qaValues === null) return false;
+    $values = is_array($qaValues) ? $qaValues : [$qaValues];
+    foreach ($values as $v) {
+        $s = trim((string)$v);
+        if ($s === '' || $s === '[]') continue;
+        if ($s[0] === '[') {
+            $decoded = json_decode($s, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                foreach ($decoded as $item) {
+                    if (trim((string)$item) !== '') return true;
+                }
+                continue;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+function getTesterBlockedIssueIdsForDelete(PDO $db, int $projectId, array $issueIds): array {
+    if (empty($issueIds)) return [];
+    $issueIds = array_values(array_unique(array_map('intval', $issueIds)));
+    $issueIds = array_values(array_filter($issueIds, function($id){ return $id > 0; }));
+    if (empty($issueIds)) return [];
+
+    $placeholders = implode(',', array_fill(0, count($issueIds), '?'));
+    $sql = "
+        SELECT
+            i.id,
+            COALESCE(
+                (
+                    SELECT im_status.meta_value
+                    FROM issue_metadata im_status
+                    WHERE im_status.issue_id = i.id AND im_status.meta_key = 'issue_status'
+                    ORDER BY im_status.id DESC
+                    LIMIT 1
+                ),
+                s.name,
+                ''
+            ) AS issue_status_value,
+            EXISTS (
+                SELECT 1
+                FROM issue_metadata im_qa
+                WHERE im_qa.issue_id = i.id
+                  AND im_qa.meta_key = 'qa_status'
+                  AND TRIM(COALESCE(im_qa.meta_value, '')) <> ''
+                  AND TRIM(COALESCE(im_qa.meta_value, '')) <> '[]'
+            ) AS has_qa_status,
+            EXISTS (
+                SELECT 1
+                FROM issue_comments ic
+                WHERE ic.issue_id = i.id
+            ) AS has_comments
+        FROM issues i
+        LEFT JOIN issue_statuses s ON s.id = i.status_id
+        WHERE i.project_id = ? AND i.id IN ($placeholders)
+    ";
+
+    $stmt = $db->prepare($sql);
+    $stmt->execute(array_merge([$projectId], $issueIds));
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $blocked = [];
+    foreach ($rows as $row) {
+        $issueId = (int)$row['id'];
+        $status = normalizeIssueStatusValue($row['issue_status_value'] ?? '');
+        $isOpen = ($status === 'open');
+        $hasQaStatus = !empty($row['has_qa_status']);
+        $hasComments = !empty($row['has_comments']);
+
+        if ($hasComments || ($isOpen && $hasQaStatus)) {
+            $blocked[] = $issueId;
+        }
+    }
+    return $blocked;
 }
 
 function ensureIssuePresenceSessionsTable($db) {
     static $isReady = null;
     if ($isReady !== null) return $isReady;
     try {
-        $stmt = $db->prepare("SHOW TABLES LIKE ?");
-        $stmt->execute(['issue_presence_sessions']);
-        $isReady = (bool)$stmt->fetchColumn();
+        $isReady = (bool)$db->query("SHOW TABLES LIKE " . $db->quote('issue_presence_sessions'))->fetchColumn();
+        if (!$isReady) {
+            $db->exec("
+                CREATE TABLE IF NOT EXISTS issue_presence_sessions (
+                    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    project_id INT NOT NULL,
+                    issue_id INT NOT NULL,
+                    user_id INT NOT NULL,
+                    session_token VARCHAR(64) NOT NULL,
+                    opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    closed_at DATETIME NULL,
+                    duration_seconds INT NULL,
+                    PRIMARY KEY (id),
+                    UNIQUE KEY ux_issue_presence_session_token (session_token),
+                    KEY idx_issue_presence_issue (project_id, issue_id, opened_at),
+                    KEY idx_issue_presence_user (user_id, opened_at),
+                    KEY idx_issue_presence_open (closed_at, last_seen)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ");
+            $isReady = (bool)$db->query("SHOW TABLES LIKE " . $db->quote('issue_presence_sessions'))->fetchColumn();
+        }
+        if ($isReady) {
+            $cols = [];
+            $colStmt = $db->query("SHOW COLUMNS FROM issue_presence_sessions");
+            while ($c = $colStmt->fetch(PDO::FETCH_ASSOC)) {
+                $cols[strtolower((string)$c['Field'])] = true;
+            }
+            if (!isset($cols['session_token'])) {
+                try { $db->exec("ALTER TABLE issue_presence_sessions ADD COLUMN session_token VARCHAR(64) NOT NULL DEFAULT ''"); } catch (Exception $e) { }
+            }
+            if (!isset($cols['opened_at'])) {
+                try { $db->exec("ALTER TABLE issue_presence_sessions ADD COLUMN opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"); } catch (Exception $e) { }
+            }
+            if (!isset($cols['last_seen'])) {
+                try { $db->exec("ALTER TABLE issue_presence_sessions ADD COLUMN last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"); } catch (Exception $e) { }
+            }
+            if (!isset($cols['closed_at'])) {
+                try { $db->exec("ALTER TABLE issue_presence_sessions ADD COLUMN closed_at DATETIME NULL"); } catch (Exception $e) { }
+            }
+            if (!isset($cols['duration_seconds'])) {
+                try { $db->exec("ALTER TABLE issue_presence_sessions ADD COLUMN duration_seconds INT NULL"); } catch (Exception $e) { }
+            }
+            try { $db->exec("ALTER TABLE issue_presence_sessions ADD INDEX idx_issue_presence_issue (project_id, issue_id, opened_at)"); } catch (Exception $e) { }
+            try { $db->exec("ALTER TABLE issue_presence_sessions ADD INDEX idx_issue_presence_user (user_id, opened_at)"); } catch (Exception $e) { }
+            try { $db->exec("ALTER TABLE issue_presence_sessions ADD INDEX idx_issue_presence_open (closed_at, last_seen)"); } catch (Exception $e) { }
+            // Optional uniqueness. Ignore failures on legacy rows.
+            try { $db->exec("ALTER TABLE issue_presence_sessions ADD UNIQUE KEY ux_issue_presence_session_token (session_token)"); } catch (Exception $e) { }
+        }
     } catch (Exception $e) {
-        $isReady = false;
+        error_log('ensureIssuePresenceSessionsTable error: ' . $e->getMessage());
+        // Keep presence features available even if migration/index tuning fails.
+        try {
+            $isReady = (bool)$db->query("SHOW TABLES LIKE " . $db->quote('issue_presence_sessions'))->fetchColumn();
+        } catch (Exception $e2) {
+            $isReady = false;
+        }
     }
     return $isReady;
 }
@@ -209,6 +399,8 @@ if (!$projectId) {
 }
 
 $userId = $_SESSION['user_id'] ?? 0;
+$userRole = $_SESSION['role'] ?? '';
+$isTesterRole = in_array($userRole, ['at_tester', 'ft_tester'], true);
 if (!hasProjectAccess($db, $userId, $projectId)) {
     jsonError('Permission denied', 403);
 }
@@ -222,7 +414,8 @@ try {
                        s.name as status_name, 
                        p.name as priority_name,
                        reporter.full_name as reporter_name,
-                       assignee.full_name as qa_name
+                       assignee.full_name as qa_name,
+                       (SELECT COALESCE(MAX(ih.id), 0) FROM issue_history ih WHERE ih.issue_id = i.id) AS latest_history_id
                 FROM issues i
                 LEFT JOIN issue_statuses s ON i.status_id = s.id
                 LEFT JOIN issue_priorities p ON i.priority_id = p.id
@@ -243,6 +436,7 @@ try {
 
         $issueIds = array_map(function($r){ return (int)$r['id']; }, $issues);
         $metaMap = [];
+        $commentCountMap = [];
         if (!empty($issueIds)) {
             $placeholders = implode(',', array_fill(0, count($issueIds), '?'));
             $metaStmt = $db->prepare("SELECT issue_id, meta_key, meta_value FROM issue_metadata WHERE issue_id IN ($placeholders)");
@@ -253,6 +447,12 @@ try {
                 if (!isset($metaMap[$iid][$m['meta_key']])) $metaMap[$iid][$m['meta_key']] = [];
                 $metaMap[$iid][$m['meta_key']][] = $m['meta_value'];
             }
+
+            $commentStmt = $db->prepare("SELECT issue_id, COUNT(*) AS c FROM issue_comments WHERE issue_id IN ($placeholders) GROUP BY issue_id");
+            $commentStmt->execute($issueIds);
+            while ($c = $commentStmt->fetch(PDO::FETCH_ASSOC)) {
+                $commentCountMap[(int)$c['issue_id']] = (int)$c['c'];
+            }
         }
 
         $out = [];
@@ -261,6 +461,12 @@ try {
             $meta = $metaMap[$iid] ?? [];
             $pages = $meta['page_ids'] ?? [];
             if (empty($pages) && !empty($i['page_id'])) $pages = [(string)$i['page_id']];
+            $statusValue = ($meta['issue_status'][0] ?? strtolower(str_replace(' ', '_', $i['status_name'] ?? '')));
+            $qaStatusValues = ($meta['qa_status'] ?? []);
+            $hasComments = (($commentCountMap[$iid] ?? 0) > 0);
+            $isOpen = isIssueOpenStatusValue($statusValue);
+            $hasQaStatus = isQaStatusMetaFilled($qaStatusValues);
+            $canTesterDelete = (!$hasComments && !($isOpen && $hasQaStatus));
             
             // Extract severity and priority as simple strings (not arrays or JSON)
             $severity = 'medium';
@@ -312,9 +518,11 @@ try {
                 'page_id' => $i['page_id'],
                 'title' => $i['title'],
                 'description' => $i['description'],
-                'status' => ($meta['issue_status'][0] ?? strtolower(str_replace(' ', '_', $i['status_name'] ?? ''))),
+                'status' => $statusValue,
                 'status_id' => (int)$i['status_id'],
-                'qa_status' => ($meta['qa_status'] ?? []), // Return as array for multi-select
+                'qa_status' => $qaStatusValues, // Return as array for multi-select
+                'has_comments' => $hasComments,
+                'can_tester_delete' => $canTesterDelete,
                 'severity' => $severity,
                 'priority' => $priority,
                 'pages' => $pages,
@@ -331,7 +539,8 @@ try {
                 'is17802' => ($meta['is17802'] ?? []),
                 'common_title' => ($meta['common_title'][0] ?? ''),
                 'created_at' => $i['created_at'],
-                'updated_at' => $i['updated_at']
+                'updated_at' => $i['updated_at'],
+                'latest_history_id' => (int)($i['latest_history_id'] ?? 0)
             ];
         }
 
@@ -661,6 +870,7 @@ try {
     if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         $id = (int)($_POST['id'] ?? 0);
         $expectedUpdatedAt = trim((string)($_POST['expected_updated_at'] ?? ''));
+        $expectedHistoryId = isset($_POST['expected_history_id']) ? (int)$_POST['expected_history_id'] : null;
         $title = trim($_POST['title'] ?? '');
         if (!$title) jsonError('title is required', 400);
         $description = $_POST['description'] ?? '';
@@ -720,6 +930,19 @@ try {
                 ], 409);
             }
 
+            if ($expectedHistoryId !== null) {
+                $histStmt = $db->prepare("SELECT COALESCE(MAX(id), 0) FROM issue_history WHERE issue_id = ?");
+                $histStmt->execute([$id]);
+                $currentHistoryId = (int)$histStmt->fetchColumn();
+                if ($currentHistoryId !== $expectedHistoryId) {
+                    jsonResponse([
+                        'error' => 'This issue was modified by another user. Please reload latest data and try again.',
+                        'conflict' => true,
+                        'current_history_id' => $currentHistoryId
+                    ], 409);
+                }
+            }
+
             $oldMetaStmt = $db->prepare("SELECT meta_key, meta_value FROM issue_metadata WHERE issue_id = ? ORDER BY id ASC");
             $oldMetaStmt->execute([$id]);
             $oldMeta = [];
@@ -741,7 +964,7 @@ try {
             logHistory($db, $id, $userId, 'common_issue_title', $oldIssue['common_issue_title'], $commonTitle ?: null);
             // More fields could be logged if needed (status, priority etc)
 
-            $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, page_id = ?, severity = ?, common_issue_title = ? WHERE id = ? AND project_id = ?");
+            $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, page_id = ?, severity = ?, common_issue_title = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
             $stmt->execute([$title, $description, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null, $id, $projectId]);
         }
 
@@ -895,6 +1118,17 @@ try {
         $idsRaw = $_POST['ids'] ?? '';
         $ids = is_array($idsRaw) ? $idsRaw : array_filter(array_map('intval', explode(',', $idsRaw)));
         if (empty($ids)) jsonError('ids required', 400);
+
+        if ($isTesterRole) {
+            $blockedIds = getTesterBlockedIssueIdsForDelete($db, $projectId, $ids);
+            if (!empty($blockedIds)) {
+                jsonResponse([
+                    'error' => 'Testers can delete only when QA status is empty and no comments exist on the issue.',
+                    'blocked_issue_ids' => $blockedIds
+                ], 403);
+            }
+        }
+
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $params = array_merge($ids, [$projectId]);
 
@@ -920,9 +1154,10 @@ try {
 
     if ($method === 'GET' && $action === 'common_list') {
         $stmt = $db->prepare("
-            SELECT ci.id as common_id, ci.title as common_title, i.*
+            SELECT ci.id as common_id, ci.title as common_title, i.*, s.name AS status_name
             FROM common_issues ci
             JOIN issues i ON ci.issue_id = i.id
+            LEFT JOIN issue_statuses s ON s.id = i.status_id
             WHERE ci.project_id = ?
             ORDER BY ci.updated_at DESC, ci.id DESC
         ");
@@ -930,6 +1165,7 @@ try {
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $issueIds = array_map(function($r){ return (int)$r['id']; }, $rows);
         $metaMap = [];
+        $commentCountMap = [];
         if (!empty($issueIds)) {
             $placeholders = implode(',', array_fill(0, count($issueIds), '?'));
             $metaStmt = $db->prepare("SELECT issue_id, meta_key, meta_value FROM issue_metadata WHERE issue_id IN ($placeholders)");
@@ -940,18 +1176,33 @@ try {
                 if (!isset($metaMap[$iid][$m['meta_key']])) $metaMap[$iid][$m['meta_key']] = [];
                 $metaMap[$iid][$m['meta_key']][] = $m['meta_value'];
             }
+            $commentStmt = $db->prepare("SELECT issue_id, COUNT(*) AS c FROM issue_comments WHERE issue_id IN ($placeholders) GROUP BY issue_id");
+            $commentStmt->execute($issueIds);
+            while ($c = $commentStmt->fetch(PDO::FETCH_ASSOC)) {
+                $commentCountMap[(int)$c['issue_id']] = (int)$c['c'];
+            }
         }
         $out = [];
         foreach ($rows as $r) {
             $iid = (int)$r['id'];
             $meta = $metaMap[$iid] ?? [];
             $pages = $meta['page_ids'] ?? [];
+            $statusValue = ($meta['issue_status'][0] ?? strtolower(str_replace(' ', '_', $r['status_name'] ?? '')));
+            $qaStatusValues = ($meta['qa_status'] ?? []);
+            $hasComments = (($commentCountMap[$iid] ?? 0) > 0);
+            $isOpen = isIssueOpenStatusValue($statusValue);
+            $hasQaStatus = isQaStatusMetaFilled($qaStatusValues);
+            $canTesterDelete = (!$hasComments && !($isOpen && $hasQaStatus));
             $out[] = [
                 'id' => (int)$r['common_id'],
                 'issue_id' => $iid,
                 'title' => $r['common_title'] ?: $r['title'],
                 'description' => $r['description'],
-                'pages' => $pages
+                'pages' => $pages,
+                'status' => $statusValue,
+                'qa_status' => $qaStatusValues,
+                'has_comments' => $hasComments,
+                'can_tester_delete' => $canTesterDelete
             ];
         }
         jsonResponse(['success' => true, 'common' => $out]);
@@ -982,7 +1233,7 @@ try {
             $stmt->execute([$commonId, $projectId]);
             $issueId = (int)$stmt->fetchColumn();
             if (!$issueId) jsonError('Common issue not found', 404);
-            $upIssue = $db->prepare("UPDATE issues SET title = ?, description = ?, common_issue_title = ? WHERE id = ? AND project_id = ?");
+            $upIssue = $db->prepare("UPDATE issues SET title = ?, description = ?, common_issue_title = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
             $upIssue->execute([$title, $description, $title, $issueId, $projectId]);
             $up = $db->prepare("UPDATE common_issues SET title = ?, updated_at = NOW() WHERE id = ?");
             $up->execute([$title, $commonId]);
@@ -1002,6 +1253,18 @@ try {
         $stmt = $db->prepare("SELECT issue_id FROM common_issues WHERE id IN ($placeholders) AND project_id = ?");
         $stmt->execute(array_merge($ids, [$projectId]));
         $issueIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        if ($isTesterRole && !empty($issueIds)) {
+            $issueIds = array_map('intval', $issueIds);
+            $blockedIds = getTesterBlockedIssueIdsForDelete($db, $projectId, $issueIds);
+            if (!empty($blockedIds)) {
+                jsonResponse([
+                    'error' => 'Testers can delete only when QA status is empty and no comments exist on the issue.',
+                    'blocked_issue_ids' => $blockedIds
+                ], 403);
+            }
+        }
+
         $del = $db->prepare("DELETE FROM common_issues WHERE id IN ($placeholders) AND project_id = ?");
         $del->execute(array_merge($ids, [$projectId]));
         if (!empty($issueIds)) {

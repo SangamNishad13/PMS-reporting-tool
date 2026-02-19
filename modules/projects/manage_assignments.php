@@ -732,7 +732,28 @@ if (!$projectId) {
     $removedTeam->execute([$projectId, $projectId]);
     $removedMembers = $removedTeam->fetchAll();
 
-    // project_pages table data is no longer used here (delete/ignore)
+    // Backfill: ensure unique pages with canonical URLs are represented in project_pages
+    // so they show in "Individual Page Assignments" even if imported via CSV earlier.
+    $syncUniqueToProjectPages = $db->prepare("
+        INSERT INTO project_pages (project_id, page_name, page_number, url, screen_name, created_by, created_at)
+        SELECT
+            up.project_id,
+            COALESCE(NULLIF(TRIM(up.name), ''), NULLIF(TRIM(up.page_number), ''), SUBSTRING(up.canonical_url, 1, 120)) AS page_name,
+            COALESCE(NULLIF(TRIM(up.page_number), ''), NULLIF(TRIM(up.name), ''), SUBSTRING(up.canonical_url, 1, 120)) AS page_number,
+            up.canonical_url,
+            NULLIF(TRIM(up.screen_name), '') AS screen_name,
+            ?,
+            NOW()
+        FROM unique_pages up
+        LEFT JOIN project_pages pp
+            ON pp.project_id = up.project_id
+           AND pp.url = up.canonical_url
+        WHERE up.project_id = ?
+          AND up.canonical_url IS NOT NULL
+          AND TRIM(up.canonical_url) <> ''
+          AND pp.id IS NULL
+    ");
+    $syncUniqueToProjectPages->execute([$userId, $projectId]);
 
     // Fetch pages for this project (now using only project_pages table)
     $pagesStmt = $db->prepare("SELECT id, page_name, url, screen_name, at_tester_id, ft_tester_id, qa_id FROM project_pages WHERE project_id = ? ORDER BY id ASC");

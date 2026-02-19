@@ -85,6 +85,7 @@ if (empty($uniqueCols) && empty($allCols)) {
 }
 
 $addedUnique = 0; $addedGrouped = 0;
+$addedProjectPages = 0;
 
 if (($fp = fopen($tmp, 'r')) !== false) {
     // Read header
@@ -94,6 +95,9 @@ if (($fp = fopen($tmp, 'r')) !== false) {
     // Prepare statements
     $findUnique = $db->prepare('SELECT id FROM unique_pages WHERE project_id = ? AND (canonical_url = ? OR name = ?) LIMIT 1');
     $insertUnique = $db->prepare('INSERT INTO unique_pages (project_id, name, canonical_url, page_number, screen_name, notes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())');
+    $getUniqueById = $db->prepare('SELECT id, name, canonical_url, page_number, screen_name FROM unique_pages WHERE id = ? LIMIT 1');
+    $findProjectPageByUrl = $db->prepare('SELECT id FROM project_pages WHERE project_id = ? AND url = ? LIMIT 1');
+    $insertProjectPage = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, screen_name, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())');
     $findGrouped = $db->prepare('SELECT id FROM grouped_urls WHERE project_id = ? AND url = ? LIMIT 1');
     $insertGrouped = $db->prepare('INSERT INTO grouped_urls (project_id, unique_page_id, url, normalized_url, created_at) VALUES (?, ?, ?, ?, NOW())');
 
@@ -158,6 +162,40 @@ if (($fp = fopen($tmp, 'r')) !== false) {
                 $uniqueId = (int)$db->lastInsertId();
                 $addedUnique++;
             }
+
+            // Ensure imported unique pages are also available in project page assignments.
+            if ($uniqueId > 0) {
+                $getUniqueById->execute([$uniqueId]);
+                $uniqueRow = $getUniqueById->fetch(PDO::FETCH_ASSOC);
+                if ($uniqueRow) {
+                    $canonicalUrl = trim((string)($uniqueRow['canonical_url'] ?? ''));
+                    $pageNameToUse = trim((string)($uniqueRow['name'] ?? ''));
+                    $pageNumberToUse = trim((string)($uniqueRow['page_number'] ?? ''));
+                    $screenNameToUse = trim((string)($uniqueRow['screen_name'] ?? ''));
+
+                    if ($canonicalUrl !== '') {
+                        $findProjectPageByUrl->execute([$projectId, $canonicalUrl]);
+                        $existingProjectPage = $findProjectPageByUrl->fetch(PDO::FETCH_ASSOC);
+                        if (!$existingProjectPage) {
+                            if ($pageNameToUse === '') {
+                                $pageNameToUse = $pageNumberToUse !== '' ? $pageNumberToUse : substr($canonicalUrl, 0, 120);
+                            }
+                            if ($pageNumberToUse === '') {
+                                $pageNumberToUse = $pageNameToUse;
+                            }
+                            $insertProjectPage->execute([
+                                $projectId,
+                                $pageNameToUse,
+                                $pageNumberToUse,
+                                $canonicalUrl,
+                                $screenNameToUse !== '' ? $screenNameToUse : null,
+                                $userId
+                            ]);
+                            $addedProjectPages++;
+                        }
+                    }
+                }
+            }
         }
 
         if ($allVal !== '') {
@@ -176,7 +214,12 @@ if (($fp = fopen($tmp, 'r')) !== false) {
         }
     }
     fclose($fp);
-    echo json_encode(['success' => true, 'added_unique' => $addedUnique, 'added_grouped' => $addedGrouped]);
+    echo json_encode([
+        'success' => true,
+        'added_unique' => $addedUnique,
+        'added_grouped' => $addedGrouped,
+        'added_project_pages' => $addedProjectPages
+    ]);
     exit;
 } else {
     echo json_encode(['error' => 'Unable to open uploaded file']);

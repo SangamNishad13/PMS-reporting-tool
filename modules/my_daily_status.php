@@ -1284,15 +1284,68 @@ try {
     $pendingEditLogIds = [];
 }
 
-// Get Assigned Projects with phases
+// Get assigned projects for this user.
+// Include all active project statuses (exclude cancelled/archived),
+// and include assignment paths used across the app (team/page/env/unique page mappings).
 $projectsStmt = $db->prepare("
-    SELECT p.id, p.title, p.po_number, ua.role
+    SELECT DISTINCT
+        p.id,
+        p.title,
+        p.po_number,
+        ua.role
     FROM projects p
-    LEFT JOIN user_assignments ua ON p.id = ua.project_id AND ua.user_id = ?
-    WHERE p.status = 'in_progress' AND (ua.id IS NOT NULL OR p.project_lead_id = ? OR p.po_number = 'OFF-PROD-001')
-    ORDER BY p.po_number = 'OFF-PROD-001', p.title
+    LEFT JOIN user_assignments ua
+        ON p.id = ua.project_id
+       AND ua.user_id = ?
+       AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+    WHERE p.status NOT IN ('cancelled', 'archived')
+      AND (
+            ua.id IS NOT NULL
+            OR p.project_lead_id = ?
+            OR EXISTS (
+                SELECT 1
+                FROM project_pages pp
+                WHERE pp.project_id = p.id
+                  AND (
+                        pp.at_tester_id = ?
+                        OR pp.ft_tester_id = ?
+                        OR pp.qa_id = ?
+                      )
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM unique_pages up
+                WHERE up.project_id = p.id
+                  AND (
+                        up.at_tester_id = ?
+                        OR up.ft_tester_id = ?
+                        OR up.qa_id = ?
+                        OR JSON_CONTAINS(COALESCE(up.at_tester_ids, JSON_ARRAY()), JSON_ARRAY(CAST(? AS UNSIGNED)))
+                        OR JSON_CONTAINS(COALESCE(up.ft_tester_ids, JSON_ARRAY()), JSON_ARRAY(CAST(? AS UNSIGNED)))
+                      )
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM project_pages pp2
+                JOIN page_environments pe ON pe.page_id = pp2.id
+                WHERE pp2.project_id = p.id
+                  AND (
+                        pe.at_tester_id = ?
+                        OR pe.ft_tester_id = ?
+                        OR pe.qa_id = ?
+                      )
+            )
+            OR p.po_number = 'OFF-PROD-001'
+      )
+    ORDER BY (p.po_number = 'OFF-PROD-001') DESC, p.title
 ");
-$projectsStmt->execute([$userId, $userId]);
+$projectsStmt->execute([
+    $userId,
+    $userId,
+    $userId, $userId, $userId,
+    $userId, $userId, $userId, $userId, $userId,
+    $userId, $userId, $userId
+]);
 $assignedProjects = $projectsStmt->fetchAll();
 
 $offProdProjectId = 0;

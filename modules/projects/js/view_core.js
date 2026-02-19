@@ -22,9 +22,11 @@ var ProjectConfig = window.ProjectConfig || {};
                     const clone = res.clone();
                     const type = clone.headers.get('content-type');
                     if (type && type.includes('application/json')) {
-                        const data = await clone.json();
-                        if (data && data.error === 'auth_required') {
-                            window.location.reload();
+                    const data = await clone.json();
+                    if (data && data.error === 'auth_required') {
+                            if (typeof showToast === 'function') {
+                                showToast('Authentication required. Please sign in again.', 'warning');
+                            }
                         }
                     }
                 } catch (e) { }
