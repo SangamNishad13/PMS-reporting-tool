@@ -9,6 +9,17 @@ $(document).ready(function () {
     var feedbackImageUploadUrl = baseDir ? (baseDir + '/api/issue_upload_image.php') : '/api/issue_upload_image.php';
 
     function uploadFeedbackImage(file, $editor) {
+        if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.uploadAndInsert === 'function') {
+            window.PMSSummernoteImage.uploadAndInsert(file, $editor, {
+                uploadUrl: feedbackImageUploadUrl,
+                defaultAlt: 'image',
+                credentials: 'same-origin',
+                onError: function () {
+                    if (typeof showToast === 'function') showToast('Image upload failed.', 'danger');
+                }
+            });
+            return;
+        }
         if (!file || !file.type || file.type.indexOf('image/') !== 0) return;
         var fd = new FormData();
         fd.append('image', file);
@@ -46,14 +57,25 @@ $(document).ready(function () {
                             }
                         },
                         onPaste: function (e) {
-                            var clipboard = e.originalEvent && e.originalEvent.clipboardData;
-                            if (!clipboard || !clipboard.items) return;
-                            for (var i = 0; i < clipboard.items.length; i++) {
-                                var item = clipboard.items[i];
-                                if (item.type && item.type.indexOf('image') === 0) {
-                                    e.preventDefault();
-                                    uploadFeedbackImage(item.getAsFile(), $el);
-                                    break;
+                            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.handlePasteEvent === 'function') {
+                                window.PMSSummernoteImage.handlePasteEvent(e, $el, {
+                                    uploadUrl: feedbackImageUploadUrl,
+                                    defaultAlt: 'image',
+                                    credentials: 'same-origin',
+                                    onError: function () {
+                                        if (typeof showToast === 'function') showToast('Image upload failed.', 'danger');
+                                    }
+                                });
+                            } else {
+                                var clipboard = e.originalEvent && e.originalEvent.clipboardData;
+                                if (!clipboard || !clipboard.items) return;
+                                for (var i = 0; i < clipboard.items.length; i++) {
+                                    var item = clipboard.items[i];
+                                    if (item.type && item.type.indexOf('image') === 0) {
+                                        e.preventDefault();
+                                        uploadFeedbackImage(item.getAsFile(), $el);
+                                        break;
+                                    }
                                 }
                             }
                         }

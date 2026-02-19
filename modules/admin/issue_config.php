@@ -280,7 +280,17 @@ $(document).ready(function() {
         if (!file || !file.type || !file.type.startsWith('image/')) return;
         var altText = window.prompt('Enter alt text for this image (optional):', '');
         if (altText === null) return; // Cancelled
-        
+
+        if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.uploadAndInsert === 'function') {
+            window.PMSSummernoteImage.uploadAndInsert(file, $el, {
+                uploadUrl: IMAGE_UPLOAD_URL,
+                defaultAlt: altText.trim() || 'Issue Screenshot',
+                credentials: 'same-origin',
+                onError: function(msg){ alert(msg || 'Image upload failed'); }
+            });
+            return;
+        }
+
         var fd = new FormData();
         fd.append('image', file);
         fetch(IMAGE_UPLOAD_URL, { method: 'POST', body: fd, credentials: 'same-origin' })
@@ -532,14 +542,22 @@ $(document).ready(function() {
             },
             onPaste: function(e) {
                 const $el = $('#presetDescription');
-                var clipboard = e.originalEvent && e.originalEvent.clipboardData;
-                if (clipboard && clipboard.items) {
-                    for (var i = 0; i < clipboard.items.length; i++) {
-                        var item = clipboard.items[i];
-                        if (item.type && item.type.indexOf('image') === 0) {
-                            e.preventDefault();
-                            uploadIssueImage(item.getAsFile(), $el);
-                            break;
+                if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.extractClipboardImageFiles === 'function') {
+                    var pfiles = window.PMSSummernoteImage.extractClipboardImageFiles(e);
+                    if (pfiles.length) {
+                        e.preventDefault();
+                        uploadIssueImage(pfiles[0], $el);
+                    }
+                } else {
+                    var clipboard = e.originalEvent && e.originalEvent.clipboardData;
+                    if (clipboard && clipboard.items) {
+                        for (var i = 0; i < clipboard.items.length; i++) {
+                            var item = clipboard.items[i];
+                            if (item.type && item.type.indexOf('image') === 0) {
+                                e.preventDefault();
+                                uploadIssueImage(item.getAsFile(), $el);
+                                break;
+                            }
                         }
                     }
                 }

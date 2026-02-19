@@ -791,10 +791,15 @@
         } else if (issueData.imageUpload.pendingFile && issueData.imageUpload.pendingEditor) {
             var file = issueData.imageUpload.pendingFile;
             var $el = issueData.imageUpload.pendingEditor;
-            var fd = new FormData();
-            fd.append('image', file);
-            fetch(issueImageUploadUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
-                .then(r => r.json()).then(function (res) {
+            var uploadPromise = (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.uploadImage === 'function')
+                ? window.PMSSummernoteImage.uploadImage(file, { uploadUrl: issueImageUploadUrl, credentials: 'same-origin' })
+                : (function () {
+                    var fd = new FormData();
+                    fd.append('image', file);
+                    return fetch(issueImageUploadUrl, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); });
+                })();
+            uploadPromise
+                .then(function (res) {
                     if (res && res.success && res.url) {
                         var safeAlt = (altText || 'Issue Screenshot').replace(/"/g, '&quot;');
                         var imgHtml = '<img src="' + res.url + '" alt="' + safeAlt + '" style="max-width:100%; height:auto; cursor:pointer;" class="editable-issue-image" />';
@@ -1069,12 +1074,20 @@
                     }
                 },
                 onPaste: function (e) {
-                    var clipboard = e.originalEvent && e.originalEvent.clipboardData;
-                    if (clipboard && clipboard.items) {
-                        for (var i = 0; i < clipboard.items.length; i++) {
-                            var item = clipboard.items[i];
-                            if (item.type && item.type.indexOf('image') === 0) {
-                                e.preventDefault(); uploadIssueImage(item.getAsFile(), $el); break;
+                    if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.extractClipboardImageFiles === 'function') {
+                        var cfiles = window.PMSSummernoteImage.extractClipboardImageFiles(e);
+                        if (cfiles.length) {
+                            e.preventDefault();
+                            uploadIssueImage(cfiles[0], $el);
+                        }
+                    } else {
+                        var clipboard = e.originalEvent && e.originalEvent.clipboardData;
+                        if (clipboard && clipboard.items) {
+                            for (var i = 0; i < clipboard.items.length; i++) {
+                                var item = clipboard.items[i];
+                                if (item.type && item.type.indexOf('image') === 0) {
+                                    e.preventDefault(); uploadIssueImage(item.getAsFile(), $el); break;
+                                }
                             }
                         }
                     }

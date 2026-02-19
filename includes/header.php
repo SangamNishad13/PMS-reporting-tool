@@ -46,6 +46,7 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
     </style>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/summernote_image_helper.js?v=<?php echo $assetVersion; ?>"></script>
     <script>
     // Global suppression: disable browser alert/confirm/prompt, Notification prompts,
     // prevent Bootstrap modals from appearing, and hide success alerts/toasts.

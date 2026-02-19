@@ -569,6 +569,7 @@ if (!$embed) {
         <script src="https://code.jquery.com/jquery-3.6.0.min.js" crossorigin="anonymous"></script>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
         <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js" crossorigin="anonymous"></script>
+        <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/summernote_image_helper.js?v=20260202v3"></script>
         <script>
             // Basic CDN fallback for jQuery/Summernote in embed mode
             (function() {
@@ -1266,6 +1267,16 @@ if (!$embed) {
 
         // Upload image and insert URL into target summernote editor
         function uploadAndInsertImage(file, $targetEditor) {
+            const $target = ($targetEditor && $targetEditor.length) ? $targetEditor : $msg;
+            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.uploadAndInsert === 'function') {
+                return window.PMSSummernoteImage.uploadAndInsert(file, $target, {
+                    uploadUrl: '<?php echo $baseDir; ?>/api/chat_upload_image.php',
+                    defaultAlt: 'image',
+                    credentials: 'same-origin',
+                    onInvalidType: function () { showToast('Only image files are allowed', 'warning'); },
+                    onError: function (msg) { showToast(msg || 'Image upload failed', 'danger'); }
+                });
+            }
             if (!file) return;
             if (file.type && !file.type.startsWith('image/')) {
                 showToast('Only image files are allowed', 'warning');
@@ -1277,27 +1288,17 @@ if (!$embed) {
                 method: 'POST',
                 body: formData,
                 credentials: 'same-origin'
-            }).then(res => {
-                return res.text().then(txt => {
-                    try {
-                        return JSON.parse(txt);
-                    } catch (e) {
-                        return { error: 'Upload failed (invalid server response)' };
-                    }
-                });
-            }).then(res => {
+            }).then(res => res.text()).then(txt => {
+                let res = {};
+                try { res = JSON.parse(txt); } catch (e) { res = { error: 'Upload failed (invalid server response)' }; }
                 if (res && res.success && res.url) {
-                    const $target = ($targetEditor && $targetEditor.length) ? $targetEditor : $msg;
                     if ($target && $target.length && $target.data('summernote')) {
                         $target.summernote('pasteHTML', '<p><img src="' + res.url + '" alt="image" /></p>');
                     }
-                } else if (res && res.error) {
-                    showToast(res.error, 'danger');
+                } else {
+                    showToast((res && res.error) ? res.error : 'Image upload failed', 'danger');
                 }
-            }).catch(err => {
-                console.error('Image upload failed', err);
-                showToast('Image upload failed', 'danger');
-            });
+            }).catch(() => showToast('Image upload failed', 'danger'));
         }
 
         // Initialize Summernote editor (embed/full)
@@ -1520,7 +1521,6 @@ if (!$embed) {
                 }
             });
         }
-        let suppressImageUpload = false;
         if (hasJQ && $.fn.summernote) {
             try {
                 $msg.summernote({
@@ -1549,23 +1549,40 @@ if (!$embed) {
                             }
                         },
                         onImageUpload: function(files) {
-                            if (suppressImageUpload) return;
-                            var list = files || [];
-                            for (var i = 0; i < list.length; i++) {
-                                uploadAndInsertImage(list[i], $msg);
+                            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.handleImageUpload === 'function') {
+                                window.PMSSummernoteImage.handleImageUpload(files || [], $msg, {
+                                    uploadUrl: '<?php echo $baseDir; ?>/api/chat_upload_image.php',
+                                    defaultAlt: 'image',
+                                    credentials: 'same-origin',
+                                    onInvalidType: function () { showToast('Only image files are allowed', 'warning'); },
+                                    onError: function (msg) { showToast(msg || 'Image upload failed', 'danger'); }
+                                });
+                            } else {
+                                var list = files || [];
+                                for (var i = 0; i < list.length; i++) {
+                                    uploadAndInsertImage(list[i], $msg);
+                                }
                             }
                         },
                         onPaste: function(e) {
-                            const clipboard = e.originalEvent && e.originalEvent.clipboardData;
-                            if (clipboard && clipboard.items) {
-                                for (let i = 0; i < clipboard.items.length; i++) {
-                                    const item = clipboard.items[i];
-                                    if (item.type && item.type.indexOf('image') === 0) {
-                                        e.preventDefault();
-                                        suppressImageUpload = true;
-                                        uploadAndInsertImage(item.getAsFile(), $msg);
-                                        setTimeout(() => { suppressImageUpload = false; }, 300);
-                                        break;
+                            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.handlePasteEvent === 'function') {
+                                window.PMSSummernoteImage.handlePasteEvent(e, $msg, {
+                                    uploadUrl: '<?php echo $baseDir; ?>/api/chat_upload_image.php',
+                                    defaultAlt: 'image',
+                                    credentials: 'same-origin',
+                                    onInvalidType: function () { showToast('Only image files are allowed', 'warning'); },
+                                    onError: function (msg) { showToast(msg || 'Image upload failed', 'danger'); }
+                                });
+                            } else {
+                                const clipboard = e.originalEvent && e.originalEvent.clipboardData;
+                                if (clipboard && clipboard.items) {
+                                    for (let i = 0; i < clipboard.items.length; i++) {
+                                        const item = clipboard.items[i];
+                                        if (item.type && item.type.indexOf('image') === 0) {
+                                            e.preventDefault();
+                                            uploadAndInsertImage(item.getAsFile(), $msg);
+                                            break;
+                                        }
                                     }
                                 }
                             }
@@ -1667,20 +1684,40 @@ if (!$embed) {
                             }
                         },
                         onImageUpload: function(files) {
-                            var list = files || [];
-                            for (var i = 0; i < list.length; i++) {
-                                uploadAndInsertImage(list[i], $editMsg);
+                            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.handleImageUpload === 'function') {
+                                window.PMSSummernoteImage.handleImageUpload(files || [], $editMsg, {
+                                    uploadUrl: '<?php echo $baseDir; ?>/api/chat_upload_image.php',
+                                    defaultAlt: 'image',
+                                    credentials: 'same-origin',
+                                    onInvalidType: function () { showToast('Only image files are allowed', 'warning'); },
+                                    onError: function (msg) { showToast(msg || 'Image upload failed', 'danger'); }
+                                });
+                            } else {
+                                var list = files || [];
+                                for (var i = 0; i < list.length; i++) {
+                                    uploadAndInsertImage(list[i], $editMsg);
+                                }
                             }
                         },
                         onPaste: function(e) {
-                            const clipboard = e.originalEvent && e.originalEvent.clipboardData;
-                            if (clipboard && clipboard.items) {
-                                for (let i = 0; i < clipboard.items.length; i++) {
-                                    const item = clipboard.items[i];
-                                    if (item.type && item.type.indexOf('image') === 0) {
-                                        e.preventDefault();
-                                        uploadAndInsertImage(item.getAsFile(), $editMsg);
-                                        break;
+                            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.handlePasteEvent === 'function') {
+                                window.PMSSummernoteImage.handlePasteEvent(e, $editMsg, {
+                                    uploadUrl: '<?php echo $baseDir; ?>/api/chat_upload_image.php',
+                                    defaultAlt: 'image',
+                                    credentials: 'same-origin',
+                                    onInvalidType: function () { showToast('Only image files are allowed', 'warning'); },
+                                    onError: function (msg) { showToast(msg || 'Image upload failed', 'danger'); }
+                                });
+                            } else {
+                                const clipboard = e.originalEvent && e.originalEvent.clipboardData;
+                                if (clipboard && clipboard.items) {
+                                    for (let i = 0; i < clipboard.items.length; i++) {
+                                        const item = clipboard.items[i];
+                                        if (item.type && item.type.indexOf('image') === 0) {
+                                            e.preventDefault();
+                                            uploadAndInsertImage(item.getAsFile(), $editMsg);
+                                            break;
+                                        }
                                     }
                                 }
                             }
