@@ -110,6 +110,8 @@ try {
             // Server-side: enforce allowed log date window for non-admins
             $role = $_SESSION['role'] ?? '';
             $isAdmin = in_array($role, ['admin', 'super_admin']);
+            $todayStr = date('Y-m-d');
+            $hasApprovedPastEdit = false;
             try {
                 $today = new DateTime('today');
                 $dow = intval($today->format('N')); // 1 (Mon) .. 7 (Sun)
@@ -124,7 +126,23 @@ try {
                 $maxDate = $today->format('Y-m-d');
                 $ld = (new DateTime($logDate))->format('Y-m-d');
                 if (!$isAdmin && ($ld < $minDate || $ld > $maxDate)) {
-                    throw new Exception('Log date not allowed. Only today and the previous business day (' . $minDate . ' to ' . $maxDate . ') can be logged. To edit older dates, please send an edit request to admin.');
+                    // Allow older past dates only when user has an approved edit request for that date.
+                    if ($ld < $todayStr) {
+                        $req = $db->prepare("
+                            SELECT id
+                            FROM user_edit_requests
+                            WHERE user_id = ?
+                              AND req_date = ?
+                              AND status = 'approved'
+                              AND request_type = 'edit'
+                            LIMIT 1
+                        ");
+                        $req->execute([$_SESSION['user_id'], $ld]);
+                        $hasApprovedPastEdit = (bool)$req->fetch(PDO::FETCH_ASSOC);
+                    }
+                    if (!$hasApprovedPastEdit) {
+                        throw new Exception('Log date not allowed. Only today and the previous business day (' . $minDate . ' to ' . $maxDate . ') can be logged. To edit older dates, please send an edit request to admin.');
+                    }
                 }
             } catch (Exception $e) {
                 throw $e;
@@ -144,6 +162,20 @@ try {
             }
 
             $summary = getProjectHoursSummary($db, $projectId);
+
+            // One-time approval usage: once a past-date approved edit is used, mark it as used.
+            if (!$isAdmin && $hasApprovedPastEdit) {
+                $markUsed = $db->prepare("
+                    UPDATE user_edit_requests
+                    SET status = 'used', updated_at = NOW()
+                    WHERE user_id = ?
+                      AND req_date = ?
+                      AND status = 'approved'
+                      AND request_type = 'edit'
+                ");
+                $markUsed->execute([$_SESSION['user_id'], $logDate]);
+            }
+
             echo json_encode([
                 'success' => true,
                 'message' => 'Logged successfully',

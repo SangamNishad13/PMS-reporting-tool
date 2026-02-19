@@ -11,23 +11,27 @@ $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 
 // Get FT Tester's assigned projects and pages (ONLY ACTIVE/IN-PROGRESS)
+// Include projects from user_assignments even when no page task is assigned yet.
 $assignedProjectsQuery = "
     SELECT DISTINCT p.id, p.title, p.po_number, p.status, p.project_type,
            COUNT(DISTINCT pp.id) as total_pages,
-           COUNT(DISTINCT CASE WHEN pe.ft_tester_id = ? THEN pp.id END) as assigned_pages,
-           COUNT(DISTINCT CASE WHEN pe.status = 'tested' AND pe.ft_tester_id = ? THEN pp.id END) as completed_pages
+           COUNT(DISTINCT CASE WHEN (pe.ft_tester_id = ? OR pp.ft_tester_id = ?) THEN pp.id END) as assigned_pages,
+           COUNT(DISTINCT CASE WHEN pe.status = 'tested' AND (pe.ft_tester_id = ? OR pp.ft_tester_id = ?) THEN pp.id END) as completed_pages
     FROM projects p
+    JOIN user_assignments ua ON ua.project_id = p.id
+        AND ua.user_id = ?
+        AND ua.role = 'ft_tester'
+        AND (ua.is_removed IS NULL OR ua.is_removed = 0)
     LEFT JOIN project_pages pp ON p.id = pp.project_id
     LEFT JOIN page_environments pe ON pp.id = pe.page_id
-    WHERE (pe.ft_tester_id = ? OR pp.ft_tester_id = ?)
-    AND p.status IN ('in_progress', 'planning')
+    WHERE p.status IN ('in_progress', 'planning')
     GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
     ORDER BY p.created_at DESC
     LIMIT 5
 ";
 
 $assignedProjects = $db->prepare($assignedProjectsQuery);
-$assignedProjects->execute([$userId, $userId, $userId, $userId]);
+$assignedProjects->execute([$userId, $userId, $userId, $userId, $userId]);
 $projects = $assignedProjects->fetchAll();
 
 // Get recent testing activities
@@ -284,7 +288,7 @@ include __DIR__ . '/../../includes/header.php';
                                     ?>">
                                         <?php echo formatProjectStatusLabel($task['status']); ?>
                                     </span>
-                                    <a href="<?php echo $baseDir; ?>/modules/ft_tester/project_tasks.php?project_id=<?php echo $task['project_id']; ?>" 
+                                    <a href="<?php echo $baseDir; ?>/modules/projects/issues_page_detail.php?project_id=<?php echo (int)$task['project_id']; ?>&page_id=<?php echo (int)$task['id']; ?>" 
                                        class="btn btn-sm btn-success ms-2">
                                         <i class="fas fa-arrow-right"></i>
                                     </a>

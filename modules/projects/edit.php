@@ -63,6 +63,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['error'] = "Please fill in all required fields.";
         } else {
             try {
+                $allocatedStmt = $db->prepare("
+                    SELECT COALESCE(SUM(hours_allocated), 0)
+                    FROM user_assignments
+                    WHERE project_id = ? AND (is_removed IS NULL OR is_removed = 0)
+                ");
+                $allocatedStmt->execute([$projectId]);
+                $currentlyAllocated = (float)$allocatedStmt->fetchColumn();
+                if ($totalHours > 0 && $currentlyAllocated > $totalHours) {
+                    $_SESSION['error'] = "Project total hours cannot be less than currently allocated hours (" . number_format($currentlyAllocated, 2) . "h).";
+                    header("Location: " . $base_url . "/modules/projects/edit.php?id=" . $projectId);
+                    exit;
+                }
+
                 // Check current status to see if we need to set completed_at
                 $currentStatusStmt = $db->prepare("SELECT status FROM projects WHERE id = ?");
                 $currentStatusStmt->execute([$projectId]);

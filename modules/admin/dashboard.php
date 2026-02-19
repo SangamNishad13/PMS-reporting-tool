@@ -8,17 +8,34 @@ $auth->requireRole('admin');
 $db = Database::getInstance();
 $projectManager = new ProjectManager();
 
-// Get statistics
-$stats = $db->query("
-    SELECT 
-        COUNT(*) as total_projects,
-        COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) as completed_projects,
-        COALESCE(SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END), 0) as in_progress_projects,
-        COALESCE(SUM(CASE WHEN status = 'on_hold' THEN 1 ELSE 0 END), 0) as on_hold_projects,
-        COUNT(DISTINCT client_id) as total_clients,
-        COUNT(DISTINCT project_lead_id) as active_leads
+// Get project statuses from status master (same source used in project create/edit flows)
+$projectStatusOptions = getStatusOptions('project');
+if (empty($projectStatusOptions)) {
+    $projectStatusOptions = [
+        ['status_key' => 'planning', 'status_label' => 'Planning'],
+        ['status_key' => 'in_progress', 'status_label' => 'In Progress'],
+        ['status_key' => 'on_hold', 'status_label' => 'On Hold'],
+        ['status_key' => 'completed', 'status_label' => 'Completed'],
+        ['status_key' => 'cancelled', 'status_label' => 'Cancelled'],
+    ];
+}
+
+// Count projects by status
+$statusRows = $db->query("
+    SELECT COALESCE(NULLIF(TRIM(status), ''), 'not_started') AS status_key, COUNT(*) AS total
     FROM projects
-")->fetch();
+    GROUP BY COALESCE(NULLIF(TRIM(status), ''), 'not_started')
+")->fetchAll(PDO::FETCH_ASSOC);
+
+$statusCounts = [];
+foreach ($statusRows as $row) {
+    $statusCounts[(string)$row['status_key']] = (int)$row['total'];
+}
+
+// Keep stats shape for existing references
+$stats = [
+    'total_projects' => (int)$db->query("SELECT COUNT(*) FROM projects")->fetchColumn()
+];
 
 // Get recent projects (include current phase if available)
 $recentProjects = $db->query(
@@ -125,6 +142,11 @@ include __DIR__ . '/../../includes/header.php';
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-2">
     </div>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <a href="<?php echo $baseDir; ?>/modules/admin/bulk_hours_management.php" class="btn btn-outline-primary btn-sm">Bulk Hours Management</a>
+        <a href="<?php echo $baseDir; ?>/modules/admin/resource_workload.php" class="btn btn-outline-secondary btn-sm">Resource Workload</a>
+        <a href="<?php echo $baseDir; ?>/modules/admin/calendar.php" class="btn btn-outline-secondary btn-sm">Users Calendar</a>
+    </div>
     
     <!-- Statistics Cards -->
     <!-- Statistics Cards -->
@@ -132,55 +154,42 @@ include __DIR__ . '/../../includes/header.php';
         <div class="col-md-6 col-xl-3">
             <a href="<?php echo $baseDir; ?>/modules/reports/dashboard.php" class="text-decoration-none">
                 <div class="widget widget-primary clickable-widget h-100">
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center justify-content-between">
                         <div>
                             <h3><?php echo $stats['total_projects']; ?></h3>
                             <p>Total Projects</p>
                         </div>
-                        <i class="fas fa-project-diagram"></i>
+                        <span class="widget-pill">Overview</span>
                     </div>
                 </div>
             </a>
         </div>
-        <div class="col-md-6 col-xl-3">
-            <a href="<?php echo $baseDir; ?>/modules/reports/dashboard.php?status=completed" class="text-decoration-none">
-                <div class="widget widget-success clickable-widget h-100">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h3><?php echo $stats['completed_projects']; ?></h3>
-                            <p>Completed Projects</p>
+        <?php foreach ($projectStatusOptions as $opt): ?>
+            <?php
+                $statusKey = (string)($opt['status_key'] ?? '');
+                if ($statusKey === '') continue;
+                $count = (int)($statusCounts[$statusKey] ?? 0);
+                $badgeClass = projectStatusBadgeClass($statusKey);
+                $widgetClass = $badgeClass === 'warning' ? 'widget-warning'
+                    : ($badgeClass === 'success' ? 'widget-success'
+                    : ($badgeClass === 'info' ? 'widget-info'
+                    : ($badgeClass === 'danger' ? 'widget-danger' : 'widget-secondary')));
+                $label = (string)($opt['status_label'] ?? formatProjectStatusLabel($statusKey));
+            ?>
+            <div class="col-md-6 col-xl-3">
+                <a href="<?php echo $baseDir; ?>/modules/reports/dashboard.php?status=<?php echo urlencode($statusKey); ?>" class="text-decoration-none">
+                    <div class="widget <?php echo $widgetClass; ?> clickable-widget h-100">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div>
+                                <h3><?php echo $count; ?></h3>
+                                <p><?php echo htmlspecialchars($label); ?></p>
+                            </div>
+                            <span class="widget-pill">Status</span>
                         </div>
-                        <i class="fas fa-check-circle"></i>
                     </div>
-                </div>
-            </a>
-        </div>
-        <div class="col-md-6 col-xl-3">
-            <a href="<?php echo $baseDir; ?>/modules/reports/dashboard.php?status=in_progress" class="text-decoration-none">
-                <div class="widget widget-warning clickable-widget h-100">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h3><?php echo $stats['in_progress_projects']; ?></h3>
-                            <p>In Progress</p>
-                        </div>
-                        <i class="fas fa-tasks"></i>
-                    </div>
-                </div>
-            </a>
-        </div>
-        <div class="col-md-6 col-xl-3">
-            <a href="<?php echo $baseDir; ?>/modules/reports/dashboard.php?status=on_hold" class="text-decoration-none">
-                <div class="widget widget-danger clickable-widget h-100">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h3><?php echo $stats['on_hold_projects']; ?></h3>
-                            <p>On Hold</p>
-                        </div>
-                        <i class="fas fa-pause-circle"></i>
-                    </div>
-                </div>
-            </a>
-        </div>
+                </a>
+            </div>
+        <?php endforeach; ?>
     </div>
 
 
@@ -195,6 +204,19 @@ include __DIR__ . '/../../includes/header.php';
         .clickable-widget:hover, .hover-shadow:hover {
             transform: translateY(-5px);
             box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important;
+        }
+
+        .widget-pill {
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.5);
+            background: rgba(255,255,255,0.15);
+            color: #fff;
+            white-space: nowrap;
         }
         
         .badge-sm {

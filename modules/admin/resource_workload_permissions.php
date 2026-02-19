@@ -55,6 +55,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'target_user_email' => $projectLead['email'],
                         'expires_at' => $expiresAt
                     ]);
+
+                    // Notify the target user
+                    try {
+                        $notifMsg = "You have been granted access to Resource Workload.";
+                        if (!empty($expiresAt)) {
+                            $notifMsg .= " Expires: " . date('M d, Y H:i', strtotime($expiresAt));
+                        }
+                        $notifLink = "/modules/admin/resource_workload.php";
+                        $notifStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'permission_update', ?, ?)");
+                        $notifStmt->execute([$projectLeadId, $notifMsg, $notifLink]);
+                    } catch (Exception $e) {
+                        // Do not block permission grant if notification fails.
+                    }
+
+                    // Notify project lead about granted access
+                    try {
+                        $notifMsg = "Resource workload access has been granted to you.";
+                        if (!empty($expiresAt)) {
+                            $notifMsg .= " Access expires on " . date('M d, Y H:i', strtotime($expiresAt)) . ".";
+                        }
+                        $notifLink = "/modules/admin/resource_workload.php";
+                        $notifStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'permission_update', ?, ?)");
+                        $notifStmt->execute([$projectLeadId, $notifMsg, $notifLink]);
+                    } catch (Exception $e) {
+                        // Keep permission grant successful even if notification insert fails.
+                    }
                     
                     $_SESSION['success'] = "Resource workload access granted to " . htmlspecialchars($projectLead['full_name']) . "!";
                 } else {
@@ -96,6 +122,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     logActivity($db, $userId, 'revoke_resource_workload_access', 'user', $permission['user_id'], [
                         'target_user_name' => $permission['user_name']
                     ]);
+
+                    // Notify the target user
+                    try {
+                        $notifMsg = "Your access to Resource Workload has been revoked.";
+                        $notifLink = "/modules/admin/resource_workload.php";
+                        $notifStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'permission_update', ?, ?)");
+                        $notifStmt->execute([(int)$permission['user_id'], $notifMsg, $notifLink]);
+                    } catch (Exception $e) {
+                        // Do not block revoke if notification fails.
+                    }
+
+                    // Notify project lead about revoked access
+                    try {
+                        $notifMsg = "Your resource workload access has been revoked.";
+                        $notifLink = "/modules/admin/resource_workload.php";
+                        $notifStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'permission_update', ?, ?)");
+                        $notifStmt->execute([(int)$permission['user_id'], $notifMsg, $notifLink]);
+                    } catch (Exception $e) {
+                        // Keep revoke successful even if notification insert fails.
+                    }
                     
                     $_SESSION['success'] = "Resource workload access revoked from " . htmlspecialchars($permission['user_name']) . "!";
                 } else {
@@ -130,6 +176,10 @@ $currentPermissions = $db->query("
 
 $pageTitle = 'Resource Workload Permissions';
 include __DIR__ . '/../../includes/header.php';
+
+$flashSuccess = $_SESSION['success'] ?? '';
+$flashError = $_SESSION['error'] ?? '';
+unset($_SESSION['success'], $_SESSION['error']);
 ?>
 
 <div class="container-fluid">
@@ -143,16 +193,16 @@ include __DIR__ . '/../../includes/header.php';
         </a>
     </div>
 
-    <?php if (isset($_SESSION['success'])): ?>
+    <?php if (!empty($flashSuccess)): ?>
         <div class="alert alert-success alert-dismissible fade show">
-            <?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?>
+            <?php echo htmlspecialchars($flashSuccess); ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     <?php endif; ?>
 
-    <?php if (isset($_SESSION['error'])): ?>
+    <?php if (!empty($flashError)): ?>
         <div class="alert alert-danger alert-dismissible fade show">
-            <?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
+            <?php echo htmlspecialchars($flashError); ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     <?php endif; ?>
@@ -165,7 +215,8 @@ include __DIR__ . '/../../includes/header.php';
                     <h5 class="mb-0"><i class="fas fa-plus-circle"></i> Grant Resource Workload Access</h5>
                 </div>
                 <div class="card-body">
-                    <form method="POST">
+                    <form method="POST" id="grantWorkloadAccessForm">
+                        <input type="hidden" name="grant_access" value="1">
                         <div class="mb-3">
                             <label class="form-label">Project Lead *</label>
                             <select name="project_lead_id" class="form-select" required>
@@ -200,7 +251,8 @@ include __DIR__ . '/../../includes/header.php';
                             <textarea name="notes" class="form-control" rows="3" placeholder="Reason for granting access..."></textarea>
                         </div>
                         
-                        <button type="submit" name="grant_access" class="btn btn-success w-100">
+                        <button type="button" class="btn btn-success w-100"
+                                onclick="confirmForm('grantWorkloadAccessForm', 'Grant resource workload access to the selected project lead?')">
                             <i class="fas fa-check"></i> Grant Access
                         </button>
                     </form>
@@ -333,5 +385,20 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    <?php if (!empty($flashSuccess)): ?>
+    if (typeof showToast === 'function') {
+        showToast(<?php echo json_encode($flashSuccess, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>, 'success');
+    }
+    <?php endif; ?>
+    <?php if (!empty($flashError)): ?>
+    if (typeof showToast === 'function') {
+        showToast(<?php echo json_encode($flashError, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>, 'danger');
+    }
+    <?php endif; ?>
+});
+</script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

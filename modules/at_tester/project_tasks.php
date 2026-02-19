@@ -55,73 +55,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_env_status']))
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_test'])) {
-    $pageId = (int)$_POST['page_id'];
-    $environmentId = (int)$_POST['environment_id'];
-    $status = $_POST['status'];
-    $issuesFound = (int)$_POST['issues_found'];
-    $comments = trim($_POST['comments']);
-    $hoursSpent = (float)$_POST['hours_spent'];
-    
-    try {
-        $db->beginTransaction();
-        
-        // Insert test result
-        $insertResult = $db->prepare("
-            INSERT INTO testing_results (page_id, environment_id, tester_id, tester_role, status, issues_found, comments, hours_spent, tested_at)
-            VALUES (?, ?, ?, 'at_tester', ?, ?, ?, ?, NOW())
-        ");
-        $insertResult->execute([$pageId, $environmentId, $userId, $status, $issuesFound, $comments, $hoursSpent]);
-        
-        // Update page environment status
-        $updateStatus = $db->prepare("UPDATE page_environments SET status = ? WHERE page_id = ? AND environment_id = ?");
-        $updateStatus->execute([$status === 'pass' ? 'tested' : 'testing_failed', $pageId, $environmentId]);
-        
-        // Log time
-        $logTime = $db->prepare("
-            INSERT INTO project_time_logs (project_id, user_id, page_id, environment_id, hours_spent, task_type, description, logged_at, is_utilized)
-            VALUES (?, ?, ?, ?, ?, 'at_testing', ?, NOW(), 1)
-        ");
-        $logTime->execute([$projectId, $userId, $pageId, $environmentId, $hoursSpent, $comments]);
-        
-        $db->commit();
-        $_SESSION['success'] = "Test result submitted successfully!";
-        
-    } catch (Exception $e) {
-        $db->rollBack();
-        $_SESSION['error'] = "Error submitting test result: " . $e->getMessage();
-    }
-    
-    header("Location: project_tasks.php?project_id=$projectId");
-    exit;
-}
-
 // Get assigned pages for this project
 $pagesQuery = "
     SELECT pp.id, pp.page_name, pp.url, pe.page_id, pe.environment_id, pe.status,
-           te.name as environment_name, te.browser, te.assistive_tech,
-           tr.status as last_test_status, tr.tested_at as last_tested
+           te.name as environment_name, te.browser, te.assistive_tech
     FROM project_pages pp
     JOIN page_environments pe ON pp.id = pe.page_id
     JOIN testing_environments te ON pe.environment_id = te.id
-    LEFT JOIN testing_results tr ON pp.id = tr.page_id AND pe.environment_id = tr.environment_id 
-                                  AND tr.tester_id = ? AND tr.tester_role = 'at_tester'
-                                  AND tr.id = (SELECT MAX(id) FROM testing_results tr2 
-                                             WHERE tr2.page_id = pp.id AND tr2.environment_id = pe.environment_id 
-                                             AND tr2.tester_id = ? AND tr2.tester_role = 'at_tester')
     WHERE pp.project_id = ? AND pe.at_tester_id = ?
     ORDER BY pp.page_name, te.name
 ";
 
 $pagesStmt = $db->prepare($pagesQuery);
-$pagesStmt->execute([$userId, $userId, $projectId, $userId]);
+$pagesStmt->execute([$projectId, $userId]);
 $pages = $pagesStmt->fetchAll();
 
-// Get testing environments
-$environmentsQuery = "SELECT * FROM testing_environments WHERE type = ? ORDER BY name";
-$environmentsStmt = $db->prepare($environmentsQuery);
-$environmentsStmt->execute([$project['project_type']]);
-$environments = $environmentsStmt->fetchAll();
+$pageGroupedUrlsMap = [];
+if (!empty($pages)) {
+    $pageIds = array_values(array_unique(array_map(static function ($r) {
+        return (int)($r['id'] ?? 0);
+    }, $pages)));
+    $pageIds = array_values(array_filter($pageIds, static function ($v) { return $v > 0; }));
+
+    if (!empty($pageIds)) {
+        $placeholders = implode(',', array_fill(0, count($pageIds), '?'));
+        $groupedUrlsSql = "
+            SELECT
+                pp.id AS page_id,
+                GROUP_CONCAT(
+                    DISTINCT COALESCE(NULLIF(gu.url, ''), gu.normalized_url)
+                    ORDER BY COALESCE(NULLIF(gu.url, ''), gu.normalized_url)
+                    SEPARATOR '\n'
+                ) AS grouped_urls
+            FROM project_pages pp
+            LEFT JOIN unique_pages up
+                ON up.project_id = pp.project_id
+               AND (up.canonical_url = pp.url OR up.name = pp.page_name)
+            LEFT JOIN grouped_urls gu
+                ON gu.project_id = pp.project_id
+               AND (
+                    gu.url = pp.url
+                    OR gu.normalized_url = pp.url
+                    OR (up.id IS NOT NULL AND gu.unique_page_id = up.id)
+               )
+            WHERE pp.project_id = ?
+              AND pp.id IN ($placeholders)
+            GROUP BY pp.id
+        ";
+        $groupedStmt = $db->prepare($groupedUrlsSql);
+        $groupedStmt->execute(array_merge([$projectId], $pageIds));
+        foreach ($groupedStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $pid = (int)($row['page_id'] ?? 0);
+            if ($pid > 0) $pageGroupedUrlsMap[$pid] = (string)($row['grouped_urls'] ?? '');
+        }
+    }
+}
 
 include __DIR__ . '/../../includes/header.php';
 ?>
@@ -176,9 +164,9 @@ include __DIR__ . '/../../includes/header.php';
                         <thead>
                             <tr>
                                 <th>Page Name</th>
+                                <th>Grouped URLs</th>
                                 <th>Environment</th>
                                 <th>Status</th>
-                                <th>Last Test</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -196,6 +184,23 @@ include __DIR__ . '/../../includes/header.php';
                                         }
                                         ?>
                                         <br><small class="text-muted"><?php echo htmlspecialchars($openUrl); ?></small>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php
+                                    $groupedRaw = trim((string)($pageGroupedUrlsMap[(int)$page['id']] ?? ''));
+                                    if ($groupedRaw !== ''):
+                                        $groupedList = array_values(array_filter(array_map('trim', explode("\n", $groupedRaw))));
+                                        $groupedCount = count($groupedList);
+                                    ?>
+                                        <details>
+                                            <summary><?php echo $groupedCount; ?> URL<?php echo $groupedCount === 1 ? '' : 's'; ?></summary>
+                                            <small class="text-muted d-block mt-1">
+                                                <?php echo htmlspecialchars(implode("\n", $groupedList)); ?>
+                                            </small>
+                                        </details>
+                                    <?php else: ?>
+                                        <span class="text-muted">-</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -232,19 +237,6 @@ include __DIR__ . '/../../includes/header.php';
                                     <span class="badge bg-<?php echo $statusClass; ?>">
                                         <?php echo $statusText; ?>
                                     </span>
-                                    
-                                    <?php if ($page['last_test_status']): ?>
-                                        <br><small class="text-muted">
-                                            Last: <?php echo ucfirst($page['last_test_status']); ?>
-                                        </small>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <?php if ($page['last_tested']): ?>
-                                        <?php echo date('M j, Y g:i A', strtotime($page['last_tested'])); ?>
-                                    <?php else: ?>
-                                        <span class="text-muted">Never</span>
-                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <form method="POST" class="d-inline-flex align-items-center gap-2">
@@ -264,18 +256,10 @@ include __DIR__ . '/../../includes/header.php';
                                     </form>
 
                                     <a href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/projects/issues_page_detail.php?project_id=<?php echo (int)$projectId; ?>&page_id=<?php echo (int)$page['id']; ?>"
-                                       class="btn btn-sm btn-outline-secondary">
-                                        <i class="fas fa-tasks"></i> View Task
+                                       class="btn btn-sm btn-success">
+                                        <i class="fas fa-vial"></i> Test
                                     </a>
                                     
-                                    <?php if (!empty($openUrl)): ?>
-                                        <a href="<?php echo htmlspecialchars($openUrl); ?>" 
-                                           target="_blank" 
-                                           rel="noopener noreferrer"
-                                           class="btn btn-sm btn-outline-info">
-                                            <i class="fas fa-external-link-alt"></i> Open
-                                        </a>
-                                    <?php endif; ?>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -286,80 +270,5 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
 </div>
-
-<!-- Test Result Modal -->
-<div class="modal fade" id="testModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <form method="POST">
-                <div class="modal-header">
-                    <h5 class="modal-title">Submit AT Test Result</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" name="page_id" id="modal_page_id">
-                    <input type="hidden" name="environment_id" id="modal_environment_id">
-                    
-                    <div class="mb-3">
-                        <label class="form-label"><strong>Page:</strong></label>
-                        <p id="modal_page_name" class="form-control-plaintext"></p>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label"><strong>Environment:</strong></label>
-                        <p id="modal_environment_name" class="form-control-plaintext"></p>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Test Result <span class="text-danger">*</span></label>
-                                <select name="status" class="form-select" required>
-                                    <option value="">Select Result</option>
-                                    <option value="pass">Pass</option>
-                                    <option value="fail">Fail</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Issues Found</label>
-                                <input type="number" name="issues_found" class="form-control" min="0" value="0">
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Hours Spent <span class="text-danger">*</span></label>
-                        <input type="number" name="hours_spent" class="form-control" step="0.25" min="0.25" required>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Comments/Notes</label>
-                        <textarea name="comments" class="form-control" rows="4" placeholder="Describe any issues found, testing approach, or other relevant notes..."></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="submit_test" class="btn btn-primary">Submit Test Result</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<script>
-function openTestModal(pageId, environmentId, pageName, environmentName) {
-    document.getElementById('modal_page_id').value = pageId;
-    document.getElementById('modal_environment_id').value = environmentId;
-    document.getElementById('modal_page_name').textContent = pageName;
-    document.getElementById('modal_environment_name').textContent = environmentName;
-    
-    // Reset form
-    document.querySelector('#testModal form').reset();
-    document.getElementById('modal_page_id').value = pageId;
-    document.getElementById('modal_environment_id').value = environmentId;
-}
-</script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

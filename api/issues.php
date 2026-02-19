@@ -212,6 +212,7 @@ $userId = $_SESSION['user_id'] ?? 0;
 if (!hasProjectAccess($db, $userId, $projectId)) {
     jsonError('Permission denied', 403);
 }
+$canUpdateQaStatus = hasIssueQaStatusUpdateAccess($db, $userId, $projectId);
 
 try {
     if ($method === 'GET' && $action === 'list') {
@@ -800,7 +801,9 @@ try {
 
         if ($action === 'update') {
             handleMetaHistory($db, $id, $userId, 'issue_status', $_POST['issue_status'] ?? '', $oldMeta);
-            handleMetaHistory($db, $id, $userId, 'qa_status', $_POST['qa_status'] ?? '', $oldMeta);
+            if ($canUpdateQaStatus) {
+                handleMetaHistory($db, $id, $userId, 'qa_status', $_POST['qa_status'] ?? '', $oldMeta);
+            }
             handleMetaHistory($db, $id, $userId, 'page_ids', $pageIds, $oldMeta);
             handleMetaHistory($db, $id, $userId, 'reporter_ids', $reporters, $oldMeta);
             // Add other meta fields as needed
@@ -825,7 +828,12 @@ try {
         } elseif (!is_array($qaStatusInput)) {
             $qaStatusInput = [];
         }
-        replaceMeta($db, $id, 'qa_status', $qaStatusInput);
+        if (!$canUpdateQaStatus && !empty($qaStatusInput)) {
+            jsonError('You do not have permission to update QA status for this project.', 403);
+        }
+        if ($canUpdateQaStatus) {
+            replaceMeta($db, $id, 'qa_status', $qaStatusInput);
+        }
         
         replaceMeta($db, $id, 'page_ids', $pageIds);
         replaceMeta($db, $id, 'grouped_urls', parseArrayInput($_POST['grouped_urls'] ?? []));

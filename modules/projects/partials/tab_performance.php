@@ -20,31 +20,64 @@ $projectStats = [
 ];
 
 if ($hasQaStatusMaster) {
-    // Get performance data for this project only
-    $perfSql = "SELECT 
-                    u.id as user_id,
+    // Primary source: issue metadata qa_status (used by current Issues flow).
+    $perfSql = "SELECT
+                    u.id AS user_id,
                     u.full_name,
                     u.username,
                     u.role,
-                    COUNT(DISTINCT uqp.id) as total_comments,
-                    COUNT(DISTINCT uqp.issue_id) as total_issues,
-                    SUM(uqp.error_points) as total_error_points,
-                    AVG(uqp.error_points) as avg_error_points,
-                    SUM(CASE WHEN qsm.severity_level = '1' THEN 1 ELSE 0 END) as minor_issues,
-                    SUM(CASE WHEN qsm.severity_level = '2' THEN 1 ELSE 0 END) as moderate_issues,
-                    SUM(CASE WHEN qsm.severity_level = '3' THEN 1 ELSE 0 END) as major_issues,
-                    MAX(uqp.comment_date) as last_activity_date
-                FROM user_qa_performance uqp
-                JOIN users u ON uqp.user_id = u.id
-                JOIN qa_status_master qsm ON uqp.qa_status_id = qsm.id
-                WHERE uqp.project_id = ?
-                AND u.role NOT IN ('admin', 'super_admin')
+                    COUNT(im.id) AS total_comments,
+                    COUNT(DISTINCT i.id) AS total_issues,
+                    SUM(COALESCE(qsm.error_points, 0)) AS total_error_points,
+                    AVG(COALESCE(qsm.error_points, 0)) AS avg_error_points,
+                    SUM(CASE WHEN qsm.severity_level = '1' THEN 1 ELSE 0 END) AS minor_issues,
+                    SUM(CASE WHEN qsm.severity_level = '2' THEN 1 ELSE 0 END) AS moderate_issues,
+                    SUM(CASE WHEN qsm.severity_level = '3' THEN 1 ELSE 0 END) AS major_issues,
+                    MAX(i.updated_at) AS last_activity_date
+                FROM issues i
+                INNER JOIN users u ON i.reporter_id = u.id
+                INNER JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'qa_status'
+                INNER JOIN qa_status_master qsm
+                    ON (
+                        LOWER(TRIM(qsm.status_key)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                        OR LOWER(TRIM(qsm.status_label)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                    )
+                   AND qsm.is_active = 1
+                WHERE i.project_id = ?
+                  AND u.role NOT IN ('admin', 'super_admin')
                 GROUP BY u.id, u.full_name, u.username, u.role
                 ORDER BY total_error_points DESC, total_comments DESC";
-    
+
     $perfStmt = $db->prepare($perfSql);
     $perfStmt->execute([$projectId]);
     $performanceData = $perfStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Fallback for legacy rows that were stored in user_qa_performance.
+    if (empty($performanceData)) {
+        $legacySql = "SELECT 
+                        u.id as user_id,
+                        u.full_name,
+                        u.username,
+                        u.role,
+                        COUNT(DISTINCT uqp.id) as total_comments,
+                        COUNT(DISTINCT uqp.issue_id) as total_issues,
+                        SUM(uqp.error_points) as total_error_points,
+                        AVG(uqp.error_points) as avg_error_points,
+                        SUM(CASE WHEN qsm.severity_level = '1' THEN 1 ELSE 0 END) as minor_issues,
+                        SUM(CASE WHEN qsm.severity_level = '2' THEN 1 ELSE 0 END) as moderate_issues,
+                        SUM(CASE WHEN qsm.severity_level = '3' THEN 1 ELSE 0 END) as major_issues,
+                        MAX(uqp.comment_date) as last_activity_date
+                    FROM user_qa_performance uqp
+                    JOIN users u ON uqp.user_id = u.id
+                    JOIN qa_status_master qsm ON uqp.qa_status_id = qsm.id
+                    WHERE uqp.project_id = ?
+                    AND u.role NOT IN ('admin', 'super_admin')
+                    GROUP BY u.id, u.full_name, u.username, u.role
+                    ORDER BY total_error_points DESC, total_comments DESC";
+        $legacyStmt = $db->prepare($legacySql);
+        $legacyStmt->execute([$projectId]);
+        $performanceData = $legacyStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
     
     // Calculate error rate and performance score for each user
     foreach ($performanceData as &$data) {
@@ -77,7 +110,7 @@ if ($hasQaStatusMaster) {
     if (!empty($performanceData)) {
         $projectStats['total_resources'] = count($performanceData);
         $projectStats['total_comments'] = array_sum(array_column($performanceData, 'total_comments'));
-        $projectStats['total_issues'] = count(array_unique(array_column($performanceData, 'total_issues')));
+        $projectStats['total_issues'] = array_sum(array_column($performanceData, 'total_issues'));
         $projectStats['avg_error_rate'] = round(array_sum(array_column($performanceData, 'error_rate')) / count($performanceData), 2);
     }
 }

@@ -258,6 +258,14 @@ $users = $db->query("
 
 include __DIR__ . '/../../includes/header.php';
 ?>
+<style>
+#usersTable_wrapper .dataTables_length select {
+    min-width: 86px;
+    padding-right: 2rem !important;
+    background-position: right 0.6rem center;
+    text-overflow: clip;
+}
+</style>
 <?php
 // Render compact fixed-position flash messages (top-right) so they don't push content
 if (!empty($_SESSION['error'])) {

@@ -221,38 +221,58 @@
     <script>
     // Global Confirm Modal Function
     window.confirmModal = function(message, callback, options = {}) {
-        const modal = $('#globalConfirmModal');
-        const btnConfirm = $('#globalConfirmModalBtn');
-        const btnDeny = $('#globalConfirmDenyBtn');
-        const btnCancel = $('#globalConfirmCancelBtn');
-        
-        $('#globalConfirmModalMessage').html(message);
-        if (options.title) $('#globalConfirmModalLabel').html((options.icon || '<i class="fas fa-exclamation-triangle text-warning me-2"></i>') + options.title);
-        
-        btnConfirm.text(options.confirmText || 'Confirm')
-                  .removeClass('btn-danger btn-primary btn-success btn-warning')
-                  .addClass(options.confirmClass || 'btn-danger');
-        
-        if (options.showDeny) {
-            btnDeny.text(options.denyText || 'Discard').removeClass('d-none');
-        } else {
-            btnDeny.addClass('d-none');
-        }
-        
-        btnCancel.text(options.cancelText || 'Cancel');
-        
-        modal.modal('show');
-        
-        // Remove existing listeners and add new ones
-        btnConfirm.off('click').on('click', function() {
-            modal.modal('hide');
+        const modalEl = document.getElementById('globalConfirmModal');
+        if (!modalEl) {
             if (typeof callback === 'function') callback(true);
-        });
-        
-        btnDeny.off('click').on('click', function() {
-            modal.modal('hide');
-            if (typeof callback === 'function') callback('deny');
-        });
+            return;
+        }
+        const btnConfirmEl = document.getElementById('globalConfirmModalBtn');
+        const btnDenyEl = document.getElementById('globalConfirmDenyBtn');
+        const btnCancelEl = document.getElementById('globalConfirmCancelBtn');
+        const msgEl = document.getElementById('globalConfirmModalMessage');
+        const titleEl = document.getElementById('globalConfirmModalLabel');
+
+        if (msgEl) msgEl.innerHTML = message || 'Are you sure you want to proceed?';
+        if (titleEl && options.title) {
+            titleEl.innerHTML = (options.icon || '<i class="fas fa-exclamation-triangle text-warning me-2"></i>') + options.title;
+        }
+
+        if (btnConfirmEl) {
+            btnConfirmEl.textContent = options.confirmText || 'Confirm';
+            btnConfirmEl.classList.remove('btn-danger', 'btn-primary', 'btn-success', 'btn-warning');
+            btnConfirmEl.classList.add(options.confirmClass || 'btn-danger');
+        }
+        if (btnDenyEl) {
+            btnDenyEl.textContent = options.denyText || 'Discard';
+            btnDenyEl.classList.toggle('d-none', !options.showDeny);
+        }
+        if (btnCancelEl) btnCancelEl.textContent = options.cancelText || 'Cancel';
+
+        const modalApi = (window.bootstrap && bootstrap.Modal) ? bootstrap.Modal.getOrCreateInstance(modalEl) : null;
+        const $modal = window.jQuery ? window.jQuery(modalEl) : null;
+        const showModal = function() {
+            if (modalApi) modalApi.show();
+            else if ($modal && typeof $modal.modal === 'function') $modal.modal('show');
+        };
+        const hideModal = function() {
+            if (modalApi) modalApi.hide();
+            else if ($modal && typeof $modal.modal === 'function') $modal.modal('hide');
+        };
+
+        if (btnConfirmEl) {
+            btnConfirmEl.onclick = function() {
+                hideModal();
+                if (typeof callback === 'function') callback(true);
+            };
+        }
+        if (btnDenyEl) {
+            btnDenyEl.onclick = function() {
+                hideModal();
+                if (typeof callback === 'function') callback('deny');
+            };
+        }
+
+        showModal();
     };
     </script>
 </body>

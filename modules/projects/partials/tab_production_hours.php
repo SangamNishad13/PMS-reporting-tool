@@ -118,7 +118,7 @@
                         <label class="form-label">Date</label>
                         <div class="input-group">
                             <input type="date" id="proj_log_date" name="log_date" class="form-control" value="<?php echo date('Y-m-d'); ?>">
-                            <button type="button" id="proj_log_date_info" class="btn btn-outline-secondary" tabindex="0" data-bs-toggle="tooltip" title="">
+                            <button type="button" id="proj_log_date_info" class="btn btn-outline-secondary" tabindex="0" data-bs-toggle="tooltip" data-bs-trigger="click" data-bs-placement="top" data-bs-container="body" data-bs-boundary="window" title="" aria-label="View allowed log date range">
                                 <i class="fas fa-info-circle" aria-hidden="true"></i>
                             </button>
                         </div>
@@ -248,6 +248,7 @@
                     <h6 class="mb-0">Hours Breakdown by Team Member</h6>
                 </div>
                 <div class="card-body">
+                    <?php $projectTotalHoursForOverall = (float)($totalHours ?? 0); ?>
                     <div class="table-responsive">
                         <table class="table table-striped">
                             <thead>
@@ -256,6 +257,7 @@
                                     <th>Role</th>
                                     <th>Allocated Hours</th>
                                     <th>Utilized Hours</th>
+                                    <th>Project Hours %</th>
                                     <th>Remaining Hours</th>
                                     <th>Utilization %</th>
                                     <th>Last Activity</th>
@@ -347,6 +349,7 @@
                                 while ($member = $hoursBreakdown->fetch()): 
                                     $allocatedHours = $member['hours_allocated'] ?: 0;
                                     $utilizedHours = $member['hours_utilized'] ?: 0;
+                                    $projectHoursUsagePercent = $projectTotalHoursForOverall > 0 ? round(($utilizedHours / $projectTotalHoursForOverall) * 100, 1) : 0;
                                     $remainingHours = max(0, $allocatedHours - $utilizedHours);
                                     $utilizationPercent = $allocatedHours > 0 ? round(($utilizedHours / $allocatedHours) * 100, 1) : 0;
                                 ?>
@@ -385,6 +388,15 @@
                                         </span>
                                     </td>
                                     <td>
+                                        <?php if ($projectTotalHoursForOverall > 0): ?>
+                                        <span class="badge bg-primary">
+                                            <?php echo number_format($projectHoursUsagePercent, 1); ?>%
+                                        </span>
+                                        <?php else: ?>
+                                        <span class="text-muted">N/A</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
                                         <?php if ($allocatedHours > 0): ?>
                                         <span class="badge bg-<?php echo $remainingHours > 0 ? 'warning' : 'success'; ?>">
                                             <?php echo $remainingHours; ?>
@@ -414,7 +426,7 @@
                                     </td>
                                 </tr>
                                 <tr class="table-sm">
-                                    <td colspan="7" class="p-0 border-0">
+                                    <td colspan="8" class="p-0 border-0">
                                         <div class="collapse" id="userLogs<?php echo $member['user_id']; ?>">
                                             <div class="p-2">
                                                 <h6 class="mb-2">Detailed Time Logs</h6>

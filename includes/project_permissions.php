@@ -681,4 +681,152 @@ function validatePermissionData($projectId, $userId, $permissionType) {
     
     return $errors;
 }
+
+/**
+ * Ensure QA status permission table exists.
+ */
+function ensureQaStatusPermissionsTable($db) {
+    static $checked = false;
+    if ($checked) return;
+    $checked = true;
+    try {
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS qa_status_permissions (
+                id INT(11) NOT NULL AUTO_INCREMENT,
+                user_id INT(11) NOT NULL,
+                scope ENUM('project','client') NOT NULL,
+                project_id INT(11) DEFAULT NULL,
+                client_id INT(11) DEFAULT NULL,
+                granted_by INT(11) DEFAULT NULL,
+                expires_at DATETIME DEFAULT NULL,
+                notes TEXT DEFAULT NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                KEY idx_qsp_user_scope (user_id, scope, is_active),
+                KEY idx_qsp_project (project_id, is_active),
+                KEY idx_qsp_client (client_id, is_active)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+    } catch (PDOException $e) {
+        error_log("ensureQaStatusPermissionsTable error: " . $e->getMessage());
+    }
+}
+
+/**
+ * Check if a user can update issue QA status in a project.
+ * Default deny for AT/FT unless explicitly granted by project/client scope.
+ */
+function hasIssueQaStatusUpdateAccess($db, $userId, $projectId) {
+    try {
+        $stmt = $db->prepare("
+            SELECT u.role, p.client_id
+            FROM users u
+            LEFT JOIN projects p ON p.id = ?
+            WHERE u.id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([(int)$projectId, (int)$userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return false;
+
+        $role = strtolower((string)($row['role'] ?? ''));
+        $clientId = (int)($row['client_id'] ?? 0);
+
+        if (in_array($role, ['admin', 'super_admin'], true)) return true;
+
+        // Existing project-level permission path already supported.
+        if (hasProjectPermission($db, $userId, $projectId, 'qa_status_update')) return true;
+
+        // QA and project lead keep default access.
+        if (in_array($role, ['qa', 'project_lead'], true)) return true;
+
+        // AT/FT require explicit override.
+        if (!in_array($role, ['at_tester', 'ft_tester'], true)) return false;
+
+        ensureQaStatusPermissionsTable($db);
+
+        $projStmt = $db->prepare("
+            SELECT 1
+            FROM qa_status_permissions
+            WHERE user_id = ?
+              AND scope = 'project'
+              AND project_id = ?
+              AND is_active = 1
+              AND (expires_at IS NULL OR expires_at > NOW())
+            LIMIT 1
+        ");
+        $projStmt->execute([(int)$userId, (int)$projectId]);
+        if ($projStmt->fetchColumn()) return true;
+
+        if ($clientId > 0) {
+            $clientStmt = $db->prepare("
+                SELECT 1
+                FROM qa_status_permissions
+                WHERE user_id = ?
+                  AND scope = 'client'
+                  AND client_id = ?
+                  AND is_active = 1
+                  AND (expires_at IS NULL OR expires_at > NOW())
+                LIMIT 1
+            ");
+            $clientStmt->execute([(int)$userId, $clientId]);
+            if ($clientStmt->fetchColumn()) return true;
+        }
+
+        return false;
+    } catch (PDOException $e) {
+        error_log("hasIssueQaStatusUpdateAccess error: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Grant QA status update permission by scope ('project' or 'client').
+ */
+function grantQaStatusPermission($db, $userId, $scope, $scopeId, $grantedBy, $expiresAt = null, $notes = '') {
+    ensureQaStatusPermissionsTable($db);
+    $scope = strtolower(trim((string)$scope));
+    $scopeId = (int)$scopeId;
+    if (!in_array($scope, ['project', 'client'], true) || $scopeId <= 0) return false;
+
+    $projectId = ($scope === 'project') ? $scopeId : null;
+    $clientId = ($scope === 'client') ? $scopeId : null;
+
+    $check = $db->prepare("
+        SELECT id
+        FROM qa_status_permissions
+        WHERE user_id = ?
+          AND scope = ?
+          AND ((project_id = ? AND ? = 'project') OR (client_id = ? AND ? = 'client'))
+        LIMIT 1
+    ");
+    $check->execute([(int)$userId, $scope, $projectId, $scope, $clientId, $scope]);
+    $id = $check->fetchColumn();
+
+    if ($id) {
+        $upd = $db->prepare("
+            UPDATE qa_status_permissions
+            SET is_active = 1, expires_at = ?, notes = ?, granted_by = ?, updated_at = NOW()
+            WHERE id = ?
+        ");
+        return $upd->execute([$expiresAt, $notes, (int)$grantedBy, (int)$id]);
+    }
+
+    $ins = $db->prepare("
+        INSERT INTO qa_status_permissions (user_id, scope, project_id, client_id, granted_by, expires_at, notes, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+    ");
+    return $ins->execute([(int)$userId, $scope, $projectId, $clientId, (int)$grantedBy, $expiresAt, $notes]);
+}
+
+/**
+ * Revoke QA status permission by row id.
+ */
+function revokeQaStatusPermission($db, $permissionId) {
+    ensureQaStatusPermissionsTable($db);
+    $stmt = $db->prepare("UPDATE qa_status_permissions SET is_active = 0, updated_at = NOW() WHERE id = ?");
+    return $stmt->execute([(int)$permissionId]);
+}
 ?>

@@ -49,19 +49,19 @@ if (!$hasQaStatusMaster) {
     $params = [];
     
     if (!empty($filters['start_date'])) {
-        $where[] = 'uqp.comment_date >= ?';
+        $where[] = 'DATE(i.updated_at) >= ?';
         $params[] = $filters['start_date'];
     }
     if (!empty($filters['end_date'])) {
-        $where[] = 'uqp.comment_date <= ?';
+        $where[] = 'DATE(i.updated_at) <= ?';
         $params[] = $filters['end_date'];
     }
     if (!empty($filters['project_id'])) {
-        $where[] = 'uqp.project_id = ?';
+        $where[] = 'i.project_id = ?';
         $params[] = $filters['project_id'];
     }
     if (!empty($filters['user_id'])) {
-        $where[] = 'uqp.user_id = ?';
+        $where[] = 'i.reporter_id = ?';
         $params[] = $filters['user_id'];
     }
     if (!empty($filters['severity_level'])) {
@@ -71,24 +71,30 @@ if (!$hasQaStatusMaster) {
     
     $whereSql = implode(' AND ', $where);
     
-    // Get aggregated performance data per user
+    // Get aggregated performance data per user from issue metadata QA statuses
     $sql = "SELECT 
                 u.id as user_id,
                 u.full_name,
                 u.username,
                 u.role,
-                COUNT(DISTINCT uqp.id) as total_comments,
-                COUNT(DISTINCT uqp.issue_id) as total_issues,
-                COUNT(DISTINCT uqp.project_id) as total_projects,
-                SUM(uqp.error_points) as total_error_points,
-                AVG(uqp.error_points) as avg_error_points,
+                COUNT(im.id) as total_comments,
+                COUNT(DISTINCT i.id) as total_issues,
+                COUNT(DISTINCT i.project_id) as total_projects,
+                SUM(COALESCE(qsm.error_points, 0)) as total_error_points,
+                AVG(COALESCE(qsm.error_points, 0)) as avg_error_points,
                 SUM(CASE WHEN qsm.severity_level = '1' THEN 1 ELSE 0 END) as minor_issues,
                 SUM(CASE WHEN qsm.severity_level = '2' THEN 1 ELSE 0 END) as moderate_issues,
                 SUM(CASE WHEN qsm.severity_level = '3' THEN 1 ELSE 0 END) as major_issues,
-                MAX(uqp.comment_date) as last_activity_date
-            FROM user_qa_performance uqp
-            JOIN users u ON uqp.user_id = u.id
-            JOIN qa_status_master qsm ON uqp.qa_status_id = qsm.id
+                MAX(i.updated_at) as last_activity_date
+            FROM issues i
+            JOIN users u ON i.reporter_id = u.id
+            JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'qa_status'
+            JOIN qa_status_master qsm
+                ON (
+                    LOWER(TRIM(qsm.status_key)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                    OR LOWER(TRIM(qsm.status_label)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                )
+               AND qsm.is_active = 1
             WHERE $whereSql
             AND u.role NOT IN ('admin', 'super_admin')
             GROUP BY u.id, u.full_name, u.username, u.role
@@ -130,23 +136,33 @@ if (!$hasQaStatusMaster) {
     }
     unset($data);
     
-    // Get recent activities (last 50)
+    // Get recent activities (last 50) from issue metadata QA statuses
     $recentSql = "SELECT 
-                    uqp.*,
+                    i.id as issue_id,
+                    i.project_id,
                     u.full_name,
                     u.username,
                     qsm.status_label,
                     qsm.status_key,
                     qsm.severity_level,
                     qsm.badge_color,
+                    qsm.error_points,
+                    DATE(i.updated_at) as comment_date,
+                    i.updated_at as created_at,
                     p.title as project_title
-                FROM user_qa_performance uqp
-                JOIN users u ON uqp.user_id = u.id
-                JOIN qa_status_master qsm ON uqp.qa_status_id = qsm.id
-                LEFT JOIN projects p ON uqp.project_id = p.id
+                FROM issues i
+                JOIN users u ON i.reporter_id = u.id
+                JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'qa_status'
+                JOIN qa_status_master qsm
+                    ON (
+                        LOWER(TRIM(qsm.status_key)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                        OR LOWER(TRIM(qsm.status_label)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                    )
+                   AND qsm.is_active = 1
+                LEFT JOIN projects p ON i.project_id = p.id
                 WHERE $whereSql
                 AND u.role NOT IN ('admin', 'super_admin')
-                ORDER BY uqp.created_at DESC
+                ORDER BY i.updated_at DESC
                 LIMIT 50";
     
     $recentStmt = $db->prepare($recentSql);

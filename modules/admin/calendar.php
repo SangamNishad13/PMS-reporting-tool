@@ -237,6 +237,31 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
     exit;
 }
 
+// Handle AJAX request for edit-request events (same page endpoint for reliability)
+if (isset($_GET['action']) && $_GET['action'] === 'get_edit_requests') {
+    $filterUserId = isset($_GET['user_id']) && $_GET['user_id'] !== '' ? (int)$_GET['user_id'] : null;
+    $sql = "
+        SELECT uer.id, uer.user_id, uer.req_date, uer.reason, uer.status, uer.request_type, u.full_name AS user_name
+        FROM user_edit_requests uer
+        JOIN users u ON uer.user_id = u.id
+        WHERE 1=1
+    ";
+    $params = [];
+    if ($filterUserId) {
+        $sql .= " AND uer.user_id = ?";
+        $params[] = $filterUserId;
+    }
+    $sql .= " ORDER BY uer.created_at DESC";
+
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
+    $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    header('Content-Type: application/json');
+    echo json_encode(['success' => true, 'requests' => $requests]);
+    exit;
+}
+
 include __DIR__ . '/../../includes/header.php';
 
 // Fetch users for dropdown (exclude admin/super_admin)
@@ -292,6 +317,37 @@ $allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND 
     .badge-status {
         font-size: 0.7rem;
         padding: 2px 6px;
+    }
+    .btn-check + .btn::after {
+        content: "";
+        display: none;
+        margin-left: 6px;
+        font-weight: 700;
+        line-height: 1;
+    }
+    .btn-check:checked + .btn::after {
+        content: "\2713";
+        display: inline-block;
+    }
+    .calendar-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 16px;
+    }
+    .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.85rem;
+        color: #495057;
+    }
+    .legend-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        display: inline-block;
+        flex: 0 0 12px;
     }
     /* Keep Summernote fully contained inside admin edit modal columns */
     #adminEditModal .modal-body {
@@ -369,12 +425,31 @@ $allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND 
                         
                         <div class="vr mx-1"></div>
                         
-                        <input type="checkbox" class="btn-check" id="showEditRequests" checked autocomplete="off">
-                        <label class="btn btn-outline-info btn-sm" for="showEditRequests">
-                            <i class="fas fa-bell me-1"></i> Edit Requests
-                        </label>
+                        <div class="btn-group" role="group">
+                            <input type="checkbox" class="btn-check" id="filterEditRequests" checked autocomplete="off" onchange="if(window.__adminCalendarToggleEditRequests){window.__adminCalendarToggleEditRequests();}">
+                            <label class="btn btn-outline-info btn-sm" for="filterEditRequests">
+                                <i class="fas fa-bell me-1"></i> Edit Requests
+                            </label>
+                        </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="small fw-semibold text-muted mb-2">Calendar Legend</div>
+            <div class="calendar-legend">
+                <span class="legend-item"><span class="legend-dot" style="background:#28a745"></span>Available</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#ffc107"></span>Busy</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#dc3545"></span>Leave</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#6c757d"></span>Not Updated</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#ff4d4f"></span>Under 8h Logged</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#17a2b8"></span>Edit/Delete Request: Pending</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#28a745"></span>Edit/Delete Request: Approved</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#dc3545"></span>Edit/Delete Request: Rejected</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#343a40"></span>Edit/Delete Request: Used</span>
             </div>
         </div>
     </div>
@@ -440,7 +515,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Edit requests source definition
     function fetchEditRequests(fetchInfo, successCallback, failureCallback) {
         var selectedUserId = getSelectedUserId();
-        var editUrl = '<?php echo $baseDir; ?>/api/edit_requests.php?action=get_pending';
+        var editUrl = '<?php echo $_SERVER["PHP_SELF"]; ?>?action=get_edit_requests';
         if (selectedUserId && selectedUserId !== 'all') {
             editUrl += '&user_id=' + encodeURIComponent(selectedUserId);
         }
@@ -455,17 +530,30 @@ document.addEventListener('DOMContentLoaded', function() {
                             return !targetUserId || Number(request.user_id) === targetUserId;
                         })
                         .map(function(request) {
+                            var reqStatus = (request.status || '').toLowerCase();
+                            var reqType = (request.request_type || 'edit').toLowerCase();
+                            var color = '#17a2b8';
+                            var textColor = '#ffffff';
+                            if (reqStatus === 'approved') color = '#28a745';
+                            else if (reqStatus === 'rejected') color = '#dc3545';
+                            else if (reqStatus === 'used') color = '#343a40';
+                            else if (reqStatus === 'pending' || reqStatus === '') color = '#17a2b8';
+
+                            var statusLabel = reqStatus ? reqStatus.charAt(0).toUpperCase() + reqStatus.slice(1) : 'Unknown';
+                            var typeLabel = reqType === 'delete' ? 'Delete Request' : 'Edit Request';
                             return {
-                                title: 'Edit Request - ' + request.user_name,
+                                title: typeLabel + ' [' + statusLabel + '] - ' + request.user_name,
                                 start: request.req_date,
-                                color: '#17a2b8',
-                                textColor: '#ffffff',
+                                color: color,
+                                textColor: textColor,
                                 extendedProps: {
                                     isEditRequest: true,
                                     requestId: request.id,
                                     userId: request.user_id,
                                     userName: request.user_name,
-                                    reason: request.reason
+                                    reason: request.reason,
+                                    requestStatus: reqStatus,
+                                    requestType: reqType
                                 }
                             };
                         });
@@ -481,35 +569,59 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Toggle edit requests overlay
-    function toggleEditRequestsOverlay() {
-        var showEditRequests = document.getElementById('showEditRequests').checked;
-        var source = window.calendar.getEventSourceById('editRequests');
+    function isEditRequestEvent(ev) {
+        if (!ev) return false;
+        var props = ev.extendedProps || {};
+        if (props.isEditRequest) return true;
+        try {
+            var src = typeof ev.getSource === 'function' ? ev.getSource() : null;
+            if (src && src.id === 'editRequests') return true;
+        } catch (e) {}
+        var title = (typeof ev.title === 'string') ? ev.title : '';
+        return title.indexOf('Edit Request') === 0 || title.indexOf('Delete Request') === 0;
+    }
 
-        // Always clear existing edit-request events so toggle works reliably
-        if (source) {
-            source.remove();
-        }
-        window.calendar.getEvents().forEach(function(ev){
-            if (ev.extendedProps && ev.extendedProps.isEditRequest) {
-                ev.remove();
-            }
+    function toggleEditRequestsOverlay() {
+        var toggleEl = document.getElementById('filterEditRequests');
+        var showEditRequests = toggleEl ? !!toggleEl.checked : false;
+        var source = window.calendar.getEventSourceById('editRequests');
+        var renderedEditEls = calendarEl.querySelectorAll('.fc-edit-request-event');
+
+        renderedEditEls.forEach(function(el) {
+            el.style.display = showEditRequests ? '' : 'none';
         });
 
-        if (showEditRequests) {
-            var newSource = window.calendar.addEventSource({
+        if (!showEditRequests) {
+            if (source) {
+                source.remove();
+            }
+            window.calendar.getEvents().forEach(function(ev){
+                if (isEditRequestEvent(ev)) {
+                    ev.remove();
+                }
+            });
+            if (typeof window.calendar.updateSize === 'function') {
+                window.calendar.updateSize();
+            }
+            return;
+        }
+
+        if (!source) {
+            source = window.calendar.addEventSource({
                 id: 'editRequests',
                 events: fetchEditRequests
             });
-            if (newSource && typeof newSource.refetch === 'function') {
-                newSource.refetch();
-            }
-        } else {
-            // Ensure other sources remain; just refetch main events
-            if (typeof window.calendar.refetchEvents === 'function') {
-                window.calendar.refetchEvents();
-            }
+        }
+        if (source && typeof source.refetch === 'function') {
+            source.refetch();
+        } else if (typeof window.calendar.refetchEvents === 'function') {
+            window.calendar.refetchEvents();
+        }
+        if (typeof window.calendar.updateSize === 'function') {
+            window.calendar.updateSize();
         }
     }
+    window.__adminCalendarToggleEditRequests = toggleEditRequestsOverlay;
     
     var defaultView = window.innerWidth < 768 ? 'dayGridDay' : 'dayGridMonth';
 
@@ -594,6 +706,14 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 var el = info.el || (info.elms && info.elms[0]);
                 if (el && info.event && info.event.extendedProps) {
+                    var props = info.event.extendedProps || {};
+                    if (isEditRequestEvent(info.event)) {
+                        el.classList.add('fc-edit-request-event');
+                        var toggleEl = document.getElementById('filterEditRequests');
+                        if (toggleEl && !toggleEl.checked) {
+                            el.style.display = 'none';
+                        }
+                    }
                     if (info.event.extendedProps.user_id) el.setAttribute('data-user-id', info.event.extendedProps.user_id);
                     if (info.event.extendedProps.user_full_name) el.setAttribute('data-user-fullname', info.event.extendedProps.user_full_name);
                     if (info.event.extendedProps.role) el.setAttribute('data-user-role', info.event.extendedProps.role);
@@ -664,10 +784,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Handle edit requests filter
-    document.getElementById('showEditRequests').addEventListener('change', function() {
-        toggleEditRequestsOverlay();
-    });
+    // Handle edit requests filter (explicit controlled toggle)
+    var editRequestsToggle = document.getElementById('filterEditRequests');
+    if (editRequestsToggle) {
+        editRequestsToggle.addEventListener('change', toggleEditRequestsOverlay);
+        editRequestsToggle.addEventListener('click', function() {
+            setTimeout(toggleEditRequestsOverlay, 0);
+        });
+    }
     
     // Handle user selection change
     var userSelect = document.getElementById('userSelect');
@@ -676,7 +800,7 @@ document.addEventListener('DOMContentLoaded', function() {
             refreshMainEvents();
 
             var editSource = window.calendar.getEventSourceById('editRequests');
-            var showEditRequests = document.getElementById('showEditRequests').checked;
+            var showEditRequests = document.getElementById('filterEditRequests').checked;
 
             if (showEditRequests && editSource && typeof editSource.refetch === 'function') {
                 editSource.refetch();

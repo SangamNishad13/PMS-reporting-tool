@@ -23,11 +23,11 @@
                     <strong>Project Chat</strong>
                 </div>
                 <div class="d-flex gap-1">
-                    <button type="button" class="btn btn-sm btn-outline-light" id="chatWidgetFullscreen" aria-label="Open full chat">
-                        <i class="fas fa-up-right-and-down-left-from-center"></i>
-                    </button>
                     <button type="button" class="btn btn-sm btn-outline-light" id="chatWidgetClose" aria-label="Close chat">
                         <i class="fas fa-times"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-light" id="chatWidgetFullscreen" aria-label="Open full chat">
+                        <i class="fas fa-up-right-and-down-left-from-center"></i>
                     </button>
                 </div>
             </div>

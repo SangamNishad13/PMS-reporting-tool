@@ -23,6 +23,7 @@ if (!hasProjectAccess($db, $userId, $projectId)) {
     header('Location: ' . $baseDir . '/index.php');
     exit;
 }
+$canUpdateIssueQaStatus = hasIssueQaStatusUpdateAccess($db, $userId, $projectId);
 
 // Get project details
 $stmt = $db->prepare("SELECT p.*, c.name as client_name FROM projects p LEFT JOIN clients c ON p.client_id = c.id WHERE p.id = ?");
@@ -309,6 +310,7 @@ include __DIR__ . '/../../includes/header.php';
 window.ProjectConfig = {
     projectId: <?php echo $projectId; ?>,
     projectType: '<?php echo $project['type'] ?? 'web'; ?>',
+    canUpdateIssueQaStatus: <?php echo $canUpdateIssueQaStatus ? 'true' : 'false'; ?>,
     projectPages: <?php echo json_encode($projectPages); ?>,
     uniqueIssuePages: <?php echo json_encode($uniqueIssuePages ?? []); ?>,
     groupedUrls: <?php echo json_encode($groupedUrls); ?>,
@@ -639,7 +641,7 @@ function attachEventListeners() {
 function editIssue(issueId) {
     const issueData = allIssues.find(i => i.id == issueId);
     if (!issueData) {
-        alert('Issue not found. ID: ' + issueId);
+        showError('Issue not found. ID: ' + issueId);
         return;
     }
     
@@ -687,7 +689,7 @@ function editIssue(issueId) {
         openFinalEditor(issue);
     } else {
         console.error('openFinalEditor function not found');
-        alert('Issue editor not loaded. Please refresh the page.');
+        showError('Issue editor not loaded. Please refresh the page.');
     }
 }
 
@@ -856,13 +858,13 @@ function getBootstrapColor(colorName) {
 }
 
 function showSuccess(message) {
-    // Implement your success notification
-    alert(message);
+    if (typeof showToast === 'function') showToast(message, 'success');
+    else console.log(message);
 }
 
 function showError(message) {
-    // Implement your error notification
-    alert(message);
+    if (typeof showToast === 'function') showToast(message, 'danger');
+    else console.error(message);
 }
 
 // Event listeners
@@ -885,6 +887,11 @@ document.getElementById('refreshBtn').addEventListener('click', function () {
     loadIssues({ preserveFilters: true });
 });
 
+// Keep table synced with modal CRUD done by shared issue editor (no page reload needed)
+document.addEventListener('pms:issues-changed', function () {
+    loadIssues({ preserveFilters: true, silentErrors: true });
+});
+
 // Initial load
 loadIssues();
 startIssuesAutoRefresh();
@@ -902,12 +909,16 @@ document.getElementById('addIssueBtn').addEventListener('click', function() {
         openFinalEditor(null);
     } else {
         console.error('openFinalEditor function not found');
-        alert('Issue editor not loaded. Please refresh the page.');
+        showError('Issue editor not loaded. Please refresh the page.');
     }
 });
 
 // Override the save button handler to work without selectedPageId requirement
 document.addEventListener('DOMContentLoaded', function() {
+    if (!window.ProjectConfig.canUpdateIssueQaStatus) {
+        jQuery('#finalIssueQaStatus').prop('disabled', true).trigger('change.select2');
+        jQuery('#finalIssueQaStatus').attr('title', 'Only authorized users can update QA status.');
+    }
     // Wait for view_issues.js to load and attach its handler first
     setTimeout(function() {
         const saveBtn = document.getElementById('finalIssueSaveBtn');
@@ -931,7 +942,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Get selected pages
                 const selectedPages = jQuery('#finalIssuePages').val() || [];
                 if (selectedPages.length === 0) {
-                    alert('Please select at least one page for this issue.');
+                    showError('Please select at least one page for this issue.');
                     return;
                 }
                 
@@ -940,7 +951,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     title: titleVal,
                     description: jQuery('#finalIssueDetails').summernote('code'),
                     issue_status: document.getElementById('finalIssueStatus').value,
-                    qa_status: jQuery('#finalIssueQaStatus').val() || [],
+                    qa_status: window.ProjectConfig.canUpdateIssueQaStatus ? (jQuery('#finalIssueQaStatus').val() || []) : [],
                     pages: selectedPages,
                     grouped_urls: jQuery('#finalIssueGroupedUrls').val() || [],
                     reporters: jQuery('#finalIssueReporters').val() || [],
@@ -985,7 +996,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 if (!data.title) {
-                    alert('Issue title is required.');
+                    showError('Issue title is required.');
                     return;
                 }
                 
@@ -1048,12 +1059,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                 } catch (e) {
                     if (String(e.message || '').toLowerCase().indexOf('modified by another user') !== -1) {
-                        alert('Issue was updated by another user. Latest data loaded. Please review and save again.');
+                        showError('Issue was updated by another user. Latest data loaded. Please review and save again.');
                         loadIssues({ preserveFilters: true, silentErrors: true });
                         return;
                     }
                     console.error('Save error:', e);
-                    alert('Unable to save issue: ' + e.message);
+                    showError('Unable to save issue: ' + e.message);
                 }
             });
         }
@@ -1086,7 +1097,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(data => {
                     const sections = data.default_sections || [];
                     if (sections.length === 0) {
-                        alert('No default template sections configured for this project type.');
+                        showError('No default template sections configured for this project type.');
                         return;
                     }
                     
@@ -1105,13 +1116,81 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .catch(err => {
                     console.error('Error loading template:', err);
-                    alert('Failed to load template sections. Please try again.');
+                    showError('Failed to load template sections. Please try again.');
                 });
             });
         }
     }, 500);
 });
 
+</script>
+
+<!-- Floating Project Chat -->
+<style>
+.chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1060; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
+.chat-launcher i { font-size: 1.1rem; }
+.chat-widget { position: fixed; bottom: 86px; right: 20px; width: 360px; max-width: 92vw; height: 520px; max-height: 78vh; background: #fff; border-radius: 16px; box-shadow: 0 18px 40px rgba(0,0,0,0.25); border: 1px solid #e5e7eb; overflow: hidden; z-index: 1060; display: none; }
+.chat-widget.open { display: block; }
+.chat-widget iframe { width: 100%; height: calc(100% - 48px); border: 0; }
+.chat-widget .chat-widget-header { height: 48px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, #0d6efd, #4dabf7); color: #fff; }
+.chat-widget .chat-widget-header .btn { color: #fff; border-color: rgba(255,255,255,0.3); }
+.chat-widget .chat-widget-header .btn:hover { background: rgba(255,255,255,0.12); }
+@media (max-width: 576px) {
+    .chat-widget { width: 94vw; height: 70vh; bottom: 76px; right: 3vw; }
+    .chat-launcher { bottom: 14px; right: 14px; }
+}
+</style>
+
+<div class="chat-widget" id="projectChatWidget" aria-label="Project Chat">
+    <div class="chat-widget-header">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-comments"></i>
+            <strong>Project Chat</strong>
+        </div>
+        <div class="d-flex gap-1">
+            <button type="button" class="btn btn-sm btn-outline-light" id="chatWidgetClose" aria-label="Close chat">
+                <i class="fas fa-times"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-light" id="chatWidgetFullscreen" aria-label="Open full chat">
+                <i class="fas fa-up-right-and-down-left-from-center"></i>
+            </button>
+        </div>
+    </div>
+    <iframe src="<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo (int)$projectId; ?>&embed=1" title="Project Chat"></iframe>
+</div>
+
+<button type="button" class="btn btn-primary chat-launcher" id="chatLauncher">
+    <i class="fas fa-comments"></i>
+    <span>Project Chat</span>
+</button>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var launcher = document.getElementById('chatLauncher');
+    var widget = document.getElementById('projectChatWidget');
+    var closeBtn = document.getElementById('chatWidgetClose');
+    var fullscreenBtn = document.getElementById('chatWidgetFullscreen');
+    if (!launcher || !widget || !closeBtn || !fullscreenBtn) return;
+    launcher.addEventListener('click', function () {
+        widget.classList.add('open');
+        launcher.style.display = 'none';
+        setTimeout(function () { try { closeBtn.focus(); } catch (e) {} }, 0);
+    });
+    closeBtn.addEventListener('click', function () {
+        widget.classList.remove('open');
+        launcher.style.display = 'inline-flex';
+        setTimeout(function () { try { launcher.focus(); } catch (e) {} }, 0);
+    });
+    fullscreenBtn.addEventListener('click', function () {
+        window.location.href = '<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo (int)$projectId; ?>';
+    });
+    window.addEventListener('message', function (event) {
+        if (!event || !event.data || event.data.type !== 'pms-chat-close') return;
+        widget.classList.remove('open');
+        launcher.style.display = 'inline-flex';
+        setTimeout(function () { try { launcher.focus(); } catch (e) {} }, 0);
+    });
+});
 </script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

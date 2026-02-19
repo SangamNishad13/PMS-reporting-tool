@@ -11,7 +11,7 @@
         } else {
             var rows = list.querySelectorAll('.issues-page-row');
         }
-    } catch (e) { alert('view_issues.js error: ' + e); }
+    } catch (e) { if (typeof window.showToast === 'function') { showToast('Issue script error: ' + e, 'danger'); } else { console.error(e); } }
 
     // Check if we're on a page that needs issues functionality
     // Allow execution on detail pages even without #issues or #issuesSubTabs
@@ -35,6 +35,9 @@
     var issueCommentsApi = ProjectConfig.baseDir + '/api/issue_comments.php';
     var issueDraftsApi = ProjectConfig.baseDir + '/api/issue_drafts.php';
     var uniqueIssuePages = ProjectConfig.uniqueIssuePages || [];
+    var userRole = String(ProjectConfig.userRole || '').toLowerCase();
+    var isAdminUser = userRole === 'admin' || userRole === 'super_admin' || userRole === 'superadmin';
+    var canUpdateIssueQaStatus = !!ProjectConfig.canUpdateIssueQaStatus;
 
     var issueData = {
         selectedPageId: null,
@@ -84,6 +87,32 @@
     var reviewStorageKey = 'pms_review_findings_v1_' + String(projectId || '0');
     var reviewIssueInitialFormState = null;
     var reviewIssueBypassCloseConfirm = false;
+
+    function issueNotify(message, type) {
+        if (typeof window.showToast === 'function') {
+            showToast(String(message || ''), type || 'info');
+        } else {
+            if ((type || '').toLowerCase() === 'danger') console.error(message);
+            else console.log(message);
+        }
+    }
+
+    function applyIssueQaPermissionState() {
+        var $qa = jQuery('#finalIssueQaStatus');
+        if (!$qa.length) return;
+        $qa.prop('disabled', !canUpdateIssueQaStatus).trigger('change.select2');
+        if (!canUpdateIssueQaStatus) {
+            $qa.attr('title', 'Only authorized users can update QA status.');
+        } else {
+            $qa.removeAttr('title');
+        }
+    }
+
+    function dispatchIssuesChanged(detail) {
+        try {
+            document.dispatchEvent(new CustomEvent('pms:issues-changed', { detail: detail || {} }));
+        } catch (e) { }
+    }
 
     // Expose issueData for debug if needed, or keep private? 
     // view_core.js might need it? No, view_core is generic.
@@ -688,8 +717,8 @@
                             $el.summernote('insertNode', $('<img>').attr({ src: res.url, alt: safeAlt, style: 'max-width:100%; height:auto; cursor:pointer;', class: 'editable-issue-image' })[0]);
                         }
                         bootstrap.Modal.getInstance(jQuery('#imageAltTextModal')[0]).hide();
-                    } else if (res && res.error) { alert(res.error); }
-                }).catch(function () { alert('Image upload failed'); })
+                    } else if (res && res.error) { issueNotify(res.error, 'danger'); }
+                }).catch(function () { issueNotify('Image upload failed', 'danger'); })
                 .finally(function () {
                     issueData.imageUpload.pendingFile = null;
                     issueData.imageUpload.pendingEditor = null;
@@ -944,7 +973,12 @@
                 onKeyup: function () { setCodeBlockButtonState(); },
                 onMouseup: function () { setCodeBlockButtonState(); },
                 onChange: function () { setCodeBlockButtonState(); },
-                onImageUpload: function (files) { (files || []).forEach(function (f) { uploadIssueImage(f, $el); }); },
+                onImageUpload: function (files) {
+                    var list = files || [];
+                    for (var i = 0; i < list.length; i++) {
+                        uploadIssueImage(list[i], $el);
+                    }
+                },
                 onPaste: function (e) {
                     var clipboard = e.originalEvent && e.originalEvent.clipboardData;
                     if (clipboard && clipboard.items) {
@@ -1359,7 +1393,7 @@
         var titleVal = titleInput ? titleInput.value.trim() : '';
         var detailsVal = jQuery('#finalIssueDetails').summernote('code') || '';
         var statusVal = document.getElementById('finalIssueStatus').value;
-        var qaStatusVal = jQuery('#finalIssueQaStatus').val() || [];
+        var qaStatusVal = canUpdateIssueQaStatus ? (jQuery('#finalIssueQaStatus').val() || []) : [];
         var pagesVal = jQuery('#finalIssuePages').val() || [];
         var groupedUrlsVal = normalizeGroupedUrlsSelection(jQuery('#finalIssueGroupedUrls').val() || []);
         var reportersVal = jQuery('#finalIssueReporters').val() || [];
@@ -1506,6 +1540,7 @@
         if (window.jQuery && jQuery.fn.select2) {
             jQuery('.issue-select2, .issue-select2-tags').prop('disabled', !enable);
         }
+        applyIssueQaPermissionState();
     }
 
     function openFinalViewer(issue) {
@@ -1521,7 +1556,7 @@
         }
 
         document.getElementById('finalIssueStatus').value = issue.status || 'Open';
-        jQuery('#finalIssueQaStatus').val(issue.qa_status || []).trigger('change');
+        jQuery('#finalIssueQaStatus').val(canUpdateIssueQaStatus ? (issue.qa_status || []) : []).trigger('change');
         jQuery('#finalIssuePages').val(issue.pages || [issueData.selectedPageId]).trigger('change');
         jQuery('#finalIssueGroupedUrls').val(issue.grouped_urls || []).trigger('change');
         if (window.jQuery && jQuery.fn.summernote) jQuery('#finalIssueDetails').summernote('code', issue.description || '');
@@ -1564,6 +1599,7 @@
         }
         if (editBtn) editBtn.classList.remove('d-none');
         toggleFinalIssueFields(false);
+        applyIssueQaPermissionState();
         var chatDiv = document.getElementById('finalIssueComments');
         if (chatDiv) {
             chatDiv.querySelectorAll('input, select, textarea, button').forEach(function (el) { el.disabled = false; el.classList.remove('disabled'); });
@@ -1644,7 +1680,7 @@
         document.getElementById('finalIssueStatus').value = statusValue;
 
         // Store values to set after modal is shown
-        var qaStatusValue = issue ? (issue.qa_status || []) : (draftData ? draftData.qa_status : []);
+        var qaStatusValue = canUpdateIssueQaStatus ? (issue ? (issue.qa_status || []) : (draftData ? draftData.qa_status : [])) : [];
         var reportersValue = issue ? (issue.reporters || []) : (draftData ? draftData.reporters : []);
         var pageIds = (issue && issue.pages) ? issue.pages : ((draftData && draftData.pages) ? draftData.pages : [issueData.selectedPageId]);
 
@@ -1662,6 +1698,7 @@
             // Set QA Status
             setTimeout(function () {
                 jQuery('#finalIssueQaStatus').val(qaStatusValue).trigger('change');
+                applyIssueQaPermissionState();
             }, 100);
 
             // Set Reporters
@@ -1728,7 +1765,7 @@
 
     function openReviewEditor(issue) {
         if (!reviewFeaturesEnabled) {
-            alert('Review issues feature is disabled.');
+            issueNotify('Review issues feature is disabled.', 'warning');
             return;
         }
         if (!canEdit()) return;
@@ -3463,23 +3500,24 @@
             return;
         }
 
-        var currentUserId = ProjectConfig.userId;
+        var currentUserId = String(ProjectConfig.userId || '');
 
         listEl.innerHTML = items.map(function (c, idx) {
-            var isOwn = (c.user_id === currentUserId);
+            var isOwn = String(c.user_id) === currentUserId;
             var isRegression = (c.comment_type === 'regression');
+            var isDeleted = !!c.deleted_at;
+            var canEdit = !!c.can_edit;
+            var canDelete = !!c.can_delete;
+            var canViewHistory = !!c.can_view_history && isAdminUser;
 
             var commentText = decorateIssueImages(c.text || '');
-            // Highlight @ mentions
             commentText = commentText.replace(/@(\w+)/g, '<span class="badge bg-warning text-dark">@$1</span>');
 
-            // Reply preview if exists
             var replyPreview = '';
             if (c.reply_to && c.reply_preview) {
                 var rp = c.reply_preview;
                 var replyText = (rp.text || '').replace(/<[^>]*>/g, '').substring(0, 80);
                 if (rp.text && rp.text.length > 80) replyText += '...';
-
                 replyPreview = '<div class="reply-preview mb-2 p-2 rounded" style="background: #f8f9fa; border-left: 3px solid #0d6efd;">' +
                     '<div class="d-flex align-items-center mb-1">' +
                     '<i class="fas fa-reply text-primary me-2" style="font-size: 0.75rem;"></i>' +
@@ -3489,14 +3527,11 @@
                     '</div>';
             }
 
-            // Determine background color based on comment type
             var bgClass = '';
             var borderStyle = '';
             var regressionHeading = '';
-
             if (isRegression) {
-                // Regression comment: always very light blue with border
-                bgClass = ''; // No class to avoid conflicts
+                bgClass = '';
                 borderStyle = 'background: #e7f3ff !important; border-left: 3px solid #0d6efd;';
                 regressionHeading = '<div class="mb-2 pb-2 border-bottom" style="border-color: #b6d4fe !important;">' +
                     '<span class="badge" style="background: #0d6efd; font-size: 0.75rem;">' +
@@ -3509,25 +3544,32 @@
                 bgClass = 'bg-light';
             }
 
-            // Add regression badge next to name (smaller, for header)
             var regressionBadge = isRegression ? '<span class="badge bg-info ms-2" style="font-size: 0.65rem;"><i class="fas fa-retweet me-1"></i>Regression</span>' : '';
+            var editedBadge = c.edited_at ? '<small class="text-muted">(edited)</small>' : '';
+            var actionButtons = '';
+            if (!isDeleted) {
+                actionButtons += '<button class="btn btn-xs btn-link p-0 text-decoration-none issue-comment-reply" ' +
+                    'data-comment-id="' + (c.id || idx) + '" ' +
+                    'data-user-name="' + escapeAttr(c.user_name || 'User') + '" ' +
+                    'data-comment-text="' + escapeAttr((c.text || '').replace(/<[^>]*>/g, '').substring(0, 100)) + '">' +
+                    '<i class="fas fa-reply"></i> Reply</button>';
+            }
+            if (canEdit) {
+                actionButtons += ' <button class="btn btn-xs btn-link p-0 text-decoration-none issue-comment-edit" data-comment-id="' + (c.id || idx) + '" data-comment-html="' + escapeAttr(c.text || '') + '"><i class="fas fa-edit"></i> Edit</button>';
+            }
+            if (canDelete) {
+                actionButtons += ' <button class="btn btn-xs btn-link p-0 text-decoration-none text-danger issue-comment-delete" data-comment-id="' + (c.id || idx) + '"><i class="fas fa-trash"></i> Delete</button>';
+            }
+            if (canViewHistory) {
+                actionButtons += ' <button class="btn btn-xs btn-link p-0 text-decoration-none issue-comment-history" data-comment-id="' + (c.id || idx) + '"><i class="fas fa-history"></i> History</button>';
+            }
 
             return '<div class="message ' + (isOwn ? 'own-message' : 'other-message') + ' mb-3" data-comment-id="' + (c.id || idx) + '">' +
                 '<div class="d-flex justify-content-between align-items-start mb-1">' +
-                '<div>' +
-                '<span class="fw-semibold text-primary">' + escapeHtml(c.user_name || 'User') + '</span>' +
-                regressionBadge +
+                '<div><span class="fw-semibold text-primary">' + escapeHtml(c.user_name || 'User') + '</span>' + regressionBadge + '</div>' +
+                '<div class="d-flex align-items-center gap-2"><small class="text-muted">' + escapeHtml(c.time || '') + '</small>' + editedBadge + '</div>' +
                 '</div>' +
-                '<div class="d-flex align-items-center gap-2">' +
-                '<small class="text-muted">' + escapeHtml(c.time || '') + '</small>' +
-                '<button class="btn btn-xs btn-link p-0 text-decoration-none issue-comment-reply" ' +
-                'data-comment-id="' + (c.id || idx) + '" ' +
-                'data-user-name="' + escapeHtml(c.user_name || 'User') + '" ' +
-                'data-comment-text="' + escapeHtml((c.text || '').replace(/<[^>]*>/g, '').substring(0, 100)) + '">' +
-                '<i class="fas fa-reply"></i> Reply' +
-                '</button>' +
-                '</div>' +
-                '</div>' +
+                '<div class="d-flex flex-wrap gap-2 mb-2">' + actionButtons + '</div>' +
                 replyPreview +
                 '<div class="message-content p-2 rounded ' + bgClass + '" style="' + borderStyle + '">' +
                 regressionHeading +
@@ -3536,7 +3578,6 @@
                 '</div>';
         }).join('');
 
-        // Add reply click handlers
         document.querySelectorAll('.issue-comment-reply').forEach(function (btn) {
             btn.addEventListener('click', function (e) {
                 e.preventDefault();
@@ -3546,6 +3587,188 @@
                 showReplyPreview(commentId, userName, commentText);
             });
         });
+
+        document.querySelectorAll('.issue-comment-edit').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                var commentId = this.getAttribute('data-comment-id');
+                editIssueComment(commentId);
+            });
+        });
+
+        document.querySelectorAll('.issue-comment-delete').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                var commentId = this.getAttribute('data-comment-id');
+                deleteIssueComment(commentId);
+            });
+        });
+
+        document.querySelectorAll('.issue-comment-history').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                var commentId = this.getAttribute('data-comment-id');
+                showIssueCommentHistory(commentId);
+            });
+        });
+    }
+
+    function upsertIssueComment(issueId, updatedComment) {
+        var key = String(issueId || '');
+        if (!key || !updatedComment || !updatedComment.id) return;
+        if (!issueData.comments[key]) issueData.comments[key] = [];
+        var list = issueData.comments[key];
+        var idNum = Number(updatedComment.id);
+        var idx = list.findIndex(function (it) { return Number(it.id) === idNum; });
+        var mapped = {
+            id: updatedComment.id,
+            user_id: updatedComment.user_id,
+            user_name: updatedComment.user_name,
+            qa_status: updatedComment.qa_status_name || '',
+            text: updatedComment.comment_html,
+            time: updatedComment.created_at,
+            reply_to: updatedComment.reply_to || null,
+            reply_preview: updatedComment.reply_preview || null,
+            comment_type: updatedComment.comment_type || 'normal',
+            edited_at: updatedComment.edited_at || null,
+            deleted_at: updatedComment.deleted_at || null,
+            can_edit: !!updatedComment.can_edit,
+            can_delete: !!updatedComment.can_delete,
+            can_view_history: !!updatedComment.can_view_history
+        };
+        if (idx >= 0) list[idx] = mapped;
+        else list.unshift(mapped);
+    }
+
+    function editIssueComment(commentId) {
+        var issueId = document.getElementById('finalIssueEditId').value || 'new';
+        if (!issueId || issueId === 'new') return;
+        var key = String(issueId);
+        var list = issueData.comments[key] || [];
+        var item = list.find(function (it) { return Number(it.id) === Number(commentId); });
+        if (!item) return;
+
+        var currentText = String(item.text || '').replace(/<[^>]*>/g, '').trim();
+        var edited = window.prompt('Edit comment', currentText);
+        if (edited === null) return;
+        if (!edited.trim()) {
+            if (typeof showToast === 'function') showToast('Comment cannot be empty', 'warning');
+            return;
+        }
+
+        var fd = new FormData();
+        fd.append('action', 'edit');
+        fd.append('project_id', projectId);
+        fd.append('issue_id', key);
+        fd.append('comment_id', String(commentId));
+        fd.append('comment_html', edited);
+        fetch(issueCommentsApi, { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                if (!res || res.error || !res.comment) {
+                    if (typeof showToast === 'function') showToast((res && res.error) ? res.error : 'Failed to edit comment', 'danger');
+                    return;
+                }
+                upsertIssueComment(key, res.comment);
+                renderIssueComments(key);
+                if (typeof showToast === 'function') showToast('Comment updated', 'success');
+            })
+            .catch(function () {
+                if (typeof showToast === 'function') showToast('Failed to edit comment', 'danger');
+            });
+    }
+
+    function deleteIssueComment(commentId) {
+        var issueId = document.getElementById('finalIssueEditId').value || 'new';
+        if (!issueId || issueId === 'new') return;
+        var key = String(issueId);
+        if (!window.confirm('Delete this comment?')) return;
+
+        var fd = new FormData();
+        fd.append('action', 'delete');
+        fd.append('project_id', projectId);
+        fd.append('issue_id', key);
+        fd.append('comment_id', String(commentId));
+        fetch(issueCommentsApi, { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                if (!res || res.error) {
+                    if (typeof showToast === 'function') showToast((res && res.error) ? res.error : 'Failed to delete comment', 'danger');
+                    return;
+                }
+                if (res.comment) {
+                    upsertIssueComment(key, res.comment);
+                } else {
+                    loadIssueComments(key);
+                    return;
+                }
+                renderIssueComments(key);
+                if (typeof showToast === 'function') showToast('Comment deleted', 'success');
+            })
+            .catch(function () {
+                if (typeof showToast === 'function') showToast('Failed to delete comment', 'danger');
+            });
+    }
+
+    function showIssueCommentHistory(commentId) {
+        if (!isAdminUser) return;
+        var issueId = document.getElementById('finalIssueEditId').value || 'new';
+        if (!issueId || issueId === 'new') return;
+        var key = String(issueId);
+
+        var modalId = 'issueCommentHistoryModal';
+        var bodyId = 'issueCommentHistoryBody';
+        var modalEl = document.getElementById(modalId);
+        if (!modalEl) {
+            var html = '<div class="modal fade" id="' + modalId + '" tabindex="-1" aria-hidden="true">' +
+                '<div class="modal-dialog modal-lg modal-dialog-scrollable">' +
+                '<div class="modal-content">' +
+                '<div class="modal-header"><h5 class="modal-title">Comment History</h5>' +
+                '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>' +
+                '<div class="modal-body" id="' + bodyId + '"><p class="text-muted mb-0">Loading...</p></div>' +
+                '</div></div></div>';
+            document.body.insertAdjacentHTML('beforeend', html);
+            modalEl = document.getElementById(modalId);
+        }
+        var bodyEl = document.getElementById(bodyId);
+        if (bodyEl) bodyEl.innerHTML = '<p class="text-muted mb-0">Loading...</p>';
+
+        var url = issueCommentsApi + '?action=history&project_id=' + encodeURIComponent(projectId) +
+            '&issue_id=' + encodeURIComponent(key) + '&comment_id=' + encodeURIComponent(commentId);
+        fetch(url, { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                if (!bodyEl) return;
+                if (!res || !res.success) {
+                    bodyEl.innerHTML = '<p class="text-danger mb-0">Failed to load history.</p>';
+                    return;
+                }
+                var rows = res.history || [];
+                if (!rows.length) {
+                    bodyEl.innerHTML = '<p class="text-muted mb-0">No history available.</p>';
+                    return;
+                }
+                var out = '<div class="list-group">';
+                rows.forEach(function (h) {
+                    out += '<div class="list-group-item">';
+                    out += '<div class="d-flex justify-content-between mb-2">';
+                    out += '<strong>' + escapeHtml(String(h.action_type || '').toUpperCase()) + '</strong>';
+                    out += '<small class="text-muted">' + escapeHtml(h.acted_at || '') + ' by ' + escapeHtml(h.acted_by_name || 'Unknown') + '</small>';
+                    out += '</div>';
+                    out += '<div class="small text-muted mb-1">Old</div><div class="border rounded p-2 mb-2">' + (h.old_comment_html || '') + '</div>';
+                    out += '<div class="small text-muted mb-1">New</div><div class="border rounded p-2">' + (h.new_comment_html || '') + '</div>';
+                    out += '</div>';
+                });
+                out += '</div>';
+                bodyEl.innerHTML = out;
+            })
+            .catch(function () {
+                if (bodyEl) bodyEl.innerHTML = '<p class="text-danger mb-0">Failed to load history.</p>';
+            });
+
+        if (window.bootstrap && modalEl) {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
     }
 
     function showReplyPreview(commentId, userName, commentText) {
@@ -3600,7 +3823,7 @@
 
     function addIssueComment(issueId) {
         var key = issueId || 'new';
-        if (key === 'new') { alert('Please save the issue before adding chat.'); return; }
+        if (key === 'new') { issueNotify('Please save the issue before adding chat.', 'warning'); return; }
         var html = (window.jQuery && jQuery.fn.summernote) ? jQuery('#finalIssueCommentEditor').summernote('code') : document.getElementById('finalIssueCommentEditor').value;
         if (!String(html || '').replace(/<[^>]*>/g, '').trim()) return;
 
@@ -3645,14 +3868,22 @@
         fetch(issueCommentsApi, { method: 'POST', body: fd, credentials: 'same-origin' }).then(r => r.json()).then(function (res) {
             if (!res || res.error) return;
             if (!issueData.comments[key]) issueData.comments[key] = [];
-            issueData.comments[key].unshift({
-                user_id: ProjectConfig.userId,
-                user_name: 'You',
-                text: html,
-                time: new Date().toLocaleString(),
-                reply_to: replyTo || null,
-                comment_type: commentType
-            });
+            if (res.comment) {
+                upsertIssueComment(key, res.comment);
+            } else {
+                issueData.comments[key].unshift({
+                    id: res.id || ('tmp_' + Date.now()),
+                    user_id: ProjectConfig.userId,
+                    user_name: 'You',
+                    text: html,
+                    time: new Date().toLocaleString(),
+                    reply_to: replyTo || null,
+                    comment_type: commentType,
+                    can_edit: true,
+                    can_delete: true,
+                    can_view_history: isAdminUser
+                });
+            }
             if (window.jQuery && jQuery.fn.summernote) jQuery('#finalIssueCommentEditor').summernote('code', '');
 
             // Reset comment type to normal
@@ -3687,7 +3918,12 @@
                         time: c.created_at,
                         reply_to: c.reply_to || null,
                         reply_preview: c.reply_preview || null,
-                        comment_type: c.comment_type || 'normal'
+                        comment_type: c.comment_type || 'normal',
+                        edited_at: c.edited_at || null,
+                        deleted_at: c.deleted_at || null,
+                        can_edit: !!c.can_edit,
+                        can_delete: !!c.can_delete,
+                        can_view_history: !!c.can_view_history
                     };
                 });
                 renderIssueComments(String(issueId));
@@ -3764,7 +4000,7 @@
     function setDefaultSectionsInEditor() {
         if (!window.jQuery || !jQuery.fn.summernote) return;
         if (!defaultSections.length) {
-            alert('No default template sections configured for this project type.');
+            issueNotify('No default template sections configured for this project type.', 'warning');
             return;
         }
         var html = defaultSections.map(function (s) {
@@ -3792,7 +4028,7 @@
                 setDefaultSectionsInEditor();
             })
             .catch(function () {
-                alert('Failed to load template sections. Please try again.');
+                issueNotify('Failed to load template sections. Please try again.', 'danger');
             });
     }
 
@@ -3905,7 +4141,7 @@
             }
         }
         if (!selectedPageId) {
-            alert('Please select at least one page before saving the issue.');
+            issueNotify('Please select at least one page before saving the issue.', 'warning');
             return;
         }
         var editId = document.getElementById('finalIssueEditId').value;
@@ -3921,7 +4157,7 @@
             title: titleVal,
             details: jQuery('#finalIssueDetails').summernote('code'),
             status: document.getElementById('finalIssueStatus').value,
-            qa_status: jQuery('#finalIssueQaStatus').val() || [],
+            qa_status: canUpdateIssueQaStatus ? (jQuery('#finalIssueQaStatus').val() || []) : [],
             priority: document.getElementById('finalIssueField_priority') ? document.getElementById('finalIssueField_priority').value : 'medium',
             pages: jQuery('#finalIssuePages').val() || [],
             grouped_urls: normalizeGroupedUrlsSelection(jQuery('#finalIssueGroupedUrls').val() || []),
@@ -3950,7 +4186,7 @@
             });
         }
 
-        if (!data.title) { alert('Issue title is required.'); return; }
+        if (!data.title) { issueNotify('Issue title is required.', 'warning'); return; }
 
         try {
             var fd = new FormData();
@@ -4006,16 +4242,22 @@
             hideEditors();
             await loadFinalIssues(selectedPageId);
             await loadCommonIssues();
+            dispatchIssuesChanged({
+                action: editId ? 'update' : 'create',
+                type: 'final',
+                issue_id: String(editId || json.id || ''),
+                page_id: String(selectedPageId || '')
+            });
         } catch (e) {
             if (String(e.message || '').toLowerCase().indexOf('modified by another user') !== -1) {
-                alert('Issue was updated by another user. Latest version loaded. Please review and save again.');
+                issueNotify('Issue was updated by another user. Latest version loaded. Please review and save again.', 'warning');
                 await loadFinalIssues(selectedPageId);
                 var freshList = (issueData.pages[selectedPageId] && issueData.pages[selectedPageId].final) ? issueData.pages[selectedPageId].final : [];
                 var freshIssue = freshList.find(function (it) { return String(it.id) === String(editId); });
                 if (freshIssue) openFinalEditor(freshIssue);
                 return;
             }
-            alert('Unable to save issue: ' + e.message);
+            issueNotify('Unable to save issue: ' + e.message, 'danger');
         }
     }
 
@@ -4037,7 +4279,7 @@
             severity: document.getElementById('reviewIssueSeverity').value,
             details: wrapReviewDetailsWithMeta(detailsHtml, document.getElementById('reviewIssueTitle').value.trim(), meta)
         };
-        if (!data.title) { alert('Issue title is required.'); return; }
+        if (!data.title) { issueNotify('Issue title is required.', 'warning'); return; }
         if (!data.details || data.details.trim() === '') data.details = data.title;
         try {
             var pageId = String(issueData.selectedPageId);
@@ -4081,12 +4323,12 @@
             hideEditors();
             clearReviewDraftLocal();
             await loadReviewFindings(issueData.selectedPageId);
-        } catch (e) { alert('Unable to save tool finding.'); }
+        } catch (e) { issueNotify('Unable to save tool finding.', 'danger'); }
     }
 
     async function moveCurrentReviewIssueToFinal() {
         if (!reviewFeaturesEnabled) return;
-        alert('JS-only mode: "Move to Final" is disabled. Create final issue manually.');
+        issueNotify('JS-only mode: "Move to Final" is disabled. Create final issue manually.', 'warning');
     }
 
     async function addOrUpdateCommonIssue() {
@@ -4096,7 +4338,7 @@
             pages: jQuery('#commonIssuePages').val() || [],
             details: jQuery('#commonIssueDetails').summernote('code')
         };
-        if (!data.title) { alert('Common issue title is required.'); return; }
+        if (!data.title) { issueNotify('Common issue title is required.', 'warning'); return; }
         try {
             var fd = new FormData();
             fd.append('action', editId ? 'common_update' : 'common_create');
@@ -4110,12 +4352,18 @@
             if (!json || json.error) throw new Error(json && json.error ? json.error : 'Save failed');
             hideEditors();
             await loadCommonIssues();
-        } catch (e) { alert('Unable to save common issue.'); }
+            dispatchIssuesChanged({
+                action: editId ? 'update' : 'create',
+                type: 'common',
+                issue_id: String(editId || json.id || ''),
+                page_ids: (data.pages || []).map(function (v) { return String(v); })
+            });
+        } catch (e) { issueNotify('Unable to save common issue.', 'danger'); }
     }
 
     async function moveReviewToFinal() {
         if (!reviewFeaturesEnabled) return;
-        alert('JS-only mode: "Move to Final" is disabled. Create final issue manually.');
+        issueNotify('JS-only mode: "Move to Final" is disabled. Create final issue manually.', 'warning');
     }
 
     async function deleteReviewIds(ids) {
@@ -4128,7 +4376,7 @@
             var next = list.filter(function (it) { return ids.indexOf(String(it.id || '')) === -1; });
             setLocalReviewItems(pageId, next);
             await loadReviewFindings(issueData.selectedPageId);
-        } catch (e) { alert('Unable to delete tool findings.'); }
+        } catch (e) { issueNotify('Unable to delete tool findings.', 'danger'); }
     }
 
     async function deleteFinalIds(ids) {
@@ -4141,7 +4389,13 @@
             if (!json || json.error) throw new Error(json && json.error ? json.error : 'Delete failed');
             await loadFinalIssues(issueData.selectedPageId);
             await loadCommonIssues();
-        } catch (e) { alert('Unable to delete issues.'); }
+            dispatchIssuesChanged({
+                action: 'delete',
+                type: 'final',
+                ids: ids.slice(),
+                page_id: String(issueData.selectedPageId || '')
+            });
+        } catch (e) { issueNotify('Unable to delete issues.', 'danger'); }
     }
 
     async function deleteCommonIds(ids) {
@@ -4152,7 +4406,12 @@
             var json = await res.json();
             if (!json || json.error) throw new Error(json && json.error ? json.error : 'Delete failed');
             await loadCommonIssues();
-        } catch (e) { alert('Unable to delete common issues.'); }
+            dispatchIssuesChanged({
+                action: 'delete',
+                type: 'common',
+                ids: ids.slice()
+            });
+        } catch (e) { issueNotify('Unable to delete common issues.', 'danger'); }
     }
 
     async function deleteSelected(type) {
@@ -4174,6 +4433,7 @@
     document.addEventListener('DOMContentLoaded', function () {
         try { } catch (e) { }
         initSelect2();
+        applyIssueQaPermissionState();
         initEditors();
         loadTemplates();
         loadMetadataOptions();
@@ -4964,6 +5224,7 @@
     if (finalIssueModalEl) {
         finalIssueModalEl.addEventListener('shown.bs.modal', function () {
             // No auto-focus - let modal container handle focus
+            applyIssueQaPermissionState();
 
             // Legacy code for old select field (if it exists)
             var sel = document.getElementById('finalIssueTitle');
@@ -4977,6 +5238,7 @@
     }
 
     initSelect2();
+    applyIssueQaPermissionState();
     initUrlSelectionModal();
     updateUrlSelectionSummary();
     updateGroupedUrlsPreview();

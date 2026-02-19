@@ -48,17 +48,13 @@ var ProjectConfig = window.ProjectConfig || {};
         if (activeTab) {
             var tabBtn = document.querySelector('#projectTabs button[data-bs-target="' + activeTab + '"]');
             if (tabBtn) {
-                // Small delay to ensure Bootstrap is ready
-                setTimeout(function () {
-                    try {
-                        var tabTrigger = new bootstrap.Tab(tabBtn);
-                        tabTrigger.show();
-                    } catch (e) {
-                        tabBtn.click();
-                    }
-                    // Reset restoring flag after show
-                    setTimeout(function () { isRestoring = false; }, 300);
-                }, 100);
+                try {
+                    var tabTrigger = new bootstrap.Tab(tabBtn);
+                    tabTrigger.show();
+                } catch (e) {
+                    tabBtn.click();
+                }
+                isRestoring = false;
             } else {
                 isRestoring = false;
             }
@@ -276,8 +272,6 @@ var ProjectConfig = window.ProjectConfig || {};
             }, 350);
         }
     });
-
-    window.addEventListener('load', restoreTabState);
 
     // --- Utilities ---
     function dragElement(elmnt) {

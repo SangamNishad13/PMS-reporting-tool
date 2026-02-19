@@ -61,10 +61,11 @@ if (!move_uploaded_file($file['tmp_name'], $dest)) {
     exit;
 }
 
+$relativePath = 'uploads/chat/' . date('Ymd') . '/' . $filename;
 if (!isset($baseDir)) {
     require_once __DIR__ . '/../includes/helpers.php';
     $baseDir = getBaseDir();
 }
-$url = rtrim($baseDir, '/') . '/uploads/chat/' . date('Ymd') . '/' . $filename;
+$url = rtrim($baseDir, '/') . '/api/secure_file.php?path=' . rawurlencode($relativePath);
 
 echo json_encode(['success' => true, 'url' => $url]);

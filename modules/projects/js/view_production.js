@@ -78,6 +78,7 @@
         var $regressionSummary = $('#regressionSummary');
         var $regressionIssueCount = $('#regressionIssueCount');
         var $dateInput = $form.find('[name="log_date"]');
+        var $dateInfoBtn = $('#proj_log_date_info');
 
         // Restrict allowed log dates
         function setAllowedLogDates() {
@@ -99,6 +100,43 @@
             $dateInput.attr('min', min).attr('max', max);
             var cur = $dateInput.val();
             if (!cur || cur < min || cur > max) $dateInput.val(max);
+
+            if ($dateInfoBtn.length) {
+                var helpText = 'Allowed log date range: ' + min + ' to ' + max + '. On Monday, Saturday is also allowed.';
+                $dateInfoBtn.attr('title', helpText);
+                $dateInfoBtn.attr('data-bs-original-title', helpText);
+                $dateInfoBtn.attr('aria-label', helpText);
+                $dateInfoBtn.attr('aria-haspopup', 'true');
+                try { $dateInfoBtn.tooltip('dispose'); } catch (e) { }
+                $dateInfoBtn.tooltip({
+                    trigger: 'manual',
+                    container: 'body',
+                    placement: 'top',
+                    boundary: 'window',
+                    html: false,
+                    sanitize: true,
+                    delay: { show: 100, hide: 100 }
+                });
+                $dateInfoBtn.off('click.logDateInfo').on('click.logDateInfo', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    $(this).tooltip('toggle');
+                });
+                $dateInfoBtn.off('keydown.logDateInfo').on('keydown.logDateInfo', function (e) {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        $(this).tooltip('toggle');
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        $(this).tooltip('hide');
+                    }
+                });
+                $(document).off('click.logDateInfoHide').on('click.logDateInfoHide', function (ev) {
+                    if (!$(ev.target).closest('#proj_log_date_info, .tooltip').length) {
+                        try { $dateInfoBtn.tooltip('hide'); } catch (e) { }
+                    }
+                });
+            }
         }
         setAllowedLogDates();
 

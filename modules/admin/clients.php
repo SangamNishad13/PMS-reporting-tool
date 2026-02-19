@@ -62,6 +62,15 @@ $clients = $db->query("
 
 include __DIR__ . '/../../includes/header.php';
 ?>
+<style>
+/* Prevent chevron overlap in DataTables "Show entries" dropdown */
+#clientsTable_length select,
+div.dataTables_length select {
+    padding-right: 2rem !important;
+    background-position: right 0.65rem center !important;
+    min-width: 4.5rem;
+}
+</style>
 <div class="container-fluid">
     <h2>Client Management</h2>
     

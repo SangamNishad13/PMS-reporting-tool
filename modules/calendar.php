@@ -422,7 +422,7 @@ $canEditFuture = true;
 
 <!-- Calendar Edit Modal -->
 <div class="modal fade" id="calendarEditModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Update My Availability</h5>
@@ -445,7 +445,7 @@ $canEditFuture = true;
                             <strong>Updated:</strong> <span id="editRequestUpdated"></span>
                         </div>
                     </div>
-                    
+
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
@@ -473,13 +473,20 @@ $canEditFuture = true;
                         
                         <div class="col-md-6">
                             <div class="card">
-                                <div class="card-header">
+                                <div class="card-header d-flex justify-content-between align-items-center">
                                     <h6 class="mb-0"><i class="fas fa-clock"></i> Production Hours <span id="hoursDate"></span></h6>
+                                    <button type="button"
+                                            id="openLogHoursModalBtn"
+                                            class="btn btn-outline-primary btn-sm"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#calendarLogHoursModal">
+                                        Log Hours
+                                    </button>
                                 </div>
-                                <div class="card-body">
-                                    <div class="text-center mb-3">
-                                        <h4 id="totalHours">0.00 hrs</h4>
-                                        <div class="progress mb-2">
+                                <div class="card-body py-2">
+                                    <div class="text-center mb-2">
+                                        <h5 id="totalHours" class="mb-2">0.00 hrs</h5>
+                                        <div class="progress mb-1">
                                             <div id="utilizedProgress" class="progress-bar bg-success" role="progressbar" style="width: 0%">
                                                 Utilized
                                             </div>
@@ -493,12 +500,12 @@ $canEditFuture = true;
                                         </small>
                                     </div>
                                     
-                                    <div id="hoursEntries" style="max-height: 200px; overflow-y: auto;">
+                                    <div id="hoursEntries" style="max-height: 140px; overflow-y: auto;">
                                         <p class="text-muted text-center">Loading...</p>
                                     </div>
                                     
-                                    <!-- Production hours quick-form (appears inside modal when logging for a date) -->
-                                    <div id="calendarModalLogFormContainer" class="mt-3">
+                                    <!-- Production hours quick-form is rendered in separate modal -->
+                                    <div id="calendarModalLogFormContainer" class="d-none">
                                         <form id="logProductionHoursForm" class="row g-2" novalidate>
                                             <div class="col-md-6">
                                                 <label class="form-label">Project</label>
@@ -541,7 +548,7 @@ $canEditFuture = true;
                                                 <input type="text" id="logDescriptionInput" class="form-control">
                                             </div>
                                             <div class="col-12 d-flex justify-content-end">
-                                                <button type="submit" id="logTimeBtn" class="btn btn-primary">Log Hours</button>
+                                                <button type="button" id="logTimeBtn" class="btn btn-primary" onclick="if(window.submitCalendarLogHours){return window.submitCalendarLogHours(event);} return false;">Log Hours</button>
                                             </div>
                                         </form>
                                     </div>
@@ -551,10 +558,26 @@ $canEditFuture = true;
                     </div>
                 </div>
                 <div class="modal-footer">
+                    <button type="button" id="requestEditFooterBtn" class="btn btn-warning" style="display:none;">Request Edit</button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <!-- Dynamic buttons will be added here -->
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Log Hours Modal -->
+<div class="modal fade" id="calendarLogHoursModal" tabindex="-1" aria-labelledby="calendarLogHoursModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="calendarLogHoursModalLabel">Log Production Hours</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="calendarLogHoursModalBody">
+                <div id="calendarLogStatus" class="alert d-none py-2 px-3 small mb-3" role="alert"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -592,6 +615,30 @@ $canEditFuture = true;
 
 <!-- FullCalendar JS -->
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+<style>
+#calendarEditModal .modal-dialog {
+    max-width: min(1140px, 96vw);
+}
+#calendarEditModal .modal-content {
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+}
+#calendarEditModal .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: 1rem;
+}
+#calendarEditModal .modal-footer {
+    position: sticky;
+    bottom: 0;
+    min-height: 60px;
+    background: #fff;
+    z-index: 2;
+    border-top: 1px solid #dee2e6;
+}
+</style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -599,6 +646,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var assignedProjects = <?php echo json_encode($assignedProjects, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?> || [];
     var calendarEl = document.getElementById('calendar');
     var lastClickedDate = null;
+    var lastClickedEditRequest = null;
     var isAdmin = <?php echo hasAdminPrivileges() ? 'true' : 'false'; ?>;
 
     // Helper function to check if date is editable by the user directly.
@@ -636,12 +684,18 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         document.getElementById('calDate').value = '';
+        try { document.getElementById('calendarEditModal').dataset.activeDate = ''; } catch (e) {}
         document.getElementById('calStatus').value = 'not_updated';
         document.getElementById('calNotes').value = '';
         document.getElementById('calPersonalNote').value = '';
         
         document.getElementById('editRequestStatus').style.display = 'none';
-        
+        lastClickedEditRequest = null;
+        var reqFooterBtn = document.getElementById('requestEditFooterBtn');
+        if (reqFooterBtn) {
+            reqFooterBtn.style.display = 'none';
+            reqFooterBtn.onclick = null;
+        }
         var modalFooter = document.querySelector('#calendarEditModal .modal-footer');
         if (modalFooter) {
             var dynamicButtons = modalFooter.querySelectorAll('.dynamic-btn');
@@ -820,16 +874,31 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function addModalButtons(date) {
+        var normalizedDate = String(date || '').slice(0, 10);
         var modalFooter = document.querySelector('#calendarEditModal .modal-footer');
         if (!modalFooter) return;
+        var oldDynamicButtons = modalFooter.querySelectorAll('.dynamic-btn');
+        oldDynamicButtons.forEach(function(btn){ btn.remove(); });
         
         var cancelBtn = modalFooter.querySelector('button[data-bs-dismiss="modal"]');
         if (!cancelBtn) return;
         
-        var dt = new Date(date + 'T00:00:00');
-        var today = new Date(); today.setHours(0,0,0,0);
+        var today = new Date();
+        var todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+        var isFutureDate = normalizedDate > todayStr;
+        var isPastDate = normalizedDate < todayStr;
+        var reqFooterBtn = document.getElementById('requestEditFooterBtn');
+        if (reqFooterBtn) {
+            // Show Request Edit for today/past; hide only for future dates.
+            reqFooterBtn.style.display = isFutureDate ? 'none' : 'inline-block';
+            reqFooterBtn.onclick = isFutureDate ? null : function() { openEditRequestModal(normalizedDate); };
+        }
 
-        if (isEditableDate(date) || dt.getTime() > today.getTime()) {
+        if (isPastDate) {
+            // Request Edit is handled by fixed footer button.
+        }
+
+        if (isEditableDate(normalizedDate) || isFutureDate) {
             // Today / previous business day OR future dates -> allow saving availability changes
             enableEditing();
             var saveBtn = document.createElement('button');
@@ -837,10 +906,25 @@ document.addEventListener('DOMContentLoaded', function() {
             saveBtn.className = 'btn btn-success dynamic-btn';
             saveBtn.textContent = 'Save Changes';
             modalFooter.insertBefore(saveBtn, cancelBtn);
+            // Never show Request Edit for future dates
+            if (isFutureDate) return;
+
+            checkEditRequestStatus(normalizedDate, function(pending, approved, status) {
+                if (pending) {
+                    var pendingBtnEditable = document.createElement('button');
+                    pendingBtnEditable.type = 'button';
+                    pendingBtnEditable.className = 'btn btn-warning dynamic-btn';
+                    pendingBtnEditable.textContent = 'Edit Pending Changes';
+                    pendingBtnEditable.onclick = function() {
+                        enableEditingForPendingRequest(normalizedDate);
+                    };
+                    modalFooter.insertBefore(pendingBtnEditable, cancelBtn);
+                }
+            });
 
         } else {
             // Past dates - check approval status
-            checkEditRequestStatus(date, function(pending, approved) {
+            checkEditRequestStatus(normalizedDate, function(pending, approved, status) {
                 if (approved) {
                     // Approved - can edit
                     var editBtn = document.createElement('button');
@@ -865,20 +949,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     editBtn.className = 'btn btn-warning dynamic-btn';
                     editBtn.textContent = 'Edit Pending Changes';
                     editBtn.onclick = function() {
-                        enableEditingForPendingRequest(date);
+                        enableEditingForPendingRequest(normalizedDate);
                     };
                     modalFooter.insertBefore(editBtn, cancelBtn);
-                    
-                } else {
-                    // No request - show request button
-                    var requestBtn = document.createElement('button');
-                    requestBtn.type = 'button';
-                    requestBtn.className = 'btn btn-warning dynamic-btn';
-                    requestBtn.textContent = 'Request Edit';
-                    requestBtn.onclick = function() {
-                        openEditRequestModal(date);
-                    };
-                    modalFooter.insertBefore(requestBtn, cancelBtn);
                 }
             });
         }
@@ -888,10 +961,10 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch('<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/my_daily_status.php?action=check_edit_request&date=' + encodeURIComponent(date))
             .then(response => response.json())
             .then(data => {
-                callback(data.pending || false, data.approved || false);
+                callback(data.pending || false, data.approved || false, data.status || null);
             })
             .catch(() => {
-                callback(false, false);
+                callback(false, false, null);
             });
     }
 
@@ -988,7 +1061,11 @@ document.addEventListener('DOMContentLoaded', function() {
     function openModalForDate(date, eventInfo) {
         resetModal();
         document.getElementById('calDate').value = date;
+        try { document.getElementById('calendarEditModal').dataset.activeDate = date; } catch (e) {}
         lastClickedDate = date;
+        lastClickedEditRequest = (eventInfo && eventInfo.extendedProps && eventInfo.extendedProps.edit_request)
+            ? eventInfo.extendedProps.edit_request
+            : null;
         
         if (eventInfo && eventInfo.extendedProps && eventInfo.extendedProps.edit_request) {
             displayEditRequestInfo(eventInfo.extendedProps.edit_request);
@@ -1025,6 +1102,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 var dt = new Date(date + 'T00:00:00');
                 var today = new Date(); today.setHours(0,0,0,0);
                 var formContainer = document.getElementById('calendarModalLogFormContainer');
+                var openLogBtn = document.getElementById('openLogHoursModalBtn');
                 var modalFooter = document.querySelector('#calendarEditModal .modal-footer');
 
                 // Clean up any previous dynamic buttons
@@ -1036,6 +1114,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Future dates: hide production form (only availability should be editable here)
                 if (dt.getTime() > today.getTime()) {
                     if (formContainer) formContainer.style.display = 'none';
+                    if (openLogBtn) openLogBtn.style.display = 'none';
                     // availability fields editable
                     try { document.getElementById('calStatus').disabled = false; document.getElementById('calNotes').readOnly = false; document.getElementById('calPersonalNote').readOnly = false; } catch(e) {}
                     return;
@@ -1044,12 +1123,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Today or previous business day: allow direct edits and show form
                 if (isEditableDate(date)) {
                     if (formContainer) formContainer.style.display = '';
+                    if (openLogBtn) openLogBtn.style.display = '';
                     enableEditing();
                     return;
                 }
 
                 // Older past dates: show production form but keep it read-only; Request Edit button provided by addModalButtons
                 if (formContainer) formContainer.style.display = '';
+                if (openLogBtn) openLogBtn.style.display = '';
                 disableEditing();
             } catch (e) {}
         })();
@@ -1195,6 +1276,174 @@ document.addEventListener('DOMContentLoaded', function() {
     window._myCalendar = calendar;
     calendar.render();
 
+    function setCalendarLogStatus(message, type) {
+        var statusEl = document.getElementById('calendarLogStatus');
+        if (!statusEl) return;
+        statusEl.className = 'alert py-2 px-3 small mb-3';
+        if (type === 'success') statusEl.classList.add('alert-success');
+        else if (type === 'warning') statusEl.classList.add('alert-warning');
+        else statusEl.classList.add('alert-danger');
+        statusEl.textContent = message;
+        statusEl.classList.remove('d-none');
+    }
+
+    function notifyCalendar(message, type) {
+        if (typeof showToast === 'function') {
+            try { showToast(message, type || 'info'); } catch (e) {}
+        }
+        setCalendarLogStatus(message, type || 'danger');
+    }
+
+    function submitCalendarLogHours(e) {
+        if (e) e.preventDefault();
+        try {
+            var dateEl = document.getElementById('calDate');
+            var date = dateEl ? String(dateEl.value || '').slice(0, 10) : '';
+            if (!date) {
+                try {
+                    var modalDate = document.getElementById('calendarEditModal').dataset.activeDate || '';
+                    date = String(modalDate).slice(0, 10);
+                } catch (err) {}
+            }
+            if (!date && lastClickedDate) {
+                date = String(lastClickedDate).slice(0, 10);
+            }
+            if (dateEl && date) {
+                dateEl.value = date;
+            }
+            var projectEl = document.getElementById('productionProjectSelect') || document.querySelector('#logProductionHoursForm select[name="project_id"]');
+            var hoursEl = document.getElementById('logHoursInput');
+            var submitBtn = document.getElementById('logTimeBtn');
+            var taskTypeEl = document.getElementById('taskTypeSelect');
+            var pageEl = document.getElementById('productionPageSelect');
+            var envEl = document.getElementById('productionEnvSelect');
+            var testingTypeEl = document.getElementById('testingTypeSelect');
+            var descEl = document.getElementById('logDescriptionInput');
+            var pageColEl = document.getElementById('pageTestingContainer');
+            var envColEl = document.getElementById('productionEnvCol');
+            var calFormEl = document.getElementById('logProductionHoursForm');
+
+            if (!date) {
+                notifyCalendar('Date is missing. Reopen the modal and try again.', 'warning');
+                return false;
+            }
+            var projectValue = '';
+            if (projectEl) {
+                projectValue = String(projectEl.value || '').trim();
+                if (!projectValue && typeof projectEl.selectedIndex === 'number' && projectEl.selectedIndex >= 0 && projectEl.options && projectEl.options[projectEl.selectedIndex]) {
+                    projectValue = String(projectEl.options[projectEl.selectedIndex].value || '').trim();
+                }
+            }
+            if (!projectValue && calFormEl) {
+                try {
+                    var fdProbe = new FormData(calFormEl);
+                    projectValue = String(fdProbe.get('project_id') || '').trim();
+                } catch (err) {}
+            }
+            if (!projectValue) {
+                notifyCalendar('Please select a project.', 'warning');
+                return false;
+            }
+            if (!hoursEl || !hoursEl.value || parseFloat(hoursEl.value) <= 0) {
+                notifyCalendar('Please enter valid hours.', 'warning');
+                return false;
+            }
+
+            var oldLabel = submitBtn ? submitBtn.textContent : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Logging...';
+            }
+
+            var fd = new FormData();
+            fd.append('action', 'log');
+            fd.append('user_id', '<?php echo $userId; ?>');
+            fd.append('project_id', projectValue);
+            fd.append('task_type', taskTypeEl ? taskTypeEl.value : '');
+            var pages = pageEl ? Array.from(pageEl.selectedOptions || []).map(function(o){ return o.value; }).filter(Boolean) : [];
+            if (pages.length) fd.append('page_id', pages[0]);
+            var envs = envEl ? Array.from(envEl.selectedOptions || []).map(function(o){ return o.value; }).filter(Boolean) : [];
+            if (envs.length) fd.append('environment_id', envs[0]);
+            fd.append('testing_type', testingTypeEl ? testingTypeEl.value : '');
+            fd.append('log_date', date);
+            fd.append('hours', hoursEl.value);
+            fd.append('description', descEl ? descEl.value : '');
+            fd.append('is_utilized', 1);
+
+            fetch('<?php echo $baseDir; ?>/api/project_hours.php', { method: 'POST', body: fd, credentials: 'same-origin' })
+                .then(function(r){
+                    return r.text().then(function(text){
+                        var parsed = null;
+                        try { parsed = JSON.parse(text); } catch (e) {}
+                        return { ok: r.ok, status: r.status, body: parsed, raw: text };
+                    });
+                })
+                .then(function(resp){
+                    if (resp && resp.body && resp.body.success) {
+                        loadProductionHours(date);
+                        if (window._myCalendar && typeof window._myCalendar.refetchEvents === 'function') window._myCalendar.refetchEvents();
+                        addModalButtons(date);
+                        try {
+                            var logModalInst = bootstrap.Modal.getOrCreateInstance(document.getElementById('calendarLogHoursModal'));
+                            logModalInst.hide();
+                        } catch (err) {}
+                        if (calFormEl) calFormEl.reset();
+                        if (pageColEl) pageColEl.style.display = 'none';
+                        if (envColEl) envColEl.style.display = 'none';
+                        notifyCalendar('Hours logged successfully.', 'success');
+                    } else {
+                        var msg = 'Failed to log hours.';
+                        if (resp && resp.body && (resp.body.error || resp.body.message)) {
+                            msg += ' ' + (resp.body.error || resp.body.message);
+                        } else if (resp && resp.raw) {
+                            msg += ' Response: ' + resp.raw.substring(0, 200);
+                        }
+                        notifyCalendar(msg, 'danger');
+                    }
+                })
+                .catch(function(err){
+                    notifyCalendar('Error logging hours: ' + err.message, 'danger');
+                })
+                .finally(function(){
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = oldLabel || 'Log Hours';
+                    }
+                });
+        } catch (err) {
+            notifyCalendar('Log form error: ' + err.message, 'danger');
+        }
+        return false;
+    }
+
+    window.submitCalendarLogHours = submitCalendarLogHours;
+    var globalCalForm = document.getElementById('logProductionHoursForm');
+    if (globalCalForm && !globalCalForm.dataset.boundSubmit) {
+        globalCalForm.addEventListener('submit', submitCalendarLogHours);
+        globalCalForm.dataset.boundSubmit = '1';
+    }
+    var globalLogBtn = document.getElementById('logTimeBtn');
+    if (globalLogBtn && !globalLogBtn.dataset.boundClick) {
+        globalLogBtn.addEventListener('click', submitCalendarLogHours);
+        globalLogBtn.dataset.boundClick = '1';
+    }
+
+    var openLogBtn = document.getElementById('openLogHoursModalBtn');
+    if (openLogBtn && !openLogBtn.dataset.boundClick) {
+        openLogBtn.addEventListener('click', function() {
+            try {
+                var d = '';
+                var dEl = document.getElementById('calDate');
+                if (dEl && dEl.value) d = String(dEl.value).slice(0, 10);
+                if (!d) {
+                    d = String((document.getElementById('calendarEditModal').dataset.activeDate || lastClickedDate || '')).slice(0, 10);
+                }
+                if (dEl && d) dEl.value = d;
+            } catch (err) {}
+        });
+        openLogBtn.dataset.boundClick = '1';
+    }
+
     // Handle admin user selection change
     var adminUserSelect = document.getElementById('admin_user_select');
     if (adminUserSelect) {
@@ -1260,8 +1509,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize modal event handlers
     document.getElementById('calendarEditModal').addEventListener('shown.bs.modal', function() {
-        if (lastClickedDate) {
-            addModalButtons(lastClickedDate);
+        var dateFromField = '';
+        try { dateFromField = document.getElementById('calDate').value || ''; } catch (e) {}
+        var dateFromDataset = '';
+        try { dateFromDataset = document.getElementById('calendarEditModal').dataset.activeDate || ''; } catch (e) {}
+        var activeDate = dateFromField || dateFromDataset || lastClickedDate || '';
+        if (!activeDate) {
+            var t = new Date();
+            activeDate = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+            try { document.getElementById('calDate').value = activeDate; } catch (e) {}
+        }
+        if (activeDate) {
+            addModalButtons(activeDate);
         }
 
         // Initialize calendar modal production-hours quick form bindings
@@ -1273,75 +1532,76 @@ document.addEventListener('DOMContentLoaded', function() {
             var pageCol = document.getElementById('pageTestingContainer');
             var envCol = document.getElementById('productionEnvCol');
             if (!projSel) return;
-            projSel.addEventListener('change', function(){
-                var pid = projSel.value;
-                pageSel.innerHTML = '<option>Loading pages...</option>';
-                fetch('<?php echo $baseDir; ?>/api/tasks.php?project_id=' + encodeURIComponent(pid), {credentials:'same-origin'})
-                    .then(r => r.json()).then(function(pages){
-                        pageSel.innerHTML = '';
-                        pageSel.appendChild(new Option('(none)',''));
-                        if (Array.isArray(pages)) pages.forEach(function(pg){ pageSel.appendChild(new Option(pg.page_name||pg.title||('Page '+pg.id), pg.id)); });
-                    }).catch(function(){ pageSel.innerHTML = '<option value="">Error loading pages</option>'; });
-            });
+            if (!projSel.dataset.boundChange) {
+                projSel.addEventListener('change', function(){
+                    var pid = projSel.value;
+                    if (!pageSel) return;
+                    pageSel.innerHTML = '<option>Loading pages...</option>';
+                    fetch('<?php echo $baseDir; ?>/api/tasks.php?project_id=' + encodeURIComponent(pid), {credentials:'same-origin'})
+                        .then(r => r.json()).then(function(pages){
+                            pageSel.innerHTML = '';
+                            pageSel.appendChild(new Option('(none)',''));
+                            if (Array.isArray(pages)) pages.forEach(function(pg){ pageSel.appendChild(new Option(pg.page_name||pg.title||('Page '+pg.id), pg.id)); });
+                        }).catch(function(){ pageSel.innerHTML = '<option value="">Error loading pages</option>'; });
+                });
+                projSel.dataset.boundChange = '1';
+            }
 
-            if (pageSel) pageSel.addEventListener('change', function(){
-                var val = pageSel.value;
-                var pid = Array.isArray(val) ? (val[0] || '') : (val || '');
-                envSel.innerHTML = '<option>Loading envs...</option>';
-                if (!pid) { envSel.innerHTML = '<option value="">Select page first</option>'; return; }
-                fetch('<?php echo $baseDir; ?>/api/tasks.php?page_id=' + encodeURIComponent(pid), {credentials:'same-origin'})
-                    .then(r => r.json()).then(function(page){
-                        envSel.innerHTML = '';
-                        if (page && page.environments && page.environments.length) {
-                            page.environments.forEach(function(env){ envSel.appendChild(new Option(env.name||env.environment_name||('Env '+(env.id||env.environment_id)), env.id||env.environment_id)); });
-                        } else envSel.appendChild(new Option('No environments',''));
-                    }).catch(function(){ envSel.innerHTML = '<option value="">Error loading environments</option>'; });
-            });
+            if (pageSel && !pageSel.dataset.boundChange) {
+                pageSel.addEventListener('change', function(){
+                    if (!envSel) return;
+                    var val = pageSel.value;
+                    var pid = Array.isArray(val) ? (val[0] || '') : (val || '');
+                    envSel.innerHTML = '<option>Loading envs...</option>';
+                    if (!pid) { envSel.innerHTML = '<option value="">Select page first</option>'; return; }
+                    fetch('<?php echo $baseDir; ?>/api/tasks.php?page_id=' + encodeURIComponent(pid), {credentials:'same-origin'})
+                        .then(r => r.json()).then(function(page){
+                            envSel.innerHTML = '';
+                            if (page && page.environments && page.environments.length) {
+                                page.environments.forEach(function(env){ envSel.appendChild(new Option(env.name||env.environment_name||('Env '+(env.id||env.environment_id)), env.id||env.environment_id)); });
+                            } else envSel.appendChild(new Option('No environments',''));
+                        }).catch(function(){ envSel.innerHTML = '<option value="">Error loading environments</option>'; });
+                });
+                pageSel.dataset.boundChange = '1';
+            }
 
-            if (taskSel) taskSel.addEventListener('change', function(){
-                var t = taskSel.value;
-                if (t === 'page_testing' || t === 'page_qa') { pageCol.style.display='block'; envCol.style.display='block'; }
-                else { pageCol.style.display='none'; envCol.style.display='none'; }
-            });
+            if (taskSel && !taskSel.dataset.boundChange) {
+                taskSel.addEventListener('change', function(){
+                    var t = taskSel.value;
+                    if (t === 'page_testing' || t === 'page_qa') { pageCol.style.display='block'; envCol.style.display='block'; }
+                    else { pageCol.style.display='none'; envCol.style.display='none'; }
+                });
+                taskSel.dataset.boundChange = '1';
+            }
 
             var calForm = document.getElementById('logProductionHoursForm');
-            if (calForm) {
-                calForm.addEventListener('submit', function(e){
-                    e.preventDefault();
-                    var date = document.getElementById('calDate').value;
-                        // No client-side block: allow logging for future dates here; server will validate if needed.
-                    var fd = new FormData();
-                    fd.append('action','log');
-                    fd.append('user_id','<?php echo $userId; ?>');
-                    fd.append('project_id', document.querySelector('#logProductionHoursForm select[name="project_id"]').value);
-                    fd.append('task_type', document.getElementById('taskTypeSelect').value || '');
-                    // append first selected page if any
-                    var pages = Array.from(document.getElementById('productionPageSelect').selectedOptions).map(o=>o.value).filter(Boolean);
-                    if (pages.length) fd.append('page_id', pages[0]);
-                    var envs = Array.from(document.getElementById('productionEnvSelect').selectedOptions).map(o=>o.value).filter(Boolean);
-                    if (envs.length) fd.append('environment_id', envs[0]);
-                    fd.append('testing_type', document.getElementById('testingTypeSelect') ? document.getElementById('testingTypeSelect').value : '');
-                    fd.append('log_date', date);
-                    fd.append('hours', document.getElementById('logHoursInput').value);
-                    fd.append('description', document.getElementById('logDescriptionInput').value || '');
-                    fd.append('is_utilized', 1);
-                    fetch('<?php echo $baseDir; ?>/api/project_hours.php', { method: 'POST', body: fd, credentials: 'same-origin' })
-                        .then(r => r.json()).then(function(resp){
-                            if (resp && resp.success) {
-                                loadProductionHours(date);
-                                if (window._myCalendar && typeof window._myCalendar.refetchEvents === 'function') window._myCalendar.refetchEvents();
-                            } else {
-                                showToast('Failed to log hours: ' + (resp && resp.message ? resp.message : JSON.stringify(resp)), 'danger');
-                            }
-                        }).catch(function(err){ showToast('Error logging hours: ' + err.message, 'danger'); });
-                });
+            if (calForm && !calForm.dataset.boundSubmit) {
+                calForm.addEventListener('submit', submitCalendarLogHours);
+                calForm.dataset.boundSubmit = '1';
             }
         })();
     });
 
     document.getElementById('calendarEditModal').addEventListener('hidden.bs.modal', function() {
+        try {
+            var logModalEl = document.getElementById('calendarLogHoursModal');
+            var logModalInst = bootstrap.Modal.getInstance(logModalEl);
+            if (logModalInst) logModalInst.hide();
+        } catch (e) {}
         resetModal();
     });
+
+    // Move the log form into dedicated log-hours modal body
+    (function moveLogFormToDedicatedModal() {
+        try {
+            var formContainer = document.getElementById('calendarModalLogFormContainer');
+            var targetBody = document.getElementById('calendarLogHoursModalBody');
+            if (formContainer && targetBody && formContainer.parentElement !== targetBody) {
+                formContainer.classList.remove('d-none');
+                targetBody.appendChild(formContainer);
+            }
+        } catch (e) {}
+    })();
 });
 </script>
 

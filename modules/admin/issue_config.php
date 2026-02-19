@@ -525,7 +525,10 @@ $(document).ready(function() {
             onChange: function() { setPresetCodeBlockButtonState(); },
             onImageUpload: function(files) {
                 const $el = $('#presetDescription');
-                (files || []).forEach(function(f){ uploadIssueImage(f, $el); });
+                var list = files || [];
+                for (var i = 0; i < list.length; i++) {
+                    uploadIssueImage(list[i], $el);
+                }
             },
             onPaste: function(e) {
                 const $el = $('#presetDescription');

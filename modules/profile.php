@@ -2,6 +2,8 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
+$baseDir = getBaseDir();
+
 // Check login
 if (!isset($_SESSION['user_id'])) {
     header("Location: " . $baseDir . "/modules/auth/login.php");
@@ -21,6 +23,115 @@ try {
     $db = Database::getInstance();
 } catch (Exception $e) {
     die("Database connection failed: " . $e->getMessage());
+}
+
+function ensureUsernameHistoryTable($db) {
+    try {
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS username_change_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                old_username VARCHAR(100) NOT NULL,
+                new_username VARCHAR(100) NOT NULL,
+                changed_by INT NOT NULL,
+                changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ip_address VARCHAR(45) NULL,
+                user_agent VARCHAR(255) NULL,
+                INDEX idx_user_changed_at (user_id, changed_at),
+                INDEX idx_changed_by (changed_by)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+    } catch (Exception $e) {
+        // Keep page functional even if history table creation fails.
+    }
+}
+
+// Allow users to update only their own username
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_username'])) {
+    $currentUserId = (int)($_SESSION['user_id'] ?? 0);
+    if ($currentUserId !== (int)$userId) {
+        $_SESSION['error'] = "You can only update your own username.";
+        header("Location: " . $baseDir . "/modules/profile.php?id=" . $userId);
+        exit;
+    }
+
+    $newUsername = trim((string)($_POST['username'] ?? ''));
+    if ($newUsername === '') {
+        $_SESSION['error'] = "Username is required.";
+        header("Location: " . $baseDir . "/modules/profile.php?id=" . $userId);
+        exit;
+    }
+    if (strlen($newUsername) < 3 || strlen($newUsername) > 50) {
+        $_SESSION['error'] = "Username must be between 3 and 50 characters.";
+        header("Location: " . $baseDir . "/modules/profile.php?id=" . $userId);
+        exit;
+    }
+    if (!preg_match('/^[A-Za-z0-9._-]+$/', $newUsername)) {
+        $_SESSION['error'] = "Username can contain only letters, numbers, dot, underscore, and hyphen.";
+        header("Location: " . $baseDir . "/modules/profile.php?id=" . $userId);
+        exit;
+    }
+
+    $checkStmt = $db->prepare("SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id <> ? LIMIT 1");
+    $checkStmt->execute([$newUsername, $currentUserId]);
+    if ($checkStmt->fetch()) {
+        $_SESSION['error'] = "Username already exists. Please choose a different username.";
+        header("Location: " . $baseDir . "/modules/profile.php?id=" . $userId);
+        exit;
+    }
+
+    $currentStmt = $db->prepare("SELECT username FROM users WHERE id = ? LIMIT 1");
+    $currentStmt->execute([$currentUserId]);
+    $currentUsername = (string)($currentStmt->fetchColumn() ?? '');
+
+    if (strcasecmp($currentUsername, $newUsername) === 0) {
+        $_SESSION['success'] = "Username is already up to date.";
+        header("Location: " . $baseDir . "/modules/profile.php?id=" . $userId);
+        exit;
+    }
+
+    try {
+        // Ensure history table outside transaction to avoid implicit DDL commits.
+        ensureUsernameHistoryTable($db);
+
+        $db->beginTransaction();
+        $updateStmt = $db->prepare("UPDATE users SET username = ? WHERE id = ?");
+        $ok = $updateStmt->execute([$newUsername, $currentUserId]);
+        if (!$ok) {
+            $db->rollBack();
+            $_SESSION['error'] = "Failed to update username.";
+        } else {
+            $db->commit();
+            $_SESSION['username'] = $newUsername;
+            $_SESSION['success'] = "Username updated successfully.";
+
+            // History logging should not fail the username update.
+            try {
+                $historyStmt = $db->prepare("
+                    INSERT INTO username_change_history (user_id, old_username, new_username, changed_by, ip_address, user_agent)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ");
+                $historyStmt->execute([
+                    $currentUserId,
+                    $currentUsername,
+                    $newUsername,
+                    $currentUserId,
+                    (string)($_SERVER['REMOTE_ADDR'] ?? ''),
+                    substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)
+                ]);
+            } catch (Exception $historyEx) {
+                error_log("Username history insert failed for user {$currentUserId}: " . $historyEx->getMessage());
+            }
+        }
+    } catch (Exception $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        $_SESSION['error'] = "Failed to update username.";
+        error_log("Username update failed for user {$currentUserId}: " . $e->getMessage());
+    }
+    header("Location: " . $baseDir . "/modules/profile.php?id=" . $userId);
+    exit;
 }
 
 // Get user details
@@ -209,10 +320,46 @@ try {
     $activities = [];
 }
 
+$canViewUsernameHistory = in_array((string)($_SESSION['role'] ?? ''), ['admin', 'super_admin'], true);
+$usernameHistory = [];
+if ($canViewUsernameHistory) {
+    ensureUsernameHistoryTable($db);
+    try {
+        $historyListStmt = $db->prepare("
+            SELECT h.*, u.full_name AS changed_by_name, u.username AS changed_by_username
+            FROM username_change_history h
+            LEFT JOIN users u ON u.id = h.changed_by
+            WHERE h.user_id = ?
+            ORDER BY h.changed_at DESC, h.id DESC
+            LIMIT 100
+        ");
+        $historyListStmt->execute([$userId]);
+        $usernameHistory = $historyListStmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $usernameHistory = [];
+    }
+}
+
+$flashSuccess = isset($_SESSION['success']) ? (string)$_SESSION['success'] : '';
+$flashError = isset($_SESSION['error']) ? (string)$_SESSION['error'] : '';
+unset($_SESSION['success'], $_SESSION['error']);
+
 include __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="container-fluid">
+    <?php if ($flashSuccess !== ''): ?>
+    <div class="alert alert-info alert-dismissible fade show" role="alert">
+        <i class="fas fa-check-circle me-2"></i><?php echo htmlspecialchars($flashSuccess); ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    <?php endif; ?>
+    <?php if ($flashError !== ''): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="fas fa-exclamation-triangle me-2"></i><?php echo htmlspecialchars($flashError); ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    <?php endif; ?>
     <div class="row">
         <!-- User Profile Card -->
         <div class="col-md-4">
@@ -263,6 +410,28 @@ include __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="card-body recent-activity-body">
                     <p><strong>Email:</strong> <?php echo htmlspecialchars($user['email']); ?></p>
+                    <?php if ((int)$userId === (int)($_SESSION['user_id'] ?? 0)): ?>
+                    <form method="POST" action="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo (int)$userId; ?>" class="mb-2">
+                        <input type="hidden" name="update_username" value="1">
+                        <label for="profileUsername" class="form-label mb-1"><strong>Username:</strong></label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">@</span>
+                            <input type="text"
+                                   class="form-control"
+                                   id="profileUsername"
+                                   name="username"
+                                   value="<?php echo htmlspecialchars($user['username']); ?>"
+                                   minlength="3"
+                                   maxlength="50"
+                                   pattern="[A-Za-z0-9._-]+"
+                                   required>
+                            <button type="submit" class="btn btn-primary">Update</button>
+                        </div>
+                        <small class="text-muted">Allowed: letters, numbers, dot, underscore, hyphen. Must be unique.</small>
+                    </form>
+                    <?php else: ?>
+                    <p><strong>Username:</strong> @<?php echo htmlspecialchars($user['username']); ?></p>
+                    <?php endif; ?>
                     <p><strong>Member Since:</strong> <?php echo date('M d, Y', strtotime($user['created_at'])); ?></p>
                     <p><strong>Status:</strong>
                         <span class="badge bg-<?php echo $user['is_active'] ? 'success' : 'danger'; ?>">
@@ -366,6 +535,42 @@ include __DIR__ . '/../includes/header.php';
                 </div>
             </div>
 
+            <?php if ($canViewUsernameHistory): ?>
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-user-edit"></i> Username Change History</h5>
+                </div>
+                <div class="card-body">
+                    <?php if (empty($usernameHistory)): ?>
+                        <p class="text-muted mb-0">No username changes found.</p>
+                    <?php else: ?>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Changed At</th>
+                                        <th>Old Username</th>
+                                        <th>New Username</th>
+                                        <th>Changed By</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($usernameHistory as $h): ?>
+                                    <tr>
+                                        <td><?php echo date('M d, Y H:i:s', strtotime($h['changed_at'])); ?></td>
+                                        <td>@<?php echo htmlspecialchars($h['old_username']); ?></td>
+                                        <td>@<?php echo htmlspecialchars($h['new_username']); ?></td>
+                                        <td><?php echo htmlspecialchars($h['changed_by_name'] ?: ($h['changed_by_username'] ?: ('User #' . (int)$h['changed_by']))); ?></td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <!-- Assigned Tasks -->
             <div class="card mt-3">
                 <div class="card-header">
@@ -418,7 +623,7 @@ include __DIR__ . '/../includes/header.php';
                 <div class="card-header">
                     <h5 class="mb-0"><i class="fas fa-history"></i> Recent Activity</h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body recent-activity-scroll">
                     <?php if (empty($activities)): ?>
                         <p class="text-muted">No recent activity.</p>
                     <?php else: ?>
@@ -491,6 +696,11 @@ include __DIR__ . '/../includes/header.php';
 
 .recent-activity-body {
     max-height: 360px;
+    overflow-y: auto;
+}
+
+.recent-activity-scroll {
+    max-height: 420px;
     overflow-y: auto;
 }
 </style>

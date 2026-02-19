@@ -299,7 +299,7 @@ function extractTemplateSections($html) {
     foreach ($sectionPatterns as $key => $pattern) {
         if (preg_match($pattern, $html, $matches)) {
             // Extract content - keep HTML for now (will be processed later)
-            $content = trim($matches[1]);
+            $content = cleanExtractedSectionContent($matches[1] ?? '');
             $sections[$key] = $content;
         } else {
             $sections[$key] = '';
@@ -307,6 +307,28 @@ function extractTemplateSections($html) {
     }
     
     return $sections;
+}
+
+function cleanExtractedSectionContent($content) {
+    $content = (string)$content;
+    if ($content === '') {
+        return '';
+    }
+
+    $content = trim($content);
+    if ($content === '') {
+        return '';
+    }
+
+    // Remove leading/trailing empty block wrappers and break tags that appear
+    // after section markers like [Actual Result] in rich-text HTML.
+    $edgePattern = '/^(?:\s|&nbsp;|<br\s*\/?>|<\/?(?:p|div|li|ul|ol|h[1-6]|pre|blockquote)[^>]*>)+|(?:\s|&nbsp;|<br\s*\/?>|<\/?(?:p|div|li|ul|ol|h[1-6]|pre|blockquote)[^>]*>)+$/i';
+    $cleaned = preg_replace($edgePattern, '', $content);
+    if ($cleaned !== null) {
+        $content = $cleaned;
+    }
+
+    return trim($content);
 }
 
 function exportToExcel($issues, $columns, $project, $imageHandling, $includeRegressionComments) {
@@ -324,6 +346,11 @@ function exportToExcel($issues, $columns, $project, $imageHandling, $includeRegr
         table { border-collapse: collapse; width: 100%; table-layout: fixed; }
         th, td { border: 1px solid #d0d7de; padding: 8px; vertical-align: top; word-wrap: break-word; }
         th { background: #f2f5f9; font-weight: bold; }
+        td.same-cell { white-space: pre-wrap; mso-data-placement: same-cell; }
+        br { mso-data-placement: same-cell; }
+        th.description-col, td.description-col { width: 420px; min-width: 420px; }
+        .rich { margin: 0; padding: 0; }
+        .rich > *:first-child { margin-top: 0 !important; padding-top: 0 !important; }
         .rich p { margin: 0 0 8px 0; }
         .rich ul, .rich ol { margin: 0 0 8px 20px; padding: 0; }
         .rich pre { white-space: pre-wrap; word-break: break-word; background: #f6f8fa; border: 1px solid #d8dee4; padding: 8px; border-radius: 4px; }
@@ -339,12 +366,13 @@ function exportToExcel($issues, $columns, $project, $imageHandling, $includeRegr
 
     echo '<table><thead><tr>';
     foreach ($columns as $col) {
+        $thClass = $col === 'description' ? ' class="description-col"' : '';
         if (strpos($col, 'section_') === 0) {
             $sectionName = str_replace('section_', '', $col);
             $sectionName = str_replace('_', ' ', $sectionName);
-            echo '<th>' . htmlspecialchars('[' . ucwords($sectionName) . ']') . '</th>';
+            echo '<th' . $thClass . '>' . htmlspecialchars('[' . ucwords($sectionName) . ']') . '</th>';
         } else {
-            echo '<th>' . htmlspecialchars(ucwords(str_replace('_', ' ', $col))) . '</th>';
+            echo '<th' . $thClass . '>' . htmlspecialchars(ucwords(str_replace('_', ' ', $col))) . '</th>';
         }
     }
     echo '</tr></thead><tbody>';
@@ -352,37 +380,41 @@ function exportToExcel($issues, $columns, $project, $imageHandling, $includeRegr
     foreach ($issues as $issue) {
         echo '<tr>';
         foreach ($columns as $col) {
-            echo '<td>';
+            $tdClass = $col === 'description' ? 'same-cell description-col' : 'same-cell';
+            echo '<td class="' . $tdClass . '">';
 
             if ($col === 'description') {
-                echo '<div class="rich">' . renderRichContentForExport($issue[$col] ?? '', $imageHandling, 'excel') . '</div>';
+                $descriptionHtml = renderRichContentForExport($issue[$col] ?? '', $imageHandling, 'excel');
+                $descriptionHtml = addSectionGapToDescriptionExcel($descriptionHtml);
+                echo '<div class="rich">' . $descriptionHtml . '</div>';
             } elseif ($col === 'common_title') {
-                echo htmlspecialchars($issue['common_title'] ?? '');
+                echo formatExcelTextCell($issue['common_title'] ?? '');
             } elseif ($col === 'reporter_name') {
-                echo htmlspecialchars($issue['all_reporters'] ?? '');
+                echo formatExcelTextCell($issue['all_reporters'] ?? '');
             } elseif (strpos($col, 'section_') === 0) {
                 $sectionKey = str_replace('section_', '', $col);
                 $sectionContent = $issue['sections'][$sectionKey] ?? '';
-                echo '<div class="rich">' . renderRichContentForExport($sectionContent, $imageHandling, 'excel') . '</div>';
+                $renderedSection = renderRichContentForExport($sectionContent, $imageHandling, 'excel');
+                $renderedSection = removeFirstLineFromExcelHtml($renderedSection);
+                echo '<div class="rich">' . $renderedSection . '</div>';
             } elseif ($col === 'regression_comments') {
-                echo nl2br(htmlspecialchars($issue['regression_comments'] ?? ''));
+                echo formatExcelTextCell($issue['regression_comments'] ?? '');
             } elseif ($col === 'image_alt_texts') {
-                echo nl2br(htmlspecialchars($issue['image_alt_texts'] ?? ''));
+                echo formatExcelTextCell($issue['image_alt_texts'] ?? '');
             } elseif ($col === 'grouped_urls') {
                 $urlsString = $issue['grouped_urls'] ?? $issue[$col] ?? '';
                 $urls = array_filter(array_map('trim', explode(',', $urlsString)));
                 if (!empty($urls)) {
-                    echo '<ul>';
-                    foreach ($urls as $url) {
-                        echo '<li>' . htmlspecialchars($url) . '</li>';
-                    }
-                    echo '</ul>';
+                    $lines = array_map(function($url) {
+                        return '&#8226; ' . htmlspecialchars($url);
+                    }, $urls);
+                    echo '<div class="rich">' . implode('<br>', $lines) . '</div>';
                 }
             } elseif (isset($issue['metadata'][$col])) {
                 $value = $issue['metadata'][$col];
-                echo htmlspecialchars(is_array($value) ? implode(', ', $value) : (string)$value);
+                echo formatExcelTextCell(is_array($value) ? implode(', ', $value) : (string)$value);
             } else {
-                echo htmlspecialchars($issue[$col] ?? '');
+                echo formatExcelTextCell($issue[$col] ?? '');
             }
 
             echo '</td>';
@@ -703,15 +735,147 @@ function sanitizeFilename($filename) {
     return preg_replace('/[^a-zA-Z0-9_-]/', '_', $filename);
 }
 
+function formatExcelTextCell($value) {
+    $text = (string)($value ?? '');
+    $text = ltrim($text);
+    $text = preg_replace("/^(?:\r\n|\r|\n)+/", '', $text);
+    $text = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+    return preg_replace("/\r\n|\r|\n/", '<br>', $text);
+}
+
 function renderRichContentForExport($html, $imageHandling, $context = 'pdf') {
     if (trim((string)$html) === '') {
         return '';
     }
 
     $cleanHtml = sanitizeExportHtml($html);
+    $cleanHtml = trimLeadingVisualGapHtml($cleanHtml);
     $cleanHtml = applyImageHandlingToHtml($cleanHtml, $imageHandling, $context);
+    if ($context === 'excel') {
+        // Prevent Excel from treating large blocks as one hyperlink when rich HTML contains anchors.
+        $cleanHtml = convertExcelAnchorsToText($cleanHtml);
+        $cleanHtml = normalizeExcelCellHtml($cleanHtml);
+    }
 
     return $cleanHtml;
+}
+
+function trimLeadingVisualGapHtml($html) {
+    $html = (string)$html;
+    if ($html === '') return '';
+
+    $html = preg_replace('/^[\x{FEFF}\x{200B}\x{200C}\x{200D}\x{2060}\x{00A0}\s]+/u', '', $html);
+
+    $patterns = [
+        '/^(?:\s|&nbsp;|&#160;|<br\s*\/?>)+/i',
+        '/^<o:p>\s*(?:&nbsp;|&#160;|\s|<br\s*\/?>)*<\/o:p>/i',
+        '/^<(p|div|span|font|blockquote|pre)\b[^>]*>\s*(?:&nbsp;|&#160;|\s|<br\s*\/?>)*<\/\1>/i',
+        '/^<\/(?:p|div|li|ul|ol|h[1-6]|pre|blockquote|span|font)>/i'
+    ];
+
+    $changed = true;
+    while ($changed) {
+        $changed = false;
+        foreach ($patterns as $pattern) {
+            $newHtml = preg_replace($pattern, '', $html);
+            if ($newHtml !== null && $newHtml !== $html) {
+                $html = $newHtml;
+                $changed = true;
+            }
+        }
+    }
+
+    return ltrim((string)$html);
+}
+
+function convertExcelAnchorsToText($html) {
+    $html = (string)$html;
+    if ($html === '') return '';
+
+    return preg_replace_callback('/<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is', function ($m) {
+        $href = trim((string)($m[1] ?? ''));
+        $text = trim(strip_tags((string)($m[2] ?? '')));
+        if ($text === '') {
+            $text = $href;
+        }
+        if ($href !== '' && strcasecmp($text, $href) !== 0) {
+            return htmlspecialchars($text, ENT_QUOTES, 'UTF-8') . ' (' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . ')';
+        }
+        return htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+    }, $html);
+}
+
+function normalizeExcelCellHtml($html) {
+    $html = (string)$html;
+    if ($html === '') return '';
+
+    // Remove leading invisible characters that can render as a blank first line in Excel.
+    $html = preg_replace('/^[\x{FEFF}\x{200B}\x{200C}\x{200D}\x{2060}\x{00A0}\s]+/u', '', $html);
+
+    // Keep formatting tags but flatten block tags so content stays in one cell row.
+    $html = preg_replace('/<\\s*br\\s*\\/?>/i', '<br>', $html);
+    // Remove empty wrapper blocks that produce blank first line in Excel.
+    $html = preg_replace('/<(p|div)\\b[^>]*>\\s*(?:&nbsp;|\\s|<br>)*<\\/\\1>/i', '', $html);
+    // Remove leading empty inline wrappers.
+    $html = preg_replace('/^(?:\\s|&nbsp;|<span\\b[^>]*>\\s*<\\/span>|<font\\b[^>]*>\\s*<\\/font>|<strong>\\s*<\\/strong>|<em>\\s*<\\/em>|<u>\\s*<\\/u>|<b>\\s*<\\/b>|<i>\\s*<\\/i>|<br>)+/i', '', $html);
+    // Remove orphan leading closing tags before block normalization.
+    $html = preg_replace('/^(?:\\s*<\\/(?:p|div|li|ul|ol|h[1-6]|pre|blockquote)>)+/i', '', $html);
+    $html = preg_replace('/<\\/(p|div|li|ul|ol|h[1-6]|pre|blockquote)>/i', '<br>', $html);
+    $html = preg_replace('/<(p|div|li|ul|ol|h[1-6]|pre|blockquote)\\b[^>]*>/i', '', $html);
+
+    // Remove duplicate breaks and trim leading/trailing breaks.
+    $html = preg_replace('/(?:<br>\\s*){3,}/i', '<br><br>', $html);
+    $html = preg_replace('/^(?:\\s|&nbsp;|<br>)+/i', '', $html);
+    $html = preg_replace('/(?:<br>\\s*)+$/i', '', $html);
+    // Final safety trim after all conversions.
+    $html = preg_replace('/^(?:\\s|&nbsp;|<br>)+/i', '', $html);
+    return $html;
+}
+
+function removeFirstLineFromExcelHtml($html) {
+    $html = (string)$html;
+    if ($html === '') return '';
+
+    $html = preg_replace('/^(?:\s|&nbsp;|<br>)+/i', '', $html);
+    if ($html === null || $html === '') return '';
+
+    if (preg_match('/<br>/i', $html, $m, PREG_OFFSET_CAPTURE)) {
+        $pos = $m[0][1];
+        $after = substr($html, $pos + strlen($m[0][0]));
+        if ($after === false) {
+            return '';
+        }
+        $after = preg_replace('/^(?:\s|&nbsp;|<br>)+/i', '', $after);
+        return (string)$after;
+    }
+
+    // Single-line section content: removing first line leaves empty value.
+    return '';
+}
+
+function addSectionGapToDescriptionExcel($html) {
+    $html = (string)$html;
+    if ($html === '') return '';
+
+    // Normalize line-break tags first.
+    $html = preg_replace('/<\s*br\s*\/?>/i', '<br>', $html);
+
+    // Force every section heading after the first to start on a new block
+    // with controlled spacing, independent of existing mixed spacing/tags.
+    $sectionIndex = 0;
+    $html = preg_replace_callback('/\[[^\]]+\]/', function ($m) use (&$sectionIndex) {
+        $sectionIndex++;
+        if ($sectionIndex === 1) {
+            return $m[0];
+        }
+        return '__PMS_SECTION_BREAK__' . $m[0];
+    }, $html);
+
+    // Keep exactly one break before subsequent section markers to avoid
+    // double/triple blank lines in Excel.
+    $html = preg_replace('/(?:\s|&nbsp;|<br>)*__PMS_SECTION_BREAK__/i', '<br>', $html);
+
+    return (string)$html;
 }
 
 function sanitizeExportHtml($html) {

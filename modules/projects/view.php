@@ -49,6 +49,7 @@ if (!hasProjectAccess($db, $userId, $projectId)) {
     }
     exit;
 }
+$canUpdateIssueQaStatus = hasIssueQaStatusUpdateAccess($db, $userId, $projectId);
 
 $stmt = $db->prepare(" 
     SELECT 
@@ -703,6 +704,51 @@ include __DIR__ . '/../../includes/header.php';
     <?php include 'partials/tab_production_hours.php'; ?>
 </div>
 
+<script>
+    (function () {
+        var projectId = <?php echo (int)$projectId; ?>;
+        var allowedTabs = {
+            '#phases': true,
+            '#pages': true,
+            '#team': true,
+            '#performance': true,
+            '#assets': true,
+            '#activity': true,
+            '#feedback': true,
+            '#production-hours': true
+        };
+        var target = '#phases';
+        try {
+            var params = new URLSearchParams(window.location.search || '');
+            var qTab = (params.get('tab') || '').trim();
+            if (qTab && allowedTabs['#' + qTab]) {
+                target = '#' + qTab;
+            } else {
+                var stored = localStorage.getItem('pms_project_tab_' + projectId);
+                if (stored && allowedTabs[stored]) target = stored;
+            }
+        } catch (e) { }
+
+        if (target === '#phases') return;
+
+        var allBtns = document.querySelectorAll('#projectTabs .nav-link');
+        var allPanes = document.querySelectorAll('#projectTabsContent > .tab-pane');
+        allBtns.forEach(function (b) {
+            b.classList.remove('active');
+            b.setAttribute('aria-selected', 'false');
+        });
+        allPanes.forEach(function (p) { p.classList.remove('show', 'active'); });
+
+        var btn = document.querySelector('#projectTabs .nav-link[data-bs-target="' + target + '"]');
+        var pane = document.querySelector(target);
+        if (btn) {
+            btn.classList.add('active');
+            btn.setAttribute('aria-selected', 'true');
+        }
+        if (pane) pane.classList.add('show', 'active');
+    })();
+</script>
+
 <?php include 'partials/modals.php'; ?>
 
 <script>
@@ -710,6 +756,7 @@ include __DIR__ . '/../../includes/header.php';
         projectId: <?php echo json_encode($projectId); ?>,
         userId: <?php echo json_encode($userId); ?>,
         userRole: <?php echo json_encode($userRole); ?>,
+        canUpdateIssueQaStatus: <?php echo $canUpdateIssueQaStatus ? 'true' : 'false'; ?>,
         baseDir: '<?php echo $baseDir; ?>',
         projectType: '<?php echo $project['type'] ?? 'web'; ?>',
         projectPages: <?php echo json_encode($projectPages ?? []); ?>,
@@ -1355,17 +1402,29 @@ include __DIR__ . '/../../includes/header.php';
         function openChatWidget() {
             $chatWidget.addClass('open');
             $chatLauncher.hide();
+            setTimeout(function () {
+                var el = $chatClose.get(0);
+                if (el && typeof el.focus === 'function') el.focus();
+            }, 0);
         }
 
         function closeChatWidget() {
             $chatWidget.removeClass('open');
             $chatLauncher.show();
+            setTimeout(function () {
+                var el = $chatLauncher.get(0);
+                if (el && typeof el.focus === 'function') el.focus();
+            }, 0);
         }
 
         $chatLauncher.on('click', function () { openChatWidget(); });
         $chatClose.on('click', function () { closeChatWidget(); });
         $chatFullscreen.on('click', function () {
             window.location.href = '<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo $projectId; ?>';
+        });
+        window.addEventListener('message', function (event) {
+            if (!event || !event.data || event.data.type !== 'pms-chat-close') return;
+            closeChatWidget();
         });
 
         // Initialize production hours when tab is shown

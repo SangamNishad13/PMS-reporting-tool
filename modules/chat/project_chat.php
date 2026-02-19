@@ -9,6 +9,10 @@ require_once __DIR__ . '/../../includes/helpers.php';
 $auth = new Auth();
 $auth->requireLogin();
 $baseDir = getBaseDir();
+$viewerRole = strtolower(trim((string)($_SESSION['role'] ?? '')));
+$viewerRole = preg_replace('/[^a-z0-9]+/', '_', $viewerRole);
+$viewerRole = trim($viewerRole, '_');
+$isAdminChatViewer = in_array($viewerRole, ['admin', 'super_admin'], true);
 
 $embed = isset($_GET['embed']) && $_GET['embed'] === '1';
 
@@ -19,10 +23,249 @@ $pageId = isset($_GET['page_id']) ? intval($_GET['page_id']) : 0;
 // Connect to database
 $db = Database::getInstance();
 
+function chatColExistsLocal($db, $name) {
+    try {
+        $stmt = $db->prepare("SHOW COLUMNS FROM chat_messages LIKE ?");
+        $stmt->execute([$name]);
+        return (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+function ensureReplyColumnLocal($db) {
+    try {
+        if (!chatColExistsLocal($db, 'reply_to')) {
+            $db->exec("ALTER TABLE chat_messages ADD COLUMN reply_to INT NULL");
+        }
+    } catch (Exception $e) {
+    }
+}
+
+function fetchChatMessageRowLocal($db, $messageId) {
+    $mStmt = $db->prepare("
+        SELECT cm.*, u.username, u.full_name, u.role
+        FROM chat_messages cm
+        JOIN users u ON cm.user_id = u.id
+        WHERE cm.id = ?
+        LIMIT 1
+    ");
+    $mStmt->execute([(int)$messageId]);
+    return $mStmt->fetch(PDO::FETCH_ASSOC);
+}
+
+function isChatMessageDeletedLocal($row) {
+    $deletedAt = trim((string)($row['deleted_at'] ?? ''));
+    if ($deletedAt !== '') return true;
+    $plain = trim(preg_replace('/\s+/', ' ', strip_tags((string)($row['message'] ?? ''))));
+    return strcasecmp($plain, 'Message deleted') === 0;
+}
+
 // Send message (non-AJAX fallback; AJAX handled via api/chat_actions, but keep safe here)
 $isAjax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_message'])) {
+    $messageId = (int)($_POST['message_id'] ?? 0);
+    $newMessage = trim((string)($_POST['message'] ?? ''));
+    if ($messageId <= 0 || $newMessage === '') {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Invalid request']);
+        exit;
+    }
+    $userId = (int)($_SESSION['user_id'] ?? 0);
+    $row = fetchChatMessageRowLocal($db, $messageId);
+    if (!$row) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Message not found']);
+        exit;
+    }
+    $isOwn = ((int)$row['user_id'] === $userId);
+    if (!$isAdminChatViewer && !$isOwn) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Unauthorized']);
+        exit;
+    }
+    if (isChatMessageDeletedLocal($row)) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Deleted message cannot be edited']);
+        exit;
+    }
+
+    $updated = false;
+    try {
+        if (chatColExistsLocal($db, 'edited_at')) {
+            $u = $db->prepare("UPDATE chat_messages SET message = ?, edited_at = NOW() WHERE id = ?");
+            $updated = $u->execute([$newMessage, $messageId]);
+        } else {
+            $u = $db->prepare("UPDATE chat_messages SET message = ? WHERE id = ?");
+            $updated = $u->execute([$newMessage, $messageId]);
+        }
+    } catch (Exception $e) {
+        $updated = false;
+    }
+    if (!$updated) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Failed to edit message']);
+        exit;
+    }
+
+    try {
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS chat_message_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                message_id INT NOT NULL,
+                action_type ENUM('edit','delete') NOT NULL,
+                old_message MEDIUMTEXT NULL,
+                new_message MEDIUMTEXT NULL,
+                acted_by INT NOT NULL,
+                acted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        $h = $db->prepare("INSERT INTO chat_message_history (message_id, action_type, old_message, new_message, acted_by) VALUES (?, 'edit', ?, ?, ?)");
+        $h->execute([$messageId, $row['message'] ?? '', $newMessage, $userId]);
+    } catch (Exception $e) {
+    }
+
+    $msgRow = fetchChatMessageRowLocal($db, $messageId);
+    if ($msgRow) {
+        $msgRow['message'] = sanitize_chat_html($msgRow['message'] ?? '');
+        if (function_exists('rewrite_upload_urls_to_secure')) {
+            $msgRow['message'] = rewrite_upload_urls_to_secure($msgRow['message']);
+        }
+        $isOwnRow = ((int)($msgRow['user_id'] ?? 0) === $userId);
+        $isDeletedRow = isChatMessageDeletedLocal($msgRow);
+        $msgRow['can_edit'] = (!$isDeletedRow && ($isOwnRow || $isAdminChatViewer));
+        $msgRow['can_delete'] = (!$isDeletedRow && ($isOwnRow || $isAdminChatViewer));
+    }
+    header('Content-Type: application/json');
+    echo json_encode(['success' => true, 'message' => $msgRow]);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_message'])) {
+    $messageId = (int)($_POST['message_id'] ?? 0);
+    if ($messageId <= 0) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Invalid request']);
+        exit;
+    }
+    $userId = (int)($_SESSION['user_id'] ?? 0);
+    $row = fetchChatMessageRowLocal($db, $messageId);
+    if (!$row) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Message not found']);
+        exit;
+    }
+    $isOwn = ((int)$row['user_id'] === $userId);
+    if (!$isAdminChatViewer && !$isOwn) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Unauthorized']);
+        exit;
+    }
+    if (isChatMessageDeletedLocal($row)) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
+    $deletedMsg = '<p><em>Message deleted</em></p>';
+    $updated = false;
+    try {
+        if (chatColExistsLocal($db, 'deleted_at') && chatColExistsLocal($db, 'deleted_by')) {
+            $u = $db->prepare("UPDATE chat_messages SET message = ?, deleted_at = NOW(), deleted_by = ? WHERE id = ?");
+            $updated = $u->execute([$deletedMsg, $userId, $messageId]);
+        } else {
+            $u = $db->prepare("UPDATE chat_messages SET message = ? WHERE id = ?");
+            $updated = $u->execute([$deletedMsg, $messageId]);
+        }
+    } catch (Exception $e) {
+        $updated = false;
+    }
+    if (!$updated) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Failed to delete message']);
+        exit;
+    }
+
+    try {
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS chat_message_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                message_id INT NOT NULL,
+                action_type ENUM('edit','delete') NOT NULL,
+                old_message MEDIUMTEXT NULL,
+                new_message MEDIUMTEXT NULL,
+                acted_by INT NOT NULL,
+                acted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        $h = $db->prepare("INSERT INTO chat_message_history (message_id, action_type, old_message, new_message, acted_by) VALUES (?, 'delete', ?, ?, ?)");
+        $h->execute([$messageId, $row['message'] ?? '', $deletedMsg, $userId]);
+    } catch (Exception $e) {
+    }
+
+    $msgRow = fetchChatMessageRowLocal($db, $messageId);
+    if ($msgRow) {
+        $msgRow['message'] = sanitize_chat_html($msgRow['message'] ?? '');
+        if (function_exists('rewrite_upload_urls_to_secure')) {
+            $msgRow['message'] = rewrite_upload_urls_to_secure($msgRow['message']);
+        }
+        $msgRow['can_edit'] = false;
+        $msgRow['can_delete'] = false;
+    }
+    header('Content-Type: application/json');
+    echo json_encode(['success' => true, 'message' => $msgRow]);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && (($_GET['action'] ?? '') === 'get_message_history')) {
+    header('Content-Type: application/json');
+    if (!$isAdminChatViewer) {
+        echo json_encode(['success' => false, 'error' => 'Unauthorized']);
+        exit;
+    }
+    $messageId = (int)($_GET['message_id'] ?? 0);
+    if ($messageId <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Invalid message id']);
+        exit;
+    }
+    try {
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS chat_message_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                message_id INT NOT NULL,
+                action_type ENUM('edit','delete') NOT NULL,
+                old_message MEDIUMTEXT NULL,
+                new_message MEDIUMTEXT NULL,
+                acted_by INT NOT NULL,
+                acted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        $stmt = $db->prepare("
+            SELECT h.*, u.full_name AS acted_by_name
+            FROM chat_message_history h
+            LEFT JOIN users u ON u.id = h.acted_by
+            WHERE h.message_id = ?
+            ORDER BY h.acted_at DESC, h.id DESC
+        ");
+        $stmt->execute([$messageId]);
+        echo json_encode(['success' => true, 'history' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => true, 'history' => []]);
+    }
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_message'])) {
     $message = isset($_POST['message']) ? trim($_POST['message']) : '';
+    ensureReplyColumnLocal($db);
+    $replyTo = isset($_POST['reply_to']) && is_numeric($_POST['reply_to']) ? (int)$_POST['reply_to'] : null;
+    if ($replyTo === null) {
+        $replyToken = trim((string)($_POST['reply_token'] ?? ''));
+        if (preg_match('/^r:(\d+)$/', $replyToken, $m)) {
+            $replyTo = (int)$m[1];
+        }
+    }
     
     if (!empty($message)) {
         $userId = $_SESSION['user_id'];
@@ -41,23 +284,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_message'])) {
         }
         
         try {
-            $stmt = $db->prepare("
-                INSERT INTO chat_messages (project_id, page_id, user_id, message, mentions)
-                VALUES (?, ?, ?, ?, ?)
-            ");
-            
-            $stmt->execute([
-                $projectId ?: null,
-                $pageId ?: null,
-                $userId,
-                $message,
-                json_encode($mentions)
-            ]);
+            try {
+                $stmt = $db->prepare("
+                    INSERT INTO chat_messages (project_id, page_id, user_id, message, mentions, reply_to)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ");
+                $stmt->execute([
+                    $projectId ?: null,
+                    $pageId ?: null,
+                    $userId,
+                    $message,
+                    json_encode($mentions),
+                    $replyTo ?: null
+                ]);
+            } catch (Exception $innerInsert) {
+                $stmt = $db->prepare("
+                    INSERT INTO chat_messages (project_id, page_id, user_id, message, mentions)
+                    VALUES (?, ?, ?, ?, ?)
+                ");
+                $stmt->execute([
+                    $projectId ?: null,
+                    $pageId ?: null,
+                    $userId,
+                    $message,
+                    json_encode($mentions)
+                ]);
+            }
             
             // If embed or ajax, return JSON to stay within widget
             if ($embed || $isAjax) {
+                $lastId = (int)$db->lastInsertId();
+                $msgRow = null;
+                if ($lastId > 0) {
+                    try {
+                        $mStmt = $db->prepare("
+                            SELECT cm.*, u.username, u.full_name, u.role
+                            FROM chat_messages cm
+                            JOIN users u ON cm.user_id = u.id
+                            WHERE cm.id = ?
+                            LIMIT 1
+                        ");
+                        $mStmt->execute([$lastId]);
+                        $msgRow = $mStmt->fetch(PDO::FETCH_ASSOC);
+                        if ($msgRow) {
+                            $msgRow['message'] = sanitize_chat_html($msgRow['message'] ?? '');
+                            if (function_exists('rewrite_upload_urls_to_secure')) {
+                                $msgRow['message'] = rewrite_upload_urls_to_secure($msgRow['message']);
+                            }
+                            if (!empty($msgRow['reply_to'])) {
+                                try {
+                                    $pStmt = $db->prepare("
+                                        SELECT cm.id, cm.user_id, cm.message, cm.created_at, u.username, u.full_name
+                                        FROM chat_messages cm
+                                        JOIN users u ON cm.user_id = u.id
+                                        WHERE cm.id = ?
+                                        LIMIT 1
+                                    ");
+                                    $pStmt->execute([(int)$msgRow['reply_to']]);
+                                    $pRow = $pStmt->fetch(PDO::FETCH_ASSOC);
+                                    if ($pRow) {
+                                        $pRow['message'] = sanitize_chat_html($pRow['message'] ?? '');
+                                        if (function_exists('rewrite_upload_urls_to_secure')) {
+                                            $pRow['message'] = rewrite_upload_urls_to_secure($pRow['message']);
+                                        }
+                                        $msgRow['reply_preview'] = [
+                                            'id' => $pRow['id'],
+                                            'user_id' => $pRow['user_id'],
+                                            'username' => $pRow['username'],
+                                            'full_name' => $pRow['full_name'],
+                                            'message' => $pRow['message'],
+                                            'created_at' => $pRow['created_at'] ?? null
+                                        ];
+                                    }
+                                } catch (Exception $inner2) {
+                                }
+                            }
+                            $isOwnRow = ((int)($msgRow['user_id'] ?? 0) === (int)$userId);
+                            $isDeletedRow = isChatMessageDeletedLocal($msgRow);
+                            $msgRow['can_edit'] = (!$isDeletedRow && ($isOwnRow || $isAdminChatViewer));
+                            $msgRow['can_delete'] = (!$isDeletedRow && ($isOwnRow || $isAdminChatViewer));
+                        }
+                    } catch (Exception $inner) {
+                        $msgRow = null;
+                    }
+                }
                 header('Content-Type: application/json');
-                echo json_encode(['success' => true]);
+                echo json_encode(['success' => true, 'id' => $lastId, 'message' => $msgRow]);
                 exit;
             }
             // Redirect to avoid resubmission (full page only)
@@ -263,7 +575,7 @@ if (!$embed) {
                 }
             })();
         </script>
-        <style>body{background:#f8f9fa;} .container-embed{padding:12px;}</style>
+        <style>html,body{height:100%;margin:0;} body{background:#f8f9fa;overflow:hidden;} .container-embed{padding:8px;height:100%;}</style>
     </head>
     <body class="chat-embed">
     <div class="container-fluid container-embed chat-shell">
@@ -292,16 +604,28 @@ if (!$embed) {
     .message-header {
         display: flex;
         justify-content: space-between;
-                if (mentionDropdown && mentionDropdown.style.display === 'block') {
-                    if (e.key === 'ArrowDown') { e.preventDefault(); moveMentionHighlight(1); }
-                    else if (e.key === 'ArrowUp') { e.preventDefault(); moveMentionHighlight(-1); }
-                    else if (e.key === 'Enter') {
-                        const active = mentionDropdown.querySelector('.mention-pick.active');
-                        if (active) { e.preventDefault(); insertMention(active.getAttribute('data-username')); }
-                    }
-                }
+        align-items: flex-start;
+        gap: 8px;
         margin-bottom: 5px;
     }
+    .message-header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+    .message-actions { display: inline-flex; align-items: center; gap: 4px; }
+    .chat-action-btn {
+        border: 0;
+        background: transparent;
+        color: #0d6efd;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+    }
+    .chat-action-btn:hover, .chat-action-btn:focus { background: rgba(13, 110, 253, 0.12); color: #0a58ca; }
+    .chat-action-btn.chat-delete { color: #dc3545; }
+    .chat-action-btn.chat-delete:hover, .chat-action-btn.chat-delete:focus { background: rgba(220, 53, 69, 0.12); color: #b02a37; }
     .message-sender { font-weight: bold; color: #333; }
     .message-time { font-size: 0.85em; color: #6c757d; }
     .message-content { word-wrap: break-word; }
@@ -309,11 +633,17 @@ if (!$embed) {
     .mention { background-color: #fff3cd; padding: 2px 4px; border-radius: 3px; font-weight: bold; }
     .user-badge { font-size: 0.8em; padding: 2px 8px; border-radius: 10px; }
     .message-meta { font-size: 0.8em; color: #6c757d; margin-top: 4px; text-align: right; }
+    .message:focus,
+    .message:focus-visible {
+        outline: 3px solid #0d6efd;
+        outline-offset: 2px;
+    }
 
     /* Embed chat layout */
-    .chat-embed body { background: #ece5dd; }
-    .chat-embed .chat-shell { background: #ece5dd; border-radius: 16px; padding: 8px; }
-    .chat-embed .chat-embed-wrapper { display: flex; flex-direction: column; height: 520px; background: #ece5dd; position: relative; }
+    .chat-embed { height: 100%; overflow: hidden; }
+    .chat-embed body { background: #ece5dd; margin: 0; overflow: hidden; }
+    .chat-embed .chat-shell { background: #ece5dd; border-radius: 16px; padding: 8px; height: 100%; overflow: hidden; }
+    .chat-embed .chat-embed-wrapper { display: flex; flex-direction: column; height: 100%; min-height: 0; background: #ece5dd; position: relative; overflow: hidden; }
     .chat-embed .chat-container { background: transparent; border: 0; box-shadow: none; padding: 6px; flex: 1; overflow-y: auto; }
     .chat-embed .message { box-shadow: none; border: 0; padding: 8px 12px; position: relative; }
     .chat-embed .message.other-message { background: #fff; margin-right: auto; }
@@ -321,8 +651,8 @@ if (!$embed) {
     .chat-embed .message .message-content { font-size: 0.95rem; }
     .chat-embed .message .message-meta { font-size: 0.78rem; color: #6c757d; text-align: right; margin-top: 4px; }
     .chat-embed .message-header .user-badge { display: none; }
-    .chat-embed .chat-embed-form { background: #f0f2f5; border-radius: 14px; padding: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); position: sticky; bottom: 0; }
-    .chat-embed .chat-embed-form.collapsed { background: transparent; box-shadow: none; padding: 0; border-radius: 0; }
+    .chat-embed .chat-embed-form { background: #f0f2f5; border-radius: 14px 14px 0 0; padding: 8px; box-shadow: 0 -4px 14px rgba(0,0,0,0.10); position: sticky; bottom: 0; z-index: 20; }
+    .chat-embed .chat-embed-form.collapsed { padding: 6px 8px; }
     .chat-embed #chatForm { position: relative; }
     #chatForm { position: relative; }
     .chat-embed .note-editor.note-frame { background: transparent; }
@@ -332,8 +662,31 @@ if (!$embed) {
     .chat-embed .note-editor { border: 0; box-shadow: none; resize: vertical; overflow: auto; }
     .chat-embed .note-editable { min-height: 40px; background: #fff; border-radius: 10px; }
     .chat-embed .btn { border-radius: 999px; }
-    .chat-embed .chat-compose-toggle { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 1200; width: auto; min-width: 140px; }
-    .chat-embed .chat-container { padding-bottom: 90px; }
+    .chat-embed .chat-compose-toggle {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid #ced4da;
+        background: #ffffff;
+        color: #0d6efd;
+        font-weight: 600;
+        margin: 0;
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        visibility: visible;
+        opacity: 1;
+    }
+    .chat-embed .chat-compose-toggle:focus,
+    .chat-embed .chat-compose-toggle:focus-visible {
+        outline: 3px solid #0d6efd !important;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.25);
+    }
+    .chat-embed .chat-compose-toggle.expanded { margin-bottom: 8px; }
+    .chat-embed .chat-container { padding-bottom: 10px; }
     .chat-compose-body { display: none; }
     .chat-compose-body.open { display: block; padding-bottom: 24px; }
     .chat-compose-toggle { width: 100%; }
@@ -372,13 +725,29 @@ if (!$embed) {
                             <span class="message-sender text-muted small"><?php echo htmlspecialchars($msg['full_name']); ?></span>
                             <small class="text-muted">@<?php echo htmlspecialchars($msg['username']); ?></small>
                         </div>
-                        <div class="d-flex align-items-center">
-                            <div class="message-time me-2"><?php echo date('M d, H:i', strtotime($msg['created_at'])); ?></div>
+                        <div class="message-header-right">
+                            <div class="message-time"><?php echo date('M d, H:i', strtotime($msg['created_at'])); ?></div>
+                            <?php
+                                $isOwn = ((int)$msg['user_id'] === (int)$_SESSION['user_id']);
+                                $isDeleted = isChatMessageDeletedLocal($msg);
+                                $canManage = (!$isDeleted && ($isOwn || $isAdminChatViewer));
+                            ?>
+                            <div class="message-actions">
+                                <button type="button" class="chat-action-btn chat-reply" title="Reply" aria-label="Reply to message" data-mid="<?php echo (int)$msg['id']; ?>" data-username="<?php echo htmlspecialchars($msg['username']); ?>" data-message="<?php echo htmlspecialchars($msg['message']); ?>"><i class="fas fa-reply"></i></button>
+                                <?php if ($canManage): ?>
+                                    <button type="button" class="chat-action-btn chat-edit" title="Edit" aria-label="Edit message" data-mid="<?php echo (int)$msg['id']; ?>" data-message="<?php echo htmlspecialchars($msg['message']); ?>"><i class="fas fa-pen"></i></button>
+                                    <button type="button" class="chat-action-btn chat-delete" title="Delete" aria-label="Delete message" data-mid="<?php echo (int)$msg['id']; ?>"><i class="fas fa-trash"></i></button>
+                                <?php endif; ?>
+                                <?php if ($isAdminChatViewer): ?>
+                                    <button type="button" class="chat-action-btn chat-history" title="History" aria-label="View message history" data-mid="<?php echo (int)$msg['id']; ?>"><i class="fas fa-history"></i></button>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
                     <div class="message-content">
                         <?php
                         $messageHtml = sanitize_chat_html($msg['message']);
+                        $messageHtml = rewrite_upload_urls_to_secure($messageHtml);
                         $messageHtml = preg_replace('/@(\w+)/', '<span class="mention">@$1</span>', $messageHtml);
                         $messageHtml = preg_replace_callback('/<img[^>]*src=["\']([^"\']+)["\'][^>]*>/i', function($m) {
                             $src = $m[1];
@@ -394,13 +763,15 @@ if (!$embed) {
                         if (!empty($msg['reply_to'])) {
                             $pr = null;
                             try {
-                                $pstmt = $db->prepare("SELECT cm.id, cm.user_id, cm.message, u.username, u.full_name FROM chat_messages cm JOIN users u ON cm.user_id = u.id WHERE cm.id = ? LIMIT 1");
+                                $pstmt = $db->prepare("SELECT cm.id, cm.user_id, cm.message, cm.created_at, u.username, u.full_name FROM chat_messages cm JOIN users u ON cm.user_id = u.id WHERE cm.id = ? LIMIT 1");
                                 $pstmt->execute([$msg['reply_to']]);
                                 $pr = $pstmt->fetch();
                             } catch (Exception $e) { $pr = null; }
                             if ($pr) {
                                 $pmsg = sanitize_chat_html($pr['message']);
-                                echo '<div class="reply-preview"><strong>' . htmlspecialchars($pr['full_name']) . '</strong>: ' . $pmsg . '</div>';
+                                $pmsg = rewrite_upload_urls_to_secure($pmsg);
+                                $ptime = !empty($pr['created_at']) ? date('M d, H:i', strtotime($pr['created_at'])) : '';
+                                echo '<div class="reply-preview"><strong>' . htmlspecialchars($pr['full_name']) . '</strong>' . ($ptime ? ' <small class="text-muted ms-2">' . htmlspecialchars($ptime) . '</small>' : '') . ': ' . $pmsg . '</div>';
                             }
                         }
                         echo $messageHtml;
@@ -412,13 +783,13 @@ if (!$embed) {
             <?php endif; ?>
         </div>
 
-        <button type="button" class="btn btn-outline-primary btn-sm chat-compose-toggle mb-2" id="composeToggle">
-            <i class="fas fa-comment-dots"></i> Compose
-        </button>
-
-        <form id="chatForm" class="chat-embed-form" action="javascript:void(0);" onsubmit="return false;">
+        <form id="chatForm" class="chat-embed-form" method="POST">
+            <input type="hidden" name="send_message" value="1">
             <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
             <input type="hidden" name="page_id" value="<?php echo $pageId; ?>">
+            <button type="button" class="btn btn-sm chat-compose-toggle" id="composeToggle">
+                <i class="fas fa-comment-dots"></i> Compose
+            </button>
             <div class="chat-compose-body" id="composeBody">
                 <div class="mb-2">
                     <textarea 
@@ -429,7 +800,7 @@ if (!$embed) {
                     ></textarea>
                 </div>
                 <div class="d-flex align-items-center justify-content-between gap-2">
-                    <button type="button" class="btn btn-success btn-sm" id="sendBtn">
+                    <button type="submit" class="btn btn-success btn-sm" id="sendBtn">
                         <i class="fas fa-paper-plane"></i> Send
                     </button>
                     <span class="text-muted small" id="charCount">0/1000</span>
@@ -509,14 +880,29 @@ if (!$embed) {
                                             </span>
                                             <small class="text-muted">@<?php echo htmlspecialchars($msg['username']); ?></small>
                                         </div>
-                                        <div class="d-flex align-items-center">
-                                            <div class="message-time me-2"><?php echo date('M d, H:i', strtotime($msg['created_at'])); ?></div>
-                                            <button class="btn btn-sm btn-link chat-reply" data-mid="<?php echo $msg['id']; ?>" data-username="<?php echo htmlspecialchars($msg['username']); ?>" data-message="<?php echo htmlspecialchars($msg['message']); ?>">Reply</button>
+                                        <div class="message-header-right">
+                                            <div class="message-time"><?php echo date('M d, H:i', strtotime($msg['created_at'])); ?></div>
+                                            <?php
+                                                $isOwn = ((int)$msg['user_id'] === (int)$_SESSION['user_id']);
+                                                $isDeleted = isChatMessageDeletedLocal($msg);
+                                                $canManage = (!$isDeleted && ($isOwn || $isAdminChatViewer));
+                                            ?>
+                                            <div class="message-actions">
+                                                <button type="button" class="chat-action-btn chat-reply" title="Reply" aria-label="Reply to message" data-mid="<?php echo (int)$msg['id']; ?>" data-username="<?php echo htmlspecialchars($msg['username']); ?>" data-message="<?php echo htmlspecialchars($msg['message']); ?>"><i class="fas fa-reply"></i></button>
+                                                <?php if ($canManage): ?>
+                                                    <button type="button" class="chat-action-btn chat-edit" title="Edit" aria-label="Edit message" data-mid="<?php echo (int)$msg['id']; ?>" data-message="<?php echo htmlspecialchars($msg['message']); ?>"><i class="fas fa-pen"></i></button>
+                                                    <button type="button" class="chat-action-btn chat-delete" title="Delete" aria-label="Delete message" data-mid="<?php echo (int)$msg['id']; ?>"><i class="fas fa-trash"></i></button>
+                                                <?php endif; ?>
+                                                <?php if ($isAdminChatViewer): ?>
+                                                    <button type="button" class="chat-action-btn chat-history" title="History" aria-label="View message history" data-mid="<?php echo (int)$msg['id']; ?>"><i class="fas fa-history"></i></button>
+                                                <?php endif; ?>
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="message-content">
                                         <?php
                                         $messageHtml = sanitize_chat_html($msg['message']);
+                                        $messageHtml = rewrite_upload_urls_to_secure($messageHtml);
                                         // Highlight mentions server-side
                                         $messageHtml = preg_replace('/@(\w+)/', '<span class="mention">@$1</span>', $messageHtml);
                                         $messageHtml = preg_replace_callback('/<img[^>]*src=["\']([^"\']+)["\'][^>]*>/i', function($m) {
@@ -535,13 +921,15 @@ if (!$embed) {
                                             // fetch preview if available
                                             $pr = null;
                                             try {
-                                                $pstmt = $db->prepare("SELECT cm.id, cm.user_id, cm.message, u.username, u.full_name FROM chat_messages cm JOIN users u ON cm.user_id = u.id WHERE cm.id = ? LIMIT 1");
+                                                $pstmt = $db->prepare("SELECT cm.id, cm.user_id, cm.message, cm.created_at, u.username, u.full_name FROM chat_messages cm JOIN users u ON cm.user_id = u.id WHERE cm.id = ? LIMIT 1");
                                                 $pstmt->execute([$msg['reply_to']]);
                                                 $pr = $pstmt->fetch();
                                             } catch (Exception $e) { $pr = null; }
                                             if ($pr) {
                                                 $pmsg = sanitize_chat_html($pr['message']);
-                                                echo '<div class="reply-preview"><strong>' . htmlspecialchars($pr['full_name']) . '</strong>: ' . $pmsg . '</div>';
+                                                $pmsg = rewrite_upload_urls_to_secure($pmsg);
+                                                $ptime = !empty($pr['created_at']) ? date('M d, H:i', strtotime($pr['created_at'])) : '';
+                                                echo '<div class="reply-preview"><strong>' . htmlspecialchars($pr['full_name']) . '</strong>' . ($ptime ? ' <small class="text-muted ms-2">' . htmlspecialchars($ptime) . '</small>' : '') . ': ' . $pmsg . '</div>';
                                             }
                                         }
                                         echo $messageHtml;
@@ -554,7 +942,8 @@ if (!$embed) {
                         </div>
                         
                         <!-- Message Form -->
-                        <form id="chatForm" class="mt-3" action="javascript:void(0);" onsubmit="return false;">
+                        <form id="chatForm" class="mt-3" method="POST">
+                            <input type="hidden" name="send_message" value="1">
                             <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
                             <input type="hidden" name="page_id" value="<?php echo $pageId; ?>">
                             <div class="mb-3">
@@ -569,7 +958,7 @@ if (!$embed) {
                                 </div>
                             <div class="d-flex justify-content-between">
                                 <div>
-                                    <button type="button" class="btn btn-primary" id="sendBtn">
+                                    <button type="submit" class="btn btn-primary" id="sendBtn">
                                         <i class="fas fa-paper-plane"></i> Send Message
                                     </button>
                                     <button type="button" class="btn btn-outline-secondary" id="clearMessage">
@@ -675,20 +1064,93 @@ if (!$embed) {
     </div> <!-- /.container-embed -->
 <?php endif; ?>
 
-    <!-- Image modal for full view -->
-    <div class="modal fade" id="chatImageModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Image</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body text-center">
-                    <img id="chatModalImg" src="" alt="Full image" />
-                </div>
+<!-- Image modal for full view -->
+<div class="modal fade" id="chatImageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Image</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="chatModalImg" src="" alt="Full image" />
             </div>
         </div>
     </div>
+</div>
+
+<?php if ($isAdminChatViewer): ?>
+<div class="modal fade" id="chatHistoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Message History</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="chatHistoryBody">
+                <p class="text-muted mb-0">Loading...</p>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<div class="modal fade" id="chatEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Message</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="chatEditMessageId" value="">
+                <label for="chatEditMessageInput" class="form-label">Message</label>
+                <textarea id="chatEditMessageInput" class="form-control" rows="4"></textarea>
+                <div class="small text-muted mt-1" id="chatEditCharCount">0/1000</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="chatEditSaveBtn">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="chatDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Delete Message</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="chatDeleteMessageId" value="">
+                <p class="mb-0">Are you sure you want to delete this message?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="chatDeleteConfirmBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="chatActionStatusModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="chatActionStatusTitle">Status</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" id="chatActionStatusText">Unable to complete this action.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
 
     <script>
     (function(initFn){
@@ -702,6 +1164,8 @@ if (!$embed) {
         const $ = window.jQuery;
         const chatMessages = hasJQ ? $('#chatMessages') : document.querySelector('#chatMessages');
         const currentUserId = Number(<?php echo $_SESSION['user_id']; ?>);
+        const currentUserRole = <?php echo json_encode($_SESSION['role'] ?? ''); ?>;
+        const canViewHistoryAdmin = <?php echo $isAdminChatViewer ? 'true' : 'false'; ?>;
         const projectId = <?php echo $projectId ?: 'null'; ?>;
         const pageId = <?php echo $pageId ?: 'null'; ?>;
         let lastMessageId = <?php echo $lastMessageId ?? 0; ?>;
@@ -713,6 +1177,7 @@ if (!$embed) {
         let lastMentionAnchor = null;
         let lastMentionRange = null;
         let mentionSearchDisabled = false;
+        let activeReplyToId = null;
 
         function isMentionVisible() {
             if (hasJQ) return mentionDropdown && mentionDropdown.length && mentionDropdown.is(':visible');
@@ -795,8 +1260,8 @@ if (!$embed) {
             if (enhanceTicks > 5) clearInterval(enhanceInterval);
         }, 800);
 
-        // Upload image and insert URL into editor
-        function uploadAndInsertImage(file) {
+        // Upload image and insert URL into target summernote editor
+        function uploadAndInsertImage(file, $targetEditor) {
             if (!file || !file.type || !file.type.startsWith('image/')) return;
             const formData = new FormData();
             formData.append('image', file);
@@ -805,8 +1270,9 @@ if (!$embed) {
                 body: formData
             }).then(res => res.json()).then(res => {
                 if (res && res.success && res.url) {
-                    if (summernoteReady) {
-                        $msg.summernote('pasteHTML', '<p><img src="' + res.url + '" alt="image" /></p>');
+                    const $target = ($targetEditor && $targetEditor.length) ? $targetEditor : $msg;
+                    if ($target && $target.length && $target.data('summernote')) {
+                        $target.summernote('pasteHTML', '<p><img src="' + res.url + '" alt="image" /></p>');
                     }
                 } else if (res && res.error) {
                     showToast(res.error, 'danger');
@@ -822,9 +1288,172 @@ if (!$embed) {
         const $msg = hasJQ ? $('#message') : null;
         const isEmbed = document.body.classList.contains('chat-embed');
         const composeBody = document.getElementById('composeBody');
-        const composeToggle = document.getElementById('composeToggle');
+        let composeToggle = document.getElementById('composeToggle');
         const composeForm = document.getElementById('chatForm');
+        if (!composeToggle && composeForm) {
+            composeToggle = document.createElement('button');
+            composeToggle.type = 'button';
+            composeToggle.id = 'composeToggle';
+            composeToggle.className = 'btn btn-sm chat-compose-toggle';
+            composeToggle.innerHTML = '<i class="fas fa-comment-dots"></i> Compose';
+            if (composeBody && composeBody.parentNode === composeForm) {
+                composeForm.insertBefore(composeToggle, composeBody);
+            } else {
+                composeForm.appendChild(composeToggle);
+            }
+        }
         let composeCollapsed = isEmbed ? true : false;
+        let messageKeyboardBound = false;
+        let initialRecentMessageFocused = false;
+        function focusFirstComposeControl() {
+            if (composeCollapsed) return;
+            let target = null;
+            if (summernoteReady && $msg && $msg.length) {
+                const $toolbarItems = $msg.next('.note-editor').find('.note-toolbar .note-btn-group button').filter(function() {
+                    const $b = $(this);
+                    return !$b.is(':hidden') && !$b.prop('disabled') && !$b.closest('.dropdown-menu').length;
+                });
+                if ($toolbarItems.length) target = $toolbarItems.get(0);
+            }
+            if (!target) {
+                target = document.querySelector('#composeBody #message, #composeBody .note-editable, #composeBody #sendBtn');
+            }
+            if (!target && summernoteReady && $msg && $msg.length) {
+                const editable = $msg.next('.note-editor').find('.note-editable[contenteditable="true"]').get(0);
+                if (editable) target = editable;
+            }
+            if (target && typeof target.focus === 'function') {
+                try { target.focus(); } catch (e) {}
+            }
+        }
+
+        function focusComposeEditable() {
+            let target = null;
+            if (summernoteReady && $msg && $msg.length) {
+                target = $msg.next('.note-editor').find('.note-editable[contenteditable="true"]').get(0);
+            }
+            if (!target) {
+                target = document.querySelector('#composeBody #message, #composeBody .note-editable');
+            }
+            if (target && typeof target.focus === 'function') {
+                try { target.focus(); } catch (e) {}
+            }
+        }
+        function applyEmbedTabOrder() {
+            if (!isEmbed) return;
+            if (composeToggle && composeToggle.hasAttribute('tabindex')) {
+                composeToggle.removeAttribute('tabindex');
+            }
+            const composeInteractive = document.querySelectorAll(
+                '#composeBody button, #composeBody input, #composeBody textarea, #composeBody select, #composeBody [contenteditable="true"]'
+            );
+            composeInteractive.forEach(function (el) {
+                if (!el) return;
+                if (el.id === 'composeToggle') return;
+                if (el.classList && el.classList.contains('note-btn')) return;
+                if (el.hasAttribute('tabindex')) el.removeAttribute('tabindex');
+            });
+            const rows = document.querySelectorAll('#chatMessages .message');
+            rows.forEach(function (row) {
+                if (!row.hasAttribute('tabindex')) row.setAttribute('tabindex', '-1');
+            });
+        }
+
+        function getMessageRows() {
+            return Array.from(document.querySelectorAll('#chatMessages .message'));
+        }
+
+        function getMessageActionButtons(row) {
+            if (!row || !row.querySelectorAll) return [];
+            return Array.from(row.querySelectorAll('.message-actions button:not([disabled])'));
+        }
+
+        function setRowActionTabStops(activeRow) {
+            const rows = getMessageRows();
+            rows.forEach(function (row) {
+                const actions = getMessageActionButtons(row);
+                actions.forEach(function (btn) {
+                    btn.setAttribute('tabindex', row === activeRow ? '0' : '-1');
+                });
+            });
+        }
+
+        function setActiveMessageRow(row, shouldFocus) {
+            const rows = getMessageRows();
+            rows.forEach(function (r) { r.setAttribute('tabindex', '-1'); });
+            if (row) row.setAttribute('tabindex', '0');
+            setRowActionTabStops(row || null);
+            if (row && shouldFocus) {
+                try { row.focus(); } catch (e) {}
+            }
+        }
+
+        function ensureRecentMessageAnchor(shouldFocus) {
+            const rows = getMessageRows();
+            if (!rows.length) return;
+            const recent = rows[rows.length - 1];
+            setActiveMessageRow(recent, !!shouldFocus);
+        }
+
+        function bindMessageKeyboardNavigation() {
+            const host = hasJQ ? (chatMessages && chatMessages[0]) : chatMessages;
+            if (!host || messageKeyboardBound) return;
+            messageKeyboardBound = true;
+
+            host.addEventListener('focusin', function (e) {
+                const row = e.target && e.target.closest ? e.target.closest('.message') : null;
+                if (row) setActiveMessageRow(row, false);
+            });
+
+            host.addEventListener('keydown', function (e) {
+                const target = e.target;
+                const row = target && target.closest ? target.closest('.message') : null;
+                if (!row) return;
+                const rows = getMessageRows();
+                const idx = rows.indexOf(row);
+                if (idx < 0) return;
+
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    const nextIdx = e.key === 'ArrowUp' ? Math.max(0, idx - 1) : Math.min(rows.length - 1, idx + 1);
+                    setActiveMessageRow(rows[nextIdx], true);
+                    return;
+                }
+                if (e.key === 'Home') {
+                    e.preventDefault();
+                    setActiveMessageRow(rows[0], true);
+                    return;
+                }
+                if (e.key === 'End') {
+                    e.preventDefault();
+                    setActiveMessageRow(rows[rows.length - 1], true);
+                    return;
+                }
+                if ((e.key === 'Enter' || e.key === ' ') && target.classList && target.classList.contains('message')) {
+                    const firstAction = getMessageActionButtons(row)[0];
+                    if (firstAction) {
+                        e.preventDefault();
+                        firstAction.focus();
+                    }
+                    return;
+                }
+                if (e.key === 'Tab' && !e.shiftKey && target.classList && target.classList.contains('message')) {
+                    const firstAction = getMessageActionButtons(row)[0];
+                    if (firstAction) {
+                        e.preventDefault();
+                        firstAction.focus();
+                    }
+                    return;
+                }
+                if (e.key === 'Tab' && e.shiftKey && target.closest && target.closest('.message-actions')) {
+                    const actions = getMessageActionButtons(row);
+                    if (actions.length && target === actions[0]) {
+                        e.preventDefault();
+                        setActiveMessageRow(row, true);
+                    }
+                }
+            });
+        }
         function updateComposeCollapse() {
             if (!composeBody) return;
             if (composeCollapsed) {
@@ -832,21 +1461,46 @@ if (!$embed) {
                 hideMentionDropdown();
             } else {
                 composeBody.classList.add('open');
-                if (summernoteReady && $msg) { try { $msg.summernote('focus'); } catch(e) {} }
             }
             if (composeForm) {
                 if (composeCollapsed) composeForm.classList.add('collapsed');
                 else composeForm.classList.remove('collapsed');
             }
             if (composeToggle) {
-                composeToggle.innerHTML = composeCollapsed ? '<i class="fas fa-comment-dots"></i> Compose' : '<i class="fas fa-chevron-down"></i> Hide';
+                composeToggle.classList.toggle('expanded', !composeCollapsed);
+                composeToggle.innerHTML = composeCollapsed ? '<i class="fas fa-comment-dots"></i> Compose' : '<i class="fas fa-chevron-down"></i> Hide Compose';
             }
+            applyEmbedTabOrder();
+        }
+        function toggleCompose(nextState) {
+            if (typeof nextState === 'boolean') {
+                // nextState=true means expanded/open, false means collapsed/closed
+                composeCollapsed = !nextState;
+            } else {
+                composeCollapsed = !composeCollapsed;
+            }
+            updateComposeCollapse();
         }
         updateComposeCollapse();
         if (composeToggle) {
+            composeToggle.type = 'button';
             composeToggle.addEventListener('click', function(){
-                composeCollapsed = !composeCollapsed;
-                updateComposeCollapse();
+                toggleCompose();
+                setTimeout(function () { try { composeToggle.focus(); } catch (e) {} }, 0);
+            });
+            composeToggle.addEventListener('keydown', function(e) {
+                if (!e) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleCompose();
+                    return;
+                }
+                if (composeCollapsed) return;
+                if (e.key === 'Tab' && !e.shiftKey) {
+                    e.preventDefault();
+                    focusFirstComposeControl();
+                }
             });
         }
         let suppressImageUpload = false;
@@ -867,9 +1521,22 @@ if (!$embed) {
                         ['view', ['fullscreen','codeview','help']]
                     ],
                     callbacks: {
+                        onInit: function() {
+                            setTimeout(function() { enableToolbarKeyboardA11y($msg); }, 0);
+                            setTimeout(function() { enableToolbarKeyboardA11y($msg); }, 200);
+                        },
+                        onKeydown: function(e) {
+                            if (e && e.altKey && (e.key === 'F10' || e.keyCode === 121)) {
+                                e.preventDefault();
+                                focusEditorToolbar($msg);
+                            }
+                        },
                         onImageUpload: function(files) {
                             if (suppressImageUpload) return;
-                            (files || []).forEach(uploadAndInsertImage);
+                            var list = files || [];
+                            for (var i = 0; i < list.length; i++) {
+                                uploadAndInsertImage(list[i], $msg);
+                            }
                         },
                         onPaste: function(e) {
                             const clipboard = e.originalEvent && e.originalEvent.clipboardData;
@@ -879,7 +1546,7 @@ if (!$embed) {
                                     if (item.type && item.type.indexOf('image') === 0) {
                                         e.preventDefault();
                                         suppressImageUpload = true;
-                                        uploadAndInsertImage(item.getAsFile());
+                                        uploadAndInsertImage(item.getAsFile(), $msg);
                                         setTimeout(() => { suppressImageUpload = false; }, 300);
                                         break;
                                     }
@@ -934,6 +1601,84 @@ if (!$embed) {
         }
         updateCharCount();
 
+        const $editMsg = hasJQ ? $('#chatEditMessageInput') : null;
+        let editSummernoteReady = false;
+        function getEditMessageHtml() {
+            if (editSummernoteReady && $editMsg && $editMsg.length) return $editMsg.summernote('code');
+            const el = document.getElementById('chatEditMessageInput');
+            return el ? el.value : '';
+        }
+        function setEditMessageHtml(val) {
+            if (editSummernoteReady && $editMsg && $editMsg.length) return $editMsg.summernote('code', val || '');
+            const el = document.getElementById('chatEditMessageInput');
+            if (el) el.value = val || '';
+        }
+        function updateEditCharCount() {
+            const raw = getEditMessageHtml();
+            const text = (hasJQ ? $('<div>').html(raw).text() : (new DOMParser().parseFromString(raw, 'text/html').documentElement.textContent || ''));
+            const countEl = document.getElementById('chatEditCharCount');
+            if (countEl) countEl.textContent = text.length + '/1000';
+        }
+
+        if (hasJQ && $.fn.summernote && $editMsg && $editMsg.length) {
+            try {
+                $editMsg.summernote({
+                    placeholder: 'Edit message...',
+                    tabsize: 2,
+                    height: 160,
+                    toolbar: [
+                        ['style', ['style']],
+                        ['font', ['bold', 'italic', 'underline', 'clear']],
+                        ['fontname', ['fontname']],
+                        ['color', ['color']],
+                        ['para', ['ul', 'ol', 'paragraph']],
+                        ['table', ['table']],
+                        ['insert', ['link', 'picture', 'video']],
+                        ['view', ['fullscreen', 'codeview', 'help']]
+                    ],
+                    callbacks: {
+                        onInit: function() {
+                            editSummernoteReady = true;
+                            setTimeout(function() { enableToolbarKeyboardA11y($editMsg); }, 0);
+                            setTimeout(function() { enableToolbarKeyboardA11y($editMsg); }, 200);
+                            updateEditCharCount();
+                        },
+                        onKeydown: function(e) {
+                            if (e && e.altKey && (e.key === 'F10' || e.keyCode === 121)) {
+                                e.preventDefault();
+                                focusEditorToolbar($editMsg);
+                            }
+                        },
+                        onImageUpload: function(files) {
+                            var list = files || [];
+                            for (var i = 0; i < list.length; i++) {
+                                uploadAndInsertImage(list[i], $editMsg);
+                            }
+                        },
+                        onPaste: function(e) {
+                            const clipboard = e.originalEvent && e.originalEvent.clipboardData;
+                            if (clipboard && clipboard.items) {
+                                for (let i = 0; i < clipboard.items.length; i++) {
+                                    const item = clipboard.items[i];
+                                    if (item.type && item.type.indexOf('image') === 0) {
+                                        e.preventDefault();
+                                        uploadAndInsertImage(item.getAsFile(), $editMsg);
+                                        break;
+                                    }
+                                }
+                            }
+                        },
+                        onChange: function() {
+                            updateEditCharCount();
+                        }
+                    }
+                });
+                editSummernoteReady = true;
+            } catch (e) {
+                editSummernoteReady = false;
+            }
+        }
+
         if (hasJQ && $('#chatForm').length) {
             $('#chatForm').prepend('<input type="hidden" id="chatReplyTo" name="reply_to" value="">\n<div id="chatReplyPreview" style="display:none;" class="mb-2"><div class="small text-muted">Replying to <strong class="reply-user"></strong> <button type="button" class="btn btn-sm btn-link p-0" id="chatCancelReply">Cancel</button></div><div class="reply-preview p-2 rounded bg-light small"></div></div>');
         }
@@ -952,7 +1697,14 @@ if (!$embed) {
                 const username = $(this).data('username');
                 const message = $(this).data('message');
                 if(!mid) return;
-                $('#chatReplyTo').val(mid);
+                const parsedMid = parseInt(mid, 10);
+                activeReplyToId = Number.isFinite(parsedMid) && parsedMid > 0 ? parsedMid : null;
+                if (isEmbed && composeCollapsed) {
+                    composeCollapsed = false;
+                    updateComposeCollapse();
+                }
+                $('#chatReplyTo').val(activeReplyToId ? String(activeReplyToId) : '');
+                $('#chatReplyPreview').attr('data-reply-id', activeReplyToId ? String(activeReplyToId) : '');
                 $('#chatReplyPreview .reply-user').text(username);
                 $('#chatReplyPreview .reply-preview').html(message);
                 $('#chatReplyPreview').show();
@@ -960,57 +1712,620 @@ if (!$embed) {
             });
 
             $(document).on('click', '#chatCancelReply', function(){
+                activeReplyToId = null;
                 $('#chatReplyTo').val('');
+                $('#chatReplyPreview').attr('data-reply-id', '');
                 $('#chatReplyPreview').hide();
                 $('#chatReplyPreview .reply-preview').html('');
             });
-        }
-
-        function sendChatMessage() {
-            const msg = getMessageHtml();
-            const textOnly = hasJQ ? $('<div>').html(msg).text().trim() : (new DOMParser().parseFromString(msg, 'text/html').documentElement.textContent || '').trim();
-            const hasImg = /<img\b[^>]*src=/i.test(msg);
-            if(!textOnly && !hasImg) {
-                showToast('Type a message to send', 'warning');
-                return;
+            function clearReplyState() {
+                activeReplyToId = null;
+                $('#chatReplyTo').val('');
+                $('#chatReplyPreview').attr('data-reply-id', '');
+                $('#chatReplyPreview').hide();
+                $('#chatReplyPreview .reply-user').text('');
+                $('#chatReplyPreview .reply-preview').html('');
             }
 
-            hideMentionDropdown();
-
-            if (hasJQ) $('#sendBtn').prop('disabled', true); else { const b = document.getElementById('sendBtn'); if (b) b.disabled = true; }
-
-            const replyTo = hasJQ ? ($('#chatReplyTo').val() || '') : (document.getElementById('chatReplyTo') ? document.getElementById('chatReplyTo').value : '');
-            const payload = new URLSearchParams({ project_id: projectId, page_id: pageId, message: msg, reply_to: replyTo });
-
-            fetch('<?php echo $baseDir; ?>/api/chat_actions.php?action=send_message', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: payload.toString()
-            }).then(res => res.json()).then(res => {
-                if (res && res.success) {
-                    setMessageHtml('');
-                    updateCharCount();
-                    fetchMessages();
-                    scrollToBottom();
-                    if (isEmbed) {
-                        composeCollapsed = true;
-                        updateComposeCollapse();
+            function updateMessageInDom(msg) {
+                if (!msg || !msg.id) return;
+                const $row = $('.message[data-id="' + msg.id + '"]');
+                if (!$row.length) return;
+                const $content = $row.find('.message-content').first();
+                if (!$content.length) return;
+                const replyHtml = $content.find('.reply-preview').first().prop('outerHTML') || '';
+                const metaHtml = '<div class="message-meta">' + (msg.created_at || '') + '</div>';
+                $content.html(replyHtml + (msg.message || '') + metaHtml);
+                $row.find('.chat-edit').attr('data-message', msg.message || '');
+                const deletedPlain = $('<div>').html(msg.message || '').text().replace(/\s+/g, ' ').trim().toLowerCase() === 'message deleted';
+                if (!msg.can_edit || deletedPlain) $row.find('.chat-edit').remove();
+                if (!msg.can_delete || deletedPlain) $row.find('.chat-delete').remove();
+                const $actions = $row.find('.message-actions').first();
+                const $historyBtn = $row.find('.chat-history');
+                if (canViewHistoryAdmin) {
+                    if (!$historyBtn.length && $actions.length) {
+                        $actions.append('<button type="button" class="chat-action-btn chat-history" title="History" aria-label="View message history" data-mid="' + msg.id + '"><i class="fas fa-history"></i></button>');
+                    } else if ($historyBtn.length) {
+                        $historyBtn.attr('data-mid', msg.id);
                     }
-                } else if (res && res.error) {
-                    showToast(res.error, 'danger');
-                } else {
-                    showToast('Failed to send message', 'danger');
+                } else if ($historyBtn.length) {
+                    $historyBtn.remove();
                 }
-            }).catch(err => {
-                console.error('Chat send failed', err);
-                showToast('Failed to send message', 'danger');
-            }).finally(() => {
-                if (hasJQ) $('#sendBtn').prop('disabled', false); else { const b = document.getElementById('sendBtn'); if (b) b.disabled = false; }
+                enhanceImages(hasJQ ? chatMessages[0] : chatMessages);
+                applyEmbedTabOrder();
+            }
+            window.chatUpdateMessageInDom = updateMessageInDom;
+
+            function showMessageHistory(messageId) {
+                if (!canViewHistoryAdmin) return;
+                const body = document.getElementById('chatHistoryBody');
+                if (body) body.innerHTML = '<p class="text-muted mb-0">Loading...</p>';
+                const historyUrl = new URL(window.location.href);
+                historyUrl.searchParams.set('action', 'get_message_history');
+                historyUrl.searchParams.set('message_id', String(messageId));
+                fetch(historyUrl.toString(), {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' }
+                }).then(function(res) {
+                    return res.json();
+                }).then(function(res) {
+                    if (!body) return;
+                    if (!res || !res.success) {
+                        body.innerHTML = '<p class="text-danger mb-0">Failed to load history.</p>';
+                        return;
+                    }
+                    const rows = res.history || [];
+                    if (!rows.length) {
+                        body.innerHTML = '<p class="text-muted mb-0">No history available.</p>';
+                        return;
+                    }
+                    let html = '<div class="list-group">';
+                    rows.forEach(function(h) {
+                        html += '<div class="list-group-item">';
+                        html += '<div class="d-flex justify-content-between mb-2">';
+                        html += '<strong>' + escapeHtml((h.action_type || '').toUpperCase()) + '</strong>';
+                        html += '<small class="text-muted">' + escapeHtml(h.acted_at || '') + ' by ' + escapeHtml(h.acted_by_name || 'Unknown') + '</small>';
+                        html += '</div>';
+                        html += '<div class="small text-muted mb-1">Old</div><div class="border rounded p-2 mb-2">' + (h.old_message || '') + '</div>';
+                        html += '<div class="small text-muted mb-1">New</div><div class="border rounded p-2">' + (h.new_message || '') + '</div>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                    body.innerHTML = html;
+                }).catch(function() {
+                    if (body) body.innerHTML = '<p class="text-danger mb-0">Failed to load history.</p>';
+                });
+                const modalEl = document.getElementById('chatHistoryModal');
+                if (modalEl && window.bootstrap) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+            }
+
+            function submitChatEdit(mid, edited) {
+                const payload = new URLSearchParams();
+                payload.append('message_id', String(mid));
+                payload.append('message', edited);
+                return fetch('<?php echo $baseDir; ?>/api/chat_actions.php?action=edit_message', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Accept': 'application/json'
+                    },
+                    body: payload.toString()
+                }).then(function(res) { return res.json(); }).then(function(res) {
+                    if (res && res.success && res.message) {
+                        updateMessageInDom(res.message);
+                        showToast('Message updated', 'success');
+                        return true;
+                    }
+                    showToast((res && res.error) ? res.error : 'Failed to edit message', 'danger');
+                    return false;
+                }).catch(function() {
+                    showToast('Failed to edit message', 'danger');
+                    return false;
+                });
+            }
+
+            function submitChatDelete(mid) {
+                const payload = new URLSearchParams();
+                payload.append('message_id', String(mid));
+                return fetch('<?php echo $baseDir; ?>/api/chat_actions.php?action=delete_message', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Accept': 'application/json'
+                    },
+                    body: payload.toString()
+                }).then(function(res) { return res.json(); }).then(function(res) {
+                    if (res && res.success) {
+                        if (res.message) {
+                            updateMessageInDom(res.message);
+                        } else {
+                            fetchMessages();
+                        }
+                        showToast('Message deleted', 'success');
+                        return true;
+                    }
+                    showToast((res && res.error) ? res.error : 'Failed to delete message', 'danger');
+                    return false;
+                }).catch(function() {
+                    showToast('Failed to delete message', 'danger');
+                    return false;
+                });
+            }
+
+            $(document).on('click', '.chat-edit', function() {
+                const mid = Number($(this).data('mid'));
+                if (!mid) return;
+                const current = $(this).data('message') || '';
+                const editInput = document.getElementById('chatEditMessageInput');
+                const editId = document.getElementById('chatEditMessageId');
+                const modalEl = document.getElementById('chatEditModal');
+                if (!editInput || !editId || !modalEl || !window.bootstrap) return;
+                editId.value = String(mid);
+                setEditMessageHtml(current);
+                updateEditCharCount();
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                setTimeout(function() {
+                    try {
+                        if (editSummernoteReady && $editMsg && $editMsg.length) {
+                            $editMsg.summernote('focus');
+                        } else {
+                            editInput.focus();
+                        }
+                    } catch (e) {}
+                }, 120);
+            });
+
+            $(document).on('click', '.chat-delete', function() {
+                const mid = Number($(this).data('mid'));
+                if (!mid) return;
+                const deleteId = document.getElementById('chatDeleteMessageId');
+                const modalEl = document.getElementById('chatDeleteModal');
+                if (!deleteId || !modalEl || !window.bootstrap) return;
+                deleteId.value = String(mid);
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            });
+
+            $(document).on('click', '.chat-history', function() {
+                const mid = Number($(this).data('mid'));
+                if (!mid) return;
+                showMessageHistory(mid);
+            });
+
+            $('#chatEditModal').on('hidden.bs.modal', function() {
+                const editId = document.getElementById('chatEditMessageId');
+                if (editId) editId.value = '';
+                setEditMessageHtml('');
+                updateEditCharCount();
             });
         }
 
+        function toastSafe(message, type) {
+            if (typeof showToast === 'function') {
+                showToast(message, type || 'info');
+                return;
+            }
+            showChatActionStatusModal(message || 'Action failed', type || 'info');
+        }
+
+        function showChatActionStatusModal(message, type) {
+            const textEl = document.getElementById('chatActionStatusText');
+            const titleEl = document.getElementById('chatActionStatusTitle');
+            const modalEl = document.getElementById('chatActionStatusModal');
+            const isSuccess = String(type || '').toLowerCase() === 'success';
+            if (titleEl) titleEl.textContent = isSuccess ? 'Success' : 'Action Failed';
+            if (textEl) textEl.textContent = String(message || (isSuccess ? 'Action completed.' : 'Action failed'));
+            if (modalEl && window.bootstrap) {
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            }
+        }
+
+        function saveEditedMessage() {
+            const editId = document.getElementById('chatEditMessageId');
+            const modalEl = document.getElementById('chatEditModal');
+            const saveBtn = document.getElementById('chatEditSaveBtn');
+            const mid = Number(editId ? editId.value : 0);
+            const edited = getEditMessageHtml();
+            const editedText = (hasJQ ? $('<div>').html(edited).text().trim() : (new DOMParser().parseFromString(edited, 'text/html').documentElement.textContent || '').trim());
+            const hasImg = /<img\b[^>]*src=/i.test(edited || '');
+            if (!mid) return;
+            if (!editedText && !hasImg) { toastSafe('Message cannot be empty', 'warning'); return; }
+            if (saveBtn) saveBtn.disabled = true;
+
+            const payload = new URLSearchParams();
+            payload.append('edit_message', '1');
+            payload.append('message_id', String(mid));
+            payload.append('message', edited);
+            fetch(window.location.pathname + window.location.search, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: payload.toString()
+            }).then(function(res) { return res.json(); }).then(function(res) {
+                if (res && res.success) {
+                    if (res.message && typeof window.chatUpdateMessageInDom === 'function') {
+                        window.chatUpdateMessageInDom(res.message);
+                    } else {
+                        fetchMessages();
+                    }
+                    toastSafe('Message updated', 'success');
+                    if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                } else {
+                    toastSafe((res && res.error) ? res.error : 'Failed to edit message', 'danger');
+                }
+            }).catch(function() {
+                toastSafe('Failed to edit message', 'danger');
+            }).finally(function() {
+                if (saveBtn) saveBtn.disabled = false;
+            });
+        }
+
+        function confirmDeleteMessage() {
+            const deleteId = document.getElementById('chatDeleteMessageId');
+            const modalEl = document.getElementById('chatDeleteModal');
+            const deleteBtn = document.getElementById('chatDeleteConfirmBtn');
+            const mid = Number(deleteId ? deleteId.value : 0);
+            if (!mid) return;
+            if (deleteBtn) deleteBtn.disabled = true;
+
+            const payload = new URLSearchParams();
+            payload.append('delete_message', '1');
+            payload.append('message_id', String(mid));
+            fetch(window.location.pathname + window.location.search, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: payload.toString()
+            }).then(function(res) { return res.json(); }).then(function(res) {
+                if (res && res.success) {
+                    if (res.message && typeof window.chatUpdateMessageInDom === 'function') {
+                        window.chatUpdateMessageInDom(res.message);
+                    } else {
+                        fetchMessages();
+                    }
+                    toastSafe('Message deleted', 'success');
+                    if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                } else {
+                    toastSafe((res && res.error) ? res.error : 'Failed to delete message', 'danger');
+                }
+            }).catch(function() {
+                toastSafe('Failed to delete message', 'danger');
+            }).finally(function() {
+                if (deleteBtn) deleteBtn.disabled = false;
+            });
+        }
+
+        const chatEditSaveBtnEl = document.getElementById('chatEditSaveBtn');
+        if (chatEditSaveBtnEl && !chatEditSaveBtnEl.dataset.boundClick) {
+            chatEditSaveBtnEl.addEventListener('click', function(e) {
+                e.preventDefault();
+                saveEditedMessage();
+            });
+            chatEditSaveBtnEl.dataset.boundClick = '1';
+        }
+
+        const chatDeleteConfirmBtnEl = document.getElementById('chatDeleteConfirmBtn');
+        if (chatDeleteConfirmBtnEl && !chatDeleteConfirmBtnEl.dataset.boundClick) {
+            chatDeleteConfirmBtnEl.addEventListener('click', function(e) {
+                e.preventDefault();
+                confirmDeleteMessage();
+            });
+            chatDeleteConfirmBtnEl.dataset.boundClick = '1';
+        }
+
+        function sendChatMessage() {
+            function hardFallbackSubmit(messageHtml, replyToVal) {
+                try {
+                    const f = document.createElement('form');
+                    f.method = 'POST';
+                    f.action = window.location.pathname + window.location.search;
+                    f.style.display = 'none';
+                    const fields = {
+                        send_message: '1',
+                        project_id: String(projectId || ''),
+                        page_id: String(pageId || ''),
+                        message: String(messageHtml || ''),
+                        reply_to: String(replyToVal || ''),
+                        reply_token: replyToVal ? ('r:' + String(replyToVal)) : ''
+                    };
+                    Object.keys(fields).forEach(function(k) {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = k;
+                        input.value = fields[k];
+                        f.appendChild(input);
+                    });
+                    document.body.appendChild(f);
+                    f.submit();
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast('Failed to send message', 'danger');
+                }
+            }
+
+            try {
+                const msg = getMessageHtml();
+                const textOnly = hasJQ ? $('<div>').html(msg).text().trim() : (new DOMParser().parseFromString(msg, 'text/html').documentElement.textContent || '').trim();
+                const hasImg = /<img\b[^>]*src=/i.test(msg);
+                if(!textOnly && !hasImg) {
+                    if (typeof showToast === 'function') showToast('Type a message to send', 'warning');
+                    return;
+                }
+
+                hideMentionDropdown();
+
+                if (hasJQ) $('#sendBtn').prop('disabled', true); else { const b = document.getElementById('sendBtn'); if (b) b.disabled = true; }
+
+                const hiddenReplyTo = hasJQ ? ($('#chatReplyTo').val() || '') : (document.getElementById('chatReplyTo') ? document.getElementById('chatReplyTo').value : '');
+                const previewReplyTo = hasJQ ? ($('#chatReplyPreview').attr('data-reply-id') || '') : '';
+                const parsedHiddenReplyTo = parseInt(hiddenReplyTo, 10);
+                const parsedPreviewReplyTo = parseInt(previewReplyTo, 10);
+                const replyTo = (Number.isFinite(activeReplyToId) && activeReplyToId > 0)
+                    ? activeReplyToId
+                    : (Number.isFinite(parsedHiddenReplyTo) && parsedHiddenReplyTo > 0 ? parsedHiddenReplyTo : (Number.isFinite(parsedPreviewReplyTo) && parsedPreviewReplyTo > 0 ? parsedPreviewReplyTo : null));
+                const replyPreviewUser = hasJQ ? ($('#chatReplyPreview .reply-user').text() || '') : '';
+                const replyPreviewMessage = hasJQ ? ($('#chatReplyPreview .reply-preview').html() || '') : '';
+                const payload = new FormData();
+                payload.append('project_id', String(projectId || ''));
+                payload.append('page_id', String(pageId || ''));
+                payload.append('message', msg);
+                payload.append('reply_to', replyTo ? String(replyTo) : '');
+                payload.append('reply_token', replyTo ? ('r:' + String(replyTo)) : '');
+
+                function fallbackPostMessage() {
+                    const params = new URLSearchParams();
+                    params.append('send_message', '1');
+                    params.append('project_id', String(projectId || ''));
+                    params.append('page_id', String(pageId || ''));
+                    params.append('message', msg);
+                    if (replyTo) params.append('reply_to', String(replyTo));
+                    if (replyTo) params.append('reply_token', 'r:' + String(replyTo));
+
+                    return fetch(window.location.pathname + window.location.search, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json'
+                        },
+                        body: params.toString()
+                    }).then(function(res) {
+                        return res.text().then(function(text) {
+                            try { return JSON.parse(text); } catch (e) { return { error: 'Fallback invalid response' }; }
+                        });
+                    }).then(function(res) {
+                        if (res && res.success) {
+                            if (replyTo && res.message && !res.message.reply_preview && replyPreviewMessage) {
+                                res.message.reply_preview = {
+                                    id: replyTo,
+                                    user_id: null,
+                                    username: '',
+                                    full_name: replyPreviewUser || 'User',
+                                    message: replyPreviewMessage,
+                                    created_at: null
+                                };
+                            }
+                            setMessageHtml('');
+                            clearReplyState();
+                            updateCharCount();
+                            if (res.message) appendMessages([res.message]);
+                            else fetchMessages();
+                            if (isEmbed && composeCollapsed) {
+                                updateComposeCollapse();
+                            }
+                        } else {
+                            hardFallbackSubmit(msg, replyTo);
+                        }
+                    }).catch(function() {
+                        hardFallbackSubmit(msg, replyTo);
+                    });
+                }
+
+                fetch('<?php echo $baseDir; ?>/api/chat_actions.php?action=send_message', {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
+                    body: payload
+                }).then(function(res) {
+                    return res.text().then(function(text) {
+                        try { return JSON.parse(text); } catch (e) { return { error: 'Invalid response', _raw: text }; }
+                    });
+                }).then(res => {
+                    if (res && res.success) {
+                        if (replyTo && res.message && !res.message.reply_preview && replyPreviewMessage) {
+                            res.message.reply_preview = {
+                                id: replyTo,
+                                user_id: null,
+                                username: '',
+                                full_name: replyPreviewUser || 'User',
+                                message: replyPreviewMessage,
+                                created_at: null
+                            };
+                        }
+                        setMessageHtml('');
+                        clearReplyState();
+                        updateCharCount();
+                        if (res.message) appendMessages([res.message]);
+                        else fetchMessages();
+                        if (isEmbed && composeCollapsed) {
+                            updateComposeCollapse();
+                        }
+                    } else if (res && res.error) {
+                        // If host/WAF blocks API, fallback to direct form post.
+                        if (String(res.error).toLowerCase().indexOf('invalid response') !== -1) {
+                            return fallbackPostMessage();
+                        }
+                        return fallbackPostMessage();
+                    } else {
+                        return fallbackPostMessage();
+                    }
+                }).catch(err => {
+                    console.error('Chat send failed', err);
+                    return fallbackPostMessage();
+                }).finally(() => {
+                    if (hasJQ) $('#sendBtn').prop('disabled', false); else { const b = document.getElementById('sendBtn'); if (b) b.disabled = false; }
+                });
+            } catch (err) {
+                console.error('sendChatMessage fatal error', err);
+                const safeMsg = (typeof getMessageHtml === 'function') ? getMessageHtml() : '';
+                const safeHiddenReply = (document.getElementById('chatReplyTo') ? document.getElementById('chatReplyTo').value : '');
+                const safeReply = (Number.isFinite(activeReplyToId) && activeReplyToId > 0)
+                    ? String(activeReplyToId)
+                    : String(safeHiddenReply || '');
+                hardFallbackSubmit(safeMsg, safeReply);
+            }
+        }
+
+        function enableToolbarKeyboardA11y($editor) {
+            if (!hasJQ || !$editor || !$editor.length) return;
+            const $toolbar = $editor.next('.note-editor').find('.note-toolbar').first();
+            if (!$toolbar.length || $toolbar.data('kbdA11yBound')) return;
+            let syncingTabStops = false;
+
+            function getItems() {
+                return $toolbar.find('.note-btn-group button').filter(function() {
+                    const $b = $(this);
+                    return !$b.is(':hidden') && !$b.prop('disabled') && !$b.closest('.dropdown-menu').length;
+                });
+            }
+
+            function setActiveIndex(idx) {
+                if (syncingTabStops) return;
+                const $items = getItems();
+                if (!$items.length) return;
+                const next = Math.max(0, Math.min(idx, $items.length - 1));
+                syncingTabStops = true;
+                try {
+                    $items.each(function(i) {
+                        const val = i === next ? '0' : '-1';
+                        if (this.getAttribute('tabindex') !== val) {
+                            this.setAttribute('tabindex', val);
+                        }
+                    });
+                    $toolbar.data('kbdIndex', next);
+                } finally {
+                    syncingTabStops = false;
+                }
+            }
+
+            function ensureToolbarTabStops() {
+                const $items = getItems();
+                if (!$items.length) return;
+                let idx = parseInt($toolbar.data('kbdIndex'), 10);
+                if (isNaN(idx) || idx < 0 || idx >= $items.length) {
+                    idx = $items.index(document.activeElement);
+                }
+                if (isNaN(idx) || idx < 0 || idx >= $items.length) idx = 0;
+                setActiveIndex(idx);
+            }
+
+            function handleNav(e) {
+                const key = e.key || (e.originalEvent && e.originalEvent.key);
+                const code = e.keyCode || (e.originalEvent && e.originalEvent.keyCode);
+                const isTab = key === 'Tab' || code === 9;
+                if (isTab) {
+                    const isComposeEditor = isEmbed && ($editor.attr('id') === 'message');
+                    if (isComposeEditor && !e.shiftKey) {
+                        e.preventDefault();
+                        focusComposeEditable();
+                        return;
+                    }
+                    if (isComposeEditor && e.shiftKey && composeToggle) {
+                        e.preventDefault();
+                        try { composeToggle.focus(); } catch (err) {}
+                        return;
+                    }
+                }
+                const isRight = key === 'ArrowRight' || code === 39;
+                const isLeft = key === 'ArrowLeft' || code === 37;
+                const isHome = key === 'Home' || code === 36;
+                const isEnd = key === 'End' || code === 35;
+                if (!isRight && !isLeft && !isHome && !isEnd) return;
+                const $items = getItems();
+                if (!$items.length) return;
+                const activeEl = document.activeElement;
+                let idx = $items.index(activeEl);
+                if (idx < 0 && activeEl && activeEl.closest) {
+                    const parentBtn = activeEl.closest('button');
+                    if (parentBtn) idx = $items.index(parentBtn);
+                }
+                if (idx < 0) {
+                    const saved = parseInt($toolbar.data('kbdIndex'), 10);
+                    if (!isNaN(saved) && saved >= 0 && saved < $items.length) idx = saved;
+                }
+                if (isNaN(idx) || idx < 0) idx = 0;
+                e.preventDefault();
+                if (e.stopPropagation) e.stopPropagation();
+                if (isHome) idx = 0;
+                else if (isEnd) idx = $items.length - 1;
+                else if (isRight) idx = (idx + 1) % $items.length;
+                else if (isLeft) idx = (idx - 1 + $items.length) % $items.length;
+                setActiveIndex(idx);
+                $items.eq(idx).focus();
+                if (document.activeElement !== $items.eq(idx).get(0)) {
+                    setTimeout(function() { $items.eq(idx).focus(); }, 0);
+                }
+            }
+
+            $toolbar.attr('role', 'toolbar');
+            if (!$toolbar.attr('aria-label')) $toolbar.attr('aria-label', 'Editor toolbar');
+            ensureToolbarTabStops();
+            $toolbar.on('focusin', 'button, [role="button"], a.note-btn', function() {
+                const $items = getItems();
+                const idx = $items.index(this);
+                if (idx >= 0) setActiveIndex(idx);
+            });
+            $toolbar.on('click', 'button, [role="button"], a.note-btn', function() {
+                const $items = getItems();
+                const idx = $items.index(this);
+                if (idx >= 0) setActiveIndex(idx);
+            });
+            $toolbar.on('keydown', handleNav);
+            if (!$toolbar.data('kbdA11yNativeKeyBound')) {
+                $toolbar.get(0).addEventListener('keydown', handleNav, true);
+                $toolbar.data('kbdA11yNativeKeyBound', true);
+            }
+            const observer = new MutationObserver(function() { ensureToolbarTabStops(); });
+            observer.observe($toolbar[0], { subtree: true, attributes: true, attributeFilter: ['tabindex', 'class', 'disabled'] });
+            $toolbar.data('kbdA11yObserver', observer);
+            ensureToolbarTabStops();
+            $toolbar.data('kbdA11yBound', true);
+            const $editable = $editor.next('.note-editor').find('.note-editable');
+            $editable.on('keydown', function(e) {
+                if (e && e.altKey && (e.key === 'F10' || e.keyCode === 121)) {
+                    e.preventDefault();
+                    focusEditorToolbar($editor);
+                }
+            });
+        }
+
+        function focusEditorToolbar($editor) {
+            if (!hasJQ || !$editor || !$editor.length) return;
+            const $toolbar = $editor.next('.note-editor').find('.note-toolbar').first();
+            if (!$toolbar.length) return;
+            const $items = $toolbar.find('.note-btn-group button').filter(function() {
+                const $b = $(this);
+                return !$b.is(':hidden') && !$b.prop('disabled') && !$b.closest('.dropdown-menu').length;
+            });
+            if (!$items.length) return;
+            $items.attr('tabindex', '-1');
+            $items.eq(0).attr('tabindex', '0').focus();
+            $toolbar.data('kbdIndex', 0);
+        }
+
         if (hasJQ) {
-            $('#sendBtn').on('click', function() { sendChatMessage(); });
             $('#chatForm').on('submit', function(e) { e.preventDefault(); sendChatMessage(); });
             $('#message').on('keydown', function(e) {
                 mentionSearchDisabled = (e.key === 'Escape') ? mentionSearchDisabled : false;
@@ -1066,10 +2381,8 @@ if (!$embed) {
                 });
             }
         } else {
-            const btn = document.getElementById('sendBtn');
             const form = document.getElementById('chatForm');
             const msgEl = document.getElementById('message');
-            if (btn) btn.addEventListener('click', sendChatMessage);
             if (form) form.addEventListener('submit', function(e){ e.preventDefault(); sendChatMessage(); });
             if (msgEl) msgEl.addEventListener('keydown', function(e){
                 mentionSearchDisabled = (e.key === 'Escape') ? mentionSearchDisabled : false;
@@ -1212,7 +2525,7 @@ if (!$embed) {
                     hideMentionDropdown(); 
                     return; 
                 }
-                if (e.key === 'Enter' || e.key === ' ') {
+                if (e.key === 'Enter' || e.key === ' ' || e.key === 'Tab' || e.keyCode === 9) {
                     const username = getActiveMentionUsername();
                     if (username) {
                         e.preventDefault();
@@ -1376,6 +2689,85 @@ if (!$embed) {
             hideMentionDropdown();
         }
 
+        function appendMessages(messages) {
+            if (!messages || !messages.length) return;
+            if (hasJQ) $('.no-messages').remove();
+            else {
+                const nm = document.querySelector('.no-messages');
+                if (nm && nm.parentNode) nm.parentNode.removeChild(nm);
+            }
+
+            messages.forEach(msg => {
+                if (!msg || !msg.id) return;
+                const msgId = Number(msg.id);
+                if (msgId <= Number(lastMessageId)) return;
+                if (document.querySelector('.message[data-id="' + msgId + '"]')) return;
+                lastMessageId = msgId;
+
+                let isMentioned = false;
+                if (msg.mentions) {
+                    try {
+                        const mentions = typeof msg.mentions === 'string' ? JSON.parse(msg.mentions) : msg.mentions;
+                        if (Array.isArray(mentions) && mentions.includes(currentUserId)) isMentioned = true;
+                    } catch (e) {}
+                }
+
+                const roleColor = msg.role === 'admin' ? 'danger' : (msg.role === 'project_lead' ? 'warning' : 'info');
+                const ownClass = (Number(msg.user_id) === currentUserId) ? 'own-message' : 'other-message';
+                const canEdit = !!msg.can_edit;
+                const canDelete = !!msg.can_delete;
+                const deletedByContent = (hasJQ ? $('<div>').html(msg.message || '').text() : (new DOMParser().parseFromString(msg.message || '', 'text/html').documentElement.textContent || ''))
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .toLowerCase() === 'message deleted';
+                let replyBlock = '';
+                if (msg.reply_preview) {
+                    const rp = msg.reply_preview;
+                    const rpTime = rp.created_at ? ' <small class="text-muted ms-2">' + escapeHtml(rp.created_at) + '</small>' : '';
+                    replyBlock = `<div class="reply-preview small"><strong>${escapeHtml(rp.full_name)}</strong>${rpTime}: ${rp.message}</div>`;
+                }
+                const msgHtml = `
+                    <div class="message ${ownClass} ${isMentioned ? 'border-start border-warning border-4 bg-light' : ''}" data-id="${msgId}">
+                        <div class="message-header">
+                            <div>
+                                <span class="message-sender">
+                                    <a href="../../modules/profile.php?id=${msg.user_id}" class="text-decoration-none">${escapeHtml(msg.full_name || '')}</a>
+                                </span>
+                                <span class="badge user-badge bg-${roleColor}">${capitalize(String(msg.role || '').replace('_', ' '))}</span>
+                                <small class="text-muted">@${escapeHtml(msg.username || '')}</small>
+                            </div>
+                            <div class="message-header-right">
+                                <div class="message-time">${msg.created_at || ''}</div>
+                                <div class="message-actions">
+                                    <button type="button" class="chat-action-btn chat-reply" title="Reply" aria-label="Reply to message" data-mid="${msgId}" data-username="${escapeHtml(msg.username || '')}" data-message="${escapeHtml(msg.message || '')}"><i class="fas fa-reply"></i></button>
+                                    ${(canEdit && !deletedByContent) ? `<button type="button" class="chat-action-btn chat-edit" title="Edit" aria-label="Edit message" data-mid="${msgId}" data-message="${escapeHtml(msg.message || '')}"><i class="fas fa-pen"></i></button>` : ``}
+                                    ${(canDelete && !deletedByContent) ? `<button type="button" class="chat-action-btn chat-delete" title="Delete" aria-label="Delete message" data-mid="${msgId}"><i class="fas fa-trash"></i></button>` : ``}
+                                    ${canViewHistoryAdmin ? `<button type="button" class="chat-action-btn chat-history" title="History" aria-label="View message history" data-mid="${msgId}"><i class="fas fa-history"></i></button>` : ``}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="message-content">
+                            ${replyBlock}
+                            ${msg.message || ''}
+                            <div class="message-meta">${msg.created_at || ''}</div>
+                        </div>
+                    </div>`;
+
+                if (hasJQ) {
+                    chatMessages.append(msgHtml);
+                } else if (chatMessages) {
+                    const wrapper = document.createElement('div');
+                    wrapper.innerHTML = msgHtml;
+                    if (wrapper.firstElementChild) chatMessages.appendChild(wrapper.firstElementChild);
+                }
+            });
+
+            enhanceImages(hasJQ ? chatMessages[0] : chatMessages);
+            applyEmbedTabOrder();
+            ensureRecentMessageAnchor(false);
+            scrollToBottom();
+        }
+
         function fetchMessages() {
             const params = new URLSearchParams({
                 action: 'fetch_messages',
@@ -1383,68 +2775,16 @@ if (!$embed) {
                 page_id: pageId,
                 last_id: lastMessageId
             });
-            fetch('<?php echo $baseDir; ?>/api/chat_actions.php?' + params.toString())
-                .then(res => res.json())
+            fetch('<?php echo $baseDir; ?>/api/chat_actions.php?' + params.toString(), {
+                headers: { 'Accept': 'application/json' }
+            })
+                .then(res => res.text())
+                .then(text => {
+                    try { return JSON.parse(text); } catch (e) { return []; }
+                })
                 .then(messages => {
-                    if(messages && messages.length > 0) {
-                        if (hasJQ) {
-                            $('.no-messages').remove();
-                        } else {
-                            const nm = document.querySelector('.no-messages');
-                            if (nm && nm.parentNode) nm.parentNode.removeChild(nm);
-                        }
-
-                        messages.forEach(msg => {
-                            if(msg.id > lastMessageId) lastMessageId = msg.id;
-
-                            let isMentioned = false;
-                            if(msg.mentions) {
-                                try {
-                                    const mentions = JSON.parse(msg.mentions);
-                                    if(Array.isArray(mentions) && mentions.includes(currentUserId)) isMentioned = true;
-                                } catch(e) {}
-                            }
-
-                            const roleColor = msg.role === 'admin' ? 'danger' : (msg.role === 'project_lead' ? 'warning' : 'info');
-                            const ownClass = (Number(msg.user_id) === currentUserId) ? 'own-message' : 'other-message';
-                            let replyBlock = '';
-                            if (msg.reply_preview) {
-                                const rp = msg.reply_preview;
-                                const rpTime = rp.created_at ? ' <small class="text-muted ms-2">' + escapeHtml(rp.created_at) + '</small>' : '';
-                                replyBlock = `<div class="reply-preview small"><strong>${escapeHtml(rp.full_name)}</strong>${rpTime}: ${rp.message}</div>`;
-                            }
-                            const msgHtml = `
-                                <div class="message ${ownClass} ${isMentioned ? 'border-start border-warning border-4 bg-light' : ''}" data-id="${msg.id}">
-                                    <div class="message-header">
-                                        <div>
-                                            <span class="message-sender">
-                                                <a href="../../modules/profile.php?id=${msg.user_id}" class="text-decoration-none">${escapeHtml(msg.full_name)}</a>
-                                            </span>
-                                            <span class="badge user-badge bg-${roleColor}">${capitalize(msg.role.replace('_', ' '))}</span>
-                                            <small class="text-muted">@${escapeHtml(msg.username)}</small>
-                                        </div>
-                                        <div class="d-flex align-items-center">
-                                            <div class="message-time me-2">${msg.created_at}</div>
-                                            <button class="btn btn-sm btn-link chat-reply" data-mid="${msg.id}" data-username="${escapeHtml(msg.username)}">Reply</button>
-                                        </div>
-                                    </div>
-                                    <div class="message-content">
-                                        ${replyBlock}
-                                        ${msg.message}
-                                        <div class="message-meta">${msg.created_at}</div>
-                                    </div>
-                                </div>`;
-
-                            if (hasJQ) {
-                                chatMessages.append(msgHtml);
-                            } else if (chatMessages) {
-                                const wrapper = document.createElement('div');
-                                wrapper.innerHTML = msgHtml;
-                                chatMessages.appendChild(wrapper.firstElementChild);
-                            }
-                        });
-                        enhanceImages(hasJQ ? chatMessages[0] : chatMessages);
-                        scrollToBottom();
+                    if (messages && Array.isArray(messages) && messages.length > 0) {
+                        appendMessages(messages);
                     }
                 });
         }
@@ -1457,7 +2797,14 @@ if (!$embed) {
         
         function capitalize(s) { return (s && s.length) ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
         
-        setInterval(fetchMessages, 5000);
+        fetchMessages();
+        setInterval(fetchMessages, 2000);
+        applyEmbedTabOrder();
+        bindMessageKeyboardNavigation();
+        if (!initialRecentMessageFocused) {
+            ensureRecentMessageAnchor(true);
+            initialRecentMessageFocused = true;
+        }
         
         if (hasJQ) {
             $('#refreshChat').click(() => location.reload());
@@ -1467,6 +2814,17 @@ if (!$embed) {
             if (r) r.addEventListener('click', () => location.reload());
             const c = document.getElementById('clearMessage');
             if (c) c.addEventListener('click', () => { setMessageHtml(''); updateCharCount(); });
+        }
+
+        if (isEmbed) {
+            document.addEventListener('keydown', function(e) {
+                if (!e || e.key !== 'Escape') return;
+                try {
+                    if (window.parent && window.parent !== window) {
+                        window.parent.postMessage({ type: 'pms-chat-close' }, '*');
+                    }
+                } catch (err) {}
+            });
         }
     });
     </script>

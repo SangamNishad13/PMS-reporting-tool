@@ -55,24 +55,35 @@ if (!$projectId) {
     if (hasProjectLeadPrivileges()) {
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_team'])) {
             $userIds = $_POST['user_ids'] ?? [];
-            $hours = $_POST['hours_allocated'] ?? 0;
+            $hoursRaw = $_POST['hours_allocated'] ?? 0;
+            $hours = is_numeric($hoursRaw) ? (float)$hoursRaw : 0.0;
+            if ($hours < 0) $hours = 0.0;
             
             if (!is_array($userIds)) $userIds = [$userIds];
-            
+
+            $addedCount = 0;
+            $restoredCount = 0;
+            $skippedCount = 0;
+            $errorCount = 0;
+
             foreach ($userIds as $uId) {
                 if (empty($uId)) continue;
-                $uRoleStmt = $db->prepare("SELECT role FROM users WHERE id = ?");
-                $uRoleStmt->execute([$uId]);
-                $uRole = $uRoleStmt->fetchColumn();
-                
-                if ($uRole) {
+                try {
+                    $uRoleStmt = $db->prepare("SELECT role FROM users WHERE id = ?");
+                    $uRoleStmt->execute([$uId]);
+                    $uRole = $uRoleStmt->fetchColumn();
+                    if (!$uRole) {
+                        $skippedCount++;
+                        continue;
+                    }
+
                     // Check existing assignment (active or removed)
                     $existingStmt = $db->prepare("SELECT id, is_removed FROM user_assignments WHERE project_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1");
                     $existingStmt->execute([$projectId, $uId]);
                     $existing = $existingStmt->fetch(PDO::FETCH_ASSOC);
 
                     if ($existing && (int)$existing['is_removed'] === 0) {
-                        // already active, skip
+                        $skippedCount++;
                         continue;
                     }
 
@@ -82,9 +93,19 @@ if (!$projectId) {
                     $projectInfo = $projectStmt->fetch(PDO::FETCH_ASSOC);
 
                     if ($existing && (int)$existing['is_removed'] === 1) {
+                        $validation = validateHoursAllocation($db, $projectId, $hours, (int)$existing['id']);
+                        if (!$validation['valid']) {
+                            $errorCount++;
+                            continue;
+                        }
                         // Restore removed assignment
                         $restoreStmt = $db->prepare("UPDATE user_assignments SET is_removed = 0, removed_at = NULL, removed_by = NULL, assigned_by = ?, assigned_at = NOW(), hours_allocated = ? WHERE id = ? AND project_id = ?");
                         $restoreStmt->execute([$userId, $hours, $existing['id'], $projectId]);
+                        if ($restoreStmt->rowCount() > 0) {
+                            $restoredCount++;
+                        } else {
+                            $skippedCount++;
+                        }
 
                         $notificationMessage = "You have been restored to project: " . ($projectInfo['title'] ?? 'Unknown Project');
                         if (!empty($projectInfo['po_number'])) {
@@ -109,12 +130,20 @@ if (!$projectId) {
                             'hours' => $hours
                         ]);
                     } else {
+                        $validation = validateHoursAllocation($db, $projectId, $hours, null);
+                        if (!$validation['valid']) {
+                            $errorCount++;
+                            continue;
+                        }
                         // Insert new assignment
                         $insertStmt = $db->prepare("
                             INSERT INTO user_assignments (project_id, user_id, role, assigned_by, hours_allocated)
                             VALUES (?, ?, ?, ?, ?)
                         ");
                         $insertStmt->execute([$projectId, $uId, $uRole, $userId, $hours]);
+                        if ($insertStmt->rowCount() > 0) {
+                            $addedCount++;
+                        }
 
                         $notificationMessage = "You have been assigned to project: " . ($projectInfo['title'] ?? 'Unknown Project');
                         if (!empty($projectInfo['po_number'])) {
@@ -139,9 +168,19 @@ if (!$projectId) {
                             'hours' => $hours
                         ]);
                     }
+                } catch (Exception $e) {
+                    $errorCount++;
+                    error_log("Team assignment error (project {$projectId}, user {$uId}): " . $e->getMessage());
                 }
             }
-            $_SESSION['success'] = "Team members assigned.";
+
+            if (($addedCount + $restoredCount) > 0) {
+                $_SESSION['success'] = "Team updated. Added: {$addedCount}, Restored: {$restoredCount}" . ($skippedCount > 0 ? ", Skipped: {$skippedCount}" : "") . ($errorCount > 0 ? ", Errors: {$errorCount}" : "") . ".";
+            } elseif ($errorCount > 0) {
+                $_SESSION['error'] = "Team assignment failed due to {$errorCount} error(s). Check server error log for details.";
+            } else {
+                $_SESSION['error'] = "No members were added. Selected users may already be assigned or invalid.";
+            }
             header("Location: manage_assignments.php?project_id=$projectId&tab=team");
             exit;
         }
@@ -898,14 +937,16 @@ include __DIR__ . '/../../includes/header.php';
                                     Project total hours not set. Please set project total hours first.
                                 </div>
                                 <?php elseif ($availableForAllocation <= 0): ?>
-                                <div class="alert alert-danger">
-                                    <i class="fas fa-exclamation-circle"></i> 
-                                    No hours available for allocation. All project hours have been allocated.
+                                <div class="alert alert-warning">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    No hours available for new allocation right now.
+                                    <br><small>You can still add members with 0 allocated hours.</small>
                                     <br><small>Allocated: <?php echo $allocatedHours; ?> hours | Total Budget: <?php echo $totalHours; ?> hours</small>
                                 </div>
                                 <?php endif; ?>
                                 
-                                <form method="POST" id="teamAssignForm">
+                                <form method="POST" id="teamAssignForm" action="manage_assignments.php?project_id=<?php echo (int)$projectId; ?>&tab=team">
+                                    <input type="hidden" name="project_id" value="<?php echo (int)$projectId; ?>">
                                     <div class="mb-3">
                                         <label class="form-label">Select Users</label>
                                         <select name="user_ids[]" class="form-select" multiple size="10" required>
@@ -925,7 +966,7 @@ include __DIR__ . '/../../includes/header.php';
                                         </small>
                                         <div id="hoursValidation" class="mt-1"></div>
                                     </div>
-                                    <button type="submit" name="assign_team" class="btn btn-primary w-100" <?php echo ($totalHours <= 0 || $availableForAllocation <= 0) ? 'disabled' : ''; ?>>
+                                    <button type="submit" name="assign_team" class="btn btn-primary w-100" <?php echo ($totalHours <= 0) ? 'disabled' : ''; ?>>
                                         Add to Project
                                     </button>
                                 </form>
@@ -1236,16 +1277,31 @@ include __DIR__ . '/../../includes/header.php';
                                         $pAtIds = getAssignedIdsFromPage($p, 'at_tester');
                                         $pFtIds = getAssignedIdsFromPage($p, 'ft_tester');
                                         
-                                        // Get environment count
-                                        $envStmt = $db->prepare("SELECT COUNT(*) FROM page_environments pe WHERE pe.page_id = ?");
+                                        // Get environment assignment summary for this page
+                                        $envStmt = $db->prepare("
+                                            SELECT 
+                                                COUNT(*) AS env_count,
+                                                MAX(CASE WHEN pe.at_tester_id IS NOT NULL THEN 1 ELSE 0 END) AS has_env_at,
+                                                MAX(CASE WHEN pe.ft_tester_id IS NOT NULL THEN 1 ELSE 0 END) AS has_env_ft,
+                                                MAX(CASE WHEN pe.qa_id IS NOT NULL THEN 1 ELSE 0 END) AS has_env_qa
+                                            FROM page_environments pe
+                                            WHERE pe.page_id = ?
+                                        ");
                                         $envStmt->execute([$p['id']]);
-                                        $envCount = $envStmt->fetchColumn();
+                                        $envSummary = $envStmt->fetch(PDO::FETCH_ASSOC) ?: [
+                                            'env_count' => 0,
+                                            'has_env_at' => 0,
+                                            'has_env_ft' => 0,
+                                            'has_env_qa' => 0
+                                        ];
+                                        $envCount = (int)($envSummary['env_count'] ?? 0);
                                         
                                         // Calculate assignment status
-                                        $hasAT = !empty($p['at_tester_id']) || !empty($pAtIds);
-                                        $hasFT = !empty($p['ft_tester_id']) || !empty($pFtIds);
-                                        $hasQA = !empty($p['qa_id']);
+                                        $hasAT = !empty($p['at_tester_id']) || !empty($pAtIds) || ((int)($envSummary['has_env_at'] ?? 0) === 1);
+                                        $hasFT = !empty($p['ft_tester_id']) || !empty($pFtIds) || ((int)($envSummary['has_env_ft'] ?? 0) === 1);
+                                        $hasQA = !empty($p['qa_id']) || ((int)($envSummary['has_env_qa'] ?? 0) === 1);
                                         $assignmentCount = ($hasAT ? 1 : 0) + ($hasFT ? 1 : 0) + ($hasQA ? 1 : 0);
+                                        $isReady = ($hasFT && $hasQA && $envCount > 0); // AT is optional
                                     ?>
                                     <tr class="align-middle">
                                         <td class="text-start">
@@ -1259,8 +1315,8 @@ include __DIR__ . '/../../includes/header.php';
                                         <td class="text-center">
                                             <div class="d-flex justify-content-center align-items-center gap-2">
                                                 <!-- Assignment Summary -->
-                                                <span class="badge <?php echo $assignmentCount == 3 ? 'bg-success' : ($assignmentCount > 0 ? 'bg-warning text-dark' : 'bg-secondary'); ?>" 
-                                                      title="<?php echo $assignmentCount; ?> of 3 roles assigned">
+                                                <span class="badge <?php echo $isReady ? 'bg-success' : ($assignmentCount > 0 ? 'bg-warning text-dark' : 'bg-secondary'); ?>" 
+                                                      title="<?php echo $assignmentCount; ?> roles assigned (AT optional)">
                                                     <i class="fas fa-users"></i> <?php echo $assignmentCount; ?>/3
                                                 </span>
                                                 
@@ -1284,7 +1340,7 @@ include __DIR__ . '/../../includes/header.php';
                                             $statusText = 'Not Started';
                                             $statusIcon = 'fas fa-circle';
                                             
-                                            if ($assignmentCount == 3 && $envCount > 0) {
+                                            if ($isReady) {
                                                 $statusClass = 'success';
                                                 $statusText = 'Ready';
                                                 $statusIcon = 'fas fa-check-circle';
@@ -1620,37 +1676,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Confirmation before adding team members
+    // Team assignment submit: require at least one selection and allow direct submit
     const teamAssignForm = document.getElementById('teamAssignForm');
     if (teamAssignForm) {
         teamAssignForm.addEventListener('submit', function(e) {
-            if (teamAssignForm.dataset.confirmed === '1') {
-                return;
-            }
-
-            e.preventDefault();
             const selectedUsers = Array.from(teamAssignForm.querySelectorAll('select[name="user_ids[]"] option:checked'));
             const selectedCount = selectedUsers.length;
-            const hours = teamAssignForm.querySelector('input[name="hours_allocated"]')?.value || '0';
-
             if (selectedCount === 0) {
-                teamAssignForm.submit();
-                return;
-            }
-
-            const msg = 'Add ' + selectedCount + ' team member(s) with ' + hours + ' allocated hours?';
-            if (typeof window.confirmModal === 'function') {
-                window.confirmModal(msg, function() {
-                    teamAssignForm.dataset.confirmed = '1';
-                    teamAssignForm.submit();
-                }, {
-                    title: 'Confirm Team Assignment',
-                    confirmText: 'Add Members',
-                    confirmClass: 'btn-primary'
-                });
-            } else if (window.confirm(msg)) {
-                teamAssignForm.dataset.confirmed = '1';
-                teamAssignForm.submit();
+                e.preventDefault();
+                if (typeof window.showToast === 'function') {
+                    showToast('Select at least one user to add.', 'warning');
+                }
             }
         });
     }

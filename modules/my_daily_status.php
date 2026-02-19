@@ -25,14 +25,27 @@ try {
         id INT PRIMARY KEY AUTO_INCREMENT,
         user_id INT NOT NULL,
         req_date DATE NOT NULL,
+        request_type ENUM('edit','delete') NOT NULL DEFAULT 'edit',
         reason TEXT,
         status ENUM('pending','approved','rejected') DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY uq_user_date (user_id, req_date),
+        UNIQUE KEY uq_user_date_type (user_id, req_date, request_type),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
 } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_edit_requests ADD COLUMN request_type ENUM('edit','delete') NOT NULL DEFAULT 'edit'"); } catch (Exception $e) {}
+try { $db->exec("UPDATE user_edit_requests SET request_type = 'delete' WHERE reason LIKE 'Deletion request for time log ID %'"); } catch (Exception $e) {}
+try { $db->exec("UPDATE user_edit_requests SET request_type = 'edit' WHERE request_type IS NULL OR request_type = ''"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_edit_requests DROP INDEX uq_user_date"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_edit_requests ADD UNIQUE KEY uq_user_date_type (user_id, req_date, request_type)"); } catch (Exception $e) {}
+$hasRequestTypeColumn = false;
+try {
+    $colStmt = $db->query("SHOW COLUMNS FROM user_edit_requests LIKE 'request_type'");
+    $hasRequestTypeColumn = ($colStmt && $colStmt->rowCount() > 0);
+} catch (Exception $e) {
+    $hasRequestTypeColumn = false;
+}
 
 // Ensure time log history table exists (for audit trail visible to clients)
 try {
@@ -89,12 +102,28 @@ if (!function_exists('recordProjectTimeLogHistory')) {
 // Handle AJAX: check if edit request is pending for this date
 if (isset($_GET['action']) && $_GET['action'] === 'check_edit_request') {
     $reqDate = $_GET['date'] ?? $date;
-    $stmt = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ?");
+    $stmt = $db->prepare("
+        SELECT status
+        FROM user_edit_requests
+        WHERE user_id = ?
+          AND req_date = ?
+          AND request_type = 'edit'
+    ");
     $stmt->execute([$userId, $reqDate]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    $pending = ($row && $row['status'] === 'pending');
+    $status = $row['status'] ?? null;
+    $pending = ($status === 'pending');
+    $approved = ($status === 'approved');
+    $rejected = ($status === 'rejected');
+    $used = ($status === 'used');
     header('Content-Type: application/json');
-    echo json_encode(['pending' => $pending]);
+    echo json_encode([
+        'pending' => $pending,
+        'approved' => $approved,
+        'rejected' => $rejected,
+        'used' => $used,
+        'status' => $status
+    ]);
     exit;
 }
 
@@ -105,7 +134,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'request_edit') {
     
     try {
         // Insert or update request to pending
-        $stmt = $db->prepare("INSERT INTO user_edit_requests (user_id, req_date, status, reason) VALUES (?, ?, 'pending', ?) ON DUPLICATE KEY UPDATE status='pending', reason=VALUES(reason), updated_at=NOW()");
+        $stmt = $db->prepare("INSERT INTO user_edit_requests (user_id, req_date, request_type, status, reason) VALUES (?, ?, 'edit', 'pending', ?) ON DUPLICATE KEY UPDATE request_type='edit', status='pending', reason=VALUES(reason), updated_at=NOW()");
         $stmt->execute([$userId, $reqDate, $reason]);
 
         // Insert notification for all admins
@@ -166,8 +195,9 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_pending') {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
         
         // Save pending changes
-        $stmt = $db->prepare("INSERT INTO user_pending_changes (user_id, req_date, status, notes, personal_note) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE status=VALUES(status), notes=VALUES(notes), personal_note=VALUES(personal_note), updated_at=NOW()");
-        $stmt->execute([$userId, $reqDate, $status, $notes, $personal_note]);
+        $pendingLogs = $_POST['pending_time_logs'] ?? '[]';
+        $stmt = $db->prepare("INSERT INTO user_pending_changes (user_id, req_date, status, notes, personal_note, pending_time_logs) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE status=VALUES(status), notes=VALUES(notes), personal_note=VALUES(personal_note), pending_time_logs=VALUES(pending_time_logs), updated_at=NOW()");
+        $stmt->execute([$userId, $reqDate, $status, $notes, $personal_note, $pendingLogs]);
         
         header('Content-Type: application/json');
         echo json_encode(['success' => true, 'message' => 'Pending changes saved successfully']);
@@ -195,6 +225,104 @@ try {
 } catch (Exception $e) {
     // If creation fails (permissions), we'll surface real errors later when used.
 }
+
+if (!function_exists('ensureOffProdProjectId')) {
+    function ensureOffProdProjectId($db, $userId) {
+        try {
+            $findByPo = $db->prepare("SELECT id, status FROM projects WHERE po_number = 'OFF-PROD-001' ORDER BY id DESC LIMIT 1");
+            $findByPo->execute();
+            $row = $findByPo->fetch(PDO::FETCH_ASSOC);
+            if ($row && !empty($row['id'])) {
+                $id = (int)$row['id'];
+                $status = (string)($row['status'] ?? '');
+                if (in_array($status, ['cancelled', 'archived'], true)) {
+                    $upd = $db->prepare("UPDATE projects SET status = 'in_progress' WHERE id = ?");
+                    $upd->execute([$id]);
+                }
+                return $id;
+            }
+
+            $findByTitle = $db->prepare("SELECT id, status FROM projects WHERE UPPER(title) LIKE '%OFF%PROD%' ORDER BY id DESC LIMIT 1");
+            $findByTitle->execute();
+            $row2 = $findByTitle->fetch(PDO::FETCH_ASSOC);
+            if ($row2 && !empty($row2['id'])) {
+                $id2 = (int)$row2['id'];
+                $status2 = (string)($row2['status'] ?? '');
+                if (in_array($status2, ['cancelled', 'archived'], true)) {
+                    $upd2 = $db->prepare("UPDATE projects SET status = 'in_progress' WHERE id = ?");
+                    $upd2->execute([$id2]);
+                }
+                return $id2;
+            }
+
+            $ins = $db->prepare("
+                INSERT INTO projects (po_number, title, description, project_type, priority, status, created_by)
+                VALUES ('OFF-PROD-001', 'Off-Production / Bench', 'System project for off-production and bench hour logging.', 'web', 'medium', 'in_progress', ?)
+            ");
+            $ins->execute([(int)$userId]);
+            return (int)$db->lastInsertId();
+        } catch (Exception $e) {
+            return 0;
+        }
+    }
+}
+
+// Ensure pending log deletion request table exists
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS user_pending_log_deletions (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id INT NOT NULL,
+        req_date DATE NOT NULL,
+        log_id INT NOT NULL,
+        reason TEXT NULL,
+        status ENUM('pending','approved','rejected') DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_user_log (user_id, log_id),
+        INDEX idx_user_date_status (user_id, req_date, status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+} catch (Exception $e) {}
+
+// Ensure pending log edit request table exists
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS user_pending_log_edits (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id INT NOT NULL,
+        req_date DATE NOT NULL,
+        log_id INT NOT NULL,
+        new_hours DECIMAL(10,2) NOT NULL,
+        new_description TEXT NOT NULL,
+        new_project_id INT NULL,
+        new_task_type VARCHAR(50) NULL,
+        new_page_id INT NULL,
+        new_environment_id INT NULL,
+        new_issue_id INT NULL,
+        new_phase_id INT NULL,
+        new_generic_category_id INT NULL,
+        new_testing_type VARCHAR(50) NULL,
+        new_phase_activity VARCHAR(100) NULL,
+        new_generic_task_detail TEXT NULL,
+        new_is_utilized TINYINT(1) NULL,
+        reason TEXT NULL,
+        status ENUM('pending','approved','rejected') DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_user_log_edit (user_id, log_id),
+        INDEX idx_user_date_status (user_id, req_date, status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+} catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_log_edits ADD COLUMN new_project_id INT NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_log_edits ADD COLUMN new_task_type VARCHAR(50) NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_log_edits ADD COLUMN new_page_id INT NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_log_edits ADD COLUMN new_environment_id INT NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_log_edits ADD COLUMN new_issue_id INT NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_log_edits ADD COLUMN new_phase_id INT NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_log_edits ADD COLUMN new_generic_category_id INT NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_log_edits ADD COLUMN new_testing_type VARCHAR(50) NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_log_edits ADD COLUMN new_phase_activity VARCHAR(100) NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_log_edits ADD COLUMN new_generic_task_detail TEXT NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_log_edits ADD COLUMN new_is_utilized TINYINT(1) NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_changes ADD COLUMN pending_time_logs TEXT NULL"); } catch (Exception $e) {}
 
 // Handle Status Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
@@ -248,7 +376,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $today = date('Y-m-d');
     if (!$isAdmin && $date < $today) {
         // Check if user has approved edit request for this date
-        $requestStmt = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND status = 'approved'");
+        $requestStmt = $db->prepare("
+            SELECT status
+            FROM user_edit_requests
+            WHERE user_id = ?
+              AND req_date = ?
+              AND status = 'approved'
+              AND request_type = 'edit'
+        ");
         $requestStmt->execute([$userId, $date]);
         $approvedRequest = $requestStmt->fetch(PDO::FETCH_ASSOC);
         
@@ -288,7 +423,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
 
     // If this was an approved edit request, mark it as used
     if (!$isAdmin && $date < $today) {
-        $updateRequestStmt = $db->prepare("UPDATE user_edit_requests SET status = 'used', updated_at = NOW() WHERE user_id = ? AND req_date = ? AND status = 'approved'");
+        $updateRequestStmt = $db->prepare("
+            UPDATE user_edit_requests
+            SET status = 'used', updated_at = NOW()
+            WHERE user_id = ?
+              AND req_date = ?
+              AND status = 'approved'
+              AND request_type = 'edit'
+        ");
         $updateRequestStmt->execute([$userId, $date]);
     }
 
@@ -306,13 +448,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
 }
 
 // Handle Time Log
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_time'])) {
+$isTimeLogPost = (
+    $_SERVER['REQUEST_METHOD'] === 'POST' &&
+    (
+        isset($_POST['log_time']) ||
+        (
+            !isset($_POST['update_status']) &&
+            isset($_POST['hours_spent']) &&
+            isset($_POST['description']) &&
+            (isset($_POST['project_id']) || isset($_POST['bench_activity']))
+        )
+    )
+);
+if ($isTimeLogPost) {
 
     
-    $projectId = $_POST['project_id'];
+    $projectId = isset($_POST['project_id']) ? intval($_POST['project_id']) : 0;
     $hours = floatval($_POST['hours_spent']);
     $desc = $_POST['description'];
-    $taskType = $_POST['task_type'] ?? '';
+    $isBenchRequest = (isset($_POST['bench_activity']) && trim((string)$_POST['bench_activity']) !== '');
+    $taskTypeInput = trim((string)($_POST['task_type'] ?? ''));
+    $taskTypeMap = [
+        'regression_testing' => 'regression',
+        'page_qa' => 'page_testing'
+    ];
+    $taskType = $taskTypeMap[$taskTypeInput] ?? $taskTypeInput;
+    $allowedTaskTypes = ['page_testing', 'project_phase', 'generic_task', 'regression', 'other'];
+    if (!in_array($taskType, $allowedTaskTypes, true)) {
+        $taskType = 'other';
+    }
     
 
     
@@ -324,7 +488,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_time'])) {
     $taskDetails = '';
     
     // Process based on task type
-    switch ($taskType) {
+    switch ($taskTypeInput) {
         case 'page_testing':
             // Handle multiple pages
             if (isset($_POST['page_ids']) && is_array($_POST['page_ids'])) {
@@ -375,20 +539,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_time'])) {
     }
     
     // Handle bench activity description enhancement
-    if (isset($_POST['bench_activity']) && $_POST['bench_activity'] !== '') {
+    if ($isBenchRequest) {
         $benchActivity = $_POST['bench_activity'];
+        if ($projectId <= 0) {
+            $projectId = ensureOffProdProjectId($db, $userId);
+        }
         $desc = ucfirst($benchActivity) . ': ' . $desc;
     }
     // Issue link (optional) for regression hours
     $issueId = isset($_POST['issue_id']) && $_POST['issue_id'] !== '' ? intval($_POST['issue_id']) : null;
     
+    if ($projectId <= 0) {
+        $_SESSION['error'] = $isBenchRequest
+            ? "Unable to log off-production hours: OFF-PROD project was not found. Create or activate an OFF-PROD project first."
+            : "Unable to log hours: project is not selected.";
+        header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+        exit;
+    }
+
     // Check if off-production
-    $isUtilized = 1;
-    $stmt = $db->prepare("SELECT po_number FROM projects WHERE id = ?");
-    $stmt->execute([$projectId]);
-    $po = $stmt->fetchColumn();
-    if ($po === 'OFF-PROD-001') {
-        $isUtilized = 0;
+    $isUtilized = $isBenchRequest ? 0 : 1;
+    if (!$isBenchRequest) {
+        $stmt = $db->prepare("SELECT po_number FROM projects WHERE id = ?");
+        $stmt->execute([$projectId]);
+        $po = $stmt->fetchColumn();
+        if (strcasecmp(trim((string)$po), 'OFF-PROD-001') === 0) {
+            $isUtilized = 0;
+        }
     }
     
 
@@ -397,11 +574,94 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_time'])) {
         // Prevent logging for past dates unless admin or approved edit request
         $today = date('Y-m-d');
         if (!$isAdmin && $date < $today) {
-            $reqCheck = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND status = 'approved'");
+            if ($hasRequestTypeColumn) {
+                $reqCheck = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND status = 'approved' AND request_type = 'edit'");
+            } else {
+                $reqCheck = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND status = 'approved' AND (reason IS NULL OR reason NOT LIKE 'Deletion request for time log ID %')");
+            }
             $reqCheck->execute([$userId, $date]);
             $approved = $reqCheck->fetch(PDO::FETCH_ASSOC);
             if (!$approved) {
-                throw new Exception('Cannot log hours for past dates without admin approval. Please request an edit.');
+                // Capture current date values so admin can review and apply pending logs on approval.
+                $statusRowStmt = $db->prepare("SELECT status, notes FROM user_daily_status WHERE user_id = ? AND status_date = ?");
+                $statusRowStmt->execute([$userId, $date]);
+                $statusRow = $statusRowStmt->fetch(PDO::FETCH_ASSOC);
+                $currStatus = $statusRow['status'] ?? 'not_updated';
+                $currNotes = $statusRow['notes'] ?? '';
+                $noteRowStmt = $db->prepare("SELECT content FROM user_calendar_notes WHERE user_id = ? AND note_date = ?");
+                $noteRowStmt->execute([$userId, $date]);
+                $currPersonal = (string)($noteRowStmt->fetchColumn() ?: '');
+
+                $pendingEntry = [
+                    'project_id' => $projectId,
+                    'task_type' => $taskType,
+                    'page_ids' => array_values(array_map('intval', $pageIds)),
+                    'environment_ids' => $envId ? [(int)$envId] : [],
+                    'testing_type' => $_POST['testing_type'] ?? null,
+                    'issue_id' => $issueId ?: null,
+                    'hours' => $hours,
+                    'description' => $desc,
+                    'is_utilized' => (int)$isUtilized
+                ];
+
+                $pendingStmt = $db->prepare("SELECT pending_time_logs FROM user_pending_changes WHERE user_id = ? AND req_date = ?");
+                $pendingStmt->execute([$userId, $date]);
+                $existingPendingRaw = $pendingStmt->fetchColumn();
+                $existingPending = json_decode((string)$existingPendingRaw, true);
+                if (!is_array($existingPending)) {
+                    $existingPending = [];
+                }
+                $existingPending[] = $pendingEntry;
+
+                $savePendingStmt = $db->prepare("
+                    INSERT INTO user_pending_changes (user_id, req_date, status, notes, personal_note, pending_time_logs)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        status = VALUES(status),
+                        notes = VALUES(notes),
+                        personal_note = VALUES(personal_note),
+                        pending_time_logs = VALUES(pending_time_logs),
+                        updated_at = NOW()
+                ");
+                $savePendingStmt->execute([$userId, $date, $currStatus, $currNotes, $currPersonal, json_encode($existingPending, JSON_UNESCAPED_UNICODE)]);
+
+                $reason = 'Time log edit request for date ' . $date;
+                if ($hasRequestTypeColumn) {
+                    $reqStmt = $db->prepare("
+                        INSERT INTO user_edit_requests (user_id, req_date, request_type, status, reason)
+                        VALUES (?, ?, 'edit', 'pending', ?)
+                        ON DUPLICATE KEY UPDATE
+                            request_type = 'edit',
+                            status = 'pending',
+                            reason = VALUES(reason),
+                            updated_at = NOW()
+                    ");
+                } else {
+                    $reqStmt = $db->prepare("
+                        INSERT INTO user_edit_requests (user_id, req_date, status, reason)
+                        VALUES (?, ?, 'pending', ?)
+                        ON DUPLICATE KEY UPDATE
+                            status = 'pending',
+                            reason = VALUES(reason),
+                            updated_at = NOW()
+                    ");
+                }
+                $reqStmt->execute([$userId, $date, $reason]);
+
+                $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin','super_admin') AND is_active = 1");
+                $adminStmt->execute();
+                $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
+                $userName = $_SESSION['full_name'] ?? 'User';
+                $msg = $userName . " requested edit approval for time log on " . $date;
+                $link = "/modules/admin/edit_requests.php";
+                foreach ($admins as $admin) {
+                    $nStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'edit_request', ?, ?)");
+                    $nStmt->execute([$admin['id'], $msg, $link]);
+                }
+
+                $_SESSION['success'] = "Edit request sent to admin for approval. Your log will be applied after approval.";
+                header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+                exit;
             }
         }
         $db->beginTransaction();
@@ -580,7 +840,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_time'])) {
         $_SESSION['success'] = "Time logged successfully and project hours updated.";
         
     } catch (Exception $e) {
-        $db->rollBack();
+        try {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+        } catch (Exception $rollbackError) {
+            // Ignore rollback errors and keep original exception message for user feedback.
+        }
         $_SESSION['error'] = "Error logging time: " . $e->getMessage();
     }
     
@@ -589,28 +855,230 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_time'])) {
 }
 
 // Handle Delete Log
+if (isset($_GET['delete_log_request'])) {
+    $logId = (int)$_GET['delete_log_request'];
+    if ($logId > 0) {
+        if ($isAdmin) {
+            header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date&delete_log=$logId");
+            exit;
+        }
+        try {
+            $logStmt = $db->prepare("SELECT id FROM project_time_logs WHERE id = ? AND user_id = ? AND log_date = ? LIMIT 1");
+            $logStmt->execute([$logId, $userId, $date]);
+            $existing = $logStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$existing) {
+                $_SESSION['error'] = "Log not found for selected date.";
+                header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+                exit;
+            }
+
+            $reason = "Deletion request for time log ID {$logId}";
+            $reqStmt = $db->prepare("
+                INSERT INTO user_edit_requests (user_id, req_date, request_type, status, reason)
+                VALUES (?, ?, 'delete', 'pending', ?)
+                ON DUPLICATE KEY UPDATE request_type = 'delete', status = 'pending', reason = VALUES(reason), updated_at = NOW()
+            ");
+            $reqStmt->execute([$userId, $date, $reason]);
+
+            $delReqStmt = $db->prepare("
+                INSERT INTO user_pending_log_deletions (user_id, req_date, log_id, reason, status)
+                VALUES (?, ?, ?, ?, 'pending')
+                ON DUPLICATE KEY UPDATE req_date = VALUES(req_date), reason = VALUES(reason), status = 'pending', updated_at = NOW()
+            ");
+            $delReqStmt->execute([$userId, $date, $logId, $reason]);
+
+            $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin','super_admin') AND is_active = 1");
+            $adminStmt->execute();
+            $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
+            $userName = $_SESSION['full_name'] ?? 'User';
+            $msg = $userName . " requested deletion approval for time log on " . $date . " (Log ID: " . $logId . ")";
+            $link = "/modules/admin/edit_requests.php";
+            foreach ($admins as $admin) {
+                $nStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'edit_request', ?, ?)");
+                $nStmt->execute([$admin['id'], $msg, $link]);
+            }
+
+            $_SESSION['success'] = "Deletion request sent to admin for approval.";
+        } catch (Exception $e) {
+            $_SESSION['error'] = "Failed to send deletion request: " . $e->getMessage();
+        }
+    }
+    header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+    exit;
+}
+
+if (isset($_GET['edit_log_request'])) {
+    $logId = (int)$_GET['edit_log_request'];
+    $newHours = isset($_REQUEST['new_hours']) ? (float)$_REQUEST['new_hours'] : 0;
+    $newDescription = trim((string)($_REQUEST['new_description'] ?? ''));
+    $newProjectId = isset($_REQUEST['new_project_id']) ? (int)$_REQUEST['new_project_id'] : 0;
+    $newTaskTypeInput = trim((string)($_REQUEST['new_task_type'] ?? ''));
+    $taskTypeMap = ['regression_testing' => 'regression', 'page_qa' => 'page_testing'];
+    $newTaskType = $taskTypeMap[$newTaskTypeInput] ?? $newTaskTypeInput;
+    $allowedTaskTypes = ['page_testing', 'project_phase', 'generic_task', 'regression', 'other'];
+    if (!in_array($newTaskType, $allowedTaskTypes, true)) {
+        $newTaskType = 'other';
+    }
+    $newPageId = (isset($_REQUEST['new_page_id']) && $_REQUEST['new_page_id'] !== '') ? (int)$_REQUEST['new_page_id'] : null;
+    $newEnvironmentId = (isset($_REQUEST['new_environment_id']) && $_REQUEST['new_environment_id'] !== '') ? (int)$_REQUEST['new_environment_id'] : null;
+    $newIssueId = (isset($_REQUEST['new_issue_id']) && $_REQUEST['new_issue_id'] !== '') ? (int)$_REQUEST['new_issue_id'] : null;
+    $newPhaseId = (isset($_REQUEST['new_phase_id']) && $_REQUEST['new_phase_id'] !== '') ? (int)$_REQUEST['new_phase_id'] : null;
+    $newGenericCategoryId = (isset($_REQUEST['new_generic_category_id']) && $_REQUEST['new_generic_category_id'] !== '') ? (int)$_REQUEST['new_generic_category_id'] : null;
+    $newTestingType = trim((string)($_REQUEST['new_testing_type'] ?? ''));
+    $newPhaseActivity = trim((string)($_REQUEST['new_phase_activity'] ?? ''));
+    $newGenericTaskDetail = trim((string)($_REQUEST['new_generic_task_detail'] ?? ''));
+    $newIsUtilized = isset($_REQUEST['new_is_utilized']) ? (int)$_REQUEST['new_is_utilized'] : null;
+    if ($logId > 0) {
+        if ($isAdmin) {
+            $_SESSION['error'] = 'Admins can edit logs directly from admin tools.';
+            header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+            exit;
+        }
+        if ($newHours <= 0 || $newDescription === '') {
+            $_SESSION['error'] = 'Invalid edit request. Hours and description are required.';
+            header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+            exit;
+        }
+        try {
+            $logStmt = $db->prepare("SELECT * FROM project_time_logs WHERE id = ? AND user_id = ? AND log_date = ? LIMIT 1");
+            $logStmt->execute([$logId, $userId, $date]);
+            $existingLog = $logStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$existingLog) {
+                $_SESSION['error'] = "Log not found for selected date.";
+                header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+                exit;
+            }
+            if ($newProjectId <= 0) {
+                $newProjectId = (int)($existingLog['project_id'] ?? 0);
+            }
+            if ($newHours <= 0) {
+                $newHours = (float)($existingLog['hours_spent'] ?? 0);
+            }
+            if ($newDescription === '') {
+                $newDescription = (string)($existingLog['description'] ?? '');
+            }
+            if ($newTaskType === 'other' && !empty($existingLog['task_type'])) {
+                $newTaskType = (string)$existingLog['task_type'];
+            }
+            if ($newPageId === null && isset($existingLog['page_id'])) {
+                $newPageId = $existingLog['page_id'] !== null ? (int)$existingLog['page_id'] : null;
+            }
+            if ($newEnvironmentId === null && isset($existingLog['environment_id'])) {
+                $newEnvironmentId = $existingLog['environment_id'] !== null ? (int)$existingLog['environment_id'] : null;
+            }
+            if ($newIssueId === null && isset($existingLog['issue_id'])) {
+                $newIssueId = $existingLog['issue_id'] !== null ? (int)$existingLog['issue_id'] : null;
+            }
+            if ($newPhaseId === null && isset($existingLog['phase_id'])) {
+                $newPhaseId = $existingLog['phase_id'] !== null ? (int)$existingLog['phase_id'] : null;
+            }
+            if ($newGenericCategoryId === null && isset($existingLog['generic_category_id'])) {
+                $newGenericCategoryId = $existingLog['generic_category_id'] !== null ? (int)$existingLog['generic_category_id'] : null;
+            }
+            if ($newTestingType === '' && isset($existingLog['testing_type'])) {
+                $newTestingType = (string)$existingLog['testing_type'];
+            }
+            if ($newIsUtilized === null) {
+                $newIsUtilized = isset($existingLog['is_utilized']) ? (int)$existingLog['is_utilized'] : 1;
+            }
+            if ($newProjectId <= 0 || $newHours <= 0 || $newDescription === '') {
+                $_SESSION['error'] = 'Invalid edit request. Required fields are missing.';
+                header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+                exit;
+            }
+
+            $reason = "Edit request for time log ID {$logId}";
+            $reqStmt = $db->prepare("
+                INSERT INTO user_edit_requests (user_id, req_date, request_type, status, reason)
+                VALUES (?, ?, 'edit', 'pending', ?)
+                ON DUPLICATE KEY UPDATE request_type = 'edit', status = 'pending', reason = VALUES(reason), updated_at = NOW()
+            ");
+            $reqStmt->execute([$userId, $date, $reason]);
+
+            $editReqStmt = $db->prepare("
+                INSERT INTO user_pending_log_edits (
+                    user_id, req_date, log_id, new_hours, new_description, new_project_id, new_task_type,
+                    new_page_id, new_environment_id, new_issue_id, new_phase_id, new_generic_category_id,
+                    new_testing_type, new_phase_activity, new_generic_task_detail, new_is_utilized, reason, status
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                ON DUPLICATE KEY UPDATE
+                    req_date = VALUES(req_date),
+                    new_hours = VALUES(new_hours),
+                    new_description = VALUES(new_description),
+                    new_project_id = VALUES(new_project_id),
+                    new_task_type = VALUES(new_task_type),
+                    new_page_id = VALUES(new_page_id),
+                    new_environment_id = VALUES(new_environment_id),
+                    new_issue_id = VALUES(new_issue_id),
+                    new_phase_id = VALUES(new_phase_id),
+                    new_generic_category_id = VALUES(new_generic_category_id),
+                    new_testing_type = VALUES(new_testing_type),
+                    new_phase_activity = VALUES(new_phase_activity),
+                    new_generic_task_detail = VALUES(new_generic_task_detail),
+                    new_is_utilized = VALUES(new_is_utilized),
+                    reason = VALUES(reason),
+                    status = 'pending',
+                    updated_at = NOW()
+            ");
+            $editReqStmt->execute([
+                $userId, $date, $logId, $newHours, $newDescription, $newProjectId, $newTaskType,
+                $newPageId, $newEnvironmentId, $newIssueId, $newPhaseId, $newGenericCategoryId,
+                ($newTestingType !== '' ? $newTestingType : null),
+                ($newPhaseActivity !== '' ? $newPhaseActivity : null),
+                ($newGenericTaskDetail !== '' ? $newGenericTaskDetail : null),
+                $newIsUtilized,
+                $reason
+            ]);
+
+            $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin','super_admin') AND is_active = 1");
+            $adminStmt->execute();
+            $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
+            $userName = $_SESSION['full_name'] ?? 'User';
+            $msg = $userName . " requested edit approval for time log on " . $date . " (Log ID: " . $logId . ")";
+            $link = "/modules/admin/edit_requests.php";
+            foreach ($admins as $admin) {
+                $nStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'edit_request', ?, ?)");
+                $nStmt->execute([$admin['id'], $msg, $link]);
+            }
+
+            $_SESSION['success'] = "Edit request sent to admin for approval.";
+        } catch (Exception $e) {
+            $_SESSION['error'] = "Failed to send edit request: " . $e->getMessage();
+        }
+    }
+    header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+    exit;
+}
+
 if (isset($_GET['delete_log'])) {
     $logId = $_GET['delete_log'];
-    // Prevent deletion for past dates unless admin or approved
+    if (!$isAdmin) {
+        $_SESSION['error'] = 'Delete request must be approved by admin.';
+        header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+        exit;
+    }
+    // Prevent deletion for any past date unless admin or approved request
     $canDelete = true;
     if (!$isAdmin) {
         $today = date('Y-m-d');
-        // previous business day: if today is Monday (N=1) go back 3 days to Friday
-        if (date('N') == 1) {
-            $prev = date('Y-m-d', strtotime('-3 days'));
-        } else {
-            $prev = date('Y-m-d', strtotime('-1 days'));
-        }
-        // allow delete only for today or previous business day; older dates require approved edit request
-        if ($date !== $today && $date !== $prev) {
-            $reqCheck = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND status = 'approved'");
+        // Any date before today requires approved edit request
+        if ($date < $today) {
+            $reqCheck = $db->prepare("
+                SELECT status
+                FROM user_edit_requests
+                WHERE user_id = ?
+                  AND req_date = ?
+                  AND status = 'approved'
+                  AND (reason IS NULL OR reason NOT LIKE 'Deletion request for time log ID %')
+            ");
             $reqCheck->execute([$userId, $date]);
             $approved = $reqCheck->fetch(PDO::FETCH_ASSOC);
             if (!$approved) $canDelete = false;
         }
     }
     if (!$canDelete) {
-        $_SESSION['error'] = 'Cannot delete logs for past dates without admin approval.';
+        $_SESSION['error'] = 'Cannot delete logs for past dates without admin approval request.';
         header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
         exit;
     }
@@ -666,7 +1134,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_personal_note') {
 
 
     // Check if there's a pending edit request for this date
-    $editRequestStmt = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ?");
+    $editRequestStmt = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND request_type = 'edit'");
     $editRequestStmt->execute([$targetUser, $queriedDate]);
     $editRequest = $editRequestStmt->fetch(PDO::FETCH_ASSOC);
     $hasPendingRequest = ($editRequest && $editRequest['status'] === 'pending');
@@ -744,7 +1212,13 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_personal_note') {
 // Handle AJAX: check if edit request is pending or approved for this date
 if (isset($_GET['action']) && $_GET['action'] === 'check_edit_request') {
     $reqDate = $_GET['date'] ?? $date;
-    $stmt = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ?");
+    $stmt = $db->prepare("
+        SELECT status
+        FROM user_edit_requests
+        WHERE user_id = ?
+          AND req_date = ?
+          AND request_type = 'edit'
+    ");
     $stmt->execute([$userId, $reqDate]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $pending = ($row && $row['status'] === 'pending');
@@ -766,7 +1240,7 @@ $personalNoteRow = $noteStmt->fetch();
 $personalNote = $personalNoteRow ? $personalNoteRow['content'] : '';
 
 // Check if there's a pending edit request for this user/date to adjust UI
-$editReqStmt = $db->prepare("SELECT * FROM user_edit_requests WHERE user_id = ? AND req_date = ?");
+$editReqStmt = $db->prepare("SELECT * FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND request_type = 'edit'");
 $editReqStmt->execute([$userId, $date]);
 $editReq = $editReqStmt->fetch(PDO::FETCH_ASSOC);
 $hasPendingRequest = ($editReq && $editReq['status'] === 'pending');
@@ -779,16 +1253,36 @@ if ($hasPendingRequest) {
 
 // Is this a past date (and non-admin)? used to make fields readonly initially
 $isPastDateReadonly = (!$isAdmin && $date < date('Y-m-d'));
+$selectedDateLabel = date('M d, Y', strtotime($date));
+$isViewingToday = ($date === date('Y-m-d'));
 
 // Get Time Logs
 $logsStmt = $db->prepare("
-    SELECT ptl.*, p.title, p.po_number 
+    SELECT ptl.*, p.title, p.po_number
     FROM project_time_logs ptl
-    JOIN projects p ON ptl.project_id = p.id
+    LEFT JOIN projects p ON ptl.project_id = p.id
     WHERE ptl.user_id = ? AND ptl.log_date = ?
 ");
 $logsStmt->execute([$userId, $date]);
 $logs = $logsStmt->fetchAll();
+
+$pendingDeletionLogIds = [];
+try {
+    $pendingDelStmt = $db->prepare("SELECT log_id FROM user_pending_log_deletions WHERE user_id = ? AND req_date = ? AND status = 'pending'");
+    $pendingDelStmt->execute([$userId, $date]);
+    $pendingDeletionLogIds = array_map('intval', $pendingDelStmt->fetchAll(PDO::FETCH_COLUMN));
+} catch (Exception $e) {
+    $pendingDeletionLogIds = [];
+}
+
+$pendingEditLogIds = [];
+try {
+    $pendingEditStmt = $db->prepare("SELECT log_id FROM user_pending_log_edits WHERE user_id = ? AND req_date = ? AND status = 'pending'");
+    $pendingEditStmt->execute([$userId, $date]);
+    $pendingEditLogIds = array_map('intval', $pendingEditStmt->fetchAll(PDO::FETCH_COLUMN));
+} catch (Exception $e) {
+    $pendingEditLogIds = [];
+}
 
 // Get Assigned Projects with phases
 $projectsStmt = $db->prepare("
@@ -801,6 +1295,17 @@ $projectsStmt = $db->prepare("
 $projectsStmt->execute([$userId, $userId]);
 $assignedProjects = $projectsStmt->fetchAll();
 
+$offProdProjectId = 0;
+foreach ($assignedProjects as $p) {
+    if (strcasecmp(trim((string)($p['po_number'] ?? '')), 'OFF-PROD-001') === 0) {
+        $offProdProjectId = (int)$p['id'];
+        break;
+    }
+}
+if ($offProdProjectId <= 0) {
+    $offProdProjectId = ensureOffProdProjectId($db, $userId);
+}
+
 // Note: If no projects assigned, ensure OFF-PROD is available.
 // The SQL above handles it if OFF-PROD is 'in_progress'. 
 // If OFF-PROD is not showing up for some reason (e.g. status), check the DB. 
@@ -810,6 +1315,19 @@ include __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="container-fluid">
+    <?php if (!empty($_SESSION['success'])): ?>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php endif; ?>
+    <?php if (!empty($_SESSION['error'])): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php endif; ?>
+
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2>Daily Status & Time Log</h2>
         <div>
@@ -1185,15 +1703,7 @@ include __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="card-body">
                     <form method="POST" class="row align-items-end mb-4" id="logBenchHoursForm">
-                        <input type="hidden" name="project_id" value="<?php 
-                            // Find OFF-PROD project ID
-                            foreach ($assignedProjects as $p) {
-                                if ($p['po_number'] === 'OFF-PROD-001') {
-                                    echo $p['id'];
-                                    break;
-                                }
-                            }
-                        ?>">
+                        <input type="hidden" name="project_id" value="<?php echo (int)$offProdProjectId; ?>">
                         <div class="col-md-4">
                             <label>Activity Type</label>
                             <select name="bench_activity" class="form-select" required>
@@ -1225,16 +1735,18 @@ include __DIR__ . '/../includes/header.php';
             <!-- Logged Hours Display -->
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">Logged Today</h5>
+                    <h5 class="mb-0">
+                        Logged <?php echo $isViewingToday ? 'Today' : 'for ' . htmlspecialchars($selectedDateLabel); ?>
+                    </h5>
                 </div>
                 <div class="card-body">
                     <!-- Production Hours -->
                     <?php 
                     $productionLogs = array_filter($logs, function($log) { 
-                        return $log['po_number'] !== 'OFF-PROD-001'; 
+                        return (int)($log['is_utilized'] ?? 1) === 1;
                     });
                     $benchLogs = array_filter($logs, function($log) { 
-                        return $log['po_number'] === 'OFF-PROD-001'; 
+                        return (int)($log['is_utilized'] ?? 1) === 0;
                     });
                     ?>
                     
@@ -1315,10 +1827,32 @@ include __DIR__ . '/../includes/header.php';
                                 </td>
                                 <td><span class="badge bg-success"><?php echo $log['hours_spent']; ?>h</span></td>
                                 <td>
+                                    <?php if (in_array((int)$log['id'], $pendingEditLogIds, true)): ?>
+                                    <span class="text-info small fw-semibold">Waiting for edit approval</span>
+                                    <?php elseif (in_array((int)$log['id'], $pendingDeletionLogIds, true)): ?>
+                                    <span class="text-warning small fw-semibold">Waiting for deletion approval</span>
+                                    <?php else: ?>
+                                      <a href="javascript:void(0)"
+                                       class="text-primary me-2" onclick="return handleEditLogRequest(<?php echo (int)$log['id']; ?>, '<?php echo $date; ?>', <?php echo htmlspecialchars(json_encode([
+                                           'project_id' => (int)($log['project_id'] ?? 0),
+                                           'task_type' => (string)($log['task_type'] ?? 'other'),
+                                           'page_id' => isset($log['page_id']) ? (int)$log['page_id'] : null,
+                                           'environment_id' => isset($log['environment_id']) ? (int)$log['environment_id'] : null,
+                                           'issue_id' => isset($log['issue_id']) ? (int)$log['issue_id'] : null,
+                                           'phase_id' => isset($log['phase_id']) ? (int)$log['phase_id'] : null,
+                                           'generic_category_id' => isset($log['generic_category_id']) ? (int)$log['generic_category_id'] : null,
+                                           'testing_type' => (string)($log['testing_type'] ?? ''),
+                                           'hours_spent' => (float)($log['hours_spent'] ?? 0),
+                                           'description' => (string)($log['description'] ?? ''),
+                                           'is_utilized' => isset($log['is_utilized']) ? (int)$log['is_utilized'] : 1
+                                       ]), ENT_QUOTES, 'UTF-8'); ?>)">
+                                        <i class="fas fa-pen"></i>
+                                    </a>
                                     <a href="javascript:void(0)" 
                                        class="text-danger" onclick="return handleDeleteLog(<?php echo $log['id']; ?>, '<?php echo $date; ?>')">
                                         <i class="fas fa-trash"></i>
                                     </a>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -1358,10 +1892,32 @@ include __DIR__ . '/../includes/header.php';
                                 <td><?php echo htmlspecialchars($log['description']); ?></td>
                                 <td><span class="badge bg-secondary"><?php echo $log['hours_spent']; ?>h</span></td>
                                 <td>
+                                    <?php if (in_array((int)$log['id'], $pendingEditLogIds, true)): ?>
+                                    <span class="text-info small fw-semibold">Waiting for edit approval</span>
+                                    <?php elseif (in_array((int)$log['id'], $pendingDeletionLogIds, true)): ?>
+                                    <span class="text-warning small fw-semibold">Waiting for deletion approval</span>
+                                    <?php else: ?>
+                                    <a href="javascript:void(0)"
+                                       class="text-primary me-2" onclick="return handleEditLogRequest(<?php echo (int)$log['id']; ?>, '<?php echo $date; ?>', <?php echo htmlspecialchars(json_encode([
+                                           'project_id' => (int)($log['project_id'] ?? 0),
+                                           'task_type' => (string)($log['task_type'] ?? 'other'),
+                                           'page_id' => isset($log['page_id']) ? (int)$log['page_id'] : null,
+                                           'environment_id' => isset($log['environment_id']) ? (int)$log['environment_id'] : null,
+                                           'issue_id' => isset($log['issue_id']) ? (int)$log['issue_id'] : null,
+                                           'phase_id' => isset($log['phase_id']) ? (int)$log['phase_id'] : null,
+                                           'generic_category_id' => isset($log['generic_category_id']) ? (int)$log['generic_category_id'] : null,
+                                           'testing_type' => (string)($log['testing_type'] ?? ''),
+                                           'hours_spent' => (float)($log['hours_spent'] ?? 0),
+                                           'description' => (string)($log['description'] ?? ''),
+                                           'is_utilized' => isset($log['is_utilized']) ? (int)$log['is_utilized'] : 1
+                                       ]), ENT_QUOTES, 'UTF-8'); ?>)">
+                                        <i class="fas fa-pen"></i>
+                                    </a>
                                     <a href="javascript:void(0)" 
                                        class="text-danger" onclick="return handleDeleteLog(<?php echo $log['id']; ?>, '<?php echo $date; ?>')">
                                         <i class="fas fa-trash"></i>
                                     </a>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -1370,7 +1926,9 @@ include __DIR__ . '/../includes/header.php';
                     <?php endif; ?>
 
                     <?php if (empty($logs)): ?>
-                    <p class="text-muted text-center">No hours logged for today.</p>
+                    <p class="text-muted text-center">
+                        No hours logged <?php echo $isViewingToday ? 'for today' : 'for ' . htmlspecialchars($selectedDateLabel); ?>.
+                    </p>
                     <?php endif; ?>
                 </div>
             </div>
@@ -1828,55 +2386,563 @@ document.addEventListener('DOMContentLoaded', function(){
             }
         });
     }
+
+    function ensureLogPreviewModal() {
+        var existing = document.getElementById('logPreviewModal');
+        if (existing) return existing;
+        var wrap = document.createElement('div');
+        wrap.innerHTML = '' +
+            '<div class="modal fade" id="logPreviewModal" tabindex="-1" aria-hidden="true">' +
+            '  <div class="modal-dialog modal-dialog-centered">' +
+            '    <div class="modal-content">' +
+            '      <div class="modal-header">' +
+            '        <h5 class="modal-title">Confirm Log Submission</h5>' +
+            '        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>' +
+            '      </div>' +
+            '      <div class="modal-body">' +
+            '        <div id="logPreviewBody" class="small"></div>' +
+            '      </div>' +
+            '      <div class="modal-footer">' +
+            '        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>' +
+            '        <button type="button" class="btn btn-primary" id="logPreviewConfirmBtn">Confirm & Submit</button>' +
+            '      </div>' +
+            '    </div>' +
+            '  </div>' +
+            '</div>';
+        document.body.appendChild(wrap.firstChild);
+        return document.getElementById('logPreviewModal');
+    }
+
+    function escapeHtml(val) {
+        if (val === null || val === undefined) return '';
+        return String(val)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function getSelectedText(form, selector, multiple) {
+        var el = form.querySelector(selector);
+        if (!el) return '';
+        if (multiple) {
+            var vals = Array.from(el.selectedOptions || []).map(function (o) { return o.textContent.trim(); }).filter(Boolean);
+            return vals.join(', ');
+        }
+        var opt = el.options && el.selectedIndex >= 0 ? el.options[el.selectedIndex] : null;
+        return opt ? opt.textContent.trim() : '';
+    }
+
+    function rowHtml(label, value) {
+        return '<tr><th class="pe-3 text-nowrap">' + escapeHtml(label) + '</th><td>' + escapeHtml(value || '-') + '</td></tr>';
+    }
+
+    function buildProductionPreview(form) {
+        var taskType = getSelectedText(form, 'select[name=\"task_type\"]', false);
+        var html = '<table class="table table-sm mb-0"><tbody>';
+        html += rowHtml('Section', 'Log Production Hours');
+        html += rowHtml('Project', getSelectedText(form, 'select[name=\"project_id\"]', false));
+        html += rowHtml('Task Type', taskType);
+        var pages = getSelectedText(form, '#productionPageSelect', true);
+        if (pages) html += rowHtml('Page/Screen', pages);
+        var envs = getSelectedText(form, '#productionEnvSelect', true);
+        if (envs) html += rowHtml('Environments', envs);
+        var testingType = getSelectedText(form, '#testingTypeSelect', false);
+        if (testingType) html += rowHtml('Testing Type', testingType);
+        var issueText = getSelectedText(form, '#productionIssueSelect', false);
+        if (issueText) html += rowHtml('Issue', issueText);
+        var phaseText = getSelectedText(form, '#projectPhaseSelect', false);
+        if (phaseText) html += rowHtml('Project Phase', phaseText);
+        var phaseActivity = getSelectedText(form, 'select[name=\"phase_activity\"]', false);
+        if (phaseActivity) html += rowHtml('Phase Activity', phaseActivity);
+        var genericCat = getSelectedText(form, '#genericCategorySelect', false);
+        if (genericCat) html += rowHtml('Task Category', genericCat);
+        var genericDetailEl = form.querySelector('input[name=\"generic_task_detail\"]');
+        if (genericDetailEl && genericDetailEl.value.trim()) html += rowHtml('Task Details', genericDetailEl.value.trim());
+        var hoursEl = form.querySelector('input[name=\"hours_spent\"]');
+        html += rowHtml('Hours', hoursEl ? hoursEl.value : '');
+        var descEl = form.querySelector('input[name=\"description\"]');
+        html += rowHtml('Description', descEl ? descEl.value : '');
+        html += '</tbody></table>';
+        return html;
+    }
+
+    function buildBenchPreview(form) {
+        var html = '<table class="table table-sm mb-0"><tbody>';
+        html += rowHtml('Section', 'Log Off-Production/Bench Hours');
+        html += rowHtml('Activity Type', getSelectedText(form, 'select[name=\"bench_activity\"]', false));
+        var hoursEl = form.querySelector('input[name=\"hours_spent\"]');
+        html += rowHtml('Hours', hoursEl ? hoursEl.value : '');
+        var descEl = form.querySelector('input[name=\"description\"]');
+        html += rowHtml('Description', descEl ? descEl.value : '');
+        html += '</tbody></table>';
+        return html;
+    }
+
+    function setupLogPreview(form, mode) {
+        if (!form) return;
+        form.addEventListener('submit', function (e) {
+            if (form.dataset.previewApproved === '1') {
+                form.dataset.previewApproved = '';
+                return;
+            }
+            if (!form.checkValidity()) {
+                return;
+            }
+            e.preventDefault();
+            var modalEl = ensureLogPreviewModal();
+            var bodyEl = document.getElementById('logPreviewBody');
+            var confirmBtn = document.getElementById('logPreviewConfirmBtn');
+            if (!modalEl || !bodyEl || !confirmBtn) {
+                form.dataset.previewApproved = '1';
+                if (typeof form.requestSubmit === 'function') form.requestSubmit();
+                else form.submit();
+                return;
+            }
+            bodyEl.innerHTML = mode === 'bench' ? buildBenchPreview(form) : buildProductionPreview(form);
+            confirmBtn.onclick = function () {
+                form.dataset.previewApproved = '1';
+                try {
+                    var inst = bootstrap.Modal.getOrCreateInstance(modalEl);
+                    inst.hide();
+                } catch (err) {}
+                if (typeof form.requestSubmit === 'function') form.requestSubmit();
+                else form.submit();
+            };
+            try {
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            } catch (err) {
+                form.dataset.previewApproved = '1';
+                if (typeof form.requestSubmit === 'function') form.requestSubmit();
+                else form.submit();
+            }
+        });
+    }
+
+    setupLogPreview(document.getElementById('logProductionHoursForm'), 'production');
+    setupLogPreview(document.getElementById('logBenchHoursForm'), 'bench');
 });
 </script>
 
 <script>
-// Allow deletion only for today and previous business day for non-admins. For older dates open edit request.
-function isDeletableDate(dateStr) {
-    try {
-        var d = new Date(dateStr + 'T00:00:00');
-        var today = new Date(); today.setHours(0,0,0,0);
-        if (d.getTime() === today.getTime()) return true;
-        var prev = new Date(today); prev.setDate(prev.getDate() - 1);
-        // If today is Monday, previous business day is last Friday
-        if (today.getDay() === 1) {
-            var lastFri = new Date(today); lastFri.setDate(lastFri.getDate() - 3);
-            return d.getTime() === lastFri.getTime();
-        }
-        return d.getTime() === prev.getTime();
-    } catch (e) { return false; }
-}
+var reqEditProjects = <?php
+echo json_encode(
+    array_values(array_map(static function ($p) {
+        return [
+            'id' => (int)($p['id'] ?? 0),
+            'title' => (string)($p['title'] ?? '')
+        ];
+    }, $assignedProjects ?? [])),
+    JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+);
+?>;
 
 function handleDeleteLog(logId, dateStr) {
     var isAdmin = <?php echo $isAdmin ? 'true' : 'false'; ?>;
-    if (isAdmin || isDeletableDate(dateStr)) {
-        confirmModal('Delete this log?', function() {
-            window.location.href = '?date=' + encodeURIComponent(dateStr) + '&delete_log=' + encodeURIComponent(logId);
+    var msg = isAdmin
+        ? 'Delete this log?'
+        : 'Log deletion requires admin approval. A request will be sent to admin. Do you still want to delete?';
+    confirmModal(msg, function() {
+        var key = isAdmin ? 'delete_log' : 'delete_log_request';
+        window.location.href = '?date=' + encodeURIComponent(dateStr) + '&' + key + '=' + encodeURIComponent(logId);
+    }, {
+        title: isAdmin ? 'Delete Log' : 'Request Deletion Approval',
+        confirmText: isAdmin ? 'Delete' : 'Send Request',
+        confirmClass: isAdmin ? 'btn-danger' : 'btn-primary'
+    });
+    return false;
+}
+
+function ensureEditRequestModal() {
+    var existing = document.getElementById('logEditRequestModal');
+    if (existing) return existing;
+    var wrap = document.createElement('div');
+    wrap.innerHTML = '' +
+        '<div class="modal fade" id="logEditRequestModal" tabindex="-1" aria-hidden="true">' +
+        '  <div class="modal-dialog modal-lg modal-dialog-scrollable">' +
+        '    <div class="modal-content">' +
+        '      <div class="modal-header">' +
+        '        <h5 class="modal-title">Request Log Edit Approval</h5>' +
+        '        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>' +
+        '      </div>' +
+        '      <div class="modal-body">' +
+        '        <div class="row g-2">' +
+        '          <div class="col-md-6"><label class="form-label">Project</label><select class="form-select" id="reqEditProject"></select></div>' +
+        '          <div class="col-md-6"><label class="form-label">Task Type</label><select class="form-select" id="reqEditTaskType"><option value="">Select Task Type</option><option value="page_testing">Page Testing</option><option value="page_qa">Page QA</option><option value="regression_testing">Regression Testing</option><option value="project_phase">Project Phase</option><option value="generic_task">Generic Task</option><option value="other">Other</option></select></div>' +
+        '          <div class="col-12" id="reqEditPageTestingWrap" style="display:none;"><div class="row g-2"><div class="col-md-4"><label class="form-label">Page/Screen</label><select class="form-select" id="reqEditPage"></select></div><div class="col-md-4"><label class="form-label">Environment</label><select class="form-select" id="reqEditEnvironment"></select></div><div class="col-md-4"><label class="form-label">Testing Type</label><select class="form-select" id="reqEditTestingType"><option value="at_testing">AT Testing</option><option value="ft_testing">FT Testing</option><option value="regression">Regression</option></select></div><div class="col-md-6" id="reqEditIssueWrap" style="display:none;"><label class="form-label">Issue (optional)</label><select class="form-select" id="reqEditIssue"></select></div></div></div>' +
+        '          <div class="col-12" id="reqEditPhaseWrap" style="display:none;"><div class="row g-2"><div class="col-md-6"><label class="form-label">Project Phase</label><select class="form-select" id="reqEditPhase"></select></div><div class="col-md-6"><label class="form-label">Phase Activity</label><select class="form-select" id="reqEditPhaseActivity"><option value="scoping">Scoping & Analysis</option><option value="setup">Setup & Configuration</option><option value="testing">Testing Activities</option><option value="review">Review & Documentation</option><option value="training">Training & Knowledge Transfer</option><option value="reporting">Reporting & VPAT</option></select></div></div></div>' +
+        '          <div class="col-12" id="reqEditGenericWrap" style="display:none;"><div class="row g-2"><div class="col-md-6"><label class="form-label">Task Category</label><select class="form-select" id="reqEditGenericCategory"></select></div><div class="col-md-6"><label class="form-label">Task Details</label><input type="text" class="form-control" id="reqEditGenericDetail" placeholder="Specific task details"></div></div></div>' +
+        '          <div class="col-md-4"><label class="form-label">Hours</label><input type="number" step="0.25" min="0.25" max="24" class="form-control" id="reqEditHours"></div>' +
+        '          <div class="col-md-8"><label class="form-label">Description</label><input type="text" class="form-control" id="reqEditDesc"></div>' +
+        '          <div class="col-12"><div class="small text-muted">Admin approval is required. This will send an edit request.</div></div>' +
+        '        </div>' +
+        '      </div>' +
+        '      <div class="modal-footer">' +
+        '        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>' +
+        '        <button type="button" class="btn btn-primary" id="reqEditSubmitBtn">Send Request</button>' +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+    document.body.appendChild(wrap.firstChild);
+    return document.getElementById('logEditRequestModal');
+}
+
+function reqEditClearSelect(sel, placeholder) {
+    if (!sel) return;
+    sel.innerHTML = '<option value="">' + (placeholder || 'Select') + '</option>';
+}
+
+function reqEditSetTaskContainers(taskType) {
+    var pageWrap = document.getElementById('reqEditPageTestingWrap');
+    var phaseWrap = document.getElementById('reqEditPhaseWrap');
+    var genericWrap = document.getElementById('reqEditGenericWrap');
+    if (pageWrap) pageWrap.style.display = (taskType === 'page_testing' || taskType === 'page_qa' || taskType === 'regression_testing') ? 'block' : 'none';
+    if (phaseWrap) phaseWrap.style.display = taskType === 'project_phase' ? 'block' : 'none';
+    if (genericWrap) genericWrap.style.display = taskType === 'generic_task' ? 'block' : 'none';
+}
+
+function reqEditFillProjectOptions(selectedProjectId) {
+    var projectSel = document.getElementById('reqEditProject');
+    if (!projectSel) return;
+    projectSel.innerHTML = '';
+    var hadOption = false;
+
+    if (Array.isArray(reqEditProjects) && reqEditProjects.length > 0) {
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select Project';
+        projectSel.appendChild(placeholder);
+        reqEditProjects.forEach(function (p) {
+            if (!p || !p.id) return;
+            var opt = document.createElement('option');
+            opt.value = String(p.id);
+            opt.textContent = p.title || ('Project #' + p.id);
+            projectSel.appendChild(opt);
+            if (String(p.id) === String(selectedProjectId || '')) {
+                hadOption = true;
+            }
         });
-        return false;
+    } else {
+        var srcSel = document.querySelector('#logProductionHoursForm select[name="project_id"]');
+        if (!srcSel) return;
+        Array.prototype.forEach.call(srcSel.options, function (opt) {
+            var clone = document.createElement('option');
+            clone.value = opt.value;
+            clone.textContent = opt.textContent;
+            projectSel.appendChild(clone);
+            if (String(opt.value || '') === String(selectedProjectId || '')) {
+                hadOption = true;
+            }
+        });
     }
 
-    // Open edit request flow: ask for reason and submit request_edit
-    var reason = prompt('This is a past date. To modify or delete it you must request an edit. Please enter a reason:');
-    if (!reason || !reason.trim()) return false;
+    if (selectedProjectId && !hadOption) {
+        var clone = document.createElement('option');
+        clone.value = String(selectedProjectId);
+        clone.textContent = 'Project #' + selectedProjectId;
+        projectSel.appendChild(clone);
+    }
 
-    var fd = new FormData();
-    fd.append('action','request_edit');
-    fd.append('date', dateStr);
-    fd.append('reason', reason.trim());
+    projectSel.value = String(selectedProjectId || '');
+}
 
-    fetch(window.location.pathname + '?action=request_edit', { method: 'POST', body: fd })
-        .then(r => r.json())
-            .then(function(resp){
-            if (resp && resp.success) {
-                showToast('Edit request submitted. Admin will review.', 'success');
-                location.reload();
-            } else {
-                showToast('Failed to submit edit request: ' + (resp && resp.error ? resp.error : 'Unknown'), 'danger');
+function reqEditLoadPages(projectId, selectedPageId) {
+    var pageSel = document.getElementById('reqEditPage');
+    if (!pageSel || !projectId) return Promise.resolve();
+    pageSel.innerHTML = '<option value="">Loading pages...</option>';
+    return fetch('<?php echo $baseDir; ?>/api/tasks.php?project_id=' + encodeURIComponent(projectId), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (pages) {
+            reqEditClearSelect(pageSel, 'Select page');
+            if (Array.isArray(pages)) {
+                pages.forEach(function (pg) {
+                    var opt = document.createElement('option');
+                    opt.value = pg.id;
+                    opt.textContent = pg.page_name || pg.title || pg.url || ('Page ' + pg.id);
+                    pageSel.appendChild(opt);
+                });
             }
-        }).catch(function(){ showToast('Failed to send edit request.', 'danger'); });
+            if (selectedPageId !== null && selectedPageId !== undefined && selectedPageId !== '') {
+                pageSel.value = String(selectedPageId);
+            }
+        })
+        .catch(function () { reqEditClearSelect(pageSel, 'No pages'); });
+}
 
+function reqEditLoadEnvironments(pageId, selectedEnvId) {
+    var envSel = document.getElementById('reqEditEnvironment');
+    if (!envSel || !pageId) {
+        reqEditClearSelect(envSel, 'Select environment');
+        return Promise.resolve();
+    }
+    envSel.innerHTML = '<option value="">Loading environments...</option>';
+    return fetch('<?php echo $baseDir; ?>/api/tasks.php?page_id=' + encodeURIComponent(pageId), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (page) {
+            reqEditClearSelect(envSel, 'Select environment');
+            var envs = (page && page.environments) ? page.environments : [];
+            envs.forEach(function (env) {
+                var opt = document.createElement('option');
+                opt.value = env.id;
+                opt.textContent = env.name || ('Env ' + env.id);
+                envSel.appendChild(opt);
+            });
+            if (selectedEnvId !== null && selectedEnvId !== undefined && selectedEnvId !== '') {
+                envSel.value = String(selectedEnvId);
+            }
+        })
+        .catch(function () { reqEditClearSelect(envSel, 'No environments'); });
+}
+
+function reqEditLoadIssues(projectId, pageId, selectedIssueId) {
+    var issueWrap = document.getElementById('reqEditIssueWrap');
+    var issueSel = document.getElementById('reqEditIssue');
+    var testingTypeSel = document.getElementById('reqEditTestingType');
+    if (!issueWrap || !issueSel || !testingTypeSel) return Promise.resolve();
+    if (testingTypeSel.value !== 'regression') {
+        issueWrap.style.display = 'none';
+        reqEditClearSelect(issueSel, 'Select issue (optional)');
+        return Promise.resolve();
+    }
+    issueWrap.style.display = 'block';
+    issueSel.innerHTML = '<option value="">Loading issues...</option>';
+    var url = '<?php echo $baseDir; ?>/api/regression_actions.php?action=get_project_issues&project_id=' + encodeURIComponent(projectId || '');
+    if (pageId) url += '&page_id=' + encodeURIComponent(pageId);
+    return fetch(url, { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            reqEditClearSelect(issueSel, 'Select issue (optional)');
+            if (data && Array.isArray(data.issues)) {
+                data.issues.forEach(function (it) {
+                    var opt = document.createElement('option');
+                    opt.value = it.id;
+                    opt.textContent = (it.issue_key ? (it.issue_key + ' - ') : '') + (it.title || ('Issue ' + it.id));
+                    issueSel.appendChild(opt);
+                });
+            }
+            if (selectedIssueId !== null && selectedIssueId !== undefined && selectedIssueId !== '') {
+                issueSel.value = String(selectedIssueId);
+            }
+        })
+        .catch(function () { reqEditClearSelect(issueSel, 'Select issue (optional)'); });
+}
+
+function reqEditLoadPhases(projectId, selectedPhaseId) {
+    var phaseSel = document.getElementById('reqEditPhase');
+    if (!phaseSel || !projectId) {
+        reqEditClearSelect(phaseSel, 'Select project phase');
+        return Promise.resolve();
+    }
+    phaseSel.innerHTML = '<option value="">Loading phases...</option>';
+    return fetch('<?php echo $baseDir; ?>/api/projects.php?action=get_phases&project_id=' + encodeURIComponent(projectId), { credentials: 'same-origin' })
+        .then(function (r) { return r.text(); })
+        .then(function (txt) {
+            var phases = [];
+            try { phases = JSON.parse(txt); } catch (e) { phases = []; }
+            reqEditClearSelect(phaseSel, 'Select project phase');
+            if (Array.isArray(phases)) {
+                phases.forEach(function (phase) {
+                    var opt = document.createElement('option');
+                    opt.value = phase.id;
+                    opt.textContent = phase.phase_name || phase.name || ('Phase ' + phase.id);
+                    phaseSel.appendChild(opt);
+                });
+            }
+            if (selectedPhaseId !== null && selectedPhaseId !== undefined && selectedPhaseId !== '') {
+                phaseSel.value = String(selectedPhaseId);
+            }
+        })
+        .catch(function () { reqEditClearSelect(phaseSel, 'Select project phase'); });
+}
+
+function reqEditLoadGenericCategories(selectedCategoryId) {
+    var catSel = document.getElementById('reqEditGenericCategory');
+    if (!catSel) return Promise.resolve();
+    catSel.innerHTML = '<option value="">Loading categories...</option>';
+    return fetch('<?php echo $baseDir; ?>/api/generic_tasks.php?action=get_categories', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (categories) {
+            reqEditClearSelect(catSel, 'Select category');
+            if (Array.isArray(categories)) {
+                categories.forEach(function (cat) {
+                    var opt = document.createElement('option');
+                    opt.value = cat.id;
+                    opt.textContent = cat.name + (cat.description ? (' - ' + cat.description) : '');
+                    catSel.appendChild(opt);
+                });
+            }
+            if (selectedCategoryId !== null && selectedCategoryId !== undefined && selectedCategoryId !== '') {
+                catSel.value = String(selectedCategoryId);
+            }
+        })
+        .catch(function () { reqEditClearSelect(catSel, 'Select category'); });
+}
+
+function reqEditWireEvents() {
+    var modalEl = document.getElementById('logEditRequestModal');
+    if (!modalEl || modalEl.dataset.eventsWired === '1') return;
+    modalEl.dataset.eventsWired = '1';
+
+    var projectSel = document.getElementById('reqEditProject');
+    var taskTypeSel = document.getElementById('reqEditTaskType');
+    var pageSel = document.getElementById('reqEditPage');
+    var testingTypeSel = document.getElementById('reqEditTestingType');
+
+    if (projectSel) {
+        projectSel.addEventListener('change', function () {
+            var projectId = this.value || '';
+            var taskType = taskTypeSel ? taskTypeSel.value : '';
+            if (!projectId) return;
+            if (taskType === 'page_testing' || taskType === 'page_qa' || taskType === 'regression_testing') {
+                reqEditLoadPages(projectId, null);
+                reqEditClearSelect(document.getElementById('reqEditEnvironment'), 'Select environment');
+                reqEditLoadIssues(projectId, null, null);
+            } else if (taskType === 'project_phase') {
+                reqEditLoadPhases(projectId, null);
+            } else if (taskType === 'generic_task') {
+                reqEditLoadGenericCategories(null);
+            }
+        });
+    }
+
+    if (taskTypeSel) {
+        taskTypeSel.addEventListener('change', function () {
+            var taskType = this.value;
+            var projectId = projectSel ? projectSel.value : '';
+            reqEditSetTaskContainers(taskType);
+            if (!projectId) return;
+            if (taskType === 'page_testing' || taskType === 'page_qa' || taskType === 'regression_testing') {
+                reqEditLoadPages(projectId, null);
+                reqEditClearSelect(document.getElementById('reqEditEnvironment'), 'Select environment');
+                reqEditLoadIssues(projectId, null, null);
+            } else if (taskType === 'project_phase') {
+                reqEditLoadPhases(projectId, null);
+            } else if (taskType === 'generic_task') {
+                reqEditLoadGenericCategories(null);
+            }
+        });
+    }
+
+    if (pageSel) {
+        pageSel.addEventListener('change', function () {
+            var pageId = this.value || '';
+            var projectId = projectSel ? projectSel.value : '';
+            reqEditLoadEnvironments(pageId, null);
+            reqEditLoadIssues(projectId, pageId, null);
+        });
+    }
+
+    if (testingTypeSel) {
+        testingTypeSel.addEventListener('change', function () {
+            var projectId = projectSel ? projectSel.value : '';
+            var pageId = pageSel ? pageSel.value : '';
+            reqEditLoadIssues(projectId, pageId, null);
+        });
+    }
+}
+
+function handleEditLogRequest(logId, dateStr, logData) {
+    var isAdmin = <?php echo $isAdmin ? 'true' : 'false'; ?>;
+    if (isAdmin) {
+        showToast('Admins can edit logs from admin tools.', 'info');
+        return false;
+    }
+    var modalEl = ensureEditRequestModal();
+    reqEditWireEvents();
+    var data = logData || {};
+    reqEditFillProjectOptions(data.project_id || '');
+
+    var projectSel = document.getElementById('reqEditProject');
+    var taskTypeSel = document.getElementById('reqEditTaskType');
+    var pageSel = document.getElementById('reqEditPage');
+    var envSel = document.getElementById('reqEditEnvironment');
+    var issueSel = document.getElementById('reqEditIssue');
+    var testingTypeSel = document.getElementById('reqEditTestingType');
+    var phaseSel = document.getElementById('reqEditPhase');
+    var phaseActivitySel = document.getElementById('reqEditPhaseActivity');
+    var genericCategorySel = document.getElementById('reqEditGenericCategory');
+    var genericDetailEl = document.getElementById('reqEditGenericDetail');
+    var hoursEl = document.getElementById('reqEditHours');
+    var descEl = document.getElementById('reqEditDesc');
+    var submitBtn = document.getElementById('reqEditSubmitBtn');
+    if (!modalEl || !projectSel || !taskTypeSel || !hoursEl || !descEl || !submitBtn) return false;
+
+    var rawTaskType = String(data.task_type || 'other');
+    if (rawTaskType === 'regression') rawTaskType = 'regression_testing';
+    taskTypeSel.value = rawTaskType;
+    reqEditSetTaskContainers(rawTaskType);
+
+    if (testingTypeSel) testingTypeSel.value = data.testing_type ? String(data.testing_type) : 'at_testing';
+    if (phaseActivitySel) phaseActivitySel.value = 'testing';
+    hoursEl.value = String(data.hours_spent || '');
+    descEl.value = String(data.description || '');
+    if (genericDetailEl) genericDetailEl.value = '';
+
+    var selectedProjectId = projectSel.value;
+    var selectedPageId = (data.page_id !== null && data.page_id !== undefined) ? data.page_id : null;
+    var selectedEnvId = (data.environment_id !== null && data.environment_id !== undefined) ? data.environment_id : null;
+    var selectedIssueId = (data.issue_id !== null && data.issue_id !== undefined) ? data.issue_id : null;
+    var selectedPhaseId = (data.phase_id !== null && data.phase_id !== undefined) ? data.phase_id : null;
+    var selectedCategoryId = (data.generic_category_id !== null && data.generic_category_id !== undefined) ? data.generic_category_id : null;
+
+    if (selectedProjectId && (rawTaskType === 'page_testing' || rawTaskType === 'page_qa' || rawTaskType === 'regression_testing')) {
+        reqEditLoadPages(selectedProjectId, selectedPageId).then(function () {
+            return reqEditLoadEnvironments(selectedPageId, selectedEnvId);
+        }).then(function () {
+            return reqEditLoadIssues(selectedProjectId, selectedPageId, selectedIssueId);
+        });
+    } else if (selectedProjectId && rawTaskType === 'project_phase') {
+        reqEditLoadPhases(selectedProjectId, selectedPhaseId);
+    } else if (rawTaskType === 'generic_task') {
+        reqEditLoadGenericCategories(selectedCategoryId);
+    } else {
+        reqEditClearSelect(pageSel, 'Select page');
+        reqEditClearSelect(envSel, 'Select environment');
+        reqEditClearSelect(issueSel, 'Select issue (optional)');
+        reqEditClearSelect(phaseSel, 'Select project phase');
+        reqEditClearSelect(genericCategorySel, 'Select category');
+    }
+
+    submitBtn.onclick = function () {
+        var projectId = projectSel.value || '';
+        var taskType = taskTypeSel.value || '';
+        var pageId = pageSel ? (pageSel.value || '') : '';
+        var environmentId = envSel ? (envSel.value || '') : '';
+        var issueId = issueSel ? (issueSel.value || '') : '';
+        var phaseId = phaseSel ? (phaseSel.value || '') : '';
+        var genericCategoryId = genericCategorySel ? (genericCategorySel.value || '') : '';
+        var testingType = testingTypeSel ? (testingTypeSel.value || '') : '';
+        var phaseActivity = phaseActivitySel ? (phaseActivitySel.value || '') : '';
+        var genericDetail = genericDetailEl ? (genericDetailEl.value || '').trim() : '';
+        var h = parseFloat(hoursEl.value || '0');
+        var d = (descEl.value || '').trim();
+        if (!projectId || !taskType || !(h > 0) || !d) {
+            showToast('Project, task type, hours and description are required.', 'warning');
+            return;
+        }
+        var url = '?date=' + encodeURIComponent(dateStr) +
+            '&edit_log_request=' + encodeURIComponent(logId) +
+            '&new_project_id=' + encodeURIComponent(projectId) +
+            '&new_task_type=' + encodeURIComponent(taskType) +
+            '&new_page_id=' + encodeURIComponent(pageId) +
+            '&new_environment_id=' + encodeURIComponent(environmentId) +
+            '&new_issue_id=' + encodeURIComponent(issueId) +
+            '&new_phase_id=' + encodeURIComponent(phaseId) +
+            '&new_generic_category_id=' + encodeURIComponent(genericCategoryId) +
+            '&new_testing_type=' + encodeURIComponent(testingType) +
+            '&new_phase_activity=' + encodeURIComponent(phaseActivity) +
+            '&new_generic_task_detail=' + encodeURIComponent(genericDetail) +
+            '&new_hours=' + encodeURIComponent(h) +
+            '&new_description=' + encodeURIComponent(d);
+        window.location.href = url;
+    };
+
+    try {
+        var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    } catch (e) {}
     return false;
 }
 </script>

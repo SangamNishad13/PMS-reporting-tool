@@ -181,6 +181,68 @@ function sanitize_chat_html($html) {
 }
 
 /**
+ * Rewrite local upload URLs in HTML to secure file API URLs.
+ * This avoids direct /uploads access issues on restrictive hosts.
+ */
+function rewrite_upload_urls_to_secure($html) {
+    if (trim((string)$html) === '') return '';
+
+    $baseDir = '';
+    if (function_exists('getBaseDir')) {
+        try {
+            $baseDir = (string)getBaseDir();
+        } catch (Exception $e) {
+            $baseDir = '';
+        }
+    }
+    $baseDir = rtrim($baseDir, '/');
+    $secureBase = $baseDir . '/api/secure_file.php?path=';
+
+    $mapUrl = function ($url) use ($secureBase) {
+        $url = html_entity_decode(trim((string)$url), ENT_QUOTES, 'UTF-8');
+        if ($url === '' || preg_match('#^(data:|javascript:|mailto:|tel:)#i', $url)) {
+            return $url;
+        }
+
+        $path = parse_url($url, PHP_URL_PATH);
+        if (!is_string($path) || $path === '') {
+            $path = $url;
+        }
+
+        $rel = null;
+        $posUploads = strpos($path, '/uploads/');
+        $posAssets = strpos($path, '/assets/uploads/');
+
+        if ($posUploads !== false) {
+            $rel = ltrim(substr($path, $posUploads + 1), '/');
+        } elseif ($posAssets !== false) {
+            $rel = ltrim(substr($path, $posAssets + 1), '/');
+        } else {
+            $pathTrim = ltrim($path, '/');
+            if (strpos($pathTrim, 'uploads/') === 0 || strpos($pathTrim, 'assets/uploads/') === 0) {
+                $rel = $pathTrim;
+            }
+        }
+
+        if ($rel === null || $rel === '') {
+            return $url;
+        }
+
+        return $secureBase . rawurlencode($rel);
+    };
+
+    $html = preg_replace_callback('/\b(src|href)\s*=\s*("([^"]*)"|\'([^\']*)\')/i', function ($m) use ($mapUrl) {
+        $attr = $m[1];
+        $quoteWrapped = $m[2];
+        $val = isset($m[3]) && $m[3] !== '' ? $m[3] : (isset($m[4]) ? $m[4] : '');
+        $newVal = $mapUrl($val);
+        return $attr . '="' . htmlspecialchars($newVal, ENT_QUOTES, 'UTF-8') . '"';
+    }, $html);
+
+    return $html;
+}
+
+/**
  * Render a user's full name as a link to their profile unless the user is an admin/super_admin.
  * Accepts either a user id or an array with keys ['id','full_name','role'].
  */

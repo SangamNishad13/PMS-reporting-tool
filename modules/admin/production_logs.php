@@ -19,6 +19,12 @@ $userFilter = $_GET['user_filter'] ?? 'all';
 $projectFilter = $_GET['project_filter'] ?? 'all';
 $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
 $endDate = $_GET['end_date'] ?? date('Y-m-d');
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$perPage = isset($_GET['per_page']) ? (int)$_GET['per_page'] : 10;
+$allowedPerPage = [10, 25, 50, 100];
+if (!in_array($perPage, $allowedPerPage, true)) {
+    $perPage = 10;
+}
 
 // --- 2. Fetch Helper Data (Users, Projects) ---
 
@@ -41,16 +47,8 @@ $usersList = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
 $projectsList = $db->query("SELECT id, title, po_number FROM projects WHERE status NOT IN ('completed', 'cancelled') ORDER BY title")->fetchAll(PDO::FETCH_ASSOC);
 
 
-// --- 3. Build Main Query for Logs ---
-// We need to fetch from project_time_logs and join with projects and users
-$sql = "
-    SELECT 
-        ptl.*, 
-        u.full_name as user_name, 
-        u.role as user_role,
-        p.title as project_title,
-        p.po_number,
-        p.status as project_status
+// --- 3. Build Main Query Parts for Logs ---
+$fromAndWhere = "
     FROM project_time_logs ptl
     JOIN users u ON ptl.user_id = u.id
     LEFT JOIN projects p ON ptl.project_id = p.id
@@ -61,26 +59,61 @@ $params = [$startDate, $endDate];
 
 // Apply User Filter
 if ($userFilter !== 'all') {
-    $sql .= " AND ptl.user_id = ?";
+    $fromAndWhere .= " AND ptl.user_id = ?";
     $params[] = $userFilter;
 } else if ($roleFilter !== 'all') {
-    $sql .= " AND u.role = ?";
+    $fromAndWhere .= " AND u.role = ?";
     $params[] = $roleFilter;
 } else {
     // If no specific user/role selected, limit to relevant roles to avoid clutter (e.g. dont show admin logs unless requested)
-    $sql .= " AND u.role IN ('project_lead', 'qa', 'at_tester', 'ft_tester')";
+    $fromAndWhere .= " AND u.role IN ('project_lead', 'qa', 'at_tester', 'ft_tester')";
 }
 
 // Apply Project Filter
 if ($projectFilter !== 'all') {
-    $sql .= " AND ptl.project_id = ?";
+    $fromAndWhere .= " AND ptl.project_id = ?";
     $params[] = $projectFilter;
 }
 
-$sql .= " ORDER BY ptl.log_date DESC, u.full_name ASC";
+// Total count for pagination
+$countSql = "SELECT COUNT(*) " . $fromAndWhere;
+$countStmt = $db->prepare($countSql);
+$countStmt->execute($params);
+$totalLogs = (int)$countStmt->fetchColumn();
+$totalPages = max(1, (int)ceil($totalLogs / $perPage));
+if ($page > $totalPages) {
+    $page = $totalPages;
+}
+$offset = ($page - 1) * $perPage;
+
+// Summary metrics from all filtered logs (not just current page)
+$summarySql = "
+    SELECT
+        COALESCE(SUM(ptl.hours_spent), 0) AS total_hours,
+        COALESCE(SUM(CASE WHEN (ptl.is_utilized = 1 OR (p.po_number <> 'OFF-PROD-001' AND ptl.project_id IS NOT NULL)) THEN ptl.hours_spent ELSE 0 END), 0) AS utilized_hours,
+        COALESCE(SUM(CASE WHEN (ptl.is_utilized = 1 OR (p.po_number <> 'OFF-PROD-001' AND ptl.project_id IS NOT NULL)) THEN 0 ELSE ptl.hours_spent END), 0) AS bench_hours
+    " . $fromAndWhere;
+$summaryStmt = $db->prepare($summarySql);
+$summaryStmt->execute($params);
+$summary = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: ['total_hours' => 0, 'utilized_hours' => 0, 'bench_hours' => 0];
+
+// Paginated logs query
+$sql = "
+    SELECT
+        ptl.*,
+        u.full_name as user_name,
+        u.role as user_role,
+        p.title as project_title,
+        p.po_number,
+        p.status as project_status
+    " . $fromAndWhere . "
+    ORDER BY ptl.log_date DESC, u.full_name ASC
+    LIMIT ? OFFSET ?
+";
 
 $stmt = $db->prepare($sql);
-$stmt->execute($params);
+$queryParams = array_merge($params, [$perPage, $offset]);
+$stmt->execute($queryParams);
 $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // --- 3b. Time Log History (Admin only) ---
@@ -138,25 +171,10 @@ if ($isAdminViewer) {
     }
 }
 
-// --- 4. Calculate Summary Metrics ---
-$totalHours = 0;
-$utilizedHours = 0;
-$benchHours = 0;
-
-foreach ($logs as $log) {
-    $hours = floatval($log['hours_spent']);
-    $totalHours += $hours;
-    
-    // Determine utilization
-    // Logic matches other reports: is_utilized flag OR not OFF-PROD-001
-    $isUtilized = $log['is_utilized'] == 1 || ($log['po_number'] !== 'OFF-PROD-001' && $log['project_id'] !== null);
-    
-    if ($isUtilized) {
-        $utilizedHours += $hours;
-    } else {
-        $benchHours += $hours;
-    }
-}
+// --- 4. Summary Metrics ---
+$totalHours = (float)($summary['total_hours'] ?? 0);
+$utilizedHours = (float)($summary['utilized_hours'] ?? 0);
+$benchHours = (float)($summary['bench_hours'] ?? 0);
 
 include __DIR__ . '/../../includes/header.php';
 ?>
@@ -221,6 +239,16 @@ include __DIR__ . '/../../includes/header.php';
                     <label class="form-label">To Date</label>
                     <input type="date" name="end_date" class="form-control" value="<?php echo $endDate; ?>">
                 </div>
+                <div class="col-md-2">
+                    <label class="form-label">Per Page</label>
+                    <select name="per_page" class="form-select">
+                        <?php foreach ([10, 25, 50, 100] as $pp): ?>
+                            <option value="<?php echo $pp; ?>" <?php echo $perPage === $pp ? 'selected' : ''; ?>>
+                                <?php echo $pp; ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
                 <div class="col-md-2 d-flex align-items-end">
                     <div class="d-flex gap-2 w-100">
                         <button type="submit" class="btn btn-primary w-100">Apply</button>
@@ -262,7 +290,10 @@ include __DIR__ . '/../../includes/header.php';
     <!-- Logs Table -->
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Production Logs (<?php echo count($logs); ?> entries)</h5>
+            <h5 class="mb-0">Production Logs (<?php echo (int)$totalLogs; ?> entries)</h5>
+            <small class="text-muted">
+                Page <?php echo (int)$page; ?> of <?php echo (int)$totalPages; ?>
+            </small>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -337,6 +368,41 @@ include __DIR__ . '/../../includes/header.php';
                 </table>
             </div>
         </div>
+        <?php if ($totalLogs > 0): ?>
+            <div class="card-footer d-flex justify-content-between align-items-center">
+                <small class="text-muted">
+                    Showing <?php echo (int)($offset + 1); ?> to <?php echo (int)min($offset + $perPage, $totalLogs); ?> of <?php echo (int)$totalLogs; ?> logs
+                </small>
+                <?php if ($totalPages > 1): ?>
+                    <?php
+                        $baseParams = $_GET;
+                        unset($baseParams['page']);
+                        $buildPageUrl = function($p) use ($baseParams) {
+                            $params = $baseParams;
+                            $params['page'] = $p;
+                            return $_SERVER['PHP_SELF'] . '?' . http_build_query($params);
+                        };
+                        $startPage = max(1, $page - 2);
+                        $endPage = min($totalPages, $page + 2);
+                    ?>
+                    <nav aria-label="Production logs pagination">
+                        <ul class="pagination pagination-sm mb-0">
+                            <li class="page-item <?php echo $page <= 1 ? 'disabled' : ''; ?>">
+                                <a class="page-link" href="<?php echo $page <= 1 ? '#' : htmlspecialchars($buildPageUrl($page - 1)); ?>">Previous</a>
+                            </li>
+                            <?php for ($p = $startPage; $p <= $endPage; $p++): ?>
+                                <li class="page-item <?php echo $p === $page ? 'active' : ''; ?>">
+                                    <a class="page-link" href="<?php echo htmlspecialchars($buildPageUrl($p)); ?>"><?php echo $p; ?></a>
+                                </li>
+                            <?php endfor; ?>
+                            <li class="page-item <?php echo $page >= $totalPages ? 'disabled' : ''; ?>">
+                                <a class="page-link" href="<?php echo $page >= $totalPages ? '#' : htmlspecialchars($buildPageUrl($page + 1)); ?>">Next</a>
+                            </li>
+                        </ul>
+                    </nav>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     </div>
 
     <?php if ($isAdminViewer): ?>

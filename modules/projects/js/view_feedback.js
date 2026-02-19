@@ -6,6 +6,22 @@
 $(document).ready(function () {
     var projectId = window.ProjectConfig ? window.ProjectConfig.projectId : 0;
     var baseDir = window.ProjectConfig ? window.ProjectConfig.baseDir : '';
+    var feedbackImageUploadUrl = baseDir ? (baseDir + '/api/issue_upload_image.php') : '/api/issue_upload_image.php';
+
+    function uploadFeedbackImage(file, $editor) {
+        if (!file || !file.type || file.type.indexOf('image/') !== 0) return;
+        var fd = new FormData();
+        fd.append('image', file);
+        fetch(feedbackImageUploadUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                if (!res || !res.success || !res.url) throw new Error((res && res.error) ? res.error : 'Image upload failed');
+                $editor.summernote('pasteHTML', '<p><img src="' + String(res.url).replace(/"/g, '&quot;') + '" alt="image" style="max-width:100%; height:auto;" /></p>');
+            })
+            .catch(function () {
+                if (typeof showToast === 'function') showToast('Image upload failed.', 'danger');
+            });
+    }
 
     // Initialize Summernote for feedback editor with lazy init + fallback
     window.initFeedbackEditor = function () {
@@ -21,7 +37,27 @@ $(document).ready(function () {
                         ['para', ['ul', 'ol', 'paragraph']],
                         ['insert', ['link', 'picture']],
                         ['view', ['fullscreen']]
-                    ]
+                    ],
+                    callbacks: {
+                        onImageUpload: function (files) {
+                            var list = files || [];
+                            for (var i = 0; i < list.length; i++) {
+                                uploadFeedbackImage(list[i], $el);
+                            }
+                        },
+                        onPaste: function (e) {
+                            var clipboard = e.originalEvent && e.originalEvent.clipboardData;
+                            if (!clipboard || !clipboard.items) return;
+                            for (var i = 0; i < clipboard.items.length; i++) {
+                                var item = clipboard.items[i];
+                                if (item.type && item.type.indexOf('image') === 0) {
+                                    e.preventDefault();
+                                    uploadFeedbackImage(item.getAsFile(), $el);
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 });
                 return true;
             }
@@ -234,20 +270,38 @@ $(document).ready(function () {
             var dd = ensureFeedbackMentionDropdown();
             var visible = dd.style.display === 'block';
             if (!visible) return;
-            if (e.key === 'ArrowDown') { e.preventDefault(); moveFeedbackMentionSelection(1); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); moveFeedbackMentionSelection(-1); }
-            else if (e.key === 'Enter' || e.key === ' ') {
+            var key = e.key || '';
+            var keyCode = typeof e.keyCode === 'number' ? e.keyCode : 0;
+            if (key === 'ArrowDown' || keyCode === 40) {
                 e.preventDefault();
+                e.stopPropagation();
+                moveFeedbackMentionSelection(1);
+                return false;
+            }
+            else if (key === 'ArrowUp' || keyCode === 38) {
+                e.preventDefault();
+                e.stopPropagation();
+                moveFeedbackMentionSelection(-1);
+                return false;
+            }
+            else if (key === 'Enter' || key === ' ' || key === 'Tab' || keyCode === 13 || keyCode === 32 || keyCode === 9) {
+                e.preventDefault();
+                e.stopPropagation();
                 var active = dd.querySelector('.feedback-mention-item.active');
                 if (active) insertFeedbackMention(active.getAttribute('data-username'));
-            } else if (e.key === 'Escape') {
+                return false;
+            } else if (key === 'Escape' || keyCode === 27) {
                 e.preventDefault();
+                e.stopPropagation();
                 hideFeedbackMentionDropdown();
+                return false;
             }
         }
 
         function handleMentionKeyup(e) {
-            if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].indexOf(e.key) !== -1) return;
+            var key = e.key || '';
+            var keyCode = typeof e.keyCode === 'number' ? e.keyCode : 0;
+            if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].indexOf(key) !== -1 || [40, 38, 13, 27, 9].indexOf(keyCode) !== -1) return;
             var $editableNow = $el.next('.note-editor').find('.note-editable');
             if (!$editableNow.length) return;
             var text = $editableNow.text();

@@ -108,7 +108,7 @@ $whereClause = implode(' AND ', $whereConditions);
 $assignmentsQuery = "
     SELECT ua.*, u.full_name, u.role as user_role, p.title as project_title, p.po_number, p.status as project_status, p.total_hours,
            COALESCE(ptl.utilized_hours, 0) as utilized_hours,
-           (SELECT COALESCE(SUM(hours_allocated), 0) FROM user_assignments WHERE project_id = ua.project_id) as total_allocated_hours
+           (SELECT COALESCE(SUM(hours_allocated), 0) FROM user_assignments WHERE project_id = ua.project_id AND (is_removed IS NULL OR is_removed = 0)) as total_allocated_hours
     FROM user_assignments ua
     JOIN users u ON ua.user_id = u.id
     JOIN projects p ON ua.project_id = p.id
@@ -118,7 +118,7 @@ $assignmentsQuery = "
         WHERE is_utilized = 1
         GROUP BY user_id, project_id
     ) ptl ON ua.user_id = ptl.user_id AND ua.project_id = ptl.project_id
-    WHERE $whereClause
+    WHERE $whereClause AND (ua.is_removed IS NULL OR ua.is_removed = 0)
     ORDER BY u.full_name, p.title
 ";
 

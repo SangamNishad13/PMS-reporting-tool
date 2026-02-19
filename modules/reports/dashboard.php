@@ -15,6 +15,22 @@ $endDate = $_GET['end_date'] ?? date('Y-m-t');
 $projectId = (int)($_GET['project_id'] ?? 0);
 $filterStatus = $_GET['status'] ?? '';
 
+// Project statuses from status master (same source as project create/edit)
+$projectStatusOptions = getStatusOptions('project');
+if (empty($projectStatusOptions)) {
+    $projectStatusOptions = [
+        ['status_key' => 'planning', 'status_label' => 'Planning'],
+        ['status_key' => 'in_progress', 'status_label' => 'In Progress'],
+        ['status_key' => 'on_hold', 'status_label' => 'On Hold'],
+        ['status_key' => 'completed', 'status_label' => 'Completed'],
+        ['status_key' => 'cancelled', 'status_label' => 'Cancelled'],
+    ];
+}
+$projectStatusLabelMap = [];
+foreach ($projectStatusOptions as $opt) {
+    $k = (string)($opt['status_key'] ?? '');
+    if ($k !== '') $projectStatusLabelMap[$k] = (string)($opt['status_label'] ?? formatProjectStatusLabel($k));
+}
 
 // Base parameters for queries
 $dateExtendedEnd = $endDate . ' 23:59:59';
@@ -29,16 +45,25 @@ if ($projectId > 0) {
 $statsStmt = $db->prepare("
     SELECT 
         COUNT(*) as total_projects,
-        COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) as completed_projects,
-        COALESCE(SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END), 0) as in_progress_projects,
-        COALESCE(SUM(CASE WHEN status = 'on_hold' THEN 1 ELSE 0 END), 0) as on_hold_projects,
-        COALESCE(SUM(CASE WHEN status = 'not_started' OR status IS NULL OR status = '' THEN 1 ELSE 0 END), 0) as not_started_projects,
         COALESCE(AVG(total_hours), 0) as avg_hours_per_project
     FROM projects p
     WHERE $statsWhere
 ");
 $statsStmt->execute($statsParams);
 $stats = $statsStmt->fetch();
+
+$statusCountStmt = $db->prepare("
+    SELECT COALESCE(NULLIF(TRIM(p.status), ''), 'not_started') AS status_key, COUNT(*) AS total
+    FROM projects p
+    WHERE $statsWhere
+    GROUP BY COALESCE(NULLIF(TRIM(p.status), ''), 'not_started')
+");
+$statusCountStmt->execute($statsParams);
+$statusCountRows = $statusCountStmt->fetchAll(PDO::FETCH_ASSOC);
+$statusCounts = [];
+foreach ($statusCountRows as $row) {
+    $statusCounts[(string)$row['status_key']] = (int)$row['total'];
+}
 
 // 1b. Filtered Projects List (if status is clicked)
 $filteredProjects = [];
@@ -195,6 +220,18 @@ include __DIR__ . '/../../includes/header.php';
                     </select>
                 </div>
                 <div class="col-md-3">
+                    <label>Status</label>
+                    <select name="status" class="form-select">
+                        <option value="">All Statuses</option>
+                        <?php foreach ($projectStatusOptions as $opt): ?>
+                            <?php $statusKey = (string)($opt['status_key'] ?? ''); if ($statusKey === '') continue; ?>
+                            <option value="<?php echo htmlspecialchars($statusKey); ?>" <?php echo $filterStatus === $statusKey ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars((string)($opt['status_label'] ?? formatProjectStatusLabel($statusKey))); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3">
                     <label>&nbsp;</label>
                     <button type="submit" class="btn btn-primary w-100">
                         <i class="fas fa-filter"></i> Apply Filter
@@ -207,7 +244,7 @@ include __DIR__ . '/../../includes/header.php';
     <!-- Statistics Cards -->
     <div class="row mb-3">
         <div class="col-md-3">
-            <a href="?status=<?php echo $projectId ? "&project_id=$projectId" : ""; ?>" class="text-decoration-none">
+            <a href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo (int)$projectId; ?>" class="text-decoration-none">
                 <div class="card text-center bg-primary text-white dashboard-stat-card <?php echo empty($filterStatus) ? 'active-filter' : ''; ?>">
                     <div class="card-body">
                         <h3><?php echo $stats['total_projects']; ?></h3>
@@ -216,46 +253,26 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
             </a>
         </div>
-        <div class="col-md-3">
-            <a href="?status=completed<?php echo $projectId ? "&project_id=$projectId" : ""; ?>" class="text-decoration-none">
-                <div class="card text-center bg-success text-white dashboard-stat-card <?php echo $filterStatus === 'completed' ? 'active-filter' : ''; ?>">
-                    <div class="card-body">
-                        <h3><?php echo $stats['completed_projects']; ?></h3>
-                        <p class="mb-0">Completed</p>
+        <?php foreach ($projectStatusOptions as $opt): ?>
+            <?php
+                $statusKey = (string)($opt['status_key'] ?? '');
+                if ($statusKey === '') continue;
+                $statusLabel = (string)($opt['status_label'] ?? formatProjectStatusLabel($statusKey));
+                $statusCount = (int)($statusCounts[$statusKey] ?? 0);
+                $badgeClass = projectStatusBadgeClass($statusKey);
+                $textClass = in_array($badgeClass, ['warning', 'info', 'light'], true) ? 'text-dark' : 'text-white';
+            ?>
+            <div class="col-md-3">
+                <a href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo (int)$projectId; ?>&status=<?php echo urlencode($statusKey); ?>" class="text-decoration-none">
+                    <div class="card text-center bg-<?php echo $badgeClass; ?> <?php echo $textClass; ?> dashboard-stat-card <?php echo $filterStatus === $statusKey ? 'active-filter' : ''; ?>">
+                        <div class="card-body">
+                            <h3><?php echo $statusCount; ?></h3>
+                            <p class="mb-0"><?php echo htmlspecialchars($statusLabel); ?></p>
+                        </div>
                     </div>
-                </div>
-            </a>
-        </div>
-        <div class="col-md-3">
-            <a href="?status=in_progress<?php echo $projectId ? "&project_id=$projectId" : ""; ?>" class="text-decoration-none">
-                <div class="card text-center bg-warning text-dark dashboard-stat-card <?php echo $filterStatus === 'in_progress' ? 'active-filter' : ''; ?>">
-                    <div class="card-body">
-                        <h3><?php echo $stats['in_progress_projects']; ?></h3>
-                        <p class="mb-0">In Progress</p>
-                    </div>
-                </div>
-            </a>
-        </div>
-        <div class="col-md-3">
-            <a href="?status=on_hold<?php echo $projectId ? "&project_id=$projectId" : ""; ?>" class="text-decoration-none">
-                <div class="card text-center bg-info text-dark dashboard-stat-card <?php echo $filterStatus === 'on_hold' ? 'active-filter' : ''; ?>">
-                    <div class="card-body">
-                        <h3><?php echo $stats['on_hold_projects']; ?></h3>
-                        <p class="mb-0">On Hold</p>
-                    </div>
-                </div>
-            </a>
-        </div>
-        <div class="col-md-3">
-            <a href="?status=not_started<?php echo $projectId ? "&project_id=$projectId" : ""; ?>" class="text-decoration-none">
-                <div class="card text-center bg-secondary text-white dashboard-stat-card <?php echo $filterStatus === 'not_started' ? 'active-filter' : ''; ?>">
-                    <div class="card-body">
-                        <h3><?php echo $stats['not_started_projects']; ?></h3>
-                        <p class="mb-0">Not Started</p>
-                    </div>
-                </div>
-            </a>
-        </div>
+                </a>
+            </div>
+        <?php endforeach; ?>
     </div>
     
     <style>
@@ -277,8 +294,8 @@ include __DIR__ . '/../../includes/header.php';
     <!-- Filtered Project List -->
     <div class="card mb-4 border-<?php echo projectStatusBadgeClass($filterStatus); ?>">
         <div class="card-header bg-<?php echo projectStatusBadgeClass($filterStatus); ?> text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Projects: <?php echo formatProjectStatusLabel($filterStatus); ?></h5>
-            <a href="?project_id=<?php echo $projectId; ?>" class="btn btn-sm btn-light">Clear Status Filter</a>
+            <h5 class="mb-0">Projects: <?php echo htmlspecialchars($projectStatusLabelMap[$filterStatus] ?? formatProjectStatusLabel($filterStatus)); ?></h5>
+            <a href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo (int)$projectId; ?>" class="btn btn-sm btn-light">Clear Status Filter</a>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -296,7 +313,7 @@ include __DIR__ . '/../../includes/header.php';
                     </thead>
                     <tbody>
                         <?php if (empty($filteredProjects)): ?>
-                        <tr><td colspan="6" class="text-center py-4">No projects found with status "<?php echo formatProjectStatusLabel($filterStatus); ?>"</td></tr>
+                        <tr><td colspan="6" class="text-center py-4">No projects found with status "<?php echo htmlspecialchars($projectStatusLabelMap[$filterStatus] ?? formatProjectStatusLabel($filterStatus)); ?>"</td></tr>
                         <?php else: ?>
                             <?php foreach ($filteredProjects as $fp): ?>
                             <tr>

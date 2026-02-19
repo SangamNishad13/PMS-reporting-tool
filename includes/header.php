@@ -387,6 +387,7 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
                                         <li><a class="dropdown-item small text-muted text-uppercase fw-bold px-3 py-1">Permissions</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/resource_workload_permissions.php">Workload Access</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/project_specific_permissions.php">Project Access</a></li>
+                                        <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/qa_status_permissions.php">Issue QA Status Access</a></li>
                                     </ul>
                                 </li>
 
@@ -395,6 +396,8 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
                                         System
                                     </a>
                                     <ul class="dropdown-menu shadow-sm" aria-labelledby="configDropdown">
+                                        <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/bulk_hours_management.php">Bulk Hours Management</a></li>
+                                        <li><hr class="dropdown-divider"></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/vault.php">Admin Vault</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/devices.php">Device Management</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/device_permissions.php">Device Permissions</a></li>

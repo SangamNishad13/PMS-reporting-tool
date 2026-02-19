@@ -157,4 +157,74 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 
+<!-- Floating Project Chat (bottom-right) -->
+<style>
+.chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1060; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
+.chat-launcher i { font-size: 1.1rem; }
+.chat-widget { position: fixed; bottom: 86px; right: 20px; width: 360px; max-width: 92vw; height: 520px; max-height: 78vh; background: #fff; border-radius: 16px; box-shadow: 0 18px 40px rgba(0,0,0,0.25); border: 1px solid #e5e7eb; overflow: hidden; z-index: 1060; display: none; }
+.chat-widget.open { display: block; }
+.chat-widget iframe { width: 100%; height: calc(100% - 48px); border: 0; }
+.chat-widget .chat-widget-header { height: 48px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, #0d6efd, #4dabf7); color: #fff; }
+.chat-widget .chat-widget-header .btn { color: #fff; border-color: rgba(255,255,255,0.3); }
+.chat-widget .chat-widget-header .btn:hover { background: rgba(255,255,255,0.12); }
+@media (max-width: 576px) {
+    .chat-widget { width: 94vw; height: 70vh; bottom: 76px; right: 3vw; }
+    .chat-launcher { bottom: 14px; right: 14px; }
+}
+</style>
+
+<div class="chat-widget" id="projectChatWidget" aria-label="Project Chat">
+    <div class="chat-widget-header">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-comments"></i>
+            <strong>Project Chat</strong>
+        </div>
+        <div class="d-flex gap-1">
+            <button type="button" class="btn btn-sm btn-outline-light" id="chatWidgetClose" aria-label="Close chat">
+                <i class="fas fa-times"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-light" id="chatWidgetFullscreen" aria-label="Open full chat">
+                <i class="fas fa-up-right-and-down-left-from-center"></i>
+            </button>
+        </div>
+    </div>
+    <iframe src="<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo $projectId; ?>&embed=1" title="Project Chat"></iframe>
+</div>
+
+<button type="button" class="btn btn-primary chat-launcher" id="chatLauncher">
+    <i class="fas fa-comments"></i>
+    <span>Project Chat</span>
+</button>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var launcher = document.getElementById('chatLauncher');
+    var widget = document.getElementById('projectChatWidget');
+    var closeBtn = document.getElementById('chatWidgetClose');
+    var fullscreenBtn = document.getElementById('chatWidgetFullscreen');
+    if (!launcher || !widget || !closeBtn || !fullscreenBtn) return;
+
+    function openChatWidget() {
+        widget.classList.add('open');
+        launcher.style.display = 'none';
+        setTimeout(function () { try { closeBtn.focus(); } catch (e) {} }, 0);
+    }
+    function closeChatWidget() {
+        widget.classList.remove('open');
+        launcher.style.display = 'inline-flex';
+        setTimeout(function () { try { launcher.focus(); } catch (e) {} }, 0);
+    }
+
+    launcher.addEventListener('click', openChatWidget);
+    closeBtn.addEventListener('click', closeChatWidget);
+    fullscreenBtn.addEventListener('click', function () {
+        window.location.href = '<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo $projectId; ?>';
+    });
+    window.addEventListener('message', function (event) {
+        if (!event || !event.data || event.data.type !== 'pms-chat-close') return;
+        closeChatWidget();
+    });
+});
+</script>
+
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

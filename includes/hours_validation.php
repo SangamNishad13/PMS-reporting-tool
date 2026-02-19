@@ -19,7 +19,12 @@ function validateHoursAllocation($db, $projectId, $hoursToAllocate, $excludeAssi
         $query = "
             SELECT 
                 p.total_hours,
-                COALESCE(SUM(CASE WHEN ua.id != ? OR ? IS NULL THEN ua.hours_allocated ELSE 0 END), 0) as allocated_hours
+                COALESCE(SUM(CASE 
+                    WHEN (ua.is_removed IS NULL OR ua.is_removed = 0)
+                     AND (ua.id != ? OR ? IS NULL)
+                    THEN ua.hours_allocated 
+                    ELSE 0 
+                END), 0) as allocated_hours
             FROM projects p
             LEFT JOIN user_assignments ua ON p.id = ua.project_id
             WHERE p.id = ?
@@ -40,7 +45,7 @@ function validateHoursAllocation($db, $projectId, $hoursToAllocate, $excludeAssi
         
         $totalHours = $result['total_hours'] ?: 0;
         $allocatedHours = $result['allocated_hours'] ?: 0;
-        $availableHours = $totalHours - $allocatedHours;
+        $availableHours = max(0, $totalHours - $allocatedHours);
         
         if ($totalHours <= 0) {
             return [
