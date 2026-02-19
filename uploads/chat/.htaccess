@@ -1,20 +1,18 @@
-Options -Indexes
-
-<IfModule mod_autoindex.c>
-    IndexIgnore *
-</IfModule>
-
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [F,L]
 
-    RewriteCond %{REQUEST_URI} ^/([^/]+)/uploads/chat/ [NC]
     RewriteCond %{REQUEST_FILENAME} -f
-    RewriteRule ^(.+)$ /%1/api/secure_file.php?path=uploads/chat/$1 [L,QSA]
+    RewriteRule ^(.+)$ ../../api/secure_file.php?path=uploads/chat/$1 [L,QSA]
 </IfModule>
 
 <FilesMatch "^\.">
-    Require all denied
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Deny from all
+    </IfModule>
 </FilesMatch>

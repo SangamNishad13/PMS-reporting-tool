@@ -1,10 +1,3 @@
-# Disable directory listing
-Options -Indexes
-
-<IfModule mod_autoindex.c>
-    IndexIgnore *
-</IfModule>
-
 # Route direct file access through authenticated PHP endpoint
 <IfModule mod_rewrite.c>
     RewriteEngine On
@@ -14,12 +7,15 @@ Options -Indexes
     RewriteRule ^ - [F,L]
 
     # Serve files only via secure endpoint (requires logged-in session)
-    RewriteCond %{REQUEST_URI} ^/([^/]+)/assets/uploads/ [NC]
     RewriteCond %{REQUEST_FILENAME} -f
-    RewriteRule ^(.+)$ /%1/api/secure_file.php?path=assets/uploads/$1 [L,QSA]
+    RewriteRule ^(.+)$ ../../api/secure_file.php?path=assets/uploads/$1 [L,QSA]
 </IfModule>
 
 <FilesMatch "^\.">
-    Require all denied
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Deny from all
+    </IfModule>
 </FilesMatch>
-
