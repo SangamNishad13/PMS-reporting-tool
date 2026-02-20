@@ -5349,8 +5349,13 @@
                             }
                         }
 
-                        // For description field, create inline diff view
-                        if (fieldName === 'description') {
+                        var oldDisplay = stripHtml(oldVal || 'N/A');
+                        var newDisplay = stripHtml(newVal || 'N/A');
+                        var isLongTextChange = oldDisplay.length > 40 || newDisplay.length > 40 ||
+                            oldDisplay.indexOf('\n') >= 0 || newDisplay.indexOf('\n') >= 0;
+
+                        // For description and long text fields, create inline diff view
+                        if (fieldName === 'description' || isLongTextChange) {
                             var oldText = stripHtml(oldVal);
                             var newText = stripHtml(newVal);
 
