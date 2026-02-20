@@ -17,6 +17,7 @@ if (!$projectId) {
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'] ?? '';
+$normalizedUserRole = strtolower(str_replace(' ', '_', trim((string)$userRole)));
 
 if (!hasProjectAccess($db, $userId, $projectId)) {
     $_SESSION['error'] = "You don't have access to this project.";
@@ -24,6 +25,9 @@ if (!hasProjectAccess($db, $userId, $projectId)) {
     exit;
 }
 $canUpdateIssueQaStatus = hasIssueQaStatusUpdateAccess($db, $userId, $projectId);
+if (in_array($normalizedUserRole, ['at_tester', 'ft_tester'], true)) {
+    $canUpdateIssueQaStatus = false;
+}
 
 // Get project details
 $stmt = $db->prepare("SELECT p.*, c.name as client_name FROM projects p LEFT JOIN clients c ON p.client_id = c.id WHERE p.id = ?");
@@ -310,6 +314,7 @@ include __DIR__ . '/../../includes/header.php';
 window.ProjectConfig = {
     projectId: <?php echo $projectId; ?>,
     projectType: '<?php echo $project['type'] ?? 'web'; ?>',
+    userRole: '<?php echo htmlspecialchars((string)$normalizedUserRole, ENT_QUOTES, 'UTF-8'); ?>',
     canUpdateIssueQaStatus: <?php echo $canUpdateIssueQaStatus ? 'true' : 'false'; ?>,
     projectPages: <?php echo json_encode($projectPages); ?>,
     uniqueIssuePages: <?php echo json_encode($uniqueIssuePages ?? []); ?>,
@@ -1110,14 +1115,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- Floating Project Chat -->
 <style>
-.chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1060; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
+.chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1040; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
 .chat-launcher i { font-size: 1.1rem; }
-.chat-widget { position: fixed; bottom: 86px; right: 20px; width: 360px; max-width: 92vw; height: 520px; max-height: 78vh; background: #fff; border-radius: 16px; box-shadow: 0 18px 40px rgba(0,0,0,0.25); border: 1px solid #e5e7eb; overflow: hidden; z-index: 1060; display: none; }
+.chat-widget { position: fixed; bottom: 86px; right: 20px; width: 360px; max-width: 92vw; height: 520px; max-height: 78vh; background: #fff; border-radius: 16px; box-shadow: 0 18px 40px rgba(0,0,0,0.25); border: 1px solid #e5e7eb; overflow: hidden; z-index: 1040; display: none; }
 .chat-widget.open { display: block; }
 .chat-widget iframe { width: 100%; height: calc(100% - 48px); border: 0; }
 .chat-widget .chat-widget-header { height: 48px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, #0d6efd, #4dabf7); color: #fff; }
 .chat-widget .chat-widget-header .btn { color: #fff; border-color: rgba(255,255,255,0.3); }
 .chat-widget .chat-widget-header .btn:hover { background: rgba(255,255,255,0.12); }
+body.chat-modal-open .chat-launcher,
+body.chat-modal-open .chat-widget { visibility: hidden !important; pointer-events: none !important; }
 @media (max-width: 576px) {
     .chat-widget { width: 94vw; height: 70vh; bottom: 76px; right: 3vw; }
     .chat-launcher { bottom: 14px; right: 14px; }
@@ -1173,6 +1180,23 @@ document.addEventListener('DOMContentLoaded', function () {
         launcher.style.display = 'inline-flex';
         setTimeout(function () { try { launcher.focus(); } catch (e) {} }, 0);
     });
+
+    // Prevent chat overlapping any bootstrap modal on this page.
+    function syncModalState() {
+        var hasOpenModal = document.querySelector('.modal.show') !== null;
+        document.body.classList.toggle('chat-modal-open', hasOpenModal);
+        if (hasOpenModal) {
+            widget.classList.remove('open');
+            launcher.style.display = 'none';
+        } else {
+            launcher.style.display = 'inline-flex';
+        }
+    }
+
+    document.addEventListener('show.bs.modal', syncModalState, true);
+    document.addEventListener('shown.bs.modal', syncModalState, true);
+    document.addEventListener('hidden.bs.modal', syncModalState, true);
+    syncModalState();
 });
 </script>
 

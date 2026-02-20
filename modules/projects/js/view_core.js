@@ -389,6 +389,13 @@ var ProjectConfig = window.ProjectConfig || {};
                         var target = parentRow ? parentRow.querySelector(targetSelector) : null;
                         if (target) target.textContent = val;
                         btn.setAttribute('data-current-name', val);
+                        if (f === 'notes' && parentRow) {
+                            var deleteBtn = parentRow.querySelector('button[onclick*="handleDeletePageNotes"]');
+                            if (deleteBtn) {
+                                if (val) deleteBtn.classList.remove('d-none');
+                                else deleteBtn.classList.add('d-none');
+                            }
+                        }
                     } catch (e) { }
                     bsModal.hide();
                 } else {
@@ -435,10 +442,64 @@ var ProjectConfig = window.ProjectConfig || {};
                 var target = parent ? parent.querySelector(field === 'notes' ? '.notes-display' : '.page-name-display') : null;
                 if (target) target.textContent = val;
                 btn.setAttribute('data-current-name', val);
+                if (field === 'notes' && parent) {
+                    var deleteBtn = parent.querySelector('button[onclick*="handleDeletePageNotes"]');
+                    if (deleteBtn) {
+                        if (val) deleteBtn.classList.remove('d-none');
+                        else deleteBtn.classList.add('d-none');
+                    }
+                }
             } else {
                 alert('Update failed');
             }
         }).catch(function () { alert('Request failed'); });
+        return false;
+    };
+
+    window.handleDeletePageNotes = function (btn) {
+        if (!btn) return false;
+        var uniqueId = btn.getAttribute('data-unique-id') || 0;
+        var pageId = btn.getAttribute('data-page-id') || 0;
+        var notesEl = btn.closest('td') ? btn.closest('td').querySelector('.notes-display') : null;
+        var hasNotes = notesEl && String(notesEl.textContent || '').trim() !== '';
+        if (!hasNotes) return false;
+
+        var doDelete = function () {
+            btn.disabled = true;
+            fetch(baseDir + '/api/project_pages.php?action=update_page_name', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    project_id: projectId,
+                    unique_page_id: parseInt(uniqueId, 10) || 0,
+                    page_id: (pageId !== '' ? parseInt(pageId, 10) : 0),
+                    field: 'notes',
+                    page_name: ''
+                }),
+                credentials: 'same-origin'
+            }).then(function (r) { return r.json(); }).then(function (j) {
+                btn.disabled = false;
+                if (j && j.success) {
+                    if (notesEl) notesEl.textContent = '';
+                    var editBtn = btn.closest('td') ? btn.closest('td').querySelector('.edit-page-name[data-field="notes"]') : null;
+                    if (editBtn) editBtn.setAttribute('data-current-name', '');
+                    btn.classList.add('d-none');
+                    if (typeof showToast === 'function') showToast('Notes deleted', 'success');
+                } else {
+                    alert('Delete failed');
+                }
+            }).catch(function () {
+                btn.disabled = false;
+                alert('Request failed');
+            });
+        };
+
+        if (typeof confirmModal === 'function') {
+            confirmModal('Delete notes for this page?', doDelete);
+        } else if (confirm('Delete notes for this page?')) {
+            doDelete();
+        }
+
         return false;
     };
 

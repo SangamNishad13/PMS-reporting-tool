@@ -1,8 +1,9 @@
+        <?php $canManageAssignmentsInView = in_array($userRole, ['admin', 'super_admin', 'project_lead'], true); ?>
         <!-- Pages Tab -->
         <div class="tab-pane fade" id="pages" role="tabpanel">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h5 class="mb-0">Project Pages</h5>
-                <?php if (in_array($userRole, ['admin', 'super_admin', 'project_lead', 'qa'])): ?>
+                <?php if ($canManageAssignmentsInView): ?>
                 <a href="<?php echo $baseDir; ?>/modules/projects/manage_assignments.php?project_id=<?php echo $projectId; ?>&tab=pages" class="btn btn-sm btn-outline-secondary">
                     <i class="fas fa-edit"></i> Manage Assignments
                 </a>
@@ -575,19 +576,22 @@
                                     <?php $notesDisplay = (isset($mapped['notes']) && strlen(trim((string)$mapped['notes'])) > 0) ? $mapped['notes'] : ($u['notes'] ?? ''); ?>
                                     <div class="d-flex align-items-center justify-content-between gap-2">
                                         <span class="notes-display flex-grow-1 text-truncate"><?php echo htmlspecialchars($notesDisplay); ?></span>
-                                        <button type="button" class="btn btn-sm btn-link flex-shrink-0 edit-page-name" data-field="notes" data-unique-id="<?php echo (int)$u['id']; ?>" data-page-id="<?php echo (int)($mapped['id'] ?? 0); ?>" data-current-name="<?php echo htmlspecialchars($notesDisplay); ?>" onclick="return window.handleEditPageName(this);">Edit</button>
+                                        <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                                            <button type="button" class="btn btn-sm btn-link edit-page-name" data-field="notes" data-unique-id="<?php echo (int)$u['id']; ?>" data-page-id="<?php echo (int)($mapped['id'] ?? 0); ?>" data-current-name="<?php echo htmlspecialchars($notesDisplay); ?>" onclick="return window.handleEditPageName(this);">Edit</button>
+                                            <button type="button" class="btn btn-sm btn-link text-danger<?php echo trim((string)$notesDisplay) === '' ? ' d-none' : ''; ?>" data-unique-id="<?php echo (int)$u['id']; ?>" data-page-id="<?php echo (int)($mapped['id'] ?? 0); ?>" onclick="return window.handleDeletePageNotes(this);">Delete</button>
+                                        </div>
                                     </div>
                                 </td>
                                 <td>
-                                    <?php if ($pageIdForEnv): ?>
+                                    <?php if ($pageIdForEnv && $canManageAssignmentsInView): ?>
                                         <button class="btn btn-sm btn-outline-primary assign-page-btn me-1" data-bs-toggle="modal" data-bs-target="#assignPageModal-<?php echo $pageIdForEnv; ?>">Assign</button>
-                                    <?php else: ?>
+                                    <?php elseif (!$pageIdForEnv): ?>
                                         <span class="text-muted small">No mapped page</span>
                                     <?php endif; ?>
                                     <button class="btn btn-sm btn-danger delete-unique" data-id="<?php echo (int)$u['id']; ?>">Delete</button>
                                 </td>
                             </tr>
-                            <?php if ($pageIdForEnv): 
+                            <?php if ($pageIdForEnv && $canManageAssignmentsInView): 
                                 // Build env assignment map for modal defaults
                                 $envListStmt->execute([$pageIdForEnv]);
                                 $envRowsModal = $envListStmt->fetchAll(PDO::FETCH_ASSOC);

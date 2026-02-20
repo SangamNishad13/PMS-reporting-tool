@@ -1236,48 +1236,6 @@ include __DIR__ . '/../../includes/header.php';
             });
         });
 
-        // Handle environment status updates
-        $('.env-status-update').on('change', function () {
-            var pageId = $(this).data('page-id');
-            var envId = $(this).data('env-id');
-            var testerType = $(this).data('tester-type');
-            var newStatus = $(this).val();
-            var $select = $(this);
-
-            $.ajax({
-                url: '<?php echo $baseDir; ?>/api/update_env_status.php',
-                type: 'POST',
-                data: {
-                    page_id: pageId,
-                    env_id: envId,
-                    tester_type: testerType,
-                    status: newStatus
-                },
-                success: function (response) {
-                    if (response.success) {
-                        var $row = $select.closest('tr');
-                        $row.addClass('table-success');
-                        setTimeout(function () {
-                            $row.removeClass('table-success');
-                        }, 2000);
-                        if (typeof showToast === 'function') showToast('Status updated', 'success');
-                    } else {
-                        if (typeof showToast === 'function') showToast('Failed to update status: ' + (response.message || 'Unknown error'), 'danger');
-                        $select.val($select.data('original-value') || $select.find('option:first').val());
-                    }
-                },
-                error: function (xhr, status, error) {
-                    if (typeof showToast === 'function') showToast('Error updating status: ' + error, 'danger');
-                    $select.val($select.data('original-value') || $select.find('option:first').val());
-                }
-            });
-        });
-
-        // Store original values for environment status selects
-        $('.env-status-update').each(function () {
-            $(this).data('original-value', $(this).val());
-        });
-
         // Handle page expand/collapse functionality
         $('.page-toggle-btn').on('click', function () {
             var $button = $(this);

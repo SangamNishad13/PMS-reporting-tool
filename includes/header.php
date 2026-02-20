@@ -542,7 +542,9 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
             $.get('<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/api/status.php?action=get_notifications', function(response) {
                 if (response.success) {
                     const notifications = response.notifications || [];
-                    const unreadCount = notifications.filter(n => !n.is_read).length;
+                    const unreadCount = notifications.filter(function(n) {
+                        return Number(n.is_read) === 0;
+                    }).length;
                     
                     // Update badge
                     const badge = $('#notificationCount');

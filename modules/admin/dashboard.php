@@ -6,7 +6,129 @@ $auth = new Auth();
 $auth->requireRole('admin');
 
 $db = Database::getInstance();
+$userId = $_SESSION['user_id'];
 $projectManager = new ProjectManager();
+$baseDir = getBaseDir();
+$devicesApiUrl = $baseDir . '/api/devices.php';
+
+// Consolidated pending requests for admin dashboard
+$pendingBuckets = [];
+$pendingFeed = [];
+$pendingTotalCount = 0;
+
+try {
+    $devicePendingCount = (int)$db->query("SELECT COUNT(*) FROM device_switch_requests WHERE status = 'Pending'")->fetchColumn();
+    $devicePendingRows = $db->query("
+        SELECT dsr.id, dsr.requested_at, d.device_name, d.device_type, u.full_name AS requester_name
+        FROM device_switch_requests dsr
+        JOIN devices d ON d.id = dsr.device_id
+        JOIN users u ON u.id = dsr.requested_by
+        WHERE dsr.status = 'Pending'
+        ORDER BY dsr.requested_at DESC
+        LIMIT 5
+    ")->fetchAll(PDO::FETCH_ASSOC);
+
+    $pendingBuckets[] = [
+        'key' => 'device',
+        'label' => 'Device Requests',
+        'count' => $devicePendingCount,
+        'link' => $baseDir . '/modules/admin/devices.php',
+        'items' => $devicePendingRows
+    ];
+    foreach ($devicePendingRows as $row) {
+        $pendingFeed[] = [
+            'type' => 'Device',
+            'title' => trim((string)$row['device_name']) . ' (' . trim((string)$row['device_type']) . ')',
+            'user' => (string)($row['requester_name'] ?? 'Unknown'),
+            'requested_at' => (string)($row['requested_at'] ?? ''),
+            'link' => $baseDir . '/modules/admin/devices.php',
+            'action_kind' => 'device',
+            'request_id' => (int)($row['id'] ?? 0)
+        ];
+    }
+    $pendingTotalCount += $devicePendingCount;
+} catch (Exception $e) {
+    error_log('dashboard pending device requests load failed: ' . $e->getMessage());
+}
+
+try {
+    $hoursPendingCount = (int)$db->query("SELECT COUNT(*) FROM user_edit_requests WHERE status = 'pending'")->fetchColumn();
+    $hoursPendingRows = $db->query("
+        SELECT uer.id, uer.user_id, uer.req_date, uer.request_type, uer.created_at, u.full_name AS requester_name
+        FROM user_edit_requests uer
+        JOIN users u ON u.id = uer.user_id
+        WHERE uer.status = 'pending'
+        ORDER BY uer.created_at DESC
+        LIMIT 5
+    ")->fetchAll(PDO::FETCH_ASSOC);
+
+    $pendingBuckets[] = [
+        'key' => 'hours',
+        'label' => 'Hours Log Requests',
+        'count' => $hoursPendingCount,
+        'link' => $baseDir . '/modules/admin/edit_requests.php',
+        'items' => $hoursPendingRows
+    ];
+    foreach ($hoursPendingRows as $row) {
+        $requestType = strtolower(trim((string)($row['request_type'] ?? 'edit'))) === 'delete' ? 'Delete' : 'Edit';
+        $pendingFeed[] = [
+            'type' => 'Hours',
+            'title' => $requestType . ' request for ' . (string)($row['req_date'] ?? '-'),
+            'user' => (string)($row['requester_name'] ?? 'Unknown'),
+            'requested_at' => (string)($row['created_at'] ?? ''),
+            'link' => $baseDir . '/modules/admin/edit_requests.php',
+            'action_kind' => 'hours',
+            'request_id' => (int)($row['id'] ?? 0),
+            'user_id' => (int)($row['user_id'] ?? 0),
+            'req_date' => (string)($row['req_date'] ?? '')
+        ];
+    }
+    $pendingTotalCount += $hoursPendingCount;
+} catch (Exception $e) {
+    error_log('dashboard pending hours requests load failed: ' . $e->getMessage());
+}
+
+try {
+    $pendingEditsCount = (int)$db->query("SELECT COUNT(*) FROM user_pending_log_edits WHERE status = 'pending'")->fetchColumn();
+    $pendingBuckets[] = [
+        'key' => 'log_edits',
+        'label' => 'Pending Log Edit Items',
+        'count' => $pendingEditsCount,
+        'link' => $baseDir . '/modules/admin/edit_requests.php',
+        'items' => []
+    ];
+    $pendingTotalCount += $pendingEditsCount;
+} catch (Exception $e) {
+    error_log('dashboard pending log edits load failed: ' . $e->getMessage());
+}
+
+try {
+    $pendingDeletesCount = (int)$db->query("SELECT COUNT(*) FROM user_pending_log_deletions WHERE status = 'pending'")->fetchColumn();
+    $pendingBuckets[] = [
+        'key' => 'log_deletes',
+        'label' => 'Pending Log Delete Items',
+        'count' => $pendingDeletesCount,
+        'link' => $baseDir . '/modules/admin/edit_requests.php',
+        'items' => []
+    ];
+    $pendingTotalCount += $pendingDeletesCount;
+} catch (Exception $e) {
+    error_log('dashboard pending log deletions load failed: ' . $e->getMessage());
+}
+
+usort($pendingFeed, static function (array $a, array $b): int {
+    return strtotime((string)($b['requested_at'] ?? '')) <=> strtotime((string)($a['requested_at'] ?? ''));
+});
+$pendingFeed = array_slice($pendingFeed, 0, 8);
+$myDevicesStmt = $db->prepare("
+    SELECT d.device_name, d.device_type, d.model, d.version, da.assigned_at
+    FROM device_assignments da
+    JOIN devices d ON d.id = da.device_id
+    WHERE da.user_id = ? AND da.status = 'Active'
+    ORDER BY da.assigned_at DESC
+");
+$myDevicesStmt->execute([$userId]);
+$myDevices = $myDevicesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get project statuses from status master (same source used in project create/edit flows)
 $projectStatusOptions = getStatusOptions('project');
@@ -181,6 +303,98 @@ include __DIR__ . '/../../includes/header.php';
         <a href="<?php echo $baseDir; ?>/modules/admin/bulk_hours_management.php" class="btn btn-outline-primary btn-sm">Bulk Hours Management</a>
         <a href="<?php echo $baseDir; ?>/modules/admin/resource_workload.php" class="btn btn-outline-secondary btn-sm">Resource Workload</a>
         <a href="<?php echo $baseDir; ?>/modules/admin/calendar.php" class="btn btn-outline-secondary btn-sm">Users Calendar</a>
+    </div>
+
+    <div class="card mb-3 border-warning">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="fas fa-inbox"></i> Pending Requests (All Modules)</h6>
+            <span class="badge bg-warning text-dark"><?php echo (int)$pendingTotalCount; ?> pending</span>
+        </div>
+        <div class="card-body">
+            <?php if ((int)$pendingTotalCount === 0): ?>
+                <span class="text-muted">No pending requests right now.</span>
+            <?php else: ?>
+                <div class="row g-2 mb-3">
+                    <?php foreach ($pendingBuckets as $bucket): ?>
+                        <?php if ((int)($bucket['count'] ?? 0) <= 0) continue; ?>
+                        <div class="col-sm-6 col-xl-3">
+                            <a href="<?php echo htmlspecialchars((string)$bucket['link']); ?>" class="text-decoration-none">
+                                <div class="border rounded p-2 h-100">
+                                    <div class="small text-muted"><?php echo htmlspecialchars((string)$bucket['label']); ?></div>
+                                    <div class="h5 mb-0 text-dark"><?php echo (int)$bucket['count']; ?></div>
+                                </div>
+                            </a>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+
+                <?php if (!empty($pendingFeed)): ?>
+                    <h6 class="mb-2">Latest Pending Requests</h6>
+                    <div class="list-group">
+                        <?php foreach ($pendingFeed as $feed): ?>
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <div>
+                                        <span class="badge bg-secondary me-2"><?php echo htmlspecialchars((string)$feed['type']); ?></span>
+                                        <strong><?php echo htmlspecialchars((string)$feed['title']); ?></strong>
+                                        <div class="small text-muted">Requested by <?php echo htmlspecialchars((string)$feed['user']); ?></div>
+                                    </div>
+                                    <small class="text-muted"><?php echo !empty($feed['requested_at']) ? date('M d, H:i', strtotime((string)$feed['requested_at'])) : '-'; ?></small>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <?php if (($feed['action_kind'] ?? '') === 'device' && (int)($feed['request_id'] ?? 0) > 0): ?>
+                                        <button type="button" class="btn btn-sm btn-success" onclick="respondDeviceRequestFromDashboard(<?php echo (int)$feed['request_id']; ?>, 'approve')">Accept</button>
+                                        <button type="button" class="btn btn-sm btn-danger" onclick="respondDeviceRequestFromDashboard(<?php echo (int)$feed['request_id']; ?>, 'reject')">Reject</button>
+                                        <a href="<?php echo htmlspecialchars((string)$feed['link']); ?>" class="btn btn-sm btn-outline-secondary">Open</a>
+                                    <?php elseif (($feed['action_kind'] ?? '') === 'hours' && (int)($feed['request_id'] ?? 0) > 0): ?>
+                                        <form method="POST" action="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/edit_requests.php" class="d-inline">
+                                            <input type="hidden" name="request_id" value="<?php echo (int)$feed['request_id']; ?>">
+                                            <input type="hidden" name="action" value="approved">
+                                            <input type="hidden" name="user_id" value="<?php echo (int)($feed['user_id'] ?? 0); ?>">
+                                            <input type="hidden" name="date" value="<?php echo htmlspecialchars((string)($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
+                                            <input type="hidden" name="return_to" value="<?php echo htmlspecialchars($baseDir . '/modules/admin/dashboard.php', ENT_QUOTES, 'UTF-8'); ?>">
+                                            <button type="submit" class="btn btn-sm btn-success">Accept</button>
+                                        </form>
+                                        <form method="POST" action="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/edit_requests.php" class="d-inline">
+                                            <input type="hidden" name="request_id" value="<?php echo (int)$feed['request_id']; ?>">
+                                            <input type="hidden" name="action" value="rejected">
+                                            <input type="hidden" name="user_id" value="<?php echo (int)($feed['user_id'] ?? 0); ?>">
+                                            <input type="hidden" name="date" value="<?php echo htmlspecialchars((string)($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
+                                            <input type="hidden" name="return_to" value="<?php echo htmlspecialchars($baseDir . '/modules/admin/dashboard.php', ENT_QUOTES, 'UTF-8'); ?>">
+                                            <button type="submit" class="btn btn-sm btn-danger">Reject</button>
+                                        </form>
+                                        <a href="<?php echo htmlspecialchars((string)$feed['link']); ?>" class="btn btn-sm btn-outline-secondary">Open</a>
+                                    <?php else: ?>
+                                        <a href="<?php echo htmlspecialchars((string)$feed['link']); ?>" class="btn btn-sm btn-outline-secondary">Open</a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="fas fa-laptop"></i> My Assigned Devices</h6>
+            <a href="<?php echo $baseDir; ?>/modules/devices.php" class="btn btn-sm btn-outline-primary">View Devices</a>
+        </div>
+        <div class="card-body py-2">
+            <?php if (empty($myDevices)): ?>
+                <span class="text-muted">No office device assigned.</span>
+            <?php else: ?>
+                <div class="d-flex flex-wrap gap-2">
+                    <?php foreach ($myDevices as $dev): ?>
+                        <span class="badge bg-light text-dark border">
+                            <?php echo htmlspecialchars((string)$dev['device_name']); ?>
+                            (<?php echo htmlspecialchars((string)$dev['device_type']); ?>)
+                        </span>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
     </div>
     
     <!-- Statistics Cards -->
@@ -633,4 +847,31 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
 </div>
+<script>
+function respondDeviceRequestFromDashboard(requestId, action) {
+    const actionLabel = action === 'approve' ? 'accept' : 'reject';
+    confirmModal(`Are you sure you want to ${actionLabel} this device request?`, function() {
+        $.post('<?php echo htmlspecialchars($devicesApiUrl, ENT_QUOTES, 'UTF-8'); ?>', {
+            action: 'respond_to_request',
+            request_id: requestId,
+            response_action: action,
+            response_notes: 'Processed from admin dashboard'
+        }, function(response) {
+            if (response && response.success) {
+                location.reload();
+            } else {
+                showToast((response && response.message) ? response.message : 'Failed to process request', 'danger');
+            }
+        }).fail(function(xhr) {
+            let msg = 'Failed to process request';
+            if (xhr && xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+            showToast(msg, 'danger');
+        });
+    }, {
+        title: action === 'approve' ? 'Confirm Accept' : 'Confirm Reject',
+        confirmText: action === 'approve' ? 'Accept' : 'Reject',
+        confirmClass: action === 'approve' ? 'btn-success' : 'btn-danger'
+    });
+}
+</script>
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

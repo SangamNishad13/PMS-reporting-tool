@@ -1427,7 +1427,9 @@ include __DIR__ . '/../../includes/header.php';
                                 <div class="col-md-3">
                                     <h6 class="mb-2">Actions</h6>
                                     <div class="d-flex justify-content-center gap-1 flex-wrap">
-                                        <button class="btn btn-sm btn-outline-secondary py-0 px-1"><i class="fas fa-eye"></i></button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" disabled aria-disabled="true" title="Legend sample only">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
                                         <span class="small">Show Details</span>
                                     </div>
                                 </div>

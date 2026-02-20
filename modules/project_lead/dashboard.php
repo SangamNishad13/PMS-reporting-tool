@@ -13,6 +13,16 @@ $auth->requireRole(['project_lead', 'admin', 'super_admin']);
 
 $userId = $_SESSION['user_id'];
 $db = Database::getInstance();
+$baseDir = getBaseDir();
+$myDevicesStmt = $db->prepare("
+    SELECT d.device_name, d.device_type, d.model, d.version, da.assigned_at
+    FROM device_assignments da
+    JOIN devices d ON d.id = da.device_id
+    WHERE da.user_id = ? AND da.status = 'Active'
+    ORDER BY da.assigned_at DESC
+");
+$myDevicesStmt->execute([$userId]);
+$myDevices = $myDevicesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Check if user has resource workload access
 $hasResourceWorkloadAccess = hasResourceWorkloadAccess($db, $userId);
@@ -85,6 +95,27 @@ include __DIR__ . '/../../includes/header.php';
         <div>
             <h2>Project Lead Dashboard</h2>
             <p class="text-muted mb-0">Welcome back, <?php echo htmlspecialchars($_SESSION['full_name']); ?>!</p>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="fas fa-laptop"></i> My Assigned Devices</h6>
+            <a href="<?php echo $baseDir; ?>/modules/devices.php" class="btn btn-sm btn-outline-primary">View Devices</a>
+        </div>
+        <div class="card-body py-2">
+            <?php if (empty($myDevices)): ?>
+                <span class="text-muted">No office device assigned.</span>
+            <?php else: ?>
+                <div class="d-flex flex-wrap gap-2">
+                    <?php foreach ($myDevices as $dev): ?>
+                        <span class="badge bg-light text-dark border">
+                            <?php echo htmlspecialchars((string)$dev['device_name']); ?>
+                            (<?php echo htmlspecialchars((string)$dev['device_type']); ?>)
+                        </span>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 

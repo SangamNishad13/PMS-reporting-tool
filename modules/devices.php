@@ -211,31 +211,55 @@ $(document).ready(function() {
 });
 
 function loadIncomingRequests() {
-    $.get('../api/devices.php?action=get_incoming_requests', function(response) {
-        if (response.success) {
-            incomingRequests = response.requests;
-            renderIncomingRequests();
-        }
-    });
+    $.get('../api/devices.php?action=get_incoming_requests')
+        .done(function(response) {
+            if (response.success) {
+                incomingRequests = response.requests;
+                renderIncomingRequests();
+            } else {
+                showToast(response.message || 'Failed to load incoming requests', 'danger');
+            }
+        })
+        .fail(function(xhr) {
+            let msg = 'Failed to load incoming requests';
+            if (xhr?.responseJSON?.message) msg = xhr.responseJSON.message;
+            showToast(msg, 'danger');
+        });
 }
 
 function loadDevices() {
-    $.get('../api/devices.php?action=get_all_devices', function(response) {
-        if (response.success) {
-            devices = response.devices;
-            renderMyDevices();
-            renderAllDevices();
-        }
-    });
+    $.get('../api/devices.php?action=get_all_devices')
+        .done(function(response) {
+            if (response.success) {
+                devices = response.devices;
+                renderMyDevices();
+                renderAllDevices();
+            } else {
+                showToast(response.message || 'Failed to load devices', 'danger');
+            }
+        })
+        .fail(function(xhr) {
+            let msg = 'Failed to load devices';
+            if (xhr?.responseJSON?.message) msg = xhr.responseJSON.message;
+            showToast(msg, 'danger');
+        });
 }
 
 function loadMyRequests() {
-    $.get('../api/devices.php?action=get_switch_requests', function(response) {
-        if (response.success) {
-            myRequests = response.requests;
-            renderMyRequests();
-        }
-    });
+    $.get('../api/devices.php?action=get_switch_requests')
+        .done(function(response) {
+            if (response.success) {
+                myRequests = response.requests;
+                renderMyRequests();
+            } else {
+                showToast(response.message || 'Failed to load requests', 'danger');
+            }
+        })
+        .fail(function(xhr) {
+            let msg = 'Failed to load requests';
+            if (xhr?.responseJSON?.message) msg = xhr.responseJSON.message;
+            showToast(msg, 'danger');
+        });
 }
 
 function renderMyDevices() {
@@ -529,8 +553,17 @@ function submitRequest() {
                 alert('Error: ' + response.message);
             }
         },
-        error: function() {
-            alert('Request failed. Please try again.');
+        error: function(xhr) {
+            let msg = 'Request failed. Please try again.';
+            if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
+                msg = xhr.responseJSON.message;
+            } else if (xhr && xhr.responseText) {
+                try {
+                    const parsed = JSON.parse(xhr.responseText);
+                    if (parsed && parsed.message) msg = parsed.message;
+                } catch (e) {}
+            }
+            alert(msg);
         }
     });
 }

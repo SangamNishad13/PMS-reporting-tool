@@ -213,6 +213,14 @@ include '../../includes/header.php';
                             <option value="Retired">Retired</option>
                         </select>
                     </div>
+
+                    <div class="mb-3 d-none" id="editAssignWrap">
+                        <label class="form-label">Assign To</label>
+                        <select class="form-select" id="editAssignUserId" name="assigned_user_id">
+                            <option value="">-- Keep Current Assignment --</option>
+                        </select>
+                        <small class="text-muted">Edit mode में यहाँ user select करके device reassign कर सकते हैं.</small>
+                    </div>
                     
                     <div class="mb-3">
                         <label class="form-label">Notes</label>
@@ -551,7 +559,21 @@ function showAddDeviceModal() {
     $('#deviceModalTitle').text('Add Device');
     $('#deviceForm')[0].reset();
     $('#deviceId').val('');
+    $('#editAssignWrap').addClass('d-none');
+    $('#editAssignUserId').empty().append('<option value="">-- Keep Current Assignment --</option>').attr('data-current-assigned', '');
     $('#deviceModal').modal('show');
+}
+
+function populateEditAssignUsers(currentAssignedUserId) {
+    const select = $('#editAssignUserId');
+    select.empty();
+    select.append('<option value="">-- Keep Current Assignment --</option>');
+
+    users.forEach(user => {
+        const selected = String(user.id) === String(currentAssignedUserId) ? ' selected' : '';
+        select.append(`<option value="${user.id}"${selected}>${user.full_name || user.username}</option>`);
+    });
+    select.attr('data-current-assigned', currentAssignedUserId || '');
 }
 
 function showEditDeviceModal(deviceId) {
@@ -568,12 +590,15 @@ function showEditDeviceModal(deviceId) {
     $('#purchaseDate').val(device.purchase_date);
     $('#status').val(device.status);
     $('#notes').val(device.notes);
+    $('#editAssignWrap').removeClass('d-none');
+    populateEditAssignUsers(device.assigned_user_id || '');
     $('#deviceModal').modal('show');
 }
 
 function saveDevice() {
     const formData = new FormData($('#deviceForm')[0]);
-    const action = $('#deviceId').val() ? 'update_device' : 'add_device';
+    const isEdit = !!$('#deviceId').val();
+    const action = isEdit ? 'update_device' : 'add_device';
     formData.append('action', action);
     
     $.ajax({
@@ -584,6 +609,31 @@ function saveDevice() {
         contentType: false,
         success: function(response) {
             if (response.success) {
+                const deviceId = $('#deviceId').val() || response.device_id;
+                const selectedAssignUserId = $('#editAssignUserId').val();
+                const currentAssignedUserId = $('#editAssignUserId').attr('data-current-assigned');
+
+                if (isEdit && selectedAssignUserId && String(selectedAssignUserId) !== String(currentAssignedUserId)) {
+                    $.post('../../api/devices.php', {
+                        action: 'assign_device',
+                        device_id: deviceId,
+                        user_id: selectedAssignUserId,
+                        notes: 'Assigned via Edit Device'
+                    }, function(assignResp) {
+                        if (assignResp.success) {
+                            alert(response.message + ' Device reassigned successfully.');
+                            $('#deviceModal').modal('hide');
+                            loadDevices();
+                            loadRotationHistory();
+                        } else {
+                            alert(response.message + ' But reassignment failed: ' + assignResp.message);
+                            $('#deviceModal').modal('hide');
+                            loadDevices();
+                        }
+                    });
+                    return;
+                }
+
                 alert(response.message);
                 $('#deviceModal').modal('hide');
                 loadDevices();

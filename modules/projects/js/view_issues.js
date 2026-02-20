@@ -39,6 +39,9 @@
     var isAdminUser = userRole === 'admin' || userRole === 'super_admin' || userRole === 'superadmin';
     var isTesterRole = userRole === 'at_tester' || userRole === 'ft_tester';
     var canUpdateIssueQaStatus = !!ProjectConfig.canUpdateIssueQaStatus;
+    if (isTesterRole) {
+        canUpdateIssueQaStatus = false;
+    }
 
     var issueData = {
         selectedPageId: null,

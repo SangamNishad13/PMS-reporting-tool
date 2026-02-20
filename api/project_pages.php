@@ -235,7 +235,7 @@ try {
             $newName = trim($input['page_name'] ?? '');
             $field = trim($input['field'] ?? 'page_name');
             if (!$uniqueId && !$pageId) jsonRes(['error' => 'unique_page_id or page_id required'], 400);
-            if ($newName === '') jsonRes(['error' => 'page_name required'], 400);
+            if ($field !== 'notes' && $newName === '') jsonRes(['error' => 'page_name required'], 400);
 
             // determine project id
             if ($pageId) {

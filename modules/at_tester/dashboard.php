@@ -9,6 +9,15 @@ $auth->requireRole(['at_tester', 'admin', 'super_admin']);
 $baseDir = getBaseDir();
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
+$myDevicesStmt = $db->prepare("
+    SELECT d.device_name, d.device_type, d.model, d.version, da.assigned_at
+    FROM device_assignments da
+    JOIN devices d ON d.id = da.device_id
+    WHERE da.user_id = ? AND da.status = 'Active'
+    ORDER BY da.assigned_at DESC
+");
+$myDevicesStmt->execute([$userId]);
+$myDevices = $myDevicesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get AT Tester's assigned projects and pages (ONLY ACTIVE/IN-PROGRESS)
 // Include projects from user_assignments even when no page task is assigned yet.
@@ -98,6 +107,27 @@ include __DIR__ . '/../../includes/header.php';
                     <span class="badge bg-info">Accessibility Testing</span>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="fas fa-laptop"></i> My Assigned Devices</h6>
+            <a href="<?php echo $baseDir; ?>/modules/devices.php" class="btn btn-sm btn-outline-primary">View Devices</a>
+        </div>
+        <div class="card-body py-2">
+            <?php if (empty($myDevices)): ?>
+                <span class="text-muted">No office device assigned.</span>
+            <?php else: ?>
+                <div class="d-flex flex-wrap gap-2">
+                    <?php foreach ($myDevices as $dev): ?>
+                        <span class="badge bg-light text-dark border">
+                            <?php echo htmlspecialchars((string)$dev['device_name']); ?>
+                            (<?php echo htmlspecialchars((string)$dev['device_type']); ?>)
+                        </span>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 

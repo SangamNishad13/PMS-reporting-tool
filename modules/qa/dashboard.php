@@ -8,6 +8,119 @@ $auth->requireRole(['qa', 'admin', 'super_admin']);
 $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'] ?? '';
 $db = Database::getInstance();
+$baseDir = getBaseDir();
+$myDevicesStmt = $db->prepare("
+    SELECT d.device_name, d.device_type, d.model, d.version, da.assigned_at
+    FROM device_assignments da
+    JOIN devices d ON d.id = da.device_id
+    WHERE da.user_id = ? AND da.status = 'Active'
+    ORDER BY da.assigned_at DESC
+");
+$myDevicesStmt->execute([$userId]);
+$myDevices = $myDevicesStmt->fetchAll(PDO::FETCH_ASSOC);
+
+function mapComputedToPageStatus(string $status): string {
+    $map = [
+        'testing_failed' => 'in_fixing',
+        'qa_failed' => 'in_fixing',
+        'in_testing' => 'in_progress',
+        'tested' => 'needs_review',
+        'qa_review' => 'qa_in_progress',
+        'not_tested' => 'not_started',
+        'on_hold' => 'on_hold',
+        'completed' => 'completed',
+        'in_progress' => 'in_progress',
+        'in_fixing' => 'in_fixing',
+        'needs_review' => 'needs_review',
+        'qa_in_progress' => 'qa_in_progress',
+        'not_started' => 'not_started',
+        'pass' => 'qa_in_progress',
+        'fail' => 'in_fixing'
+    ];
+    return $map[$status] ?? 'in_progress';
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_env_status'])) {
+    $pageId = (int)($_POST['page_id'] ?? 0);
+    $environmentId = (int)($_POST['environment_id'] ?? 0);
+    $projectId = (int)($_POST['project_id'] ?? 0);
+    $status = trim((string)($_POST['status'] ?? ''));
+    $allowedStatuses = ['pending', 'na', 'completed'];
+
+    if ($pageId <= 0 || $environmentId <= 0 || $projectId <= 0 || !in_array($status, $allowedStatuses, true)) {
+        $_SESSION['error'] = 'Invalid status update request.';
+        header('Location: dashboard.php');
+        exit;
+    }
+
+    try {
+        $rowStmt = $db->prepare("
+            SELECT pe.page_id, pe.environment_id, pe.qa_id, pp.qa_id AS page_qa_id, pp.project_id
+            FROM page_environments pe
+            JOIN project_pages pp ON pp.id = pe.page_id
+            WHERE pe.page_id = ? AND pe.environment_id = ? AND pp.project_id = ?
+            LIMIT 1
+        ");
+        $rowStmt->execute([$pageId, $environmentId, $projectId]);
+        $row = $rowStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            $_SESSION['error'] = 'Assigned environment not found.';
+            header('Location: dashboard.php');
+            exit;
+        }
+
+        $canUpdate = false;
+        if (in_array($userRole, ['admin', 'super_admin'], true)) {
+            $canUpdate = true;
+        } else {
+            $teamStmt = $db->prepare("
+                SELECT 1
+                FROM user_assignments
+                WHERE project_id = ? AND user_id = ? AND role = 'qa'
+                  AND (is_removed IS NULL OR is_removed = 0)
+                LIMIT 1
+            ");
+            $teamStmt->execute([$projectId, $userId]);
+            $isProjectQa = (bool)$teamStmt->fetchColumn();
+
+            if ($isProjectQa || (int)($row['qa_id'] ?? 0) === (int)$userId || (int)($row['page_qa_id'] ?? 0) === (int)$userId) {
+                $canUpdate = true;
+            }
+        }
+
+        if (!$canUpdate) {
+            $_SESSION['error'] = 'Permission denied for this QA task.';
+            header('Location: dashboard.php');
+            exit;
+        }
+
+        $upd = $db->prepare('UPDATE page_environments SET qa_status = ?, last_updated_by = ?, last_updated_at = NOW() WHERE page_id = ? AND environment_id = ?');
+        $upd->execute([$status, $userId, $pageId, $environmentId]);
+
+        $pageStmt = $db->prepare('SELECT * FROM project_pages WHERE id = ? LIMIT 1');
+        $pageStmt->execute([$pageId]);
+        $pageData = $pageStmt->fetch(PDO::FETCH_ASSOC);
+        if ($pageData) {
+            $computed = computePageStatus($db, $pageData);
+            $mappedStatus = mapComputedToPageStatus($computed);
+            $db->prepare('UPDATE project_pages SET status = ?, updated_at = NOW() WHERE id = ?')->execute([$mappedStatus, $pageId]);
+        }
+
+        logActivity($db, $userId, 'update_qa_env_status', 'project', $projectId, [
+            'page_id' => $pageId,
+            'environment_id' => $environmentId,
+            'status' => $status
+        ]);
+
+        $_SESSION['success'] = 'QA environment status updated successfully.';
+    } catch (Exception $e) {
+        $_SESSION['error'] = 'Error updating status: ' . $e->getMessage();
+    }
+
+    header('Location: dashboard.php');
+    exit;
+}
 
 // Get QA's assigned pages
 if (hasAdminPrivileges()) {
@@ -144,6 +257,92 @@ $assignedProjects = $db->prepare($assignedProjectsQuery);
 $assignedProjects->execute([$userId, $userId, $userId]);
 $activeProjects = $assignedProjects->fetchAll();
 
+// Pending QA rows (same layout intent as qa_tasks.php table)
+$qaPendingWhere = [
+    "p.status != 'cancelled'",
+    "(pp.status IS NULL OR LOWER(pp.status) NOT IN ('completed', 'in_fixing', 'on_hold', 'hold'))"
+];
+$qaPendingParams = [];
+
+if (!hasAdminPrivileges()) {
+    $qaPendingWhere[] = "(
+        pe.qa_id = ?
+        OR pp.qa_id = ?
+        OR EXISTS (
+            SELECT 1 FROM user_assignments ua
+            WHERE ua.project_id = pp.project_id
+              AND ua.user_id = ?
+              AND ua.role = 'qa'
+              AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+        )
+    )";
+    $qaPendingParams[] = $userId;
+    $qaPendingParams[] = $userId;
+    $qaPendingParams[] = $userId;
+}
+
+$qaPendingSql = "
+    SELECT
+        pp.id,
+        pp.project_id,
+        pp.page_name,
+        pp.url,
+        pp.screen_name,
+        pp.status AS page_status,
+        p.title AS project_title,
+        pe.environment_id,
+        pe.qa_status,
+        te.name AS environment_name,
+        te.browser,
+        te.assistive_tech
+    FROM project_pages pp
+    JOIN projects p ON pp.project_id = p.id
+    JOIN page_environments pe ON pp.id = pe.page_id
+    JOIN testing_environments te ON pe.environment_id = te.id
+    WHERE " . implode(' AND ', $qaPendingWhere) . "
+    ORDER BY p.priority, pp.page_name, te.name
+";
+$qaPendingStmt = $db->prepare($qaPendingSql);
+$qaPendingStmt->execute($qaPendingParams);
+$qaPendingRows = $qaPendingStmt->fetchAll(PDO::FETCH_ASSOC);
+
+$qaPendingGroupedUrlsMap = [];
+if (!empty($qaPendingRows)) {
+    $qaPendingPageIds = array_values(array_unique(array_map(static function ($r) {
+        return (int)($r['id'] ?? 0);
+    }, $qaPendingRows)));
+    $qaPendingPageIds = array_values(array_filter($qaPendingPageIds, static function ($v) { return $v > 0; }));
+
+    if (!empty($qaPendingPageIds)) {
+        $placeholders = implode(',', array_fill(0, count($qaPendingPageIds), '?'));
+        $groupedUrlsSql = "
+            SELECT
+                pp.id AS page_id,
+                GROUP_CONCAT(
+                    DISTINCT COALESCE(NULLIF(gu.url, ''), gu.normalized_url)
+                    ORDER BY COALESCE(NULLIF(gu.url, ''), gu.normalized_url)
+                    SEPARATOR '\n'
+                ) AS grouped_urls
+            FROM project_pages pp
+            LEFT JOIN grouped_urls gu
+                ON gu.project_id = pp.project_id
+               AND (
+                    gu.url = pp.url
+                    OR gu.normalized_url = pp.url
+                    OR gu.unique_page_id = pp.id
+               )
+            WHERE pp.id IN ($placeholders)
+            GROUP BY pp.id
+        ";
+        $groupedStmt = $db->prepare($groupedUrlsSql);
+        $groupedStmt->execute($qaPendingPageIds);
+        foreach ($groupedStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $pid = (int)($row['page_id'] ?? 0);
+            if ($pid > 0) $qaPendingGroupedUrlsMap[$pid] = (string)($row['grouped_urls'] ?? '');
+        }
+    }
+}
+
 ?>
 
 <style>
@@ -164,6 +363,41 @@ $activeProjects = $assignedProjects->fetchAll();
         <a href="page_assignment.php" class="btn btn-primary">
             <i class="fas fa-users-cog"></i> Manage Page Assignments
         </a>
+    </div>
+
+    <?php if (isset($_SESSION['success'])): ?>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <?php echo htmlspecialchars((string)$_SESSION['success']); unset($_SESSION['success']); ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    <?php endif; ?>
+
+    <?php if (isset($_SESSION['error'])): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <?php echo htmlspecialchars((string)$_SESSION['error']); unset($_SESSION['error']); ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    <?php endif; ?>
+
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="fas fa-laptop"></i> My Assigned Devices</h6>
+            <a href="<?php echo $baseDir; ?>/modules/devices.php" class="btn btn-sm btn-outline-primary">View Devices</a>
+        </div>
+        <div class="card-body py-2">
+            <?php if (empty($myDevices)): ?>
+                <span class="text-muted">No office device assigned.</span>
+            <?php else: ?>
+                <div class="d-flex flex-wrap gap-2">
+                    <?php foreach ($myDevices as $dev): ?>
+                        <span class="badge bg-light text-dark border">
+                            <?php echo htmlspecialchars((string)$dev['device_name']); ?>
+                            (<?php echo htmlspecialchars((string)$dev['device_type']); ?>)
+                        </span>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
     </div>
     
     <!-- Welcome Card -->
@@ -415,165 +649,105 @@ $activeProjects = $assignedProjects->fetchAll();
             <h5>Pages Pending QA Review</h5>
         </div>
         <div class="card-body">
-            <?php if ($pages->rowCount() > 0): ?>
+            <?php if (!empty($qaPendingRows)): ?>
             <div class="table-responsive">
-                <table class="table table-hover">
+                <table class="table table-striped">
                     <thead>
                         <tr>
-                            <th>Page/Screen</th>
-                            <th>Project</th>
-                            <th>Testers</th>
-                            <th>Test Status</th>
-                            <th>Current Status</th>
-                            <th>Priority</th>
+                            <th>Page Name</th>
+                            <th>Grouped URLs</th>
+                            <th>Environment</th>
+                            <th>Status</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($pagesList as $page): ?>
+                        <?php foreach ($qaPendingRows as $page): ?>
                         <tr>
                             <td>
-                                <strong><?php echo $page['page_name']; ?></strong><br>
-                                <small class="text-muted"><?php echo $page['url'] ?: $page['screen_name']; ?></small>
-                            </td>
-                            <td><?php echo $page['project_title']; ?></td>
-                            <td>
-                                <?php
-                                    $atHtml = $page['at_tester_name'] ?: getAssignedNamesHtml($db, $page, 'at_tester');
-                                    $ftHtml = $page['ft_tester_name'] ?: getAssignedNamesHtml($db, $page, 'ft_tester');
-                                ?>
-                                <?php if ($atHtml): ?>
-                                    <small>AT: <?php echo $atHtml; ?></small><br>
-                                <?php endif; ?>
-                                <?php if ($ftHtml): ?>
-                                    <small>FT: <?php echo $ftHtml; ?></small>
+                                <strong><?php echo htmlspecialchars((string)$page['page_name']); ?></strong>
+                                <br><small class="text-muted"><?php echo htmlspecialchars((string)$page['project_title']); ?></small>
+                                <?php if (!empty($page['url']) || !empty($page['screen_name'])): ?>
+                                    <br><small class="text-muted"><?php echo htmlspecialchars((string)($page['url'] ?: $page['screen_name'])); ?></small>
                                 <?php endif; ?>
                             </td>
                             <td>
                                 <?php
-                                $envs = $db->prepare("SELECT e.id, e.name, pe.status FROM page_environments pe JOIN testing_environments e ON pe.environment_id = e.id WHERE pe.page_id = ?");
-                                $envs->execute([$page['id']]);
-                                $pageEnvs = $envs->fetchAll();
-                                if (empty($pageEnvs)):
-                                    echo '<span class="text-muted">No environments</span>';
+                                $groupedRaw = trim((string)($qaPendingGroupedUrlsMap[(int)$page['id']] ?? ''));
+                                if ($groupedRaw !== ''):
+                                    $groupedList = array_values(array_filter(array_map('trim', explode("\n", $groupedRaw))));
+                                    $groupedCount = count($groupedList);
                                 else:
-                                    foreach ($pageEnvs as $pe):
+                                    $groupedList = [];
+                                    $groupedCount = 0;
+                                endif;
                                 ?>
-                                    <div class="mb-1 d-flex align-items-center justify-content-between">
-                                        <small class="text-nowrap me-2">
-                                            <strong><?php echo htmlspecialchars($pe['name']); ?>:</strong>
-                                        </small>
-                                        <?php echo renderEnvStatusDropdown($page['id'], $pe['id'], $pe['status']); ?>
-                                    </div>
-                                <?php endforeach; endif; ?>
+                                <?php if ($groupedCount > 0): ?>
+                                    <details>
+                                        <summary><?php echo $groupedCount; ?> URL<?php echo $groupedCount === 1 ? '' : 's'; ?></summary>
+                                        <small class="text-muted d-block mt-1"><?php echo htmlspecialchars(implode("\n", $groupedList)); ?></small>
+                                    </details>
+                                <?php else: ?>
+                                    <span class="text-muted">-</span>
+                                <?php endif; ?>
                             </td>
                             <td>
-                                <?php $computed = computePageStatus($db, $page); ?>
+                                <strong><?php echo htmlspecialchars((string)$page['environment_name']); ?></strong>
+                                <?php if (!empty($page['browser'])): ?>
+                                    <br><small class="text-muted">Browser: <?php echo htmlspecialchars((string)$page['browser']); ?></small>
+                                <?php endif; ?>
+                                <?php if (!empty($page['assistive_tech'])): ?>
+                                    <br><small class="text-muted">AT: <?php echo htmlspecialchars((string)$page['assistive_tech']); ?></small>
+                                <?php endif; ?>
+                            </td>
+                            <td>
                                 <?php
-                                    if ($computed === 'completed') { $cclass = 'success'; }
-                                    elseif ($computed === 'in_testing') { $cclass = 'primary'; }
-                                    elseif ($computed === 'testing_failed') { $cclass = 'danger'; }
-                                    elseif ($computed === 'tested') { $cclass = 'info'; }
-                                    elseif ($computed === 'qa_review') { $cclass = 'warning'; }
-                                    elseif ($computed === 'qa_failed') { $cclass = 'danger'; }
-                                    elseif ($computed === 'on_hold') { $cclass = 'warning'; }
-                                    else { $cclass = 'secondary'; }
+                                $qaStatusRaw = strtolower(trim((string)($page['qa_status'] ?? 'pending')));
+                                $qaStatus = in_array($qaStatusRaw, ['pending', 'na', 'completed'], true) ? $qaStatusRaw : 'pending';
+                                $statusClass = 'secondary';
+                                $statusText = 'Pending';
+                                if ($qaStatus === 'completed') {
+                                    $statusClass = 'success';
+                                    $statusText = 'Completed';
+                                } elseif ($qaStatus === 'na') {
+                                    $statusClass = 'secondary';
+                                    $statusText = 'N/A';
+                                }
                                 ?>
-                                <?php echo renderPageStatusDropdown($page['id'], $computed); ?>
+                                <span class="badge bg-<?php echo $statusClass; ?>"><?php echo $statusText; ?></span>
+                                <br><small class="text-muted">Page: <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', (string)($page['page_status'] ?? 'not_started')))); ?></small>
                             </td>
                             <td>
-                                <span class="badge bg-<?php 
-                                    echo $page['priority'] === 'critical' ? 'danger' : 
-                                         ($page['priority'] === 'high' ? 'warning' : 'secondary');
-                                ?>">
-                                    <?php echo ucfirst($page['priority']); ?>
-                                </span>
-                            </td>
-                            <td>
-                                <button type="button" class="btn btn-sm btn-primary" 
-                                        data-bs-toggle="modal" 
-                                        data-bs-target="#qaReviewModal<?php echo $page['id']; ?>">
-                                    <i class="fas fa-check-circle"></i> Review
-                                </button>
-                                <a href="<?php echo $baseDir; ?>/modules/chat/project_chat.php?page_id=<?php echo $page['id']; ?>" 
-                                   class="btn btn-sm btn-success" title="Discuss">
-                                    <i class="fas fa-comments"></i>
+                                <form method="POST" action="dashboard.php" class="d-inline-flex align-items-center gap-2">
+                                    <input type="hidden" name="page_id" value="<?php echo (int)$page['id']; ?>">
+                                    <input type="hidden" name="environment_id" value="<?php echo (int)$page['environment_id']; ?>">
+                                    <input type="hidden" name="project_id" value="<?php echo (int)$page['project_id']; ?>">
+                                    <select name="status" class="form-select form-select-sm" style="min-width: 150px;" aria-label="Update QA environment status">
+                                        <option value="pending" <?php echo $qaStatus === 'pending' ? 'selected' : ''; ?>>Pending</option>
+                                        <option value="na" <?php echo $qaStatus === 'na' ? 'selected' : ''; ?>>N/A</option>
+                                        <option value="completed" <?php echo $qaStatus === 'completed' ? 'selected' : ''; ?>>Completed</option>
+                                    </select>
+                                    <button type="submit" name="update_env_status" class="btn btn-sm btn-primary">Update</button>
+                                </form>
+
+                                <a href="<?php echo $baseDir; ?>/modules/projects/issues_page_detail.php?project_id=<?php echo (int)$page['project_id']; ?>&page_id=<?php echo (int)$page['id']; ?>"
+                                   class="btn btn-sm btn-success">
+                                    <i class="fas fa-vial"></i> Review
                                 </a>
                             </td>
                         </tr>
-                        
-                        <!-- QA Review Modal placeholder (moved below table to avoid invalid nesting) -->
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
             <?php else: ?>
-            <div class="alert-success">
-                <i class="fas fa-check-circle"></i> Great! You don't have any pages pending QA review.
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-inbox fa-3x mb-3"></i>
+                <p>No QA assignments found.</p>
             </div>
             <?php endif; ?>
         </div>
     </div>
-    
-    <?php // Render QA Review Modals after the table to avoid invalid DOM nesting ?>
-    <?php if (!empty($pagesList)): ?>
-        <?php foreach ($pagesList as $page): ?>
-            <div class="modal fade" id="qaReviewModal<?php echo $page['id']; ?>" tabindex="-1">
-                <div class="modal-dialog">
-                    <div class="modal-content">
-                        <form method="POST" action="<?php echo $baseDir; ?>/modules/qa/qa_tasks.php">
-                            <input type="hidden" name="page_id" value="<?php echo $page['id']; ?>">
-                            <div class="modal-header">
-                                <h5 class="modal-title">QA Review: <?php echo htmlspecialchars($page['page_name']); ?></h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body">
-                                <div class="mb-3">
-                                    <label>Environment (Optional - to update specific env status)</label>
-                                    <select name="environment_id" class="form-select">
-                                        <option value="">-- All Environments / General --</option>
-                                        <?php
-                                        $envs = $db->prepare("SELECT e.id, e.name, pe.status FROM page_environments pe JOIN testing_environments e ON pe.environment_id = e.id WHERE pe.page_id = ?");
-                                        $envs->execute([$page['id']]);
-                                        while ($e = $envs->fetch()):
-                                        ?>
-                                            <option value="<?php echo $e['id']; ?>"><?php echo htmlspecialchars($e['name']); ?> (<?php echo ucfirst($e['status']); ?>)</option>
-                                        <?php endwhile; ?>
-                                    </select>
-                                </div>
-                                <div class="mb-3">
-                                    <label>QA Status *</label>
-                                    <select name="qa_status" class="form-select" required>
-                                        <option value="pass">Pass</option>
-                                        <option value="fail">Fail - Send for Fixing</option>
-                                        <option value="na">Not Applicable / On Hold</option>
-                                    </select>
-                                </div>
-                                <div class="mb-3">
-                                    <label>Issues Found</label>
-                                    <input type="number" name="issues_found" class="form-control" value="0" min="0">
-                                </div>
-                                <div class="mb-3">
-                                    <label>Comments</label>
-                                    <textarea name="comments" class="form-control" rows="3" placeholder="Enter QA comments..."></textarea>
-                                </div>
-                                <?php if (!empty($page['test_comments'])): ?>
-                                    <div class="alert alert-info">
-                                        <strong>Tester Comments:</strong><br>
-                                        <?php echo $page['test_comments']; ?>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                <button type="submit" name="update_qa" class="btn btn-primary">Submit QA Review</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        <?php endforeach; ?>
-    <?php endif; ?>
     
     <!-- Recent QA Activity -->
     <div class="card mt-3">

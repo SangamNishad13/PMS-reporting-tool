@@ -308,7 +308,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     
-    header("Location: " . $_SERVER['PHP_SELF']);
+    $returnTo = trim((string)($_POST['return_to'] ?? ''));
+    $baseDir = getBaseDir();
+    $defaultRedirect = $_SERVER['PHP_SELF'];
+    $redirectTarget = $defaultRedirect;
+    if ($returnTo !== '') {
+        if (strpos($returnTo, $baseDir . '/modules/admin/') === 0 || strpos($returnTo, '/modules/admin/') === 0) {
+            $redirectTarget = $returnTo;
+        }
+    }
+
+    header("Location: " . $redirectTarget);
     exit;
 }
 

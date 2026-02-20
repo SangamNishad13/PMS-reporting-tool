@@ -20,10 +20,27 @@ $baseDir = getBaseDir();
 $devicesLink = $baseDir . '/modules/devices.php';
 $adminDevicesLink = $baseDir . '/modules/admin/devices.php';
 
+function getDeviceAdminRecipientIds($db) {
+    try {
+        $stmt = $db->query("
+            SELECT id
+            FROM users
+            WHERE is_active = 1
+              AND (
+                    LOWER(TRIM(role)) IN ('admin', 'super_admin')
+                    OR can_manage_devices = 1
+              )
+        ");
+        return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    } catch (Exception $e) {
+        error_log('getDeviceAdminRecipientIds failed: ' . $e->getMessage());
+        return [];
+    }
+}
+
 function notifyAdmins($db, $message, $link) {
     try {
-        $stmt = $db->query("SELECT id FROM users WHERE role IN ('admin','super_admin') AND is_active = 1");
-        $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        $ids = getDeviceAdminRecipientIds($db);
         foreach ($ids as $adminId) {
             createNotification($db, (int)$adminId, 'system', $message, $link);
         }
@@ -47,11 +64,24 @@ try {
 
         case 'get_all_devices':
             $stmt = $pdo->query("
-                SELECT d.*, 
-                       da.user_id as assigned_user_id,
-                       u.username as assigned_to,
-                       u.full_name as assigned_to_name,
-                       da.assigned_at
+                SELECT
+                    d.id,
+                    d.device_name,
+                    d.device_type,
+                    d.model,
+                    d.version,
+                    d.serial_number,
+                    d.purchase_date,
+                    CASE
+                        WHEN da.user_id IS NOT NULL THEN 'Assigned'
+                        WHEN d.status = 'Assigned' AND da.user_id IS NULL THEN 'Available'
+                        ELSE d.status
+                    END AS status,
+                    d.notes,
+                    da.user_id as assigned_user_id,
+                    u.username as assigned_to,
+                    u.full_name as assigned_to_name,
+                    da.assigned_at
                 FROM devices d
                 LEFT JOIN device_assignments da ON d.id = da.device_id AND da.status = 'Active'
                 LEFT JOIN users u ON da.user_id = u.id
@@ -64,6 +94,12 @@ try {
         case 'add_device':
             if (!$can_manage_devices) {
                 throw new Exception('You do not have permission to add devices');
+            }
+
+            $newStatus = $_POST['status'] ?? 'Available';
+            $assignedUserId = (int)($_POST['assigned_user_id'] ?? $_POST['user_id'] ?? 0);
+            if ($newStatus === 'Assigned' && $assignedUserId <= 0) {
+                throw new Exception('Assigned status requires an assigned user.');
             }
             
             $stmt = $pdo->prepare("
@@ -88,6 +124,24 @@ try {
             if (!$can_manage_devices) {
                 throw new Exception('You do not have permission to update devices');
             }
+
+            $deviceId = (int)($_POST['device_id'] ?? 0);
+            $newStatus = $_POST['status'] ?? 'Available';
+            if ($newStatus === 'Assigned') {
+                $assignedUserId = (int)($_POST['assigned_user_id'] ?? $_POST['user_id'] ?? 0);
+                if ($assignedUserId <= 0) {
+                    $checkAssignedStmt = $pdo->prepare("
+                        SELECT 1
+                        FROM device_assignments
+                        WHERE device_id = ? AND status = 'Active'
+                        LIMIT 1
+                    ");
+                    $checkAssignedStmt->execute([$deviceId]);
+                    if (!$checkAssignedStmt->fetchColumn()) {
+                        throw new Exception('Assigned status requires an assigned user.');
+                    }
+                }
+            }
             
             $stmt = $pdo->prepare("
                 UPDATE devices 
@@ -104,7 +158,7 @@ try {
                 $_POST['purchase_date'] ?? null,
                 $_POST['status'],
                 $_POST['notes'] ?? null,
-                $_POST['device_id']
+                $deviceId
             ]);
             
             echo json_encode(['success' => true, 'message' => 'Device updated successfully']);
@@ -368,11 +422,13 @@ try {
                     $devicesLink
                 );
 
-                notifyAdmins(
-                    $pdo,
-                    'Device switch request: ' . $requesterName . ' requested ' . $deviceLabel,
-                    $adminDevicesLink
-                );
+                $adminIds = getDeviceAdminRecipientIds($pdo);
+                if (!empty($adminIds)) {
+                    $adminMsg = 'Device switch request: ' . $requesterName . ' requested ' . $deviceLabel;
+                    foreach ($adminIds as $adminId) {
+                        createNotification($pdo, (int)$adminId, 'system', $adminMsg, $adminDevicesLink);
+                    }
+                }
             } catch (Exception $e) {
                 error_log('request_switch notify failed: ' . $e->getMessage());
             }
@@ -386,21 +442,23 @@ try {
                 throw new Exception('Device ID is required');
             }
 
-            // Ensure device is available and not assigned
+            // Ensure device exists
             $stmt = $pdo->prepare("SELECT status, device_name, device_type FROM devices WHERE id = ? LIMIT 1");
             $stmt->execute([$device_id]);
             $device = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$device) {
                 throw new Exception('Device not found');
             }
-            if ($device['status'] !== 'Available') {
-                throw new Exception('Device is not available');
-            }
 
-            $stmt = $pdo->prepare("SELECT id FROM device_assignments WHERE device_id = ? AND status = 'Active' LIMIT 1");
+            // Canonical availability check: no active assignment must exist.
+            // This avoids mismatch when old records have status='Assigned' but no active assignee.
+            $stmt = $pdo->prepare("SELECT user_id FROM device_assignments WHERE device_id = ? AND status = 'Active' LIMIT 1");
             $stmt->execute([$device_id]);
-            if ($stmt->fetch()) {
-                throw new Exception('Device is not currently available');
+            $activeAssignment = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            // Block explicitly non-requestable states.
+            if (in_array((string)$device['status'], ['Maintenance', 'Retired'], true)) {
+                throw new Exception('Device is not available');
             }
 
             // Check for existing pending request
@@ -413,24 +471,54 @@ try {
                 throw new Exception('You already have a pending request for this device');
             }
 
+            $currentHolderId = isset($activeAssignment['user_id']) ? (int)$activeAssignment['user_id'] : 0;
+            $insertCurrentHolder = $currentHolderId > 0 ? $currentHolderId : null;
+
             $stmt = $pdo->prepare("
                 INSERT INTO device_switch_requests (device_id, requested_by, current_holder, reason)
-                VALUES (?, ?, NULL, ?)
+                VALUES (?, ?, ?, ?)
             ");
             $stmt->execute([
                 $device_id,
                 $user_id,
+                $insertCurrentHolder,
                 $_POST['reason'] ?? null
             ]);
 
             $deviceLabel = $device['device_name'] . ' (' . $device['device_type'] . ')';
-            notifyAdmins(
-                $pdo,
-                'New request for available device: ' . $deviceLabel,
-                $adminDevicesLink
-            );
+            try {
+                $requesterStmt = $pdo->prepare("SELECT full_name FROM users WHERE id = ? LIMIT 1");
+                $requesterStmt->execute([$user_id]);
+                $requesterRow = $requesterStmt->fetch(PDO::FETCH_ASSOC);
+                $requesterName = $requesterRow['full_name'] ?? 'User';
 
-            echo json_encode(['success' => true, 'message' => 'Request submitted to admin']);
+                if ($currentHolderId > 0 && $currentHolderId !== (int)$user_id) {
+                    createNotification(
+                        $pdo,
+                        (int)$currentHolderId,
+                        'system',
+                        $requesterName . ' requested your device: ' . $deviceLabel,
+                        $devicesLink
+                    );
+                }
+
+                $adminIds = getDeviceAdminRecipientIds($pdo);
+                if (!empty($adminIds)) {
+                    $adminMsg = ($currentHolderId > 0)
+                        ? ('Device switch request: ' . $requesterName . ' requested ' . $deviceLabel)
+                        : ('New request for available device: ' . $deviceLabel . ' (requested by ' . $requesterName . ')');
+                    foreach ($adminIds as $adminId) {
+                        createNotification($pdo, (int)$adminId, 'system', $adminMsg, $adminDevicesLink);
+                    }
+                }
+            } catch (Exception $e) {
+                error_log('request_available notify failed: ' . $e->getMessage());
+            }
+
+            $successMsg = $currentHolderId > 0
+                ? 'Switch request submitted successfully'
+                : 'Request submitted to admin';
+            echo json_encode(['success' => true, 'message' => $successMsg]);
             break;
 
         case 'cancel_request':
@@ -460,7 +548,7 @@ try {
             break;
 
         case 'get_switch_requests':
-            if ($user_role === 'admin') {
+            if ($can_manage_devices) {
                 $stmt = $pdo->query("
                     SELECT dsr.*, 
                            d.device_name, d.device_type, d.model,
