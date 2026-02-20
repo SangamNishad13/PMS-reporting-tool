@@ -43,9 +43,9 @@ if (!in_array($statusType, ['testing', 'qa'])) {
 
 // Validate status based on type
 if ($statusType === 'testing') {
-    $validStatuses = ['not_started', 'in_progress', 'pass', 'fail', 'on_hold', 'needs_review'];
+    $validStatuses = ['not_started', 'in_progress', 'completed', 'on_hold', 'needs_review'];
 } else {
-    $validStatuses = ['pending', 'pass', 'fail', 'na', 'completed'];
+    $validStatuses = ['pending', 'na', 'completed'];
 }
 
 if (!in_array($status, $validStatuses)) {

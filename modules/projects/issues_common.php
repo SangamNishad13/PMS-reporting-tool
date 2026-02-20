@@ -59,18 +59,18 @@ try {
     $uniqueIssueStmt = $db->prepare("
         SELECT 
             up.id AS unique_id,
-            up.name AS unique_name,
-            up.canonical_url,
+            up.page_name AS unique_name,
+            up.url AS canonical_url,
             MIN(pp.id) AS mapped_page_id
-        FROM unique_pages up
+        FROM project_pages up
         LEFT JOIN grouped_urls gu ON gu.project_id = up.project_id AND gu.unique_page_id = up.id
         LEFT JOIN project_pages pp ON pp.project_id = up.project_id
             AND (
                 pp.url = gu.url
                 OR pp.url = gu.normalized_url
-                OR pp.url = up.canonical_url
-                OR pp.page_name = up.name
-                OR pp.page_number = up.name
+                OR pp.url = up.url
+                OR pp.page_name = up.page_name
+                OR pp.page_number = up.page_name
             )
         WHERE up.project_id = ?
         GROUP BY up.id

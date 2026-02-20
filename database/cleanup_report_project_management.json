@@ -1,0 +1,434 @@
+[
+    {
+        "table": "activity_log",
+        "rows": 3,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "admin_credentials",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "admin_meetings",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "admin_notes",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "admin_todos",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "assignments",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 4
+    },
+    {
+        "table": "chat_messages",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 3
+    },
+    {
+        "table": "chat_message_history",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "clients",
+        "rows": 1,
+        "incoming_fk": 1,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "common_issues",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 2
+    },
+    {
+        "table": "daily_hours_compliance",
+        "rows": 1,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "devices",
+        "rows": 1,
+        "incoming_fk": 3,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "device_assignments",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 3
+    },
+    {
+        "table": "device_rotation_history",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 4
+    },
+    {
+        "table": "device_switch_requests",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 4
+    },
+    {
+        "table": "env_status_master",
+        "rows": 6,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "feedbacks",
+        "rows": 0,
+        "incoming_fk": 1,
+        "outgoing_fk": 3
+    },
+    {
+        "table": "feedback_recipients",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 2
+    },
+    {
+        "table": "generic_task_categories",
+        "rows": 4,
+        "incoming_fk": 2,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "grouped_urls",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 2
+    },
+    {
+        "table": "hours_reminder_settings",
+        "rows": 1,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "issues",
+        "rows": 0,
+        "incoming_fk": 5,
+        "outgoing_fk": 8
+    },
+    {
+        "table": "issue_active_editors",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "issue_comments",
+        "rows": 0,
+        "incoming_fk": 1,
+        "outgoing_fk": 5
+    },
+    {
+        "table": "issue_comment_history",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "issue_default_templates",
+        "rows": 1,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "issue_drafts",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 2
+    },
+    {
+        "table": "issue_history",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "issue_metadata",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "issue_metadata_fields",
+        "rows": 8,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "issue_pages",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 2
+    },
+    {
+        "table": "issue_presence_sessions",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "issue_presets",
+        "rows": 158,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "issue_priorities",
+        "rows": 1,
+        "incoming_fk": 1,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "issue_statuses",
+        "rows": 6,
+        "incoming_fk": 3,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "issue_status_master",
+        "rows": 8,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "issue_templates",
+        "rows": 1,
+        "incoming_fk": 0,
+        "outgoing_fk": 2
+    },
+    {
+        "table": "issue_types",
+        "rows": 6,
+        "incoming_fk": 1,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "notifications",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "page_environments",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 6
+    },
+    {
+        "table": "page_qa_status_master",
+        "rows": 5,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "page_testing_status_master",
+        "rows": 6,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "phase_master",
+        "rows": 12,
+        "incoming_fk": 1,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "projects",
+        "rows": 1,
+        "incoming_fk": 14,
+        "outgoing_fk": 4
+    },
+    {
+        "table": "project_assets",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 2
+    },
+    {
+        "table": "project_pages",
+        "rows": 1,
+        "incoming_fk": 9,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "project_permissions",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 3
+    },
+    {
+        "table": "project_permissions_types",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "project_phases",
+        "rows": 4,
+        "incoming_fk": 1,
+        "outgoing_fk": 2
+    },
+    {
+        "table": "project_statuses",
+        "rows": 7,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "project_time_logs",
+        "rows": 1,
+        "incoming_fk": 0,
+        "outgoing_fk": 6
+    },
+    {
+        "table": "project_time_log_history",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "qa_results",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 2
+    },
+    {
+        "table": "qa_status_master",
+        "rows": 21,
+        "incoming_fk": 1,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "qa_status_permissions",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "regression_tasks",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "status_options",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "testing_environments",
+        "rows": 2,
+        "incoming_fk": 4,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "testing_results",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 3
+    },
+    {
+        "table": "username_change_history",
+        "rows": 3,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "users",
+        "rows": 7,
+        "incoming_fk": 49,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "user_assignments",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 4
+    },
+    {
+        "table": "user_calendar_notes",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "user_daily_status",
+        "rows": 2,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "user_edit_requests",
+        "rows": 5,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "user_generic_tasks",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 2
+    },
+    {
+        "table": "user_pending_changes",
+        "rows": 1,
+        "incoming_fk": 0,
+        "outgoing_fk": 1
+    },
+    {
+        "table": "user_pending_log_deletions",
+        "rows": 3,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "user_pending_log_edits",
+        "rows": 1,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "user_qa_performance",
+        "rows": 0,
+        "incoming_fk": 0,
+        "outgoing_fk": 3
+    },
+    {
+        "table": "user_sessions",
+        "rows": 110,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    },
+    {
+        "table": "wcag_sc",
+        "rows": 6,
+        "incoming_fk": 0,
+        "outgoing_fk": 0
+    }
+]

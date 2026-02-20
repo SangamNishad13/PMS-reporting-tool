@@ -107,7 +107,7 @@ function exportTesterStats($output, $startDate, $endDate) {
     
     fputcsv($output, [
         'Tester Name', 'Role', 'Email', 'Total Pages Tested', 
-        'Total Hours', 'Pass Rate %', 'Issues Found', 'Avg Hours/Page'
+        'Total Hours', 'Issues Found', 'Avg Hours/Page'
     ]);
     
     $stmt = $db->prepare("
@@ -117,7 +117,6 @@ function exportTesterStats($output, $startDate, $endDate) {
             u.email,
             COUNT(DISTINCT tr.page_id) as pages_tested,
             SUM(tr.hours_spent) as total_hours,
-            ROUND(AVG(CASE WHEN tr.status = 'pass' THEN 1 ELSE 0 END) * 100, 2) as pass_rate,
             SUM(tr.issues_found) as total_issues,
             ROUND(AVG(tr.hours_spent), 2) as avg_hours_per_page
         FROM users u
@@ -138,7 +137,6 @@ function exportTesterStats($output, $startDate, $endDate) {
             $row['email'],
             $row['pages_tested'] ?: '0',
             $row['total_hours'] ?: '0',
-            $row['pass_rate'] ?: '0',
             $row['total_issues'] ?: '0',
             $row['avg_hours_per_page'] ?: '0'
         ]);
@@ -150,7 +148,7 @@ function exportQAStats($output, $startDate, $endDate) {
     
     fputcsv($output, [
         'QA Name', 'Email', 'Pages Reviewed', 'Total Hours', 
-        'Pass Rate %', 'Issues Found', 'Avg Hours/Page', 'Rejection Rate %'
+        'Issues Found', 'Avg Hours/Page'
     ]);
     
     $stmt = $db->prepare("
@@ -159,10 +157,8 @@ function exportQAStats($output, $startDate, $endDate) {
             u.email,
             COUNT(DISTINCT qr.page_id) as pages_reviewed,
             SUM(qr.hours_spent) as total_hours,
-            ROUND(AVG(CASE WHEN qr.status = 'pass' THEN 1 ELSE 0 END) * 100, 2) as pass_rate,
             SUM(qr.issues_found) as total_issues,
-            ROUND(AVG(qr.hours_spent), 2) as avg_hours_per_page,
-            ROUND(AVG(CASE WHEN qr.status = 'fail' THEN 1 ELSE 0 END) * 100, 2) as rejection_rate
+            ROUND(AVG(qr.hours_spent), 2) as avg_hours_per_page
         FROM users u
         LEFT JOIN qa_results qr ON u.id = qr.qa_id
         WHERE u.role = 'qa' 
@@ -180,10 +176,8 @@ function exportQAStats($output, $startDate, $endDate) {
             $row['email'],
             $row['pages_reviewed'] ?: '0',
             $row['total_hours'] ?: '0',
-            $row['pass_rate'] ?: '0',
             $row['total_issues'] ?: '0',
-            $row['avg_hours_per_page'] ?: '0',
-            $row['rejection_rate'] ?: '0'
+            $row['avg_hours_per_page'] ?: '0'
         ]);
     }
 }

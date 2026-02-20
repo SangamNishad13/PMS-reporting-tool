@@ -17,52 +17,90 @@ if ($_POST) {
         $errorCount = 0;
         
         foreach ($updates as $assignmentId => $newHours) {
-            if (!empty($newHours) && is_numeric($newHours)) {
-                try {
-                    // Get current assignment details
-                    $getQuery = "
-                        SELECT ua.*, u.full_name, p.title as project_title, p.id as project_id
-                        FROM user_assignments ua 
-                        JOIN users u ON ua.user_id = u.id 
-                        JOIN projects p ON ua.project_id = p.id 
-                        WHERE ua.id = ?
-                    ";
-                    $stmt = $db->prepare($getQuery);
-                    $stmt->execute([$assignmentId]);
-                    $assignment = $stmt->fetch();
-                    
-                    if ($assignment) {
-                        // Validate hours allocation
-                        $validation = validateHoursAllocation($db, $assignment['project_id'], $newHours, $assignmentId);
-                        
-                        if (!$validation['valid']) {
-                            $errorCount++;
-                            continue; // Skip this assignment
-                        }
-                        
-                        // Update hours
-                        $updateQuery = "UPDATE user_assignments SET hours_allocated = ?, updated_at = NOW() WHERE id = ?";
-                        $stmt = $db->prepare($updateQuery);
-                        $stmt->execute([$newHours, $assignmentId]);
-                        
-                        // Log the change
-                        logHoursActivity($db, $_SESSION['user_id'], 'bulk_hours_updated', $assignmentId, [
-                            'target_user_id' => $assignment['user_id'],
-                            'target_user_name' => $assignment['full_name'],
-                            'project_id' => $assignment['project_id'],
-                            'project_title' => $assignment['project_title'],
-                            'old_hours' => $assignment['hours_allocated'],
-                            'new_hours' => $newHours,
-                            'reason' => $reason,
-                            'updated_by' => $_SESSION['user_id']
-                        ]);
-                        $stmt->execute([$_SESSION['user_id'], $assignmentId, $logDetails]);
-                        
-                        $successCount++;
-                    }
-                } catch (Exception $e) {
-                    $errorCount++;
+            if ($newHours === '' || !is_numeric($newHours)) {
+                continue;
+            }
+
+            $assignmentId = (int)$assignmentId;
+            $newHours = max(0, (float)$newHours);
+            if ($assignmentId <= 0) {
+                continue;
+            }
+
+            try {
+                // Get current assignment details with utilized hours for this user/project.
+                $getQuery = "
+                    SELECT ua.*, u.full_name, p.title as project_title, p.id as project_id,
+                           p.total_hours,
+                           (SELECT COALESCE(SUM(ua2.hours_allocated), 0)
+                            FROM user_assignments ua2
+                            WHERE ua2.project_id = ua.project_id
+                              AND (ua2.is_removed IS NULL OR ua2.is_removed = 0)) AS total_allocated_hours,
+                           COALESCE((
+                               SELECT SUM(ptl.hours_spent)
+                               FROM project_time_logs ptl
+                               WHERE ptl.user_id = ua.user_id
+                                 AND ptl.project_id = ua.project_id
+                                 AND ptl.is_utilized = 1
+                           ), 0) AS utilized_hours
+                    FROM user_assignments ua 
+                    JOIN users u ON ua.user_id = u.id 
+                    JOIN projects p ON ua.project_id = p.id 
+                    WHERE ua.id = ?
+                ";
+                $stmt = $db->prepare($getQuery);
+                $stmt->execute([$assignmentId]);
+                $assignment = $stmt->fetch();
+                
+                if (!$assignment) {
+                    continue;
                 }
+
+                $oldHours = (float)($assignment['hours_allocated'] ?? 0);
+                $utilizedHours = (float)($assignment['utilized_hours'] ?? 0);
+
+                // Skip unchanged rows.
+                if (abs($newHours - $oldHours) < 0.0001) {
+                    continue;
+                }
+
+                // Do not allow allocation lower than already utilized hours.
+                if ($newHours < $utilizedHours) {
+                    $errorCount++;
+                    continue;
+                }
+
+                // Allow decreases even when project is currently over-allocated.
+                // Increases are capped by free budget + this assignment's current hours.
+                $projectTotal = (float)($assignment['total_hours'] ?? 0);
+                $projectAllocated = (float)($assignment['total_allocated_hours'] ?? 0);
+                $freeHours = max(0.0, $projectTotal - $projectAllocated);
+                $maxAllowed = $oldHours + $freeHours;
+                if ($newHours > $maxAllowed) {
+                    $errorCount++;
+                    continue;
+                }
+                
+                $updateQuery = "UPDATE user_assignments SET hours_allocated = ?, updated_at = NOW() WHERE id = ?";
+                $stmt = $db->prepare($updateQuery);
+                $stmt->execute([$newHours, $assignmentId]);
+                
+                logHoursActivity($db, $_SESSION['user_id'], 'bulk_hours_updated', $assignmentId, [
+                    'target_user_id' => $assignment['user_id'],
+                    'target_user_name' => $assignment['full_name'],
+                    'project_id' => $assignment['project_id'],
+                    'project_title' => $assignment['project_title'],
+                    'old_hours' => $oldHours,
+                    'new_hours' => $newHours,
+                    'reason' => $reason,
+                    'updated_by' => $_SESSION['user_id'],
+                    'utilized_hours' => $utilizedHours
+                ]);
+                
+                $successCount++;
+            } catch (Exception $e) {
+                error_log('Bulk hours update error for assignment ' . $assignmentId . ': ' . $e->getMessage());
+                $errorCount++;
             }
         }
         
@@ -129,6 +167,9 @@ $assignments = $stmt->fetchAll();
 // Get filter options
 $projects = $db->query("SELECT id, title, po_number FROM projects WHERE status NOT IN ('completed', 'cancelled') ORDER BY title")->fetchAll();
 $users = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND role IN ('project_lead', 'qa', 'at_tester', 'ft_tester') ORDER BY full_name")->fetchAll();
+$flashSuccess = isset($_SESSION['success']) ? (string)$_SESSION['success'] : '';
+$flashError = isset($_SESSION['error']) ? (string)$_SESSION['error'] : '';
+unset($_SESSION['success'], $_SESSION['error']);
 
 include __DIR__ . '/../../includes/header.php';
 ?>
@@ -140,20 +181,6 @@ include __DIR__ . '/../../includes/header.php';
             <i class="fas fa-arrow-left"></i> Back to Dashboard
         </a>
     </div>
-
-    <?php if (isset($_SESSION['success'])): ?>
-        <div class="alert alert-success alert-dismissible fade show">
-            <?php echo $_SESSION['success']; unset($_SESSION['success']); ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    <?php endif; ?>
-
-    <?php if (isset($_SESSION['error'])): ?>
-        <div class="alert alert-danger alert-dismissible fade show">
-            <?php echo $_SESSION['error']; unset($_SESSION['error']); ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    <?php endif; ?>
 
     <!-- Filters -->
     <div class="card mb-4">
@@ -226,6 +253,7 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
             <?php else: ?>
                 <form id="bulkUpdateForm" method="POST">
+                    <input type="hidden" name="bulk_update" value="1">
                     <div class="table-responsive">
                         <table class="table table-hover">
                             <thead>
@@ -242,6 +270,15 @@ include __DIR__ . '/../../includes/header.php';
                             </thead>
                             <tbody>
                                 <?php foreach ($assignments as $assignment): ?>
+                                <?php
+                                    $minAllowed = max(0, (float)$assignment['utilized_hours']);
+                                    $projectTotal = (float)($assignment['total_hours'] ?? 0);
+                                    $projectAllocated = (float)($assignment['total_allocated_hours'] ?? 0);
+                                    $currentHours = (float)($assignment['hours_allocated'] ?? 0);
+                                    $freeHours = max(0.0, $projectTotal - $projectAllocated);
+                                    $maxAllowed = $currentHours + $freeHours;
+                                    $isOverAllocated = $projectAllocated > $projectTotal;
+                                ?>
                                 <tr>
                                     <td>
                                         <div>
@@ -270,6 +307,12 @@ include __DIR__ . '/../../includes/header.php';
                                                 <?php echo number_format($assignment['total_hours'], 1); ?>h total, 
                                                 <?php echo number_format($assignment['total_allocated_hours'], 1); ?>h allocated
                                             </small>
+                                            <?php if ($isOverAllocated): ?>
+                                                <br>
+                                                <small class="text-danger">
+                                                    Over-allocated by <?php echo number_format($projectAllocated - $projectTotal, 1); ?>h
+                                                </small>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                     <td>
@@ -301,16 +344,21 @@ include __DIR__ . '/../../includes/header.php';
                                                name="updates[<?php echo $assignment['id']; ?>]" 
                                                class="form-control form-control-sm hours-input" 
                                                step="0.5" 
-                                               min="0" 
-                                               max="<?php echo $assignment['total_hours'] - ($assignment['total_allocated_hours'] - $assignment['hours_allocated']); ?>"
+                                               min="<?php echo $minAllowed; ?>" 
+                                               max="<?php echo $maxAllowed; ?>"
                                                placeholder="<?php echo $assignment['hours_allocated']; ?>"
                                                data-original="<?php echo $assignment['hours_allocated']; ?>"
+                                               data-min="<?php echo $minAllowed; ?>"
                                                data-project-total="<?php echo $assignment['total_hours']; ?>"
                                                data-project-allocated="<?php echo $assignment['total_allocated_hours']; ?>"
+                                               data-max-allowed="<?php echo $maxAllowed; ?>"
+                                               data-over-allocated="<?php echo $isOverAllocated ? '1' : '0'; ?>"
                                                data-assignment-id="<?php echo $assignment['id']; ?>"
                                                style="width: 80px;"
                                                onchange="validateHours(this)">
-                                        <small class="text-muted hours-info" style="font-size: 0.7em;"></small>
+                                        <small class="text-muted hours-info" style="font-size: 0.7em;">
+                                            Min: <?php echo number_format($minAllowed, 1); ?>h, Max: <?php echo number_format($maxAllowed, 1); ?>h
+                                        </small>
                                     </td>
                                     <td>
                                         <span class="badge bg-<?php 
@@ -354,19 +402,75 @@ include __DIR__ . '/../../includes/header.php';
 </div>
 
 <script>
+function showBulkToast(message, variant = 'info', ttl = 5500) {
+    if (!message) return;
+    if (typeof window.showToast === 'function') {
+        window.showToast(message, variant, ttl);
+        return;
+    }
+
+    let wrap = document.getElementById('bulkHoursInlineToastWrap');
+    if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.id = 'bulkHoursInlineToastWrap';
+        wrap.style.position = 'fixed';
+        wrap.style.top = '76px';
+        wrap.style.right = '16px';
+        wrap.style.zIndex = '1080';
+        wrap.style.maxWidth = '420px';
+        document.body.appendChild(wrap);
+    }
+
+    const toast = document.createElement('div');
+    const cls = variant === 'success' ? 'alert-success'
+        : (variant === 'danger' ? 'alert-danger'
+        : (variant === 'warning' ? 'alert-warning' : 'alert-secondary'));
+    toast.className = 'alert ' + cls + ' shadow-sm mb-2';
+    toast.textContent = String(message);
+    wrap.appendChild(toast);
+    setTimeout(function() {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, ttl);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const flashSuccess = <?php echo json_encode($flashSuccess); ?>;
+    const flashError = <?php echo json_encode($flashError); ?>;
+
+    if (flashSuccess) showBulkToast(flashSuccess, 'success', 5500);
+    if (flashError) showBulkToast(flashError, 'danger', 5500);
+});
+
 function validateHours(input) {
+    const minAllowed = parseFloat(input.dataset.min || '0') || 0;
+    const maxAllowed = parseFloat(input.dataset.maxAllowed || input.max || '0') || 0;
+    const isOverAllocated = String(input.dataset.overAllocated || '0') === '1';
+
+    if (input.value === '') {
+        input.style.borderColor = '';
+        input.style.backgroundColor = '';
+        input.nextElementSibling.textContent = `Min: ${minAllowed.toFixed(1)}h, Max: ${maxAllowed.toFixed(1)}h`;
+        input.nextElementSibling.className = 'text-muted hours-info';
+        input.setCustomValidity('');
+        return;
+    }
+
     const newHours = parseFloat(input.value) || 0;
     const originalHours = parseFloat(input.dataset.original);
-    const projectTotal = parseFloat(input.dataset.projectTotal);
-    const projectAllocated = parseFloat(input.dataset.projectAllocated);
-    const maxAllowed = projectTotal - (projectAllocated - originalHours);
-    
     const infoElement = input.nextElementSibling;
     
-    if (newHours > maxAllowed) {
+    if (newHours < minAllowed) {
         input.style.borderColor = '#dc3545';
         input.style.backgroundColor = '#f8d7da';
-        infoElement.textContent = `Max: ${maxAllowed.toFixed(1)}h`;
+        infoElement.textContent = `Min: ${minAllowed.toFixed(1)}h`;
+        infoElement.className = 'text-danger hours-info';
+        input.setCustomValidity(`Cannot be lower than ${minAllowed.toFixed(1)} hours`);
+    } else if (newHours > maxAllowed) {
+        input.style.borderColor = '#dc3545';
+        input.style.backgroundColor = '#f8d7da';
+        infoElement.textContent = isOverAllocated
+            ? `Project over-allocated. Max: ${maxAllowed.toFixed(1)}h`
+            : `Max: ${maxAllowed.toFixed(1)}h`;
         infoElement.className = 'text-danger hours-info';
         input.setCustomValidity(`Cannot exceed ${maxAllowed.toFixed(1)} hours`);
     } else if (newHours > 0 && newHours !== originalHours) {
@@ -390,7 +494,7 @@ function applyBulkUpdate() {
     let hasErrors = false;
     
     inputs.forEach(input => {
-        if (input.value && input.value !== input.dataset.original) {
+        if (input.value !== '' && parseFloat(input.value) !== parseFloat(input.dataset.original)) {
             hasChanges = true;
         }
         if (!input.checkValidity()) {
@@ -399,25 +503,29 @@ function applyBulkUpdate() {
     });
     
     if (!hasChanges) {
-        showToast('No changes detected. Please modify some hours before saving.', 'warning');
+        showBulkToast('No changes detected. Please modify some hours before saving.', 'warning');
         return;
     }
     
     if (hasErrors) {
-        showToast('Please fix the validation errors before saving.', 'warning');
+        showBulkToast('Please fix the validation errors before saving.', 'warning');
         return;
     }
     
     const reason = form.querySelector('textarea[name="bulk_reason"]').value;
     if (!reason.trim()) {
-        showToast('Please provide a reason for the bulk update.', 'warning');
+        showBulkToast('Please provide a reason for the bulk update.', 'warning');
         return;
     }
     
-    confirmModal('Are you sure you want to apply these changes?', function() {
-        form.querySelector('input[name="bulk_update"]').value = '1';
+    const doSubmit = function() {
         form.submit();
-    });
+    };
+    if (typeof confirmModal === 'function') {
+        confirmModal('Are you sure you want to apply these changes?', doSubmit);
+    } else if (window.confirm('Are you sure you want to apply these changes?')) {
+        doSubmit();
+    }
 }
 
 function resetChanges() {
@@ -436,9 +544,7 @@ function increaseAll(amount) {
     const inputs = document.querySelectorAll('.hours-input');
     inputs.forEach(input => {
         const current = parseFloat(input.dataset.original) || 0;
-        const projectTotal = parseFloat(input.dataset.projectTotal);
-        const projectAllocated = parseFloat(input.dataset.projectAllocated);
-        const maxAllowed = projectTotal - (projectAllocated - current);
+        const maxAllowed = parseFloat(input.dataset.maxAllowed || input.max || current) || current;
         const newValue = Math.min(maxAllowed, current + amount);
         
         input.value = newValue.toFixed(1);
@@ -450,7 +556,8 @@ function decreaseAll(amount) {
     const inputs = document.querySelectorAll('.hours-input');
     inputs.forEach(input => {
         const current = parseFloat(input.dataset.original) || 0;
-        const newValue = Math.max(0, current - amount);
+        const minAllowed = parseFloat(input.dataset.min || '0') || 0;
+        const newValue = Math.max(minAllowed, current - amount);
         input.value = newValue.toFixed(1);
         validateHours(input);
     });
@@ -467,16 +574,10 @@ function clearAll() {
     });
 }
 
-// Add hidden input for form submission
 document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('bulkUpdateForm');
-    if (form) {
-        const hiddenInput = document.createElement('input');
-        hiddenInput.type = 'hidden';
-        hiddenInput.name = 'bulk_update';
-        hiddenInput.value = '';
-        form.appendChild(hiddenInput);
-    }
+    document.querySelectorAll('.hours-input').forEach(function(input) {
+        validateHours(input);
+    });
 });
 </script>
 

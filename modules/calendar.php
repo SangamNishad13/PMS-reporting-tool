@@ -9,6 +9,29 @@ $baseDir = getBaseDir();
 
 $userId = $_SESSION['user_id'];
 $pageTitle = 'My Availability Calendar';
+$availabilityStatuses = getAvailabilityStatusOptions(false);
+$availabilityStatusMap = [];
+foreach ($availabilityStatuses as $statusRow) {
+    $statusKey = strtolower(trim((string)($statusRow['status_key'] ?? '')));
+    if ($statusKey === '') continue;
+    $availabilityStatusMap[$statusKey] = [
+        'status_label' => (string)($statusRow['status_label'] ?? ucwords(str_replace('_', ' ', $statusKey))),
+        'badge_color' => (string)($statusRow['badge_color'] ?? 'secondary')
+    ];
+}
+if (!isset($availabilityStatusMap['not_updated'])) {
+    $availabilityStatusMap['not_updated'] = ['status_label' => 'Not Updated', 'badge_color' => 'secondary'];
+}
+$badgeToHex = [
+    'primary' => '#0d6efd',
+    'secondary' => '#6c757d',
+    'success' => '#198754',
+    'danger' => '#dc3545',
+    'warning' => '#ffc107',
+    'info' => '#0dcaf0',
+    'light' => '#f8f9fa',
+    'dark' => '#212529'
+];
 
 // Get assigned projects for the current user (for quick production hours logging)
 $projectsStmt = $db->prepare("
@@ -44,6 +67,20 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
 
     $filterUserId = isset($_GET['user_id']) ? $_GET['user_id'] : null;
     $editRequestFilter = isset($_GET['edit_request_filter']) ? $_GET['edit_request_filter'] : null;
+    $statusFilters = isset($_GET['status_filter']) ? explode(',', (string)$_GET['status_filter']) : ['all'];
+    $statusFilters = array_values(array_filter(array_map(static function ($v) {
+        return strtolower(trim((string)$v));
+    }, $statusFilters)));
+    if (in_array('all', $statusFilters, true) || empty($statusFilters)) {
+        $statusFilters = ['all'];
+    }
+    $statusFilterAllows = static function ($statusKey) use ($statusFilters) {
+        $statusKey = strtolower(trim((string)$statusKey));
+        if (in_array('all', $statusFilters, true)) return true;
+        if (in_array($statusKey, $statusFilters, true)) return true;
+        if (($statusKey === 'on_leave' || $statusKey === 'sick_leave') && in_array('leave', $statusFilters, true)) return true;
+        return false;
+    };
     $isAdminUser = hasAdminPrivileges();
 
     $events = [];
@@ -124,21 +161,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                 continue;
             }
         }
-
-        $color = '#28a745'; // Available
-        $title = ucfirst($row['status']);
-        switch ($row['status']) {
-            case 'working':
-                $color = '#17a2b8'; // Info blue
-                break;
-            case 'on_leave':
-            case 'sick_leave':
-                $color = '#dc3545';
-                break;
-            case 'busy':
-                $color = '#ffc107';
-                break;
+        $statusKey = strtolower(trim((string)($row['status'] ?? 'not_updated')));
+        if (!$statusFilterAllows($statusKey)) {
+            continue;
         }
+
+        $badgeColor = strtolower((string)($availabilityStatusMap[$statusKey]['badge_color'] ?? 'secondary'));
+        $color = $badgeToHex[$badgeColor] ?? '#6c757d';
+        $title = (string)($availabilityStatusMap[$statusKey]['status_label'] ?? ucfirst($row['status']));
 
         // Add edit request indicator to title if exists
         $titleSuffix = '';
@@ -201,6 +231,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
             foreach ($usersList as $u) {
                 $uid = $u['id'];
                 if (empty($status_map[$uid][$d])) {
+                    if (!$statusFilterAllows('not_updated')) {
+                        continue;
+                    }
                     $events[] = [
                         'title' => $u['full_name'] . ' (Not updated)',
                         'start' => $d,
@@ -222,6 +255,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
             foreach ($usersList as $u) {
                 $uid = $u['id'];
                 if (empty($status_map[$uid][$d])) {
+                    if (!$statusFilterAllows('not_updated')) {
+                        continue;
+                    }
                     if ($editRequestFilter && !$isAdminUser && $uid == $userId) {
                         $hasEditRequest = isset($editRequests[$d]);
                         $editStatus = $hasEditRequest ? $editRequests[$d]['status'] : null;
@@ -336,6 +372,23 @@ $canEditFuture = true;
                     <option value="used">Used Approvals</option>
                 </select>
             </div>
+            <div class="me-2">
+                <div class="btn-group" role="group" aria-label="Filter Status">
+                    <?php foreach ($availabilityStatusMap as $statusKey => $meta): ?>
+                        <?php
+                        $filterId = 'cal_filter_' . preg_replace('/[^a-z0-9_]+/i', '_', $statusKey);
+                        $badgeColor = strtolower((string)($meta['badge_color'] ?? 'secondary'));
+                        $outlineClass = in_array($badgeColor, ['primary','secondary','success','danger','warning','info','dark'], true)
+                            ? $badgeColor
+                            : 'secondary';
+                        ?>
+                        <input type="checkbox" class="btn-check status-filter-check" id="<?php echo htmlspecialchars($filterId, ENT_QUOTES, 'UTF-8'); ?>" value="<?php echo htmlspecialchars($statusKey, ENT_QUOTES, 'UTF-8'); ?>" checked autocomplete="off">
+                        <label class="btn btn-outline-<?php echo htmlspecialchars($outlineClass, ENT_QUOTES, 'UTF-8'); ?>" for="<?php echo htmlspecialchars($filterId, ENT_QUOTES, 'UTF-8'); ?>">
+                            <?php echo htmlspecialchars((string)($meta['status_label'] ?? ucwords(str_replace('_', ' ', $statusKey))), ENT_QUOTES, 'UTF-8'); ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
             <div>
                 <a href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/my_daily_status.php" class="btn btn-primary">Go to Daily Status</a>
             </div>
@@ -351,31 +404,19 @@ $canEditFuture = true;
                 </div>
                 <div class="card-body py-2">
                     <div class="row">
-                        <div class="col-sm-6">
-                            <small class="d-flex align-items-center mb-1">
-                                <span class="badge me-2" style="background-color: #28a745;">&nbsp;&nbsp;&nbsp;</span>
-                                Available
-                            </small>
-                            <small class="d-flex align-items-center mb-1">
-                        <!-- Removed inline calendar quick-form; logging moved into calendar edit modal -->
-                                <span class="badge me-2" style="background-color: #17a2b8;">&nbsp;&nbsp;&nbsp;</span>
-                                Working
-                            </small>
-                            <small class="d-flex align-items-center mb-1">
-                                <span class="badge me-2" style="background-color: #ffc107;">&nbsp;&nbsp;&nbsp;</span>
-                                Busy / In Meeting
-                            </small>
-                        </div>
-                        <div class="col-sm-6">
-                            <small class="d-flex align-items-center mb-1">
-                                <span class="badge me-2" style="background-color: #dc3545;">&nbsp;&nbsp;&nbsp;</span>
-                                On Leave / Sick
-                            </small>
-                            <small class="d-flex align-items-center mb-1">
-                                <span class="badge me-2" style="background-color: #6c757d;">&nbsp;&nbsp;&nbsp;</span>
-                                Not Updated
-                            </small>
-                        </div>
+                        <?php $legendIdx = 0; foreach ($availabilityStatusMap as $statusKey => $meta): ?>
+                            <?php
+                            $colClass = ($legendIdx % 2 === 0) ? 'col-sm-6' : 'col-sm-6';
+                            $badgeColor = strtolower((string)($meta['badge_color'] ?? 'secondary'));
+                            $hex = $badgeToHex[$badgeColor] ?? '#6c757d';
+                            ?>
+                            <div class="<?php echo $colClass; ?>">
+                                <small class="d-flex align-items-center mb-1">
+                                    <span class="badge me-2" style="background-color: <?php echo htmlspecialchars($hex, ENT_QUOTES, 'UTF-8'); ?>;">&nbsp;&nbsp;&nbsp;</span>
+                                    <?php echo htmlspecialchars((string)($meta['status_label'] ?? ucwords(str_replace('_', ' ', $statusKey))), ENT_QUOTES, 'UTF-8'); ?>
+                                </small>
+                            </div>
+                        <?php $legendIdx++; endforeach; ?>
                     </div>
                 </div>
             </div>
@@ -451,12 +492,13 @@ $canEditFuture = true;
                             <div class="mb-3">
                                 <label for="calStatus" class="form-label">Availability Status</label>
                                 <select id="calStatus" name="status" class="form-select">
-                                    <option value="not_updated">Not Updated</option>
-                                    <option value="available">Available</option>
-                                    <option value="working">Working</option>
-                                    <option value="busy">Busy / In Meeting</option>
-                                    <option value="on_leave">On Leave</option>
-                                    <option value="sick_leave">Sick Leave</option>
+                                    <?php foreach ($availabilityStatuses as $st): ?>
+                                        <?php $stKey = (string)($st['status_key'] ?? ''); ?>
+                                        <?php if ($stKey === '') continue; ?>
+                                        <option value="<?php echo htmlspecialchars($stKey); ?>">
+                                            <?php echo htmlspecialchars((string)($st['status_label'] ?? ucfirst(str_replace('_', ' ', $stKey)))); ?>
+                                        </option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                             
@@ -1234,15 +1276,24 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    function getSelectedStatusFilters() {
+        var checks = document.querySelectorAll('.status-filter-check:checked');
+        var values = Array.prototype.map.call(checks, function (el) { return String(el.value || '').trim(); })
+            .filter(function (v) { return v.length > 0; });
+        return values.length ? values.join(',') : 'all';
+    }
+
     function getEventsUrl() {
         var sel = document.getElementById('admin_user_select');
         var user = sel ? sel.value : '';
         var editFilter = document.getElementById('edit_request_filter');
         var editRequestFilter = editFilter ? editFilter.value : '';
+        var statusFilter = getSelectedStatusFilters();
         
         var url = '<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/calendar.php?action=get_events';
         if (user) url += '&user_id=' + encodeURIComponent(user);
         if (editRequestFilter) url += '&edit_request_filter=' + encodeURIComponent(editRequestFilter);
+        if (statusFilter) url += '&status_filter=' + encodeURIComponent(statusFilter);
         return url;
     }
 
@@ -1459,6 +1510,12 @@ document.addEventListener('DOMContentLoaded', function() {
             calendar.refetchEvents();
         });
     }
+
+    document.querySelectorAll('.status-filter-check').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            calendar.refetchEvents();
+        });
+    });
 
     // Handle modal form submission
     document.getElementById('calendarEditForm').addEventListener('submit', function(e) {

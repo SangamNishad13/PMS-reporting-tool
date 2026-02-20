@@ -89,7 +89,7 @@ $(document).ready(function () {
     }
 
     // Initialize Unique Pages tab when it's shown
-    var uniqueTabBtn = document.getElementById('unique-sub-tab');
+    var uniqueTabBtn = document.getElementById('project-sub-tab');
     if (uniqueTabBtn) {
         uniqueTabBtn.addEventListener('shown.bs.tab', function () {
             // Force table to recalculate layout
@@ -274,7 +274,7 @@ $(document).ready(function () {
         var user = $('#uniqueFilterUser').val();
         var env = $('#uniqueFilterEnv').val();
         var qa = $('#uniqueFilterQa').val();
-        $('#unique_pages_sub table tbody tr').each(function () {
+        $('#project_pages_sub table tbody tr').each(function () {
             var name = $(this).find('td').eq(2).text().toLowerCase();
             var url = $(this).find('td').eq(3).text().toLowerCase();
             var ft = $(this).find('td').eq(5).text().toLowerCase();

@@ -14,6 +14,9 @@ $userRole = $_SESSION['role'];
 
 $projectId = $_GET['project_id'] ?? ($_POST['project_id'] ?? 0);
 $activeTab = $_GET['tab'] ?? 'team';
+$flashSuccess = isset($_SESSION['success']) ? (string)$_SESSION['success'] : '';
+$flashError = isset($_SESSION['error']) ? (string)$_SESSION['error'] : '';
+unset($_SESSION['success'], $_SESSION['error']);
 
 // If no project selected, show selector
 if (!$projectId) {
@@ -50,9 +53,111 @@ if (!$projectId) {
         header("Location: manage_assignments.php");
         exit;
     }
+    $projectTotalHoursForTeam = (float)($project['total_hours'] ?? 0);
+    $activeAllocatedStmtForTeam = $db->prepare("
+        SELECT COALESCE(SUM(hours_allocated), 0)
+        FROM user_assignments
+        WHERE project_id = ? AND (is_removed IS NULL OR is_removed = 0)
+    ");
+    $activeAllocatedStmtForTeam->execute([$projectId]);
+    $activeAllocatedHoursForTeam = (float)$activeAllocatedStmtForTeam->fetchColumn();
 
     // Handle Team Assignment (Add/Remove) - ONLY for Lead/Admin
     if (hasProjectLeadPrivileges()) {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_member_hours'])) {
+            $assignmentId = (int)($_POST['assignment_id'] ?? 0);
+            $newHoursRaw = $_POST['new_hours'] ?? '';
+            $newHours = is_numeric($newHoursRaw) ? (float)$newHoursRaw : -1;
+
+            if ($assignmentId <= 0 || $newHours < 0) {
+                $_SESSION['error'] = "Invalid hours update request.";
+                header("Location: manage_assignments.php?project_id=$projectId&tab=team");
+                exit;
+            }
+
+            try {
+                $assignmentStmt = $db->prepare("
+                    SELECT ua.id, ua.user_id, ua.role, ua.hours_allocated, ua.is_removed, u.full_name
+                    FROM user_assignments ua
+                    JOIN users u ON u.id = ua.user_id
+                    WHERE ua.id = ? AND ua.project_id = ?
+                    LIMIT 1
+                ");
+                $assignmentStmt->execute([$assignmentId, $projectId]);
+                $assignmentRow = $assignmentStmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$assignmentRow || (int)($assignmentRow['is_removed'] ?? 0) === 1) {
+                    $_SESSION['error'] = "Assignment not found.";
+                    header("Location: manage_assignments.php?project_id=$projectId&tab=team");
+                    exit;
+                }
+
+                if (($assignmentRow['role'] ?? '') === 'project_lead') {
+                    $_SESSION['error'] = "Project lead hours cannot be edited from this section.";
+                    header("Location: manage_assignments.php?project_id=$projectId&tab=team");
+                    exit;
+                }
+
+                $oldHours = (float)($assignmentRow['hours_allocated'] ?? 0);
+
+                $utilizedStmt = $db->prepare("
+                    SELECT COALESCE(SUM(hours_spent), 0)
+                    FROM project_time_logs
+                    WHERE project_id = ? AND user_id = ? AND is_utilized = 1
+                ");
+                $utilizedStmt->execute([$projectId, (int)$assignmentRow['user_id']]);
+                $memberUtilizedHours = (float)$utilizedStmt->fetchColumn();
+
+                if ($newHours < $memberUtilizedHours) {
+                    $_SESSION['error'] = "Hours cannot be lower than utilized hours (" . number_format($memberUtilizedHours, 1) . "h).";
+                    header("Location: manage_assignments.php?project_id=$projectId&tab=team");
+                    exit;
+                }
+
+                $activeAllocatedStmt = $db->prepare("
+                    SELECT COALESCE(SUM(hours_allocated), 0)
+                    FROM user_assignments
+                    WHERE project_id = ? AND (is_removed IS NULL OR is_removed = 0)
+                ");
+                $activeAllocatedStmt->execute([$projectId]);
+                $activeAllocatedHours = (float)$activeAllocatedStmt->fetchColumn();
+                $freeHours = max(0.0, $projectTotalHoursForTeam - $activeAllocatedHours);
+                $maxAllowed = $oldHours + $freeHours;
+
+                if ($newHours > $maxAllowed) {
+                    $_SESSION['error'] = "Cannot increase above " . number_format($maxAllowed, 1) . "h for this member right now.";
+                    header("Location: manage_assignments.php?project_id=$projectId&tab=team");
+                    exit;
+                }
+
+                if (abs($newHours - $oldHours) < 0.0001) {
+                    $_SESSION['success'] = "No changes detected for member hours.";
+                    header("Location: manage_assignments.php?project_id=$projectId&tab=team");
+                    exit;
+                }
+
+                $updateHoursStmt = $db->prepare("UPDATE user_assignments SET hours_allocated = ? WHERE id = ? AND project_id = ?");
+                $updateHoursStmt->execute([$newHours, $assignmentId, $projectId]);
+
+                logActivity($db, $userId, 'edit_team_hours', 'project', $projectId, [
+                    'assignment_id' => $assignmentId,
+                    'target_user_id' => (int)$assignmentRow['user_id'],
+                    'target_user_name' => (string)($assignmentRow['full_name'] ?? ''),
+                    'old_hours' => $oldHours,
+                    'new_hours' => $newHours,
+                    'utilized_hours' => $memberUtilizedHours
+                ]);
+
+                $_SESSION['success'] = "Hours updated for " . ($assignmentRow['full_name'] ?? 'member') . ".";
+            } catch (Throwable $e) {
+                error_log("Team hours edit failed (project {$projectId}, assignment {$assignmentId}): " . $e->getMessage());
+                $_SESSION['error'] = "Failed to update member hours. Please try again.";
+            }
+
+            header("Location: manage_assignments.php?project_id=$projectId&tab=team");
+            exit;
+        }
+
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_team'])) {
             $userIds = $_POST['user_ids'] ?? [];
             $hoursRaw = $_POST['hours_allocated'] ?? 0;
@@ -64,6 +169,7 @@ if (!$projectId) {
             $addedCount = 0;
             $restoredCount = 0;
             $skippedCount = 0;
+            $belowUtilizedCount = 0;
             $errorCount = 0;
 
             foreach ($userIds as $uId) {
@@ -74,6 +180,20 @@ if (!$projectId) {
                     $uRole = $uRoleStmt->fetchColumn();
                     if (!$uRole) {
                         $skippedCount++;
+                        continue;
+                    }
+
+                    // Enforce minimum assignment hours based on already utilized hours
+                    // for this user in this project.
+                    $utilizedStmt = $db->prepare("
+                        SELECT COALESCE(SUM(hours_spent), 0)
+                        FROM project_time_logs
+                        WHERE project_id = ? AND user_id = ? AND is_utilized = 1
+                    ");
+                    $utilizedStmt->execute([$projectId, $uId]);
+                    $memberUtilizedHours = (float)$utilizedStmt->fetchColumn();
+                    if ($hours < $memberUtilizedHours) {
+                        $belowUtilizedCount++;
                         continue;
                     }
 
@@ -175,9 +295,15 @@ if (!$projectId) {
             }
 
             if (($addedCount + $restoredCount) > 0) {
-                $_SESSION['success'] = "Team updated. Added: {$addedCount}, Restored: {$restoredCount}" . ($skippedCount > 0 ? ", Skipped: {$skippedCount}" : "") . ($errorCount > 0 ? ", Errors: {$errorCount}" : "") . ".";
+                $_SESSION['success'] = "Team updated. Added: {$addedCount}, Restored: {$restoredCount}"
+                    . ($skippedCount > 0 ? ", Skipped: {$skippedCount}" : "")
+                    . ($belowUtilizedCount > 0 ? ", Below utilized hours: {$belowUtilizedCount}" : "")
+                    . ($errorCount > 0 ? ", Errors: {$errorCount}" : "")
+                    . ".";
             } elseif ($errorCount > 0) {
                 $_SESSION['error'] = "Team assignment failed due to {$errorCount} error(s). Check server error log for details.";
+            } elseif ($belowUtilizedCount > 0) {
+                $_SESSION['error'] = "Team assignment failed for {$belowUtilizedCount} member(s): assigned hours cannot be less than already utilized hours.";
             } else {
                 $_SESSION['error'] = "No members were added. Selected users may already be assigned or invalid.";
             }
@@ -447,7 +573,7 @@ if (!$projectId) {
         $_SESSION['success'] = "Page assignment updated.";
         if (!empty($returnTo)) {
             $sep = (strpos($returnTo, '?') === false) ? '?' : '&';
-            header("Location: {$returnTo}{$sep}tab=pages&subtab=unique_pages_sub&focus_assign_btn=$pageId");
+            header("Location: {$returnTo}{$sep}tab=pages&subtab=project_pages_sub&focus_assign_btn=$pageId");
         } else {
             header("Location: manage_assignments.php?project_id=$projectId&tab=pages&focus_page_id=$pageId");
         }
@@ -479,10 +605,10 @@ if (!$projectId) {
                     $pageId = (int)$p['id'];
                 } else {
                     // create page named after unique or url
-                    $uStmt = $db->prepare('SELECT name FROM unique_pages WHERE id = ? LIMIT 1');
+                    $uStmt = $db->prepare('SELECT page_name FROM project_pages WHERE id = ? LIMIT 1');
                     $uStmt->execute([$uniqueId]);
                     $urow = $uStmt->fetch(PDO::FETCH_ASSOC);
-                    $pname = $urow['name'] ?: substr($url, 0, 80);
+                    $pname = $urow['page_name'] ?: substr($url, 0, 80);
                     $ins = $db->prepare('INSERT INTO project_pages (project_id, page_name, url, created_by, created_at) VALUES (?, ?, ?, ?, NOW())');
                     $ins->execute([$projectId, $pname, $url, $userId]);
                     $pageId = (int)$db->lastInsertId();
@@ -552,138 +678,192 @@ if (!$projectId) {
 
     // Handle Bulk Assignment
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_assign'])) {
-        $selectedPages = $_POST['selected_pages'] ?? [];
-        $bulkAtTester = $_POST['bulk_at_tester'] ?? '';
-        $bulkFtTester = $_POST['bulk_ft_tester'] ?? '';
-        $bulkQa = $_POST['bulk_qa'] ?? '';
-        $selectedEnvs = $_POST['bulk_envs'] ?? [];
-        
+        $selectedPagesRaw = $_POST['selected_pages'] ?? [];
+        $selectedEnvsRaw = $_POST['bulk_envs'] ?? [];
+        $selectedPages = array_values(array_unique(array_filter(array_map('intval', is_array($selectedPagesRaw) ? $selectedPagesRaw : []), function ($v) {
+            return $v > 0;
+        })));
+        $selectedEnvs = array_values(array_unique(array_filter(array_map('intval', is_array($selectedEnvsRaw) ? $selectedEnvsRaw : []), function ($v) {
+            return $v > 0;
+        })));
+
+        $bulkAtTester = isset($_POST['bulk_at_tester']) ? (int)$_POST['bulk_at_tester'] : 0;
+        $bulkFtTester = isset($_POST['bulk_ft_tester']) ? (int)$_POST['bulk_ft_tester'] : 0;
+        $bulkQa = isset($_POST['bulk_qa']) ? (int)$_POST['bulk_qa'] : 0;
+
+        // QA assignment is allowed only for privileged users. Ignore crafted values otherwise.
+        if (!hasProjectLeadPrivileges()) {
+            $bulkQa = 0;
+        }
+
         if (!empty($selectedPages) && !empty($selectedEnvs)) {
-            $successCount = 0;
-            
-            foreach ($selectedPages as $pageId) {
-                // Update page-level assignments if provided
+            try {
+                $db->beginTransaction();
+
+                // Validate selected pages belong to this project.
+                $pagePlaceholders = implode(',', array_fill(0, count($selectedPages), '?'));
+                $pagesStmt = $db->prepare("SELECT id FROM project_pages WHERE project_id = ? AND id IN ($pagePlaceholders)");
+                $pagesStmt->execute(array_merge([$projectId], $selectedPages));
+                $validPages = array_map('intval', $pagesStmt->fetchAll(PDO::FETCH_COLUMN));
+
+                // Validate selected environments exist.
+                $envPlaceholders = implode(',', array_fill(0, count($selectedEnvs), '?'));
+                $envStmt = $db->prepare("SELECT id FROM testing_environments WHERE id IN ($envPlaceholders)");
+                $envStmt->execute($selectedEnvs);
+                $validEnvs = array_map('intval', $envStmt->fetchAll(PDO::FETCH_COLUMN));
+
+                if (empty($validPages) || empty($validEnvs)) {
+                    throw new RuntimeException('Invalid page/environment selection for bulk assignment.');
+                }
+
+                $atVal = $bulkAtTester ?: null;
+                $ftVal = $bulkFtTester ?: null;
+                $qaVal = $bulkQa ?: null;
+
+                // Reuse prepared statements (faster and safer under load).
+                $updatePageStmt = null;
                 if ($bulkAtTester || $bulkFtTester || $bulkQa) {
-                    $stmt = $db->prepare("UPDATE project_pages SET at_tester_id = ?, ft_tester_id = ?, qa_id = ? WHERE id = ?");
-                    $stmt->execute([
-                        $bulkAtTester ?: null,
-                        $bulkFtTester ?: null, 
-                        $bulkQa ?: null,
-                        $pageId
-                    ]);
+                    $updatePageStmt = $db->prepare("UPDATE project_pages SET at_tester_id = ?, ft_tester_id = ?, qa_id = ? WHERE id = ?");
                 }
-                
-                // Handle environment assignments
-                foreach ($selectedEnvs as $envId) {
-                    $stmt = $db->prepare("INSERT INTO page_environments (page_id, environment_id, at_tester_id, ft_tester_id, qa_id) VALUES (?, ?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE at_tester_id = VALUES(at_tester_id), ft_tester_id = VALUES(ft_tester_id), qa_id = VALUES(qa_id)");
-                    $stmt->execute([
-                        $pageId, 
-                        $envId, 
-                        $bulkAtTester ?: null, 
-                        $bulkFtTester ?: null, 
-                        $bulkQa ?: null
-                    ]);
+                $upsertEnvStmt = $db->prepare("INSERT INTO page_environments (page_id, environment_id, at_tester_id, ft_tester_id, qa_id) VALUES (?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE at_tester_id = VALUES(at_tester_id), ft_tester_id = VALUES(ft_tester_id), qa_id = VALUES(qa_id)");
+
+                foreach ($validPages as $pageId) {
+                    if ($updatePageStmt) {
+                        $updatePageStmt->execute([$atVal, $ftVal, $qaVal, $pageId]);
+                    }
+                    foreach ($validEnvs as $envId) {
+                        $upsertEnvStmt->execute([$pageId, $envId, $atVal, $ftVal, $qaVal]);
+                    }
                 }
-                $successCount++;
+
+                // Log Activity
+                logActivity($db, $userId, 'bulk_assign', 'project', $projectId, [
+                    'pages_count' => count($validPages),
+                    'environments' => $validEnvs,
+                    'at_tester' => $atVal,
+                    'ft_tester' => $ftVal,
+                    'qa' => $qaVal
+                ]);
+
+                $db->commit();
+                $_SESSION['success'] = "Bulk assignment completed for " . count($validPages) . " pages.";
+            } catch (Throwable $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                error_log("Bulk assignment failed for project {$projectId}: " . $e->getMessage());
+                $_SESSION['error'] = "Bulk assignment failed. Please try again or contact admin.";
             }
-            
-            // Log Activity
-            logActivity($db, $userId, 'bulk_assign', 'project', $projectId, [
-                'pages_count' => $successCount,
-                'environments' => $selectedEnvs,
-                'at_tester' => $bulkAtTester,
-                'ft_tester' => $bulkFtTester,
-                'qa' => $bulkQa
-            ]);
-            
-            $_SESSION['success'] = "Bulk assignment completed for $successCount pages.";
         } else {
             $_SESSION['error'] = "Please select at least one page and one environment.";
         }
-        
+
         header("Location: manage_assignments.php?project_id=$projectId&tab=bulk");
         exit;
     }
 
     // Handle Quick Assign All
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quick_assign_all'])) {
-        $quickAtTester = $_POST['quick_at_tester'] ?? '';
-        $quickFtTester = $_POST['quick_ft_tester'] ?? '';
-        $quickQa = $_POST['quick_qa'] ?? '';
-        $quickEnvs = $_POST['quick_envs'] ?? [];
-        
+        $quickAtTester = isset($_POST['quick_at_tester']) ? (int)$_POST['quick_at_tester'] : 0;
+        $quickFtTester = isset($_POST['quick_ft_tester']) ? (int)$_POST['quick_ft_tester'] : 0;
+        $quickQa = isset($_POST['quick_qa']) ? (int)$_POST['quick_qa'] : 0;
+
+        // QA assignment is allowed only for privileged users. Ignore any crafted value otherwise.
+        if (!hasProjectLeadPrivileges()) {
+            $quickQa = 0;
+        }
+
+        $quickEnvsRaw = $_POST['quick_envs'] ?? [];
+        $quickEnvs = array_values(array_unique(array_filter(array_map('intval', is_array($quickEnvsRaw) ? $quickEnvsRaw : []), function ($v) {
+            return $v > 0;
+        })));
+
         if ($quickAtTester || $quickFtTester || $quickQa || !empty($quickEnvs)) {
-            $affectedPages = 0;
-            
-            // Update page-level assignments if testers/QA are selected
-            if ($quickAtTester || $quickFtTester || $quickQa) {
-                $updateFields = [];
-                $updateValues = [];
-                
-                if ($quickAtTester) {
-                    $updateFields[] = "at_tester_id = ?";
-                    $updateValues[] = $quickAtTester;
-                }
-                if ($quickFtTester) {
-                    $updateFields[] = "ft_tester_id = ?";
-                    $updateValues[] = $quickFtTester;
-                }
-                if ($quickQa) {
-                    $updateFields[] = "qa_id = ?";
-                    $updateValues[] = $quickQa;
-                }
-                
-                if (!empty($updateFields)) {
-                    $updateValues[] = $projectId;
-                    $sql = "UPDATE project_pages SET " . implode(', ', $updateFields) . " WHERE project_id = ?";
-                    $stmt = $db->prepare($sql);
-                    $stmt->execute($updateValues);
-                    $affectedPages = $stmt->rowCount();
-                }
-            }
-            
-            // Handle environment assignments if environments are selected
-            if (!empty($quickEnvs)) {
-                // Get all pages in the project
-                $pagesStmt = $db->prepare("SELECT id FROM project_pages WHERE project_id = ?");
-                $pagesStmt->execute([$projectId]);
-                $allPages = $pagesStmt->fetchAll(PDO::FETCH_COLUMN);
-                
-                if (!$affectedPages) {
-                    $affectedPages = count($allPages);
-                }
-                
-                foreach ($allPages as $pageId) {
-                    foreach ($quickEnvs as $envId) {
-                        $stmt = $db->prepare("INSERT INTO page_environments (page_id, environment_id, at_tester_id, ft_tester_id, qa_id) VALUES (?, ?, ?, ?, ?)
-                            ON DUPLICATE KEY UPDATE at_tester_id = VALUES(at_tester_id), ft_tester_id = VALUES(ft_tester_id), qa_id = VALUES(qa_id)");
-                        $stmt->execute([
-                            $pageId, 
-                            $envId, 
-                            $quickAtTester ?: null, 
-                            $quickFtTester ?: null, 
-                            $quickQa ?: null
-                        ]);
+            try {
+                $db->beginTransaction();
+
+                $affectedPages = 0;
+
+                // Update page-level assignments if testers/QA are selected
+                if ($quickAtTester || $quickFtTester || $quickQa) {
+                    $updateFields = [];
+                    $updateValues = [];
+
+                    if ($quickAtTester) {
+                        $updateFields[] = "at_tester_id = ?";
+                        $updateValues[] = $quickAtTester;
+                    }
+                    if ($quickFtTester) {
+                        $updateFields[] = "ft_tester_id = ?";
+                        $updateValues[] = $quickFtTester;
+                    }
+                    if ($quickQa) {
+                        $updateFields[] = "qa_id = ?";
+                        $updateValues[] = $quickQa;
+                    }
+
+                    if (!empty($updateFields)) {
+                        $updateValues[] = $projectId;
+                        $sql = "UPDATE project_pages SET " . implode(', ', $updateFields) . " WHERE project_id = ?";
+                        $stmt = $db->prepare($sql);
+                        $stmt->execute($updateValues);
+                        $affectedPages = $stmt->rowCount();
                     }
                 }
+
+                // Handle environment assignments if environments are selected
+                if (!empty($quickEnvs)) {
+                    $pagesStmt = $db->prepare("SELECT id FROM project_pages WHERE project_id = ?");
+                    $pagesStmt->execute([$projectId]);
+                    $allPages = $pagesStmt->fetchAll(PDO::FETCH_COLUMN);
+
+                    if (!$affectedPages) {
+                        $affectedPages = count($allPages);
+                    }
+
+                    if (!empty($allPages)) {
+                        $envUpsert = $db->prepare("INSERT INTO page_environments (page_id, environment_id, at_tester_id, ft_tester_id, qa_id) VALUES (?, ?, ?, ?, ?)
+                            ON DUPLICATE KEY UPDATE at_tester_id = VALUES(at_tester_id), ft_tester_id = VALUES(ft_tester_id), qa_id = VALUES(qa_id)");
+
+                        $atVal = $quickAtTester ?: null;
+                        $ftVal = $quickFtTester ?: null;
+                        $qaVal = $quickQa ?: null;
+
+                        foreach ($allPages as $pageId) {
+                            $pageId = (int)$pageId;
+                            if ($pageId <= 0) continue;
+                            foreach ($quickEnvs as $envId) {
+                                $envUpsert->execute([$pageId, $envId, $atVal, $ftVal, $qaVal]);
+                            }
+                        }
+                    }
+                }
+
+                // Log Activity
+                logActivity($db, $userId, 'quick_assign_all', 'project', $projectId, [
+                    'pages_affected' => $affectedPages,
+                    'environments_count' => count($quickEnvs),
+                    'at_tester' => $quickAtTester ?: null,
+                    'ft_tester' => $quickFtTester ?: null,
+                    'qa' => $quickQa ?: null
+                ]);
+
+                $db->commit();
+
+                $envText = !empty($quickEnvs) ? " and " . count($quickEnvs) . " environments" : "";
+                $_SESSION['success'] = "Quick assignment completed for $affectedPages pages$envText.";
+            } catch (Throwable $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                error_log("Quick assign all failed for project {$projectId}: " . $e->getMessage());
+                $_SESSION['error'] = "Quick assign failed. Please try again or contact admin.";
             }
-            
-            // Log Activity
-            logActivity($db, $userId, 'quick_assign_all', 'project', $projectId, [
-                'pages_affected' => $affectedPages,
-                'environments_count' => count($quickEnvs),
-                'at_tester' => $quickAtTester,
-                'ft_tester' => $quickFtTester,
-                'qa' => $quickQa
-            ]);
-            
-            $envText = !empty($quickEnvs) ? " and " . count($quickEnvs) . " environments" : "";
-            $_SESSION['success'] = "Quick assignment completed for $affectedPages pages$envText.";
         } else {
             $_SESSION['error'] = "Please select at least one tester, QA, or environment to assign.";
         }
-        
+
         header("Location: manage_assignments.php?project_id=$projectId&tab=pages");
         exit;
     }
@@ -732,25 +912,24 @@ if (!$projectId) {
     $removedTeam->execute([$projectId, $projectId]);
     $removedMembers = $removedTeam->fetchAll();
 
-    // Backfill: ensure unique pages with canonical URLs are represented in project_pages
-    // so they show in "Individual Page Assignments" even if imported via CSV earlier.
+    // Backfill from grouped URLs: ensure URLs are represented in project_pages.
     $syncUniqueToProjectPages = $db->prepare("
         INSERT INTO project_pages (project_id, page_name, page_number, url, screen_name, created_by, created_at)
         SELECT
-            up.project_id,
-            COALESCE(NULLIF(TRIM(up.name), ''), NULLIF(TRIM(up.page_number), ''), SUBSTRING(up.canonical_url, 1, 120)) AS page_name,
-            COALESCE(NULLIF(TRIM(up.page_number), ''), NULLIF(TRIM(up.name), ''), SUBSTRING(up.canonical_url, 1, 120)) AS page_number,
-            up.canonical_url,
-            NULLIF(TRIM(up.screen_name), '') AS screen_name,
+            gu.project_id,
+            SUBSTRING(gu.url, 1, 120) AS page_name,
+            NULL AS page_number,
+            gu.url,
+            NULL AS screen_name,
             ?,
             NOW()
-        FROM unique_pages up
+        FROM grouped_urls gu
         LEFT JOIN project_pages pp
-            ON pp.project_id = up.project_id
-           AND pp.url = up.canonical_url
-        WHERE up.project_id = ?
-          AND up.canonical_url IS NOT NULL
-          AND TRIM(up.canonical_url) <> ''
+            ON pp.project_id = gu.project_id
+           AND pp.url = gu.url
+        WHERE gu.project_id = ?
+          AND gu.url IS NOT NULL
+          AND TRIM(gu.url) <> ''
           AND pp.id IS NULL
     ");
     $syncUniqueToProjectPages->execute([$userId, $projectId]);
@@ -985,6 +1164,9 @@ include __DIR__ . '/../../includes/header.php';
                                         <small class="text-muted">
                                             Max: <?php echo $availableForAllocation; ?> hours available for allocation
                                         </small>
+                                        <small class="text-muted d-block">
+                                            Minimum allowed per member is their already utilized hours.
+                                        </small>
                                         <div id="hoursValidation" class="mt-1"></div>
                                     </div>
                                     <button type="submit" name="assign_team" class="btn btn-primary w-100" <?php echo ($totalHours <= 0) ? 'disabled' : ''; ?>>
@@ -1060,6 +1242,23 @@ include __DIR__ . '/../../includes/header.php';
                                                 </td>
                                                 <td>
                                                     <?php if (hasProjectLeadPrivileges() && $m['role'] !== 'project_lead'): ?>
+                                                        <?php
+                                                            $memberCurrentHours = (float)($m['hours_allocated'] ?? 0);
+                                                            $memberFreeHours = max(0.0, $projectTotalHoursForTeam - $activeAllocatedHoursForTeam);
+                                                            $memberMaxAllowed = $memberCurrentHours + $memberFreeHours;
+                                                            $isTeamOverAllocated = $activeAllocatedHoursForTeam > $projectTotalHoursForTeam;
+                                                        ?>
+                                                        <button type="button"
+                                                           class="btn btn-sm btn-outline-primary me-1 edit-team-hours-btn"
+                                                           title="Edit Hours"
+                                                           data-assignment-id="<?php echo (int)$m['id']; ?>"
+                                                           data-user-name="<?php echo htmlspecialchars($m['full_name'], ENT_QUOTES); ?>"
+                                                           data-current-hours="<?php echo number_format($memberCurrentHours, 1, '.', ''); ?>"
+                                                           data-utilized-hours="<?php echo number_format((float)$memberUtilized, 1, '.', ''); ?>"
+                                                           data-max-hours="<?php echo number_format($memberMaxAllowed, 1, '.', ''); ?>"
+                                                           data-over-allocated="<?php echo $isTeamOverAllocated ? '1' : '0'; ?>">
+                                                            <i class="fas fa-pen"></i>
+                                                        </button>
                                                         <a href="?project_id=<?php echo $projectId; ?>&remove_member=<?php echo $m['id']; ?>" 
                                                            class="btn btn-sm btn-outline-danger" title="Remove"
                                                            onclick="confirmModal('Remove <?php echo htmlspecialchars($m['full_name'], ENT_QUOTES); ?> from project? This action can be undone by restoring the member.', function(){ window.location.href='?project_id=<?php echo $projectId; ?>&remove_member=<?php echo $m['id']; ?>'; }); return false;">
@@ -1636,11 +1835,107 @@ include __DIR__ . '/../../includes/header.php';
 .collapse.show {
     display: table-row !important;
 }
+.pms-assign-notice-wrap {
+    position: fixed;
+    top: 76px;
+    right: 16px;
+    z-index: 1080;
+    width: min(420px, calc(100vw - 32px));
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+.pms-assign-notice {
+    pointer-events: auto;
+    border-radius: 8px;
+    border: 1px solid #dbeafe;
+    background: #ffffff;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+    padding: 10px 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+.pms-assign-notice.success {
+    border-left: 4px solid #198754;
+}
+.pms-assign-notice.error {
+    border-left: 4px solid #dc3545;
+}
+.pms-assign-notice .msg {
+    font-size: 0.9rem;
+    line-height: 1.35;
+    color: #1f2937;
+}
+.pms-assign-notice .close-btn {
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: #6b7280;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
 </style>
 
 <script>
 // Keep selected tab on page refresh
 document.addEventListener('DOMContentLoaded', function() {
+    const flashSuccess = <?php echo json_encode($flashSuccess); ?>;
+    const flashError = <?php echo json_encode($flashError); ?>;
+
+    function ensureNoticeWrap() {
+        let wrap = document.getElementById('pmsAssignNoticeWrap');
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.id = 'pmsAssignNoticeWrap';
+            wrap.className = 'pms-assign-notice-wrap';
+            document.body.appendChild(wrap);
+        }
+        return wrap;
+    }
+
+    function showAssignmentNotice(message, type) {
+        if (!message) return;
+        const wrap = ensureNoticeWrap();
+        const notice = document.createElement('div');
+        notice.className = 'pms-assign-notice ' + (type === 'error' ? 'error' : 'success');
+
+        const icon = type === 'error' ? 'fa-exclamation-circle text-danger' : 'fa-check-circle text-success';
+        notice.innerHTML =
+            '<i class="fas ' + icon + ' mt-1"></i>' +
+            '<div class="msg">' + message.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>' +
+            '<button type="button" class="close-btn" aria-label="Close">&times;</button>';
+
+        const removeNotice = function() {
+            if (notice.parentNode) {
+                notice.parentNode.removeChild(notice);
+            }
+        };
+
+        notice.querySelector('.close-btn').addEventListener('click', removeNotice);
+        wrap.appendChild(notice);
+        setTimeout(removeNotice, 5500);
+    }
+
+    function notifyAssignmentResult(message, type) {
+        if (!message) return;
+        const variant = type === 'error' ? 'danger' : 'success';
+        if (typeof window.showToast === 'function') {
+            window.showToast(message, variant, 5500);
+            return;
+        }
+        showAssignmentNotice(message, type);
+    }
+
+    if (flashSuccess) {
+        notifyAssignmentResult(flashSuccess, 'success');
+    }
+    if (flashError) {
+        notifyAssignmentResult(flashError, 'error');
+    }
+
     const activeTab = '<?php echo $activeTab; ?>';
     if (activeTab === 'pages') {
         var someTabTriggerEl = document.querySelector('#pills-pages-tab')
@@ -1708,6 +2003,105 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (typeof window.showToast === 'function') {
                     showToast('Select at least one user to add.', 'warning');
                 }
+            }
+        });
+    }
+
+    const editTeamHoursModalEl = document.getElementById('editTeamHoursModal');
+    const editTeamHoursForm = document.getElementById('editTeamHoursForm');
+    const editHoursInputEl = document.getElementById('editMemberNewHours');
+    const saveTeamHoursBtn = document.getElementById('saveTeamHoursBtn');
+    const memberNameEl = document.getElementById('editMemberName');
+    const memberCurrentEl = document.getElementById('editMemberCurrentHours');
+    const memberUtilizedEl = document.getElementById('editMemberUtilizedHours');
+    const memberMaxEl = document.getElementById('editMemberMaxHours');
+    const memberHintEl = document.getElementById('editMemberHoursHint');
+    const memberAssignmentIdEl = document.getElementById('editMemberAssignmentId');
+
+    function validateEditHoursInput() {
+        if (!editHoursInputEl) return true;
+        const current = parseFloat(editHoursInputEl.dataset.current || '0') || 0;
+        const minHours = parseFloat(editHoursInputEl.dataset.min || '0') || 0;
+        const maxHours = parseFloat(editHoursInputEl.dataset.max || '0') || 0;
+        const overAllocated = String(editHoursInputEl.dataset.overAllocated || '0') === '1';
+        const value = parseFloat(editHoursInputEl.value);
+
+        if (!Number.isFinite(value)) {
+            editHoursInputEl.setCustomValidity('Please enter valid hours.');
+            if (saveTeamHoursBtn) saveTeamHoursBtn.disabled = true;
+            if (memberHintEl) memberHintEl.textContent = 'Enter hours to continue.';
+            return false;
+        }
+
+        if (value < minHours) {
+            editHoursInputEl.setCustomValidity('Hours cannot be lower than utilized hours.');
+            if (saveTeamHoursBtn) saveTeamHoursBtn.disabled = true;
+            if (memberHintEl) memberHintEl.textContent = `Minimum allowed: ${minHours.toFixed(1)}h`;
+            return false;
+        }
+
+        if (value > maxHours) {
+            editHoursInputEl.setCustomValidity('Hours exceed allowed maximum.');
+            if (saveTeamHoursBtn) saveTeamHoursBtn.disabled = true;
+            if (memberHintEl) {
+                memberHintEl.textContent = overAllocated
+                    ? `Project over-allocated. Only decrease allowed. Max: ${maxHours.toFixed(1)}h`
+                    : `Maximum allowed: ${maxHours.toFixed(1)}h`;
+            }
+            return false;
+        }
+
+        editHoursInputEl.setCustomValidity('');
+        if (saveTeamHoursBtn) saveTeamHoursBtn.disabled = false;
+        if (memberHintEl) {
+            if (overAllocated && maxHours <= current + 0.0001) {
+                memberHintEl.textContent = 'Project is over-allocated; you can decrease or keep current hours.';
+            } else {
+                memberHintEl.textContent = `Allowed range: ${minHours.toFixed(1)}h to ${maxHours.toFixed(1)}h`;
+            }
+        }
+        return true;
+    }
+
+    document.querySelectorAll('.edit-team-hours-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (!editTeamHoursModalEl || !window.bootstrap) return;
+            const assignmentId = btn.getAttribute('data-assignment-id') || '';
+            const memberName = btn.getAttribute('data-user-name') || 'Member';
+            const currentHours = parseFloat(btn.getAttribute('data-current-hours') || '0') || 0;
+            const utilizedHours = parseFloat(btn.getAttribute('data-utilized-hours') || '0') || 0;
+            const maxHours = parseFloat(btn.getAttribute('data-max-hours') || '0') || 0;
+            const overAllocated = btn.getAttribute('data-over-allocated') === '1';
+
+            if (memberAssignmentIdEl) memberAssignmentIdEl.value = assignmentId;
+            if (memberNameEl) memberNameEl.textContent = memberName;
+            if (memberCurrentEl) memberCurrentEl.textContent = `Current: ${currentHours.toFixed(1)}h`;
+            if (memberUtilizedEl) memberUtilizedEl.textContent = `Utilized: ${utilizedHours.toFixed(1)}h`;
+            if (memberMaxEl) memberMaxEl.textContent = `Max: ${maxHours.toFixed(1)}h`;
+
+            if (editHoursInputEl) {
+                editHoursInputEl.value = currentHours.toFixed(1);
+                editHoursInputEl.min = utilizedHours.toFixed(1);
+                editHoursInputEl.max = maxHours.toFixed(1);
+                editHoursInputEl.dataset.current = currentHours.toFixed(1);
+                editHoursInputEl.dataset.min = utilizedHours.toFixed(1);
+                editHoursInputEl.dataset.max = maxHours.toFixed(1);
+                editHoursInputEl.dataset.overAllocated = overAllocated ? '1' : '0';
+            }
+
+            validateEditHoursInput();
+            bootstrap.Modal.getOrCreateInstance(editTeamHoursModalEl).show();
+        });
+    });
+
+    if (editHoursInputEl) {
+        editHoursInputEl.addEventListener('input', validateEditHoursInput);
+    }
+
+    if (editTeamHoursForm) {
+        editTeamHoursForm.addEventListener('submit', function(e) {
+            if (!validateEditHoursInput()) {
+                e.preventDefault();
             }
         });
     }
@@ -1896,6 +2290,44 @@ function toggleRowDetails(pageId, context = 'main') {
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" name="quick_add_page" class="btn btn-primary">Add Page</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Team Hours Modal -->
+<div class="modal fade" id="editTeamHoursModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="manage_assignments.php?project_id=<?php echo (int)$projectId; ?>&tab=team" id="editTeamHoursForm">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Member Hours</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="assignment_id" id="editMemberAssignmentId" value="">
+                    <input type="hidden" name="project_id" value="<?php echo (int)$projectId; ?>">
+
+                    <div class="mb-2">
+                        <strong id="editMemberName">Member</strong>
+                    </div>
+
+                    <div class="mb-3">
+                        <small class="text-muted d-block" id="editMemberCurrentHours">Current: 0.0h</small>
+                        <small class="text-muted d-block" id="editMemberUtilizedHours">Utilized: 0.0h</small>
+                        <small class="text-muted d-block" id="editMemberMaxHours">Max: 0.0h</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="editMemberNewHours" class="form-label">New Hours</label>
+                        <input type="number" step="0.5" min="0" class="form-control" id="editMemberNewHours" name="new_hours" required>
+                        <small class="text-muted d-block mt-1" id="editMemberHoursHint"></small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" name="edit_member_hours" value="1" class="btn btn-primary" id="saveTeamHoursBtn">Save Hours</button>
                 </div>
             </form>
         </div>

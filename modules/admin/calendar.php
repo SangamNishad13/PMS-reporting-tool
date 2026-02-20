@@ -6,6 +6,33 @@ $auth = new Auth();
 $auth->requireRole('admin');
 $db = Database::getInstance();
 $baseDir = getBaseDir();
+$availabilityStatuses = getAvailabilityStatusOptions(false);
+$availabilityStatusMap = [];
+foreach ($availabilityStatuses as $statusRow) {
+    $statusKey = strtolower(trim((string)($statusRow['status_key'] ?? '')));
+    if ($statusKey === '') continue;
+    $availabilityStatusMap[$statusKey] = [
+        'status_label' => (string)($statusRow['status_label'] ?? ucwords(str_replace('_', ' ', $statusKey))),
+        'badge_color' => (string)($statusRow['badge_color'] ?? 'secondary')
+    ];
+}
+if (!isset($availabilityStatusMap['not_updated'])) {
+    $availabilityStatusMap['not_updated'] = [
+        'status_label' => 'Not Updated',
+        'badge_color' => 'secondary'
+    ];
+}
+$availabilityFilterOptions = $availabilityStatusMap;
+$badgeToHex = [
+    'primary' => '#0d6efd',
+    'secondary' => '#6c757d',
+    'success' => '#198754',
+    'danger' => '#dc3545',
+    'warning' => '#ffc107',
+    'info' => '#0dcaf0',
+    'light' => '#f8f9fa',
+    'dark' => '#212529'
+];
 
 $pageTitle = 'Team Availability';
 // Selected user filter for admin view (optional)
@@ -19,9 +46,28 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
     
     // Get status filters as array (from checkboxes)
     $statusFilters = isset($_GET['status_filter']) ? explode(',', $_GET['status_filter']) : ['all'];
+    $statusFilters = array_values(array_filter(array_map(static function ($v) {
+        return strtolower(trim((string)$v));
+    }, $statusFilters)));
     if (in_array('all', $statusFilters) || empty($statusFilters)) {
         $statusFilters = ['all'];
     }
+    $statusFilterAllows = static function ($statusKey) use ($statusFilters) {
+        $statusKey = strtolower(trim((string)$statusKey));
+        if (in_array('all', $statusFilters, true)) return true;
+        if (in_array($statusKey, $statusFilters, true)) return true;
+        if (($statusKey === 'on_leave' || $statusKey === 'sick_leave') && in_array('leave', $statusFilters, true)) return true;
+        return false;
+    };
+    $statusColor = static function ($statusKey) use ($availabilityStatusMap, $badgeToHex) {
+        $statusKey = strtolower(trim((string)$statusKey));
+        $badge = strtolower((string)($availabilityStatusMap[$statusKey]['badge_color'] ?? 'secondary'));
+        return $badgeToHex[$badge] ?? '#6c757d';
+    };
+    $statusLabelFn = static function ($statusKey) use ($availabilityStatusMap) {
+        $statusKey = strtolower(trim((string)$statusKey));
+        return (string)($availabilityStatusMap[$statusKey]['status_label'] ?? ucwords(str_replace('_', ' ', $statusKey)));
+    };
 
     $events = [];
 
@@ -42,18 +88,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
     $status_map = [];
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $status_map[$row['user_id']][$row['status_date']] = $row;
-
-        // Normalize status type for later processing
-        $statusType = 'available';
-        switch ($row['status']) {
-            case 'on_leave':
-            case 'sick_leave':
-                $statusType = 'leave';
-                break;
-            case 'busy':
-                $statusType = 'busy';
-                break;
-        }
     }
 
     // Fetch summed hours per user per date in the range
@@ -106,11 +140,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                 $userStatus = $status_map[$u['id']][$d] ?? null;
                 
                 if ($userStatus) {
-                    $statusType = 'available';
-                    if ($userStatus['status'] === 'on_leave' || $userStatus['status'] === 'sick_leave') $statusType = 'leave';
-                    if ($userStatus['status'] === 'busy') $statusType = 'busy';
+                    $statusType = strtolower(trim((string)($userStatus['status'] ?? 'not_updated')));
                     
-                    if (in_array('all', $statusFilters) || in_array($statusType, $statusFilters)) {
+                    if ($statusFilterAllows($statusType)) {
                         $date_users[$statusType][] = [
                             'name' => $u['full_name'],
                             'id' => $u['id'],
@@ -121,7 +153,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                     }
                 } else {
                     // Not updated
-                    if (in_array('all', $statusFilters) || in_array('not_updated', $statusFilters)) {
+                    if ($statusFilterAllows('not_updated')) {
                         $date_users['not_updated'][] = [
                             'name' => $u['full_name'],
                             'id' => $u['id'],
@@ -140,11 +172,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                 $count = count($userList);
                 $totalHours = array_sum(array_column($userList, 'hours'));
                 
-                $color = '#6c757d'; // not_updated
-                $statusLabel = 'Not Updated';
-                if ($statusType === 'available') { $color = '#28a745'; $statusLabel = 'Available'; }
-                if ($statusType === 'busy') { $color = '#ffc107'; $statusLabel = 'Busy'; }
-                if ($statusType === 'leave') { $color = '#dc3545'; $statusLabel = 'On Leave'; }
+                $color = $statusColor($statusType);
+                $statusLabel = $statusLabelFn($statusType);
                 
                 // Highlight if total hours < expected (assuming 8h per person per day)
                 if ($totalHours > 0 && $totalHours < ($count * 8)) {
@@ -179,7 +208,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                 
                 $userHours = $hours_map[$u['id']][$d] ?? 0;
                 if (empty($status_map[$u['id']][$d])) {
-                    if (in_array('all', $statusFilters) || in_array('not_updated', $statusFilters)) {
+                    if ($statusFilterAllows('not_updated')) {
                         $title = $u['full_name'] . ' (Not updated)';
                         if ($userHours > 0) $title .= ' — ' . $userHours . 'h';
                         $color = $userHours > 0 && $userHours < 8 ? '#ff4d4f' : '#6c757d';
@@ -200,18 +229,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                     }
                 } else {
                     $st = $status_map[$u['id']][$d];
-                    $stType = 'available';
-                    if ($st['status'] === 'on_leave' || $st['status'] === 'sick_leave') $stType = 'leave';
-                    if ($st['status'] === 'busy') $stType = 'busy';
-                    if (!in_array('all', $statusFilters) && !in_array($stType, $statusFilters)) {
+                    $stType = strtolower(trim((string)($st['status'] ?? 'not_updated')));
+                    if (!$statusFilterAllows($stType)) {
                         continue;
                     }
-                    $title = $st['full_name'] . ' (' . ucfirst($st['status']) . ')';
+                    $title = $st['full_name'] . ' (' . $statusLabelFn($stType) . ')';
                     $userHours = $hours_map[$u['id']][$d] ?? 0;
                     if ($userHours > 0) $title .= ' — ' . $userHours . 'h';
-                    $color = '#28a745';
-                    if ($st['status'] === 'on_leave' || $st['status'] === 'sick_leave') $color = '#dc3545';
-                    if ($st['status'] === 'busy') $color = '#ffc107';
+                    $color = $statusColor($stType);
                     if ($userHours > 0 && $userHours < 8) $color = '#ff4d4f';
                     $events[] = [
                         'title' => $title,
@@ -221,7 +246,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                         'extendedProps' => [
                             'role' => $st['role'],
                             'notes' => $st['notes'] ?? '',
-                            'statusType' => $st['status'],
+                            'statusType' => $stType,
                             'total_hours' => $userHours,
                             'user_id' => $st['user_id'] ?? $u['id'],
                             'user_full_name' => $st['full_name'] ?? $u['full_name']
@@ -410,17 +435,19 @@ $allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND 
                     <label class="form-label small text-muted mb-1">Filter Status</label>
                     <div class="d-flex flex-wrap gap-2">
                         <div class="btn-group" role="group">
-                            <input type="checkbox" class="btn-check status-filter-check" id="filterAvailable" value="available" checked autocomplete="off">
-                            <label class="btn btn-outline-success btn-sm" for="filterAvailable">Available</label>
-
-                            <input type="checkbox" class="btn-check status-filter-check" id="filterBusy" value="busy" checked autocomplete="off">
-                            <label class="btn btn-outline-warning btn-sm" for="filterBusy">Busy</label>
-
-                            <input type="checkbox" class="btn-check status-filter-check" id="filterLeave" value="leave" checked autocomplete="off">
-                            <label class="btn btn-outline-danger btn-sm" for="filterLeave">Leave</label>
-
-                            <input type="checkbox" class="btn-check status-filter-check" id="filterNotUpdated" value="not_updated" checked autocomplete="off">
-                            <label class="btn btn-outline-secondary btn-sm" for="filterNotUpdated">Not Updated</label>
+                            <?php foreach ($availabilityFilterOptions as $statusKey => $meta): ?>
+                                <?php
+                                $inputId = 'filter_' . preg_replace('/[^a-z0-9_]+/i', '_', $statusKey);
+                                $badgeColor = strtolower((string)($meta['badge_color'] ?? 'secondary'));
+                                $outlineClass = in_array($badgeColor, ['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'dark'], true)
+                                    ? $badgeColor
+                                    : 'secondary';
+                                ?>
+                                <input type="checkbox" class="btn-check status-filter-check" id="<?php echo htmlspecialchars($inputId, ENT_QUOTES, 'UTF-8'); ?>" value="<?php echo htmlspecialchars($statusKey, ENT_QUOTES, 'UTF-8'); ?>" checked autocomplete="off">
+                                <label class="btn btn-outline-<?php echo htmlspecialchars($outlineClass, ENT_QUOTES, 'UTF-8'); ?> btn-sm" for="<?php echo htmlspecialchars($inputId, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <?php echo htmlspecialchars((string)($meta['status_label'] ?? ucwords(str_replace('_', ' ', $statusKey))), ENT_QUOTES, 'UTF-8'); ?>
+                                </label>
+                            <?php endforeach; ?>
                         </div>
                         
                         <div class="vr mx-1"></div>
@@ -441,10 +468,13 @@ $allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND 
         <div class="card-body py-2">
             <div class="small fw-semibold text-muted mb-2">Calendar Legend</div>
             <div class="calendar-legend">
-                <span class="legend-item"><span class="legend-dot" style="background:#28a745"></span>Available</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#ffc107"></span>Busy</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#dc3545"></span>Leave</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#6c757d"></span>Not Updated</span>
+                <?php foreach ($availabilityFilterOptions as $statusKey => $meta): ?>
+                    <?php
+                    $badgeColor = strtolower((string)($meta['badge_color'] ?? 'secondary'));
+                    $legendColor = $badgeToHex[$badgeColor] ?? '#6c757d';
+                    ?>
+                    <span class="legend-item"><span class="legend-dot" style="background:<?php echo htmlspecialchars($legendColor, ENT_QUOTES, 'UTF-8'); ?>"></span><?php echo htmlspecialchars((string)($meta['status_label'] ?? ucwords(str_replace('_', ' ', $statusKey))), ENT_QUOTES, 'UTF-8'); ?></span>
+                <?php endforeach; ?>
                 <span class="legend-item"><span class="legend-dot" style="background:#ff4d4f"></span>Under 8h Logged</span>
                 <span class="legend-item"><span class="legend-dot" style="background:#17a2b8"></span>Edit/Delete Request: Pending</span>
                 <span class="legend-item"><span class="legend-dot" style="background:#28a745"></span>Edit/Delete Request: Approved</span>
@@ -465,6 +495,23 @@ $allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND 
 <!-- Removed duplicate FullCalendar JS (already included at top) -->
 
 <script>
+window.availabilityStatusMeta = <?php echo json_encode($availabilityFilterOptions, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT); ?>;
+
+function availabilityStatusLabel(statusKey) {
+    var key = String(statusKey || '').toLowerCase();
+    var meta = (window.availabilityStatusMeta && window.availabilityStatusMeta[key]) ? window.availabilityStatusMeta[key] : null;
+    return (meta && meta.status_label) ? String(meta.status_label) : key.replace(/_/g, ' ');
+}
+
+function availabilityStatusBadgeClass(statusKey, withBgPrefix) {
+    var key = String(statusKey || '').toLowerCase();
+    var meta = (window.availabilityStatusMeta && window.availabilityStatusMeta[key]) ? window.availabilityStatusMeta[key] : null;
+    var color = (meta && meta.badge_color) ? String(meta.badge_color).toLowerCase() : 'secondary';
+    var allowed = ['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'dark', 'light'];
+    if (allowed.indexOf(color) === -1) color = 'secondary';
+    return withBgPrefix ? ('bg-' + color) : color;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     var FC = window.FullCalendar || (typeof FullCalendar !== 'undefined' ? FullCalendar : null);
     if (!FC) {
@@ -667,14 +714,10 @@ document.addEventListener('DOMContentLoaded', function() {
             badges.className = 'd-flex gap-1 flex-wrap justify-content-end';
 
             var statusRaw = props.statusType || props.status || '';
-            var statusLabel = statusRaw ? statusRaw.replace('_', ' ') : 'Status';
+            var statusLabel = statusRaw ? availabilityStatusLabel(statusRaw) : 'Status';
             
             if (statusRaw) {
-                var badgeClass = 'bg-secondary';
-                if (statusRaw === 'available') badgeClass = 'bg-success';
-                if (statusRaw === 'busy') badgeClass = 'bg-warning text-dark';
-                if (statusRaw === 'leave' || statusRaw === 'sick_leave') badgeClass = 'bg-danger';
-                if (statusRaw === 'not_updated') badgeClass = 'bg-secondary';
+                var badgeClass = availabilityStatusBadgeClass(statusRaw, true);
 
                 var statusBadge = document.createElement('span');
                 statusBadge.className = 'badge ' + badgeClass + ' badge-status';
@@ -836,11 +879,13 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="mb-3">
                                 <label for="a_status" class="form-label">Availability Status</label>
                                 <select id="a_status" name="status" class="form-select">
-                                    <option value="not_updated">Not updated</option>
-                                    <option value="available">Available</option>
-                                    <option value="busy">Busy / In Meeting</option>
-                                    <option value="on_leave">On Leave</option>
-                                    <option value="sick_leave">Sick Leave</option>
+                                    <?php foreach ($availabilityStatuses as $st): ?>
+                                        <?php $stKey = (string)($st['status_key'] ?? ''); ?>
+                                        <?php if ($stKey === '') continue; ?>
+                                        <option value="<?php echo htmlspecialchars($stKey); ?>">
+                                            <?php echo htmlspecialchars((string)($st['status_label'] ?? ucfirst(str_replace('_', ' ', $stKey)))); ?>
+                                        </option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                             <div class="mb-3">
@@ -1429,24 +1474,14 @@ $(document).on('submit', '#adminCalendarEditForm', function(e){
 
 <script>
 function showConsolidatedModal(userList, date, statusType) {
-    var statusLabels = {
-        'available': 'Available',
-        'busy': 'Busy',
-        'leave': 'On Leave',
-        'not_updated': 'Not Updated'
-    };
-    
-    var statusLabel = statusLabels[statusType] || statusType;
+    var statusLabel = availabilityStatusLabel(statusType);
     var modalTitle = statusLabel + ' Users - ' + date + ' (' + userList.length + ' users)';
     
     document.getElementById('consolidatedModalTitle').textContent = modalTitle;
     
     var html = '<div class="row">';
     userList.forEach(function(user, index) {
-        var badgeClass = 'secondary';
-        if (statusType === 'available') badgeClass = 'success';
-        if (statusType === 'busy') badgeClass = 'warning';
-        if (statusType === 'leave') badgeClass = 'danger';
+        var badgeClass = availabilityStatusBadgeClass(statusType, false);
         if (user.hours > 0 && user.hours < 8) badgeClass = 'warning';
         
         html += '<div class="col-md-6 mb-3">';
@@ -1493,24 +1528,14 @@ function showEditRequestModal(data) {
 }
 
 function showConsolidatedModal(userList, date, statusType) {
-    var statusLabels = {
-        'available': 'Available',
-        'busy': 'Busy',
-        'leave': 'On Leave',
-        'not_updated': 'Not Updated'
-    };
-    
-    var statusLabel = statusLabels[statusType] || statusType;
+    var statusLabel = availabilityStatusLabel(statusType);
     var modalTitle = statusLabel + ' Users - ' + date + ' (' + userList.length + ' users)';
     
     document.getElementById('consolidatedModalTitle').textContent = modalTitle;
     
     var html = '<div class="row g-3">';
     userList.forEach(function(user, index) {
-        var badgeClass = 'bg-secondary';
-        if (statusType === 'available') badgeClass = 'bg-success';
-        if (statusType === 'busy') badgeClass = 'bg-warning text-dark';
-        if (statusType === 'leave') badgeClass = 'bg-danger';
+        var badgeClass = availabilityStatusBadgeClass(statusType, true);
         if (user.hours > 0 && user.hours < 8) badgeClass = 'bg-warning text-dark';
         
         html += '<div class="col-md-6">';

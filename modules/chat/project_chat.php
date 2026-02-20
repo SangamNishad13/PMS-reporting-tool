@@ -569,7 +569,10 @@ if (!$embed) {
         <script src="https://code.jquery.com/jquery-3.6.0.min.js" crossorigin="anonymous"></script>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
         <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js" crossorigin="anonymous"></script>
+        <?php $summernoteHelperPath = __DIR__ . '/../../assets/js/summernote_image_helper.js'; ?>
+        <?php if (file_exists($summernoteHelperPath)): ?>
         <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/summernote_image_helper.js?v=20260202v3"></script>
+        <?php endif; ?>
         <script>
             // Basic CDN fallback for jQuery/Summernote in embed mode
             (function() {
@@ -696,8 +699,17 @@ if (!$embed) {
     .chat-compose-body.open { display: block; padding-bottom: 24px; }
     .chat-compose-toggle { width: 100%; }
     .chat-message img, .message-content img { max-width: 100%; height: auto; }
-    .chat-image-wrap { position: relative; display: inline-block; }
-    .chat-image-thumb { max-width: 100%; max-height: 180px; object-fit: contain; display: block; }
+    .message-content img {
+        max-width: min(100%, 320px) !important;
+        width: 100% !important;
+        min-width: 0;
+        height: auto !important;
+        max-height: 240px !important;
+        object-fit: contain;
+        border-radius: 10px;
+    }
+    .chat-image-wrap { position: relative; display: inline-block; max-width: 100%; }
+    .chat-image-thumb { max-width: min(100%, 320px) !important; width: 100% !important; max-height: 240px !important; object-fit: contain; display: block; }
     .chat-image-full-btn { position: absolute; top: 6px; right: 6px; padding: 6px; width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.92); box-shadow: 0 1px 4px rgba(0,0,0,0.2); border: 1px solid rgba(0,0,0,0.05); display: inline-flex; align-items: center; justify-content: center; }
     .chat-image-full-btn i { font-size: 0.85rem; }
     #chatModalImg { width: 100%; height: auto; }
@@ -1183,6 +1195,41 @@ if (!$embed) {
         let lastMentionRange = null;
         let mentionSearchDisabled = false;
         let activeReplyToId = null;
+        const recentUploadKeys = new Map();
+        let suppressImageUploadUntil = 0;
+
+        function getImageUploadKey(file) {
+            if (!file) return '';
+            return [
+                String(file.type || ''),
+                String(file.size || 0),
+                String(file.lastModified || 0),
+                String(file.name || '')
+            ].join('|');
+        }
+
+        function isDuplicateImageUpload(file, windowMs) {
+            const now = Date.now();
+            const ttl = Number(windowMs) > 0 ? Number(windowMs) : 2500;
+            recentUploadKeys.forEach(function(ts, key) {
+                if ((now - ts) > ttl) recentUploadKeys.delete(key);
+            });
+            const key = getImageUploadKey(file);
+            if (!key) return false;
+            const lastTs = recentUploadKeys.get(key);
+            if (lastTs && (now - lastTs) <= ttl) return true;
+            recentUploadKeys.set(key, now);
+            return false;
+        }
+
+        function beginClipboardImageUploadSuppression(windowMs) {
+            const ttl = Number(windowMs) > 0 ? Number(windowMs) : 1800;
+            suppressImageUploadUntil = Date.now() + ttl;
+        }
+
+        function shouldSuppressImageUploadCallback() {
+            return Date.now() < suppressImageUploadUntil;
+        }
 
         function isMentionVisible() {
             if (hasJQ) return mentionDropdown && mentionDropdown.length && mentionDropdown.is(':visible');
@@ -1265,26 +1312,303 @@ if (!$embed) {
             if (enhanceTicks > 5) clearInterval(enhanceInterval);
         }, 800);
 
-        // Upload image and insert URL into target summernote editor
-        function uploadAndInsertImage(file, $targetEditor) {
+        function notifyChat(message, type) {
+            if (typeof window.showToast === 'function') {
+                window.showToast(message, type || 'info');
+                return;
+            }
+            if (typeof showChatActionStatusModal === 'function') {
+                showChatActionStatusModal(message, type || 'info');
+                return;
+            }
+            if ((type || '') === 'danger') console.error(message);
+            else console.log(message);
+        }
+
+        function syncEditorPlaceholder($editor) {
+            if (!hasJQ || !$editor || !$editor.length || !$editor.data('summernote')) return;
+            const $noteEditor = $editor.next('.note-editor');
+            if (!$noteEditor.length) return;
+            const $editable = $noteEditor.find('.note-editable').first();
+            const $placeholder = $noteEditor.find('.note-placeholder').first();
+            if (!$editable.length || !$placeholder.length) return;
+
+            const html = String($editor.summernote('code') || '');
+            const text = $('<div>').html(html).text().replace(/\u200B/g, '').replace(/\s+/g, ' ').trim();
+            const hasImg = /<img\b[^>]*src=/i.test(html);
+            const hasContent = !!(hasImg || text.length);
+
+            $editable.toggleClass('note-empty', !hasContent);
+            $placeholder.toggle(!hasContent);
+        }
+
+        const chatImageAltState = {
+            pendingFile: null,
+            pendingEditor: null,
+            savedRange: null,
+            isEditing: false,
+            editingImg: null,
+            lastPasteTime: 0
+        };
+
+        function saveEditorRange($editor) {
+            if (!hasJQ || !$editor || !$editor.length || !$editor.data('summernote')) return;
+            try { $editor.summernote('editor.saveRange'); } catch (e) {}
+        }
+
+        function createChatImageAltButton() {
+            if (!hasJQ || !$.summernote || !$.summernote.ui) return null;
+            const ui = $.summernote.ui;
+            return function(context) {
+                return ui.button({
+                    contents: '<i class="fas fa-tag"></i> <span style="font-size:0.75em;">Alt Text</span>',
+                    tooltip: 'Edit alt text',
+                    click: function() {
+                        const $img = $(context.invoke('restoreTarget'));
+                        if (!$img || !$img.length) return;
+                        chatImageAltState.isEditing = true;
+                        chatImageAltState.editingImg = $img;
+                        chatImageAltState.pendingFile = null;
+                        chatImageAltState.pendingEditor = null;
+                        chatImageAltState.savedRange = null;
+                        showChatImageAltModal($img.attr('alt') || '', true);
+                    }
+                }).render();
+            };
+        }
+
+        function showChatImageAltModal(currentAlt, isEditMode) {
+            if (!window.bootstrap || !bootstrap.Modal) {
+                const entered = window.prompt('Enter descriptive alt text for this image:', String(currentAlt || ''));
+                if (entered === null) {
+                    chatImageAltState.pendingFile = null;
+                    chatImageAltState.pendingEditor = null;
+                    chatImageAltState.savedRange = null;
+                    chatImageAltState.isEditing = false;
+                    chatImageAltState.editingImg = null;
+                    return;
+                }
+                const altText = String(entered || '').trim() || 'Chat image';
+                if (isEditMode && chatImageAltState.isEditing && chatImageAltState.editingImg && chatImageAltState.editingImg.length) {
+                    chatImageAltState.editingImg.attr('alt', altText);
+                    chatImageAltState.isEditing = false;
+                    chatImageAltState.editingImg = null;
+                    return;
+                }
+                const file = chatImageAltState.pendingFile;
+                const $editor = chatImageAltState.pendingEditor;
+                const savedRange = chatImageAltState.savedRange;
+                chatImageAltState.pendingFile = null;
+                chatImageAltState.pendingEditor = null;
+                chatImageAltState.savedRange = null;
+                if (file && $editor && $editor.length) {
+                    uploadAndInsertImage(file, $editor, altText, savedRange);
+                }
+                return;
+            }
+            let modalEl = document.getElementById('chatImageAltTextModal');
+            if (!modalEl) {
+                const modalHtml = ''
+                    + '<div class="modal fade" id="chatImageAltTextModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">'
+                    + '  <div class="modal-dialog modal-dialog-centered">'
+                    + '    <div class="modal-content">'
+                    + '      <div class="modal-header">'
+                    + '        <h5 class="modal-title">Image Alt Text</h5>'
+                    + '        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>'
+                    + '      </div>'
+                    + '      <div class="modal-body">'
+                    + '        <label for="chatImageAltTextInput" class="form-label">Enter descriptive alt text for this image:</label>'
+                    + '        <input type="text" class="form-control" id="chatImageAltTextInput" placeholder="e.g., Screenshot showing login error">'
+                    + '        <div class="form-text">You can edit this later by clicking the image inside editor.</div>'
+                    + '      </div>'
+                    + '      <div class="modal-footer">'
+                    + '        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>'
+                    + '        <button type="button" class="btn btn-primary" id="chatConfirmAltTextBtn">Save</button>'
+                    + '      </div>'
+                    + '    </div>'
+                    + '  </div>'
+                    + '</div>';
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+                modalEl = document.getElementById('chatImageAltTextModal');
+                const confirmBtn = document.getElementById('chatConfirmAltTextBtn');
+                const inputEl = document.getElementById('chatImageAltTextInput');
+                if (confirmBtn && !confirmBtn.dataset.boundClick) {
+                    confirmBtn.addEventListener('click', function() { confirmChatImageAltText(); });
+                    confirmBtn.dataset.boundClick = '1';
+                }
+                if (inputEl && !inputEl.dataset.boundEnter) {
+                    inputEl.addEventListener('keydown', function(ev) {
+                        if (ev.key === 'Enter') {
+                            ev.preventDefault();
+                            confirmChatImageAltText();
+                        }
+                    });
+                    inputEl.dataset.boundEnter = '1';
+                }
+                if (modalEl && !modalEl.dataset.boundHidden) {
+                    modalEl.addEventListener('hidden.bs.modal', function() {
+                        chatImageAltState.pendingFile = null;
+                        chatImageAltState.pendingEditor = null;
+                        chatImageAltState.savedRange = null;
+                        chatImageAltState.isEditing = false;
+                        chatImageAltState.editingImg = null;
+                    });
+                    modalEl.dataset.boundHidden = '1';
+                }
+            }
+            const input = document.getElementById('chatImageAltTextInput');
+            if (input) input.value = String(currentAlt || '');
+            const saveBtn = document.getElementById('chatConfirmAltTextBtn');
+            if (saveBtn) saveBtn.textContent = isEditMode ? 'Save Alt Text' : 'Upload Image';
+            if (modalEl && window.bootstrap) {
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+                setTimeout(function() {
+                    try { if (input) input.focus(); } catch (e) {}
+                }, 50);
+            }
+        }
+
+        function confirmChatImageAltText() {
+            const input = document.getElementById('chatImageAltTextInput');
+            const altText = String((input && input.value) ? input.value : '').trim() || 'Chat image';
+            const modalEl = document.getElementById('chatImageAltTextModal');
+
+            if (chatImageAltState.isEditing && chatImageAltState.editingImg && chatImageAltState.editingImg.length) {
+                chatImageAltState.editingImg.attr('alt', altText);
+                chatImageAltState.isEditing = false;
+                chatImageAltState.editingImg = null;
+                if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                return;
+            }
+
+            const file = chatImageAltState.pendingFile;
+            const $editor = chatImageAltState.pendingEditor;
+            const savedRange = chatImageAltState.savedRange;
+            chatImageAltState.pendingFile = null;
+            chatImageAltState.pendingEditor = null;
+            chatImageAltState.savedRange = null;
+
+            if (!file || !$editor || !$editor.length) {
+                if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                return;
+            }
+
+            uploadAndInsertImage(file, $editor, altText, savedRange);
+            if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+
+        function queueChatImageUpload(file, $targetEditor) {
+            if (!file || !file.type || String(file.type).indexOf('image/') !== 0) return;
+            if (isDuplicateImageUpload(file, 2500)) return;
+            const now = Date.now();
+            if ((now - chatImageAltState.lastPasteTime) < 350) return;
+            chatImageAltState.lastPasteTime = now;
             const $target = ($targetEditor && $targetEditor.length) ? $targetEditor : $msg;
-            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.uploadAndInsert === 'function') {
-                return window.PMSSummernoteImage.uploadAndInsert(file, $target, {
-                    uploadUrl: '<?php echo $baseDir; ?>/api/chat_upload_image.php',
-                    defaultAlt: 'image',
-                    credentials: 'same-origin',
-                    onInvalidType: function () { showToast('Only image files are allowed', 'warning'); },
-                    onError: function (msg) { showToast(msg || 'Image upload failed', 'danger'); }
+            saveEditorRange($target);
+            chatImageAltState.pendingFile = file;
+            chatImageAltState.pendingEditor = $target;
+            chatImageAltState.savedRange = ($target && $target.length && $target.data('summernote')) ? $target.summernote('createRange') : null;
+            chatImageAltState.isEditing = false;
+            chatImageAltState.editingImg = null;
+            showChatImageAltModal('', false);
+        }
+
+        function extractClipboardImageFilesLocal(e) {
+            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.extractClipboardImageFiles === 'function') {
+                return window.PMSSummernoteImage.extractClipboardImageFiles(e) || [];
+            }
+            const ev = e && (e.originalEvent || e);
+            const clipboard = ev && ev.clipboardData;
+            const out = [];
+            if (!clipboard || !clipboard.items) return out;
+            for (let i = 0; i < clipboard.items.length; i++) {
+                const item = clipboard.items[i];
+                if (item && item.type && item.type.indexOf('image') === 0 && item.getAsFile) {
+                    const f = item.getAsFile();
+                    if (f) out.push(f);
+                }
+            }
+            return out;
+        }
+
+        // Upload image and insert URL into target summernote editor
+        function uploadAndInsertImage(file, $targetEditor, altTextRaw, savedRange) {
+            const $target = ($targetEditor && $targetEditor.length) ? $targetEditor : $msg;
+            const uploadUrl = '<?php echo $baseDir; ?>/api/chat_upload_image.php';
+            const fallbackUploadUrl = '<?php echo $baseDir; ?>/api/issue_upload_image.php';
+            const rawAltText = String(altTextRaw || '').trim();
+            const altText = (rawAltText || 'Chat image')
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            function insertUploadedUrl(url) {
+                if ($target && $target.length && $target.data('summernote')) {
+                    const imgHtml = '<p><img src="' + url + '" alt="' + altText + '" class="chat-image-thumb editable-chat-image" style="max-width:100%;width:100%;max-height:240px;height:auto;object-fit:contain;border-radius:10px;cursor:pointer;" /></p>';
+                    try { $target.summernote('focus'); } catch (e) {}
+                    let restored = false;
+                    if (savedRange && typeof savedRange.select === 'function') {
+                        try {
+                            savedRange.select();
+                            restored = true;
+                        } catch (e) {}
+                    }
+                    if (!restored) {
+                        try {
+                            $target.summernote('editor.restoreRange');
+                            restored = true;
+                        } catch (e) {}
+                    }
+                    if (!restored) {
+                        try { $target.summernote('restoreRange'); } catch (e) {}
+                    }
+                    $target.summernote('pasteHTML', imgHtml);
+                    saveEditorRange($target);
+                    syncEditorPlaceholder($target);
+                    if (typeof updateCharCount === 'function' && String($target.attr('id') || '') === 'message') updateCharCount();
+                    if (typeof updateEditCharCount === 'function' && String($target.attr('id') || '') === 'chatEditMessageInput') updateEditCharCount();
+                    return true;
+                }
+                return false;
+            }
+            function tryUploadVia(url) {
+                if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.uploadImage === 'function') {
+                    return window.PMSSummernoteImage.uploadImage(file, {
+                        uploadUrl: url,
+                        credentials: 'same-origin'
+                    });
+                }
+                const formData = new FormData();
+                formData.append('image', file);
+                return fetch(url, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin'
+                }).then(res => res.text()).then(txt => {
+                    try { return JSON.parse(txt); } catch (e) { return { error: 'Upload failed (invalid server response)' }; }
+                });
+            }
+            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.uploadImage === 'function') {
+                return tryUploadVia(uploadUrl).then(function (res) {
+                    if (res && res.success && res.url && insertUploadedUrl(res.url)) return;
+                    return tryUploadVia(fallbackUploadUrl).then(function (res2) {
+                        if (res2 && res2.success && res2.url && insertUploadedUrl(res2.url)) return;
+                        if (res2 && !res2.skipped) notifyChat((res2 && res2.error) ? res2.error : 'Image upload failed', 'danger');
+                    });
+                }).then(function (res) {
+                }).catch(function () {
+                    notifyChat('Image upload failed', 'danger');
                 });
             }
             if (!file) return;
             if (file.type && !file.type.startsWith('image/')) {
-                showToast('Only image files are allowed', 'warning');
+                notifyChat('Only image files are allowed', 'warning');
                 return;
             }
             const formData = new FormData();
             formData.append('image', file);
-            return fetch('<?php echo $baseDir; ?>/api/chat_upload_image.php', {
+            return fetch(uploadUrl, {
                 method: 'POST',
                 body: formData,
                 credentials: 'same-origin'
@@ -1292,13 +1616,26 @@ if (!$embed) {
                 let res = {};
                 try { res = JSON.parse(txt); } catch (e) { res = { error: 'Upload failed (invalid server response)' }; }
                 if (res && res.success && res.url) {
-                    if ($target && $target.length && $target.data('summernote')) {
-                        $target.summernote('pasteHTML', '<p><img src="' + res.url + '" alt="image" /></p>');
-                    }
-                } else {
-                    showToast((res && res.error) ? res.error : 'Image upload failed', 'danger');
+                    insertUploadedUrl(res.url);
+                    return;
                 }
-            }).catch(() => showToast('Image upload failed', 'danger'));
+                // plain fetch fallback to issue_upload_image endpoint
+                const fd2 = new FormData();
+                fd2.append('image', file);
+                return fetch(fallbackUploadUrl, {
+                    method: 'POST',
+                    body: fd2,
+                    credentials: 'same-origin'
+                }).then(r2 => r2.text()).then(t2 => {
+                    let res2 = {};
+                    try { res2 = JSON.parse(t2); } catch (e) { res2 = { error: 'Upload failed (invalid fallback response)' }; }
+                    if (res2 && res2.success && res2.url) {
+                        insertUploadedUrl(res2.url);
+                    } else {
+                        notifyChat((res2 && res2.error) ? res2.error : 'Image upload failed', 'danger');
+                    }
+                });
+            }).catch(() => notifyChat('Image upload failed', 'danger'));
         }
 
         // Initialize Summernote editor (embed/full)
@@ -1308,7 +1645,7 @@ if (!$embed) {
         const composeBody = document.getElementById('composeBody');
         let composeToggle = document.getElementById('composeToggle');
         const composeForm = document.getElementById('chatForm');
-        if (!composeToggle && composeForm) {
+        if (isEmbed && !composeToggle && composeForm) {
             composeToggle = document.createElement('button');
             composeToggle.type = 'button';
             composeToggle.id = 'composeToggle';
@@ -1527,6 +1864,17 @@ if (!$embed) {
                     placeholder: 'Type your message here... Use @username to mention someone.',
                     tabsize: 2,
                     height: isEmbed ? 80 : 200,
+                    popover: {
+                        image: [
+                            ['image', ['resizeFull', 'resizeHalf', 'resizeQuarter', 'resizeNone']],
+                            ['float', ['floatLeft', 'floatRight', 'floatNone']],
+                            ['remove', ['removeMedia']],
+                            ['custom', ['imageAltText']]
+                        ]
+                    },
+                    buttons: {
+                        imageAltText: createChatImageAltButton()
+                    },
                     toolbar: [
                         ['style', ['style']],
                         ['font', ['bold', 'italic', 'underline', 'clear']],
@@ -1535,12 +1883,14 @@ if (!$embed) {
                         ['para', ['ul', 'ol', 'paragraph']],
                         ['table', ['table']],
                         ['insert', ['link','picture','video']],
-                        ['view', ['fullscreen','codeview','help']]
+                        ['view', ['codeview','help']]
                     ],
                     callbacks: {
                         onInit: function() {
                             setTimeout(function() { enableToolbarKeyboardA11y($msg); }, 0);
                             setTimeout(function() { enableToolbarKeyboardA11y($msg); }, 200);
+                            syncEditorPlaceholder($msg);
+                            saveEditorRange($msg);
                         },
                         onKeydown: function(e) {
                             if (e && e.altKey && (e.key === 'F10' || e.keyCode === 121)) {
@@ -1549,47 +1899,33 @@ if (!$embed) {
                             }
                         },
                         onImageUpload: function(files) {
-                            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.handleImageUpload === 'function') {
-                                window.PMSSummernoteImage.handleImageUpload(files || [], $msg, {
-                                    uploadUrl: '<?php echo $baseDir; ?>/api/chat_upload_image.php',
-                                    defaultAlt: 'image',
-                                    credentials: 'same-origin',
-                                    onInvalidType: function () { showToast('Only image files are allowed', 'warning'); },
-                                    onError: function (msg) { showToast(msg || 'Image upload failed', 'danger'); }
-                                });
-                            } else {
-                                var list = files || [];
-                                for (var i = 0; i < list.length; i++) {
-                                    uploadAndInsertImage(list[i], $msg);
-                                }
+                            if (shouldSuppressImageUploadCallback()) return;
+                            var list = files || [];
+                            for (var i = 0; i < list.length; i++) {
+                                queueChatImageUpload(list[i], $msg);
                             }
                         },
                         onPaste: function(e) {
-                            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.handlePasteEvent === 'function') {
-                                window.PMSSummernoteImage.handlePasteEvent(e, $msg, {
-                                    uploadUrl: '<?php echo $baseDir; ?>/api/chat_upload_image.php',
-                                    defaultAlt: 'image',
-                                    credentials: 'same-origin',
-                                    onInvalidType: function () { showToast('Only image files are allowed', 'warning'); },
-                                    onError: function (msg) { showToast(msg || 'Image upload failed', 'danger'); }
-                                });
-                            } else {
-                                const clipboard = e.originalEvent && e.originalEvent.clipboardData;
-                                if (clipboard && clipboard.items) {
-                                    for (let i = 0; i < clipboard.items.length; i++) {
-                                        const item = clipboard.items[i];
-                                        if (item.type && item.type.indexOf('image') === 0) {
-                                            e.preventDefault();
-                                            uploadAndInsertImage(item.getAsFile(), $msg);
-                                            break;
-                                        }
-                                    }
+                            const files = extractClipboardImageFilesLocal(e);
+                            if (files.length) {
+                                beginClipboardImageUploadSuppression(2200);
+                                e.preventDefault();
+                                if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                                if (typeof e.stopPropagation === 'function') e.stopPropagation();
+                                const oe = e && e.originalEvent;
+                                if (oe && typeof oe.stopImmediatePropagation === 'function') oe.stopImmediatePropagation();
+                                if (oe && typeof oe.stopPropagation === 'function') oe.stopPropagation();
+                                for (let i = 0; i < files.length; i++) {
+                                    queueChatImageUpload(files[i], $msg);
                                 }
                             }
                         }
                     }
                 });
                 summernoteReady = true;
+                $msg.on('summernote.keyup summernote.mouseup summernote.focus', function() {
+                    saveEditorRange($msg);
+                });
                 if (isEmbed && composeCollapsed) { $msg.summernote('reset'); }
             } catch (err) {
                 console.warn('Summernote init failed, using plain textarea', err);
@@ -1604,7 +1940,11 @@ if (!$embed) {
         }
 
         function setMessageHtml(val) {
-            if (summernoteReady) return $msg.summernote('code', val);
+            if (summernoteReady) {
+                const out = $msg.summernote('code', val);
+                syncEditorPlaceholder($msg);
+                return out;
+            }
             if (hasJQ) return $msg.val(val);
             const el = document.getElementById('message');
             if (el) el.value = val;
@@ -1626,7 +1966,10 @@ if (!$embed) {
         }
 
         if (summernoteReady) {
-            $msg.on('summernote.change', updateCharCount);
+            $msg.on('summernote.change', function() {
+                updateCharCount();
+                syncEditorPlaceholder($msg);
+            });
         } else if (hasJQ) {
             $msg.on('input', updateCharCount);
         } else {
@@ -1634,6 +1977,7 @@ if (!$embed) {
             if (el) el.addEventListener('input', updateCharCount);
         }
         updateCharCount();
+        if (summernoteReady) syncEditorPlaceholder($msg);
 
         const $editMsg = hasJQ ? $('#chatEditMessageInput') : null;
         let editSummernoteReady = false;
@@ -1643,7 +1987,11 @@ if (!$embed) {
             return el ? el.value : '';
         }
         function setEditMessageHtml(val) {
-            if (editSummernoteReady && $editMsg && $editMsg.length) return $editMsg.summernote('code', val || '');
+            if (editSummernoteReady && $editMsg && $editMsg.length) {
+                const out = $editMsg.summernote('code', val || '');
+                syncEditorPlaceholder($editMsg);
+                return out;
+            }
             const el = document.getElementById('chatEditMessageInput');
             if (el) el.value = val || '';
         }
@@ -1652,6 +2000,7 @@ if (!$embed) {
             const text = (hasJQ ? $('<div>').html(raw).text() : (new DOMParser().parseFromString(raw, 'text/html').documentElement.textContent || ''));
             const countEl = document.getElementById('chatEditCharCount');
             if (countEl) countEl.textContent = text.length + '/1000';
+            if (editSummernoteReady && $editMsg && $editMsg.length) syncEditorPlaceholder($editMsg);
         }
 
         if (hasJQ && $.fn.summernote && $editMsg && $editMsg.length) {
@@ -1660,6 +2009,17 @@ if (!$embed) {
                     placeholder: 'Edit message...',
                     tabsize: 2,
                     height: 160,
+                    popover: {
+                        image: [
+                            ['image', ['resizeFull', 'resizeHalf', 'resizeQuarter', 'resizeNone']],
+                            ['float', ['floatLeft', 'floatRight', 'floatNone']],
+                            ['remove', ['removeMedia']],
+                            ['custom', ['imageAltText']]
+                        ]
+                    },
+                    buttons: {
+                        imageAltText: createChatImageAltButton()
+                    },
                     toolbar: [
                         ['style', ['style']],
                         ['font', ['bold', 'italic', 'underline', 'clear']],
@@ -1668,7 +2028,7 @@ if (!$embed) {
                         ['para', ['ul', 'ol', 'paragraph']],
                         ['table', ['table']],
                         ['insert', ['link', 'picture', 'video']],
-                        ['view', ['fullscreen', 'codeview', 'help']]
+                        ['view', ['codeview', 'help']]
                     ],
                     callbacks: {
                         onInit: function() {
@@ -1676,6 +2036,8 @@ if (!$embed) {
                             setTimeout(function() { enableToolbarKeyboardA11y($editMsg); }, 0);
                             setTimeout(function() { enableToolbarKeyboardA11y($editMsg); }, 200);
                             updateEditCharCount();
+                            syncEditorPlaceholder($editMsg);
+                            saveEditorRange($editMsg);
                         },
                         onKeydown: function(e) {
                             if (e && e.altKey && (e.key === 'F10' || e.keyCode === 121)) {
@@ -1684,41 +2046,24 @@ if (!$embed) {
                             }
                         },
                         onImageUpload: function(files) {
-                            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.handleImageUpload === 'function') {
-                                window.PMSSummernoteImage.handleImageUpload(files || [], $editMsg, {
-                                    uploadUrl: '<?php echo $baseDir; ?>/api/chat_upload_image.php',
-                                    defaultAlt: 'image',
-                                    credentials: 'same-origin',
-                                    onInvalidType: function () { showToast('Only image files are allowed', 'warning'); },
-                                    onError: function (msg) { showToast(msg || 'Image upload failed', 'danger'); }
-                                });
-                            } else {
-                                var list = files || [];
-                                for (var i = 0; i < list.length; i++) {
-                                    uploadAndInsertImage(list[i], $editMsg);
-                                }
+                            if (shouldSuppressImageUploadCallback()) return;
+                            var list = files || [];
+                            for (var i = 0; i < list.length; i++) {
+                                queueChatImageUpload(list[i], $editMsg);
                             }
                         },
                         onPaste: function(e) {
-                            if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.handlePasteEvent === 'function') {
-                                window.PMSSummernoteImage.handlePasteEvent(e, $editMsg, {
-                                    uploadUrl: '<?php echo $baseDir; ?>/api/chat_upload_image.php',
-                                    defaultAlt: 'image',
-                                    credentials: 'same-origin',
-                                    onInvalidType: function () { showToast('Only image files are allowed', 'warning'); },
-                                    onError: function (msg) { showToast(msg || 'Image upload failed', 'danger'); }
-                                });
-                            } else {
-                                const clipboard = e.originalEvent && e.originalEvent.clipboardData;
-                                if (clipboard && clipboard.items) {
-                                    for (let i = 0; i < clipboard.items.length; i++) {
-                                        const item = clipboard.items[i];
-                                        if (item.type && item.type.indexOf('image') === 0) {
-                                            e.preventDefault();
-                                            uploadAndInsertImage(item.getAsFile(), $editMsg);
-                                            break;
-                                        }
-                                    }
+                            const files = extractClipboardImageFilesLocal(e);
+                            if (files.length) {
+                                beginClipboardImageUploadSuppression(2200);
+                                e.preventDefault();
+                                if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                                if (typeof e.stopPropagation === 'function') e.stopPropagation();
+                                const oe = e && e.originalEvent;
+                                if (oe && typeof oe.stopImmediatePropagation === 'function') oe.stopImmediatePropagation();
+                                if (oe && typeof oe.stopPropagation === 'function') oe.stopPropagation();
+                                for (let i = 0; i < files.length; i++) {
+                                    queueChatImageUpload(files[i], $editMsg);
                                 }
                             }
                         },
@@ -1728,6 +2073,9 @@ if (!$embed) {
                     }
                 });
                 editSummernoteReady = true;
+                $editMsg.on('summernote.keyup summernote.mouseup summernote.focus', function() {
+                    saveEditorRange($editMsg);
+                });
             } catch (e) {
                 editSummernoteReady = false;
             }
@@ -1744,6 +2092,18 @@ if (!$embed) {
                 const cursorPos = textarea[0].selectionStart;
                 const current = textarea.val();
                 textarea.val(current.substring(0, cursorPos) + username + ' ' + current.substring(cursorPos)).focus();
+            });
+
+            $(document).on('click', '.note-editor .note-editable img', function(e) {
+                const $img = $(this);
+                e.preventDefault();
+                e.stopPropagation();
+                chatImageAltState.isEditing = true;
+                chatImageAltState.editingImg = $img;
+                chatImageAltState.pendingFile = null;
+                chatImageAltState.pendingEditor = null;
+                chatImageAltState.savedRange = null;
+                showChatImageAltModal($img.attr('alt') || '', true);
             });
 
             $(document).on('click', '.chat-reply', function(){

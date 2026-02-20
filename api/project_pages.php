@@ -69,9 +69,9 @@ function ensureProjectPagesTable($db) {
         SELECT
             up.id,
             up.project_id,
-            up.name,
+            up.page_name,
             up.page_number,
-            up.canonical_url,
+            up.url,
             up.screen_name,
             up.status,
             up.at_tester_id,
@@ -83,7 +83,7 @@ function ensureProjectPagesTable($db) {
             up.ft_tester_ids,
             up.updated_at,
             up.notes
-        FROM unique_pages up
+        FROM project_pages up
         LEFT JOIN project_pages_tmp_no_view t ON t.id = up.id
         WHERE t.id IS NULL
     ");
@@ -138,14 +138,14 @@ try {
     }
 
     if ($method === 'GET') {
-        if ($action === 'list_unique') {
+        if ($action === 'list_pages') {
             $projectId = (int)($_GET['project_id'] ?? 0);
             if (!$projectId) jsonRes(['error' => 'project_id required'], 400);
 
-            $stmt = $db->prepare('SELECT id, name, canonical_url, created_at FROM unique_pages WHERE project_id = ? ORDER BY name');
+            $stmt = $db->prepare('SELECT id, page_name AS name, url AS canonical_url, created_at FROM project_pages WHERE project_id = ? ORDER BY page_name');
             $stmt->execute([$projectId]);
             $rows = $stmt->fetchAll();
-            jsonRes(['unique_pages' => $rows]);
+            jsonRes(['project_pages' => $rows]);
         }
 
         if ($action === 'list_grouped') {
@@ -157,7 +157,7 @@ try {
                 $stmt = $db->prepare('SELECT id, url, normalized_url, created_at FROM grouped_urls WHERE project_id = ? AND unique_page_id = ? ORDER BY created_at DESC');
                 $stmt->execute([$projectId, $uniqueId]);
             } else {
-                $stmt = $db->prepare('SELECT gu.id, gu.url, gu.normalized_url, gu.unique_page_id, up.name as unique_page_name FROM grouped_urls gu LEFT JOIN unique_pages up ON gu.unique_page_id = up.id WHERE gu.project_id = ? ORDER BY gu.created_at DESC');
+                $stmt = $db->prepare('SELECT gu.id, gu.url, gu.normalized_url, gu.unique_page_id, up.page_name as unique_page_name FROM grouped_urls gu LEFT JOIN project_pages up ON gu.unique_page_id = up.id WHERE gu.project_id = ? ORDER BY gu.created_at DESC');
                 $stmt->execute([$projectId]);
             }
             jsonRes(['grouped_urls' => $stmt->fetchAll()]);
@@ -177,7 +177,7 @@ try {
             $uniqueId = (int)($input['unique_page_id'] ?? 0);
             $pageId = isset($input['page_id']) && $input['page_id'] !== '' ? (int)$input['page_id'] : 0;
             if (!$uniqueId) jsonRes(['error'=>'unique_page_id required'], 400);
-            $u = $db->prepare('SELECT * FROM unique_pages WHERE id = ? LIMIT 1');
+            $u = $db->prepare('SELECT * FROM project_pages WHERE id = ? LIMIT 1');
             $u->execute([$uniqueId]);
             $up = $u->fetch(PDO::FETCH_ASSOC);
             if (!$up) jsonRes(['error'=>'unique not found'],404);
@@ -228,7 +228,7 @@ try {
             }
             jsonRes(['success'=>true]);
         }
-        // Update page name (either project_pages.page_name or unique_pages.name)
+        // Update page name (project_pages only; unique_page_id is treated as project_pages.id)
         if ($action === 'update_page_name') {
             $uniqueId = isset($input['unique_page_id']) ? (int)$input['unique_page_id'] : 0;
             $pageId = isset($input['page_id']) && $input['page_id'] !== '' ? (int)$input['page_id'] : 0;
@@ -245,13 +245,13 @@ try {
                 if (!$prow) jsonRes(['error' => 'page not found'], 404);
                 $projectId = (int)$prow['project_id'];
             } else {
-                $u = $db->prepare('SELECT project_id, name, canonical_url FROM unique_pages WHERE id = ? LIMIT 1');
+                $u = $db->prepare('SELECT project_id, page_name, url FROM project_pages WHERE id = ? LIMIT 1');
                 $u->execute([$uniqueId]);
                 $ur = $u->fetch(PDO::FETCH_ASSOC);
                 if (!$ur) jsonRes(['error' => 'unique page not found'], 404);
                 $projectId = (int)$ur['project_id'];
-                $uniqueName = $ur['name'] ?? '';
-                $uniqueCanonical = $ur['canonical_url'] ?? null;
+                $uniqueName = $ur['page_name'] ?? '';
+                $uniqueCanonical = $ur['url'] ?? null;
             }
 
             if (!hasProjectAccess($db, $_SESSION['user_id'], $projectId)) jsonRes(['error' => 'Permission denied'], 403);
@@ -311,11 +311,11 @@ try {
                 jsonRes(['success' => true, 'created_page_id' => $createdId, 'page_number' => $pageNumberLabel, 'page_name' => $newName]);
             }
 
-            // For non-page_name fields on unique (notes/name)
+            // For non-page_name fields on unique (notes/page_name) in project_pages
             if ($field === 'notes') {
-                $upd = $db->prepare('UPDATE unique_pages SET notes = ? WHERE id = ?');
+                $upd = $db->prepare('UPDATE project_pages SET notes = ?, updated_at = NOW() WHERE id = ?');
             } else {
-                $upd = $db->prepare('UPDATE unique_pages SET name = ? WHERE id = ?');
+                $upd = $db->prepare('UPDATE project_pages SET page_name = ?, updated_at = NOW() WHERE id = ?');
             }
             $upd->execute([$newName, $uniqueId]);
             try { logActivity($db, $_SESSION['user_id'], 'update_unique_name', 'project', $projectId, ['unique_id'=>$uniqueId, $field=>$newName]); } catch (Exception $e) {}
@@ -328,7 +328,7 @@ try {
             if (!$projectId) jsonRes(['error' => 'project_id required'], 400);
 
             // Generate the next page number
-            $maxStmt = $db->prepare("SELECT MAX(CAST(REPLACE(page_number, 'Page ', '') AS UNSIGNED)) as maxn FROM unique_pages WHERE project_id = ? AND page_number LIKE 'Page %'");
+            $maxStmt = $db->prepare("SELECT MAX(CAST(REPLACE(page_number, 'Page ', '') AS UNSIGNED)) as maxn FROM project_pages WHERE project_id = ? AND page_number LIKE 'Page %'");
             $maxStmt->execute([$projectId]);
             $maxRow = $maxStmt->fetch(PDO::FETCH_ASSOC);
             $nextN = (int)($maxRow['maxn'] ?? 0) + 1;
@@ -340,8 +340,8 @@ try {
             }
 
             try {
-                $ins = $db->prepare('INSERT INTO unique_pages (project_id, name, canonical_url, page_number, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
-                $ins->execute([$projectId, $name, $canonical ?: null, $pageLabel, $_SESSION['user_id'] ?? null]);
+                $ins = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
+                $ins->execute([$projectId, $name, $pageLabel, $canonical ?: null, $_SESSION['user_id'] ?? null]);
                 $id = (int)$db->lastInsertId();
             } catch (PDOException $e) {
                 if ($e->getCode() === '23000') {
@@ -350,13 +350,7 @@ try {
                 throw $e;
             }
 
-            $createdPageId = $id;
-            // Create mapped project page so Assign actions are available immediately
-            $create = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
-            $create->execute([$projectId, $name, $pageLabel, $canonical ?: null, $_SESSION['user_id'] ?? null]);
-            $createdPageId = (int)$db->lastInsertId();
-
-            jsonRes(['success' => true, 'id' => $id, 'page_number_label' => $pageLabel, 'created_page_id' => $createdPageId], 201);
+            jsonRes(['success' => true, 'id' => $id, 'page_number_label' => $pageLabel, 'created_page_id' => $id], 201);
         }
 
         if ($action === 'map_url') {
@@ -432,7 +426,7 @@ try {
             if (!$uniqueId || !$status || empty($envIds)) jsonRes(['error' => 'unique_page_id, status and environment_id required'], 400);
 
             // fetch unique page and grouped urls
-            $uStmt = $db->prepare('SELECT * FROM unique_pages WHERE id = ? LIMIT 1');
+            $uStmt = $db->prepare('SELECT * FROM project_pages WHERE id = ? LIMIT 1');
             $uStmt->execute([$uniqueId]);
             $unique = $uStmt->fetch(PDO::FETCH_ASSOC);
             if (!$unique) jsonRes(['error' => 'unique page not found'], 404);
@@ -479,7 +473,7 @@ try {
                     if ($p) {
                         $pageId = (int)$p['id'];
                     } else {
-                        $pname = trim($unique['name']) ?: ('Page ' . ($idx));
+                        $pname = trim($unique['page_name']) ?: ('Page ' . ($idx));
                         $createPage->execute([$projectId, $pname, $g['url'], $_SESSION['user_id']]);
                         $pageId = (int)$db->lastInsertId();
                         $createdPages++;
@@ -583,7 +577,7 @@ try {
             $removeGrouped = isset($delVars['remove_grouped']) ? (int)$delVars['remove_grouped'] : 0;
             if (!$id) jsonRes(['error' => 'id required'], 400);
             // fetch unique page to verify project and permissions
-            $u = $db->prepare('SELECT * FROM unique_pages WHERE id = ? LIMIT 1');
+            $u = $db->prepare('SELECT * FROM project_pages WHERE id = ? LIMIT 1');
             $u->execute([$id]);
             $up = $u->fetch(PDO::FETCH_ASSOC);
             if (!$up) jsonRes(['error' => 'unique page not found'], 404);
@@ -609,15 +603,15 @@ try {
                 $associatedPages->execute([$id, $projectId]);
                 $pageIds = array_merge($pageIds, $associatedPages->fetchAll(PDO::FETCH_COLUMN));
                 // 2) via canonical_url match
-                if (!empty($up['canonical_url'])) {
+                if (!empty($up['url'])) {
                     $byUrl = $db->prepare('SELECT id FROM project_pages WHERE project_id = ? AND url = ?');
-                    $byUrl->execute([$projectId, $up['canonical_url']]);
+                    $byUrl->execute([$projectId, $up['url']]);
                     $pageIds = array_merge($pageIds, $byUrl->fetchAll(PDO::FETCH_COLUMN));
                 }
                 // 3) via page_number match (when created as "Page N")
-                if (!empty($up['name']) && preg_match('/^Page\\s+\\d+/i', $up['name'])) {
+                if (!empty($up['page_name']) && preg_match('/^Page\\s+\\d+/i', $up['page_name'])) {
                     $byPageNumber = $db->prepare('SELECT id FROM project_pages WHERE project_id = ? AND page_number = ?');
-                    $byPageNumber->execute([$projectId, $up['name']]);
+                    $byPageNumber->execute([$projectId, $up['page_name']]);
                     $pageIds = array_merge($pageIds, $byPageNumber->fetchAll(PDO::FETCH_COLUMN));
                 }
                 $pageIds = array_values(array_unique(array_map('intval', $pageIds)));
@@ -651,7 +645,7 @@ try {
                     $delG->execute([$projectId, $id]);
                 } elseif ($reassignTo && $reassignTo !== $id) {
                     // validate target unique belongs to same project
-                    $t = $db->prepare('SELECT id, project_id FROM unique_pages WHERE id = ? LIMIT 1');
+                    $t = $db->prepare('SELECT id, project_id FROM project_pages WHERE id = ? LIMIT 1');
                     $t->execute([$reassignTo]);
                     $trow = $t->fetch(PDO::FETCH_ASSOC);
                     if (!$trow || (int)$trow['project_id'] !== $projectId) jsonRes(['error' => 'reassign target invalid'], 400);
@@ -663,8 +657,8 @@ try {
                     $updNull->execute([$projectId, $id]);
                 }
 
-                // delete the unique page
-                $del = $db->prepare('DELETE FROM unique_pages WHERE id = ? LIMIT 1');
+                // delete the page entry
+                $del = $db->prepare('DELETE FROM project_pages WHERE id = ? LIMIT 1');
                 $del->execute([$id]);
 
                 $db->commit();
@@ -687,7 +681,7 @@ try {
 
             // fetch uniques and ensure same project
             $in = str_repeat('?,', count($idsArr)-1) . '?';
-            $stmt = $db->prepare("SELECT id, project_id FROM unique_pages WHERE id IN ($in)");
+            $stmt = $db->prepare("SELECT id, project_id FROM project_pages WHERE id IN ($in)");
             $stmt->execute($idsArr);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             if (count($rows) !== count($idsArr)) jsonRes(['error'=>'some ids not found'], 404);
@@ -716,18 +710,18 @@ try {
                 $pageIds = array_merge($pageIds, $associatedPagesStmt->fetchAll(PDO::FETCH_COLUMN));
 
                 // Also collect pages by canonical_url and page_number for each unique
-                $uStmt = $db->prepare("SELECT id, name, canonical_url FROM unique_pages WHERE id IN ($in)");
+                $uStmt = $db->prepare("SELECT id, page_name, url FROM project_pages WHERE id IN ($in)");
                 $uStmt->execute($idsArr);
                 $uRows = $uStmt->fetchAll(PDO::FETCH_ASSOC);
                 foreach ($uRows as $urow) {
-                    if (!empty($urow['canonical_url'])) {
+                    if (!empty($urow['url'])) {
                         $byUrl = $db->prepare('SELECT id FROM project_pages WHERE project_id = ? AND url = ?');
-                        $byUrl->execute([$projectId, $urow['canonical_url']]);
+                        $byUrl->execute([$projectId, $urow['url']]);
                         $pageIds = array_merge($pageIds, $byUrl->fetchAll(PDO::FETCH_COLUMN));
                     }
-                    if (!empty($urow['name']) && preg_match('/^Page\\s+\\d+/i', $urow['name'])) {
+                    if (!empty($urow['page_name']) && preg_match('/^Page\\s+\\d+/i', $urow['page_name'])) {
                         $byPageNumber = $db->prepare('SELECT id FROM project_pages WHERE project_id = ? AND page_number = ?');
-                        $byPageNumber->execute([$projectId, $urow['name']]);
+                        $byPageNumber->execute([$projectId, $urow['page_name']]);
                         $pageIds = array_merge($pageIds, $byPageNumber->fetchAll(PDO::FETCH_COLUMN));
                     }
                 }
@@ -761,8 +755,8 @@ try {
                 $params = array_merge([$projectId], $idsArr);
                 $upd->execute($params);
 
-                // delete unique pages
-                $del = $db->prepare('DELETE FROM unique_pages WHERE id IN (' . $in . ')');
+                // delete pages
+                $del = $db->prepare('DELETE FROM project_pages WHERE id IN (' . $in . ')');
                 $del->execute($idsArr);
 
                 $db->commit();

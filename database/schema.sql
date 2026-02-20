@@ -139,7 +139,7 @@ CREATE TABLE `assignments` (
   CONSTRAINT `assignments_fk_env` FOREIGN KEY (`environment_id`) REFERENCES `testing_environments` (`id`) ON DELETE CASCADE,
   CONSTRAINT `assignments_fk_project` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE,
   CONSTRAINT `assignments_fk_user` FOREIGN KEY (`assigned_user_id`) REFERENCES `users` (`id`),
-  CONSTRAINT `fk_assignments_page_id_unique` FOREIGN KEY (`page_id`) REFERENCES `unique_pages` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_assignments_page_id_project` FOREIGN KEY (`page_id`) REFERENCES `project_pages` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Table: automated_findings
@@ -154,9 +154,9 @@ CREATE TABLE `automated_findings` (
   `detected_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `environment_id` (`environment_id`),
-  KEY `fk_automated_findings_page_id_unique` (`page_id`),
+  KEY `fk_automated_findings_page_id_project` (`page_id`),
   CONSTRAINT `automated_findings_ibfk_2` FOREIGN KEY (`environment_id`) REFERENCES `testing_environments` (`id`),
-  CONSTRAINT `fk_automated_findings_page_id_unique` FOREIGN KEY (`page_id`) REFERENCES `unique_pages` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_automated_findings_page_id_project` FOREIGN KEY (`page_id`) REFERENCES `project_pages` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Table: chat_messages
@@ -176,7 +176,7 @@ CREATE TABLE `chat_messages` (
   KEY `chat_messages_ibfk_2` (`page_id`),
   CONSTRAINT `chat_messages_ibfk_1` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE,
   CONSTRAINT `chat_messages_ibfk_3` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`),
-  CONSTRAINT `fk_chat_messages_page_id_unique` FOREIGN KEY (`page_id`) REFERENCES `unique_pages` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_chat_messages_page_id_project` FOREIGN KEY (`page_id`) REFERENCES `project_pages` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Table: clients
@@ -411,7 +411,7 @@ CREATE TABLE `grouped_urls` (
   KEY `idx_project` (`project_id`),
   KEY `idx_unique_page` (`unique_page_id`),
   CONSTRAINT `fk_grouped_urls_project` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_grouped_urls_unique_page` FOREIGN KEY (`unique_page_id`) REFERENCES `unique_pages` (`id`) ON DELETE SET NULL
+  CONSTRAINT `fk_grouped_urls_unique_page` FOREIGN KEY (`unique_page_id`) REFERENCES `project_pages` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=597 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Table: hours_reminder_settings
@@ -647,8 +647,8 @@ CREATE TABLE `issue_pages` (
   `issue_id` int(11) NOT NULL,
   `page_id` int(11) NOT NULL,
   PRIMARY KEY (`issue_id`,`page_id`),
-  KEY `fk_issue_pages_page_id_unique` (`page_id`),
-  CONSTRAINT `fk_issue_pages_page_id_unique` FOREIGN KEY (`page_id`) REFERENCES `unique_pages` (`id`) ON DELETE CASCADE,
+  KEY `fk_issue_pages_page_id_project` (`page_id`),
+  CONSTRAINT `fk_issue_pages_page_id_project` FOREIGN KEY (`page_id`) REFERENCES `project_pages` (`id`) ON DELETE CASCADE,
   CONSTRAINT `issue_pages_ibfk_1` FOREIGN KEY (`issue_id`) REFERENCES `issues` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -792,7 +792,7 @@ CREATE TABLE `issues` (
   KEY `priority_id` (`priority_id`),
   KEY `page_id` (`page_id`),
   KEY `idx_issues_qa_status_id` (`qa_status_id`),
-  CONSTRAINT `fk_issues_page_id_unique` FOREIGN KEY (`page_id`) REFERENCES `unique_pages` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_issues_page_id_project` FOREIGN KEY (`page_id`) REFERENCES `project_pages` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_issues_qa_status_id` FOREIGN KEY (`qa_status_id`) REFERENCES `issue_statuses` (`id`) ON DELETE SET NULL,
   CONSTRAINT `issues_ibfk_1` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE,
   CONSTRAINT `issues_ibfk_2` FOREIGN KEY (`type_id`) REFERENCES `issue_types` (`id`),
@@ -836,7 +836,7 @@ CREATE TABLE `page_environments` (
   KEY `fk_pe_ft_tester` (`ft_tester_id`),
   KEY `fk_pe_qa` (`qa_id`),
   CONSTRAINT `fk_page_env_user` FOREIGN KEY (`last_updated_by`) REFERENCES `users` (`id`),
-  CONSTRAINT `fk_page_environments_page_id_unique` FOREIGN KEY (`page_id`) REFERENCES `unique_pages` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_page_environments_page_id_project` FOREIGN KEY (`page_id`) REFERENCES `project_pages` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_pe_at_tester` FOREIGN KEY (`at_tester_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_pe_ft_tester` FOREIGN KEY (`ft_tester_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_pe_qa` FOREIGN KEY (`qa_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
@@ -1129,7 +1129,7 @@ CREATE TABLE `project_time_logs` (
   KEY `fk_ptl_generic_cat` (`generic_category_id`),
   KEY `idx_time_logs_project_hours` (`project_id`,`is_utilized`,`hours_spent`),
   KEY `idx_project_time_logs_issue_id` (`issue_id`),
-  CONSTRAINT `fk_project_time_logs_page_id_unique` FOREIGN KEY (`page_id`) REFERENCES `unique_pages` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_project_time_logs_page_id_project` FOREIGN KEY (`page_id`) REFERENCES `project_pages` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_ptl_env` FOREIGN KEY (`environment_id`) REFERENCES `testing_environments` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_ptl_generic_cat` FOREIGN KEY (`generic_category_id`) REFERENCES `generic_task_categories` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_ptl_phase` FOREIGN KEY (`phase_id`) REFERENCES `project_phases` (`id`) ON DELETE SET NULL,
@@ -1183,7 +1183,7 @@ CREATE TABLE `qa_results` (
   PRIMARY KEY (`id`),
   KEY `qa_id` (`qa_id`),
   KEY `qa_results_ibfk_1` (`page_id`),
-  CONSTRAINT `fk_qa_results_page_id_unique` FOREIGN KEY (`page_id`) REFERENCES `unique_pages` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_qa_results_page_id_project` FOREIGN KEY (`page_id`) REFERENCES `project_pages` (`id`) ON DELETE CASCADE,
   CONSTRAINT `qa_results_ibfk_2` FOREIGN KEY (`qa_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -1362,36 +1362,12 @@ CREATE TABLE `testing_results` (
   KEY `tester_id` (`tester_id`),
   KEY `environment_id` (`environment_id`),
   KEY `testing_results_ibfk_1` (`page_id`),
-  CONSTRAINT `fk_testing_results_page_id_unique` FOREIGN KEY (`page_id`) REFERENCES `unique_pages` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_testing_results_page_id_project` FOREIGN KEY (`page_id`) REFERENCES `project_pages` (`id`) ON DELETE CASCADE,
   CONSTRAINT `testing_results_ibfk_2` FOREIGN KEY (`tester_id`) REFERENCES `users` (`id`),
   CONSTRAINT `testing_results_ibfk_3` FOREIGN KEY (`environment_id`) REFERENCES `testing_environments` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Table: unique_pages
-DROP TABLE IF EXISTS `unique_pages`;
-CREATE TABLE `unique_pages` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `project_id` int(11) NOT NULL,
-  `name` varchar(255) NOT NULL,
-  `page_number` varchar(50) DEFAULT NULL,
-  `canonical_url` text DEFAULT NULL,
-  `screen_name` varchar(200) DEFAULT NULL,
-  `status` enum('not_started','in_progress','on_hold','qa_in_progress','in_fixing','needs_review','completed') DEFAULT 'not_started',
-  `at_tester_id` int(11) DEFAULT NULL,
-  `ft_tester_id` int(11) DEFAULT NULL,
-  `qa_id` int(11) DEFAULT NULL,
-  `at_tester_ids` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`at_tester_ids`)),
-  `ft_tester_ids` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`ft_tester_ids`)),
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` datetime DEFAULT current_timestamp(),
-  `updated_at` datetime DEFAULT NULL,
-  `notes` text DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `ux_project_name` (`project_id`,`name`(191)),
-  KEY `idx_project` (`project_id`),
-  KEY `idx_unique_pages_url` (`canonical_url`(191)),
-  CONSTRAINT `fk_unique_pages_project` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=470 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+-- Legacy page table removed: project_pages is the single canonical page table.
 
 -- Table: user_assignments
 DROP TABLE IF EXISTS `user_assignments`;

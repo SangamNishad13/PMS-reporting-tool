@@ -12,7 +12,7 @@
             <!-- Pages sub-tabs: Unique Pages, All URLs -->
             <ul class="nav nav-tabs mb-3" id="pagesSubTabs" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="unique-sub-tab" data-bs-toggle="tab" data-bs-target="#unique_pages_sub" type="button">Unique Pages</button>
+                    <button class="nav-link active" id="project-sub-tab" data-bs-toggle="tab" data-bs-target="#project_pages_sub" type="button">Project Pages</button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="allurls-sub-tab" data-bs-toggle="tab" data-bs-target="#all_urls_sub" type="button">All URLs</button>
@@ -83,8 +83,8 @@
                                     $envSummary = $db->prepare("
                                         SELECT 
                                             COUNT(*) as total_envs,
-                                            SUM(CASE WHEN pe.status = 'completed' OR pe.status = 'pass' THEN 1 ELSE 0 END) as completed_envs,
-                                            SUM(CASE WHEN pe.qa_status = 'completed' OR pe.qa_status = 'pass' THEN 1 ELSE 0 END) as qa_completed_envs
+                                            SUM(CASE WHEN pe.status = 'completed' THEN 1 ELSE 0 END) as completed_envs,
+                                            SUM(CASE WHEN pe.qa_status = 'completed' THEN 1 ELSE 0 END) as qa_completed_envs
                                         FROM page_environments pe
                                         WHERE pe.page_id = ?
                                     ");
@@ -170,20 +170,18 @@
                                                 style="font-size: 0.75rem;">
                                             <option value="not_started" <?php echo $env['status'] === 'not_started' ? 'selected' : ''; ?>>Not Started</option>
                                             <option value="in_progress" <?php echo $env['status'] === 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
-                                            <option value="pass" <?php echo $env['status'] === 'pass' ? 'selected' : ''; ?>>Pass</option>
-                                            <option value="fail" <?php echo $env['status'] === 'fail' ? 'selected' : ''; ?>>Fail</option>
+                                            <option value="completed" <?php echo $env['status'] === 'completed' ? 'selected' : ''; ?>>Completed</option>
                                             <option value="on_hold" <?php echo $env['status'] === 'on_hold' ? 'selected' : ''; ?>>On Hold</option>
                                             <option value="needs_review" <?php echo $env['status'] === 'needs_review' ? 'selected' : ''; ?>>Needs Review</option>
                                         </select>
                                         <?php else: ?>
                                         <span class="badge bg-<?php 
-                                            echo $env['status'] === 'pass' ? 'success' : 
-                                                 ($env['status'] === 'fail' ? 'danger' : 
-                                                  ($env['status'] === 'in_progress' ? 'primary' : 
-                                                   ($env['status'] === 'on_hold' ? 'warning' : 
-                                                    ($env['status'] === 'needs_review' ? 'info' : 'secondary'))));
+                                            echo $env['status'] === 'completed' ? 'success' : 
+                                                 ($env['status'] === 'in_progress' ? 'primary' : 
+                                                  ($env['status'] === 'on_hold' ? 'warning' : 
+                                                   ($env['status'] === 'needs_review' ? 'info' : 'secondary')));
                                         ?> small">
-                                            <?php echo ucfirst(str_replace('_', ' ', $env['status'] ?: 'not_started')); ?>
+                                            <?php echo htmlspecialchars(formatTestStatusLabel($env['status'] ?? 'not_started')); ?>
                                         </span>
                                         <?php endif; ?>
                                     </td>
@@ -206,20 +204,18 @@
                                                 style="font-size: 0.75rem;">
                                             <option value="not_started" <?php echo $env['status'] === 'not_started' ? 'selected' : ''; ?>>Not Started</option>
                                             <option value="in_progress" <?php echo $env['status'] === 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
-                                            <option value="pass" <?php echo $env['status'] === 'pass' ? 'selected' : ''; ?>>Pass</option>
-                                            <option value="fail" <?php echo $env['status'] === 'fail' ? 'selected' : ''; ?>>Fail</option>
+                                            <option value="completed" <?php echo $env['status'] === 'completed' ? 'selected' : ''; ?>>Completed</option>
                                             <option value="on_hold" <?php echo $env['status'] === 'on_hold' ? 'selected' : ''; ?>>On Hold</option>
                                             <option value="needs_review" <?php echo $env['status'] === 'needs_review' ? 'selected' : ''; ?>>Needs Review</option>
                                         </select>
                                         <?php else: ?>
                                         <span class="badge bg-<?php 
-                                            echo $env['status'] === 'pass' ? 'success' : 
-                                                 ($env['status'] === 'fail' ? 'danger' : 
-                                                  ($env['status'] === 'in_progress' ? 'primary' : 
-                                                   ($env['status'] === 'on_hold' ? 'warning' : 
-                                                    ($env['status'] === 'needs_review' ? 'info' : 'secondary'))));
+                                            echo $env['status'] === 'completed' ? 'success' : 
+                                                 ($env['status'] === 'in_progress' ? 'primary' : 
+                                                  ($env['status'] === 'on_hold' ? 'warning' : 
+                                                   ($env['status'] === 'needs_review' ? 'info' : 'secondary')));
                                         ?> small">
-                                            <?php echo ucfirst(str_replace('_', ' ', $env['status'] ?: 'not_started')); ?>
+                                            <?php echo htmlspecialchars(formatTestStatusLabel($env['status'] ?? 'not_started')); ?>
                                         </span>
                                         <?php endif; ?>
                                     </td>
@@ -241,19 +237,16 @@
                                                 data-status-type="qa"
                                                 style="font-size: 0.75rem;">
                                             <option value="pending" <?php echo $env['qa_status'] === 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                            <option value="pass" <?php echo $env['qa_status'] === 'pass' ? 'selected' : ''; ?>>Pass</option>
-                                            <option value="fail" <?php echo $env['qa_status'] === 'fail' ? 'selected' : ''; ?>>Fail</option>
                                             <option value="na" <?php echo $env['qa_status'] === 'na' ? 'selected' : ''; ?>>N/A</option>
                                             <option value="completed" <?php echo $env['qa_status'] === 'completed' ? 'selected' : ''; ?>>Completed</option>
                                         </select>
                                         <?php else: ?>
                                         <span class="badge bg-<?php 
-                                            echo $env['qa_status'] === 'pass' ? 'success' : 
-                                                 ($env['qa_status'] === 'fail' ? 'danger' : 
-                                                  ($env['qa_status'] === 'pending' ? 'primary' : 
-                                                   ($env['qa_status'] === 'completed' ? 'success' : 'secondary')));
+                                            echo $env['qa_status'] === 'completed' ? 'success' : 
+                                                 ($env['qa_status'] === 'pending' ? 'primary' : 
+                                                  ($env['qa_status'] === 'na' ? 'secondary' : 'secondary'));
                                         ?> small">
-                                            <?php echo ucfirst(str_replace('_', ' ', $env['qa_status'] ?: 'pending')); ?>
+                                            <?php echo htmlspecialchars(formatQAStatusLabel($env['qa_status'] ?? 'pending')); ?>
                                         </span>
                                         <?php endif; ?>
                                     </td>
@@ -282,7 +275,7 @@
             </div> <!-- end #pages_main -->
 
             <!-- Unique Pages sub-pane -->
-            <div class="tab-pane fade show active" id="unique_pages_sub" role="tabpanel" aria-labelledby="unique-sub-tab">
+            <div class="tab-pane fade show active" id="project_pages_sub" role="tabpanel" aria-labelledby="project-sub-tab">
                 <!-- Header with title and action buttons -->
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Unique Pages (URLs)</h5>
@@ -351,14 +344,14 @@
                          pp.id IN (SELECT DISTINCT pp2.id FROM project_pages pp2 
                                    LEFT JOIN grouped_urls gu ON pp2.project_id = gu.project_id AND (pp2.url = gu.url OR pp2.url = gu.normalized_url)
                                    WHERE pp2.project_id = ? AND gu.unique_page_id = ?)
-                         OR pp.page_number = (SELECT name FROM unique_pages WHERE id = ?)
-                         OR pp.url = (SELECT canonical_url FROM unique_pages WHERE id = ?)
+                         OR pp.page_number = (SELECT page_name FROM project_pages WHERE id = ?)
+                         OR pp.url = (SELECT url FROM project_pages WHERE id = ?)
                      )
                      LIMIT 1'
                 );
                 $envStmt = $db->prepare('SELECT GROUP_CONCAT(DISTINCT at_u.full_name SEPARATOR ", ") as at_testers, GROUP_CONCAT(DISTINCT ft_u.full_name SEPARATOR ", ") as ft_testers, GROUP_CONCAT(DISTINCT qa_u.full_name SEPARATOR ", ") as qa_names, GROUP_CONCAT(DISTINCT te.name SEPARATOR ", ") as env_names FROM page_environments pe JOIN testing_environments te ON pe.environment_id = te.id LEFT JOIN users at_u ON pe.at_tester_id = at_u.id LEFT JOIN users ft_u ON pe.ft_tester_id = ft_u.id LEFT JOIN users qa_u ON pe.qa_id = qa_u.id WHERE pe.page_id = ?');
                 // QA summary per page (used in Unique list)
-                $qaSummaryStmt = $db->prepare('SELECT COUNT(*) AS total_envs, SUM(CASE WHEN pe.qa_status IN ("pass","completed") THEN 1 ELSE 0 END) AS qa_passed FROM page_environments pe WHERE pe.page_id = ?');
+                $qaSummaryStmt = $db->prepare('SELECT COUNT(*) AS total_envs, SUM(CASE WHEN pe.qa_status = "completed" THEN 1 ELSE 0 END) AS qa_passed FROM page_environments pe WHERE pe.page_id = ?');
                 // list detailed env assignments per page
                 $envListStmt = $db->prepare('SELECT pe.environment_id, te.name as env_name, pe.status AS env_status, pe.qa_status AS env_qa_status, pe.at_tester_id, at_u.full_name AS at_name, pe.ft_tester_id, ft_u.full_name AS ft_name, pe.qa_id, qa_u.full_name AS qa_name FROM page_environments pe JOIN testing_environments te ON pe.environment_id = te.id LEFT JOIN users at_u ON pe.at_tester_id = at_u.id LEFT JOIN users ft_u ON pe.ft_tester_id = ft_u.id LEFT JOIN users qa_u ON pe.qa_id = qa_u.id WHERE pe.page_id = ? ORDER BY te.name');
                 $envStmt = $db->prepare('SELECT GROUP_CONCAT(DISTINCT at_u.full_name SEPARATOR ", ") as at_testers, GROUP_CONCAT(DISTINCT ft_u.full_name SEPARATOR ", ") as ft_testers, GROUP_CONCAT(DISTINCT qa_u.full_name SEPARATOR ", ") as qa_names, GROUP_CONCAT(DISTINCT te.name SEPARATOR ", ") as env_names FROM page_environments pe JOIN testing_environments te ON pe.environment_id = te.id LEFT JOIN users at_u ON pe.at_tester_id = at_u.id LEFT JOIN users ft_u ON pe.ft_tester_id = ft_u.id LEFT JOIN users qa_u ON pe.qa_id = qa_u.id WHERE pe.page_id = ?');
@@ -390,15 +383,15 @@
                                     <div class="col-resizer"></div>
                                 </th>
                                 <th style="width:150px; position: relative;">
-                                    FT (Env · Status)
+                                    FT (Env - Status)
                                     <div class="col-resizer"></div>
                                 </th>
                                 <th style="width:150px; position: relative;">
-                                    AT (Env · Status)
+                                    AT (Env - Status)
                                     <div class="col-resizer"></div>
                                 </th>
                                 <th style="width:150px; position: relative;">
-                                    QA (Env · Status)
+                                    QA (Env - Status)
                                     <div class="col-resizer"></div>
                                 </th>
                                 <th style="width:200px; position: relative;">
@@ -612,7 +605,7 @@
                                         <form method="POST" action="<?php echo $baseDir; ?>/modules/projects/manage_assignments.php?project_id=<?php echo $projectId; ?>&tab=pages">
                                             <input type="hidden" name="assign_page" value="1">
                                             <input type="hidden" name="page_id" value="<?php echo $pageIdForEnv; ?>">
-                                            <input type="hidden" name="return_to" value="<?php echo htmlspecialchars($baseDir . '/modules/projects/view.php?id=' . $projectId . '#unique_pages_sub'); ?>">
+                                            <input type="hidden" name="return_to" value="<?php echo htmlspecialchars($baseDir . '/modules/projects/view.php?id=' . $projectId . '#project_pages_sub'); ?>">
                                             <div class="modal-header">
                                                 <h5 class="modal-title">Assign testers & environments</h5>
                                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -721,7 +714,7 @@
                         </tbody>
                     </table>
                 </div>
-            </div> <!-- end #unique_pages_sub -->
+            </div> <!-- end #project_pages_sub -->
 
             <!-- All URLs sub-pane -->
             <div class="tab-pane fade" id="all_urls_sub" role="tabpanel" aria-labelledby="allurls-sub-tab">

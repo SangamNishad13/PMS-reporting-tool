@@ -18,6 +18,16 @@ $isAdmin = hasAdminPrivileges();
 $db = Database::getInstance();
 $baseDir = getBaseDir();
 $date = $_POST['date'] ?? $_GET['date'] ?? date('Y-m-d');
+$availabilityStatuses = getAvailabilityStatusOptions(false);
+$availabilityStatusKeys = array_values(array_unique(array_map(static function ($row) {
+    return strtolower((string)($row['status_key'] ?? ''));
+}, $availabilityStatuses)));
+if (empty($availabilityStatusKeys)) {
+    $availabilityStatusKeys = ['not_updated', 'available', 'working', 'busy', 'on_leave', 'sick_leave'];
+}
+try {
+    $db->exec("ALTER TABLE user_daily_status MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'not_updated'");
+} catch (Exception $e) {}
 
 // Ensure edit requests table exists (safe to run if migration not applied)
 try {
@@ -174,7 +184,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'request_edit') {
 // Handle AJAX: save pending changes for edit request
 if (isset($_POST['action']) && $_POST['action'] === 'save_pending') {
     $reqDate = $_POST['date'] ?? $date;
-    $status = $_POST['status'] ?? 'not_updated';
+    $status = normalizeAvailabilityStatusKey($_POST['status'] ?? 'not_updated', $availabilityStatusKeys, 'not_updated');
     $notes = $_POST['notes'] ?? '';
     $personal_note = $_POST['personal_note'] ?? '';
     
@@ -193,6 +203,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_pending') {
             UNIQUE KEY uq_user_date (user_id, req_date),
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        // Keep status storage flexible when new master keys are introduced.
+        $db->exec("ALTER TABLE user_pending_changes MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'not_updated'");
         
         // Save pending changes
         $pendingLogs = $_POST['pending_time_logs'] ?? '[]';
@@ -329,7 +341,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $isAdmin = hasAdminPrivileges();
     $targetUser = $userId;
     
-    $status = $_POST['status'];
+    $status = normalizeAvailabilityStatusKey($_POST['status'] ?? 'not_updated', $availabilityStatusKeys, 'not_updated');
     $notes = $_POST['notes'];
     $personal_note = isset($_POST['personal_note']) ? trim($_POST['personal_note']) : null;
     
@@ -1143,9 +1155,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_personal_note') {
 
     // If there's a pending request, load pending changes instead of current data
     if ($hasPendingRequest) {
-        $pendingStmt = $db->prepare("SELECT * FROM user_pending_changes WHERE user_id = ? AND req_date = ?");
-        $pendingStmt->execute([$targetUser, $queriedDate]);
-        $pendingData = $pendingStmt->fetch(PDO::FETCH_ASSOC);
+        $pendingData = null;
+        try {
+            $pendingStmt = $db->prepare("SELECT * FROM user_pending_changes WHERE user_id = ? AND req_date = ?");
+            $pendingStmt->execute([$targetUser, $queriedDate]);
+            $pendingData = $pendingStmt->fetch(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            $pendingData = null;
+        }
         
         if ($pendingData) {
             // Get user role
@@ -1246,9 +1263,13 @@ $editReq = $editReqStmt->fetch(PDO::FETCH_ASSOC);
 $hasPendingRequest = ($editReq && $editReq['status'] === 'pending');
 $pendingData = null;
 if ($hasPendingRequest) {
-    $pendingStmt = $db->prepare("SELECT * FROM user_pending_changes WHERE user_id = ? AND req_date = ?");
-    $pendingStmt->execute([$userId, $date]);
-    $pendingData = $pendingStmt->fetch(PDO::FETCH_ASSOC);
+    try {
+        $pendingStmt = $db->prepare("SELECT * FROM user_pending_changes WHERE user_id = ? AND req_date = ?");
+        $pendingStmt->execute([$userId, $date]);
+        $pendingData = $pendingStmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $pendingData = null;
+    }
 }
 
 // Is this a past date (and non-admin)? used to make fields readonly initially
@@ -1287,7 +1308,33 @@ try {
 // Get assigned projects for this user.
 // Include all active project statuses (exclude cancelled/archived),
 // and include assignment paths used across the app (team/page/env/unique page mappings).
-$projectsStmt = $db->prepare("
+$hasProjectPageAtIdsJson = false;
+$hasProjectPageFtIdsJson = false;
+try {
+    $colStmt = $db->query("SHOW COLUMNS FROM project_pages LIKE 'at_tester_ids'");
+    $hasProjectPageAtIdsJson = ($colStmt && $colStmt->rowCount() > 0);
+} catch (Exception $e) {
+    $hasProjectPageAtIdsJson = false;
+}
+try {
+    $colStmt = $db->query("SHOW COLUMNS FROM project_pages LIKE 'ft_tester_ids'");
+    $hasProjectPageFtIdsJson = ($colStmt && $colStmt->rowCount() > 0);
+} catch (Exception $e) {
+    $hasProjectPageFtIdsJson = false;
+}
+
+$jsonUniqueMembershipSql = '';
+$jsonUniqueMembershipParams = [];
+if ($hasProjectPageAtIdsJson) {
+    $jsonUniqueMembershipSql .= " OR JSON_CONTAINS(COALESCE(up.at_tester_ids, JSON_ARRAY()), JSON_ARRAY(CAST(? AS UNSIGNED)))";
+    $jsonUniqueMembershipParams[] = $userId;
+}
+if ($hasProjectPageFtIdsJson) {
+    $jsonUniqueMembershipSql .= " OR JSON_CONTAINS(COALESCE(up.ft_tester_ids, JSON_ARRAY()), JSON_ARRAY(CAST(? AS UNSIGNED)))";
+    $jsonUniqueMembershipParams[] = $userId;
+}
+
+$projectsSql = "
     SELECT DISTINCT
         p.id,
         p.title,
@@ -1314,14 +1361,13 @@ $projectsStmt = $db->prepare("
             )
             OR EXISTS (
                 SELECT 1
-                FROM unique_pages up
+                FROM project_pages up
                 WHERE up.project_id = p.id
                   AND (
                         up.at_tester_id = ?
                         OR up.ft_tester_id = ?
                         OR up.qa_id = ?
-                        OR JSON_CONTAINS(COALESCE(up.at_tester_ids, JSON_ARRAY()), JSON_ARRAY(CAST(? AS UNSIGNED)))
-                        OR JSON_CONTAINS(COALESCE(up.ft_tester_ids, JSON_ARRAY()), JSON_ARRAY(CAST(? AS UNSIGNED)))
+                        {$jsonUniqueMembershipSql}
                       )
             )
             OR EXISTS (
@@ -1338,14 +1384,23 @@ $projectsStmt = $db->prepare("
             OR p.po_number = 'OFF-PROD-001'
       )
     ORDER BY (p.po_number = 'OFF-PROD-001') DESC, p.title
-");
-$projectsStmt->execute([
+";
+
+$projectsStmt = $db->prepare($projectsSql);
+$projectParams = [
     $userId,
     $userId,
     $userId, $userId, $userId,
-    $userId, $userId, $userId, $userId, $userId,
+    $userId, $userId, $userId
+];
+if (!empty($jsonUniqueMembershipParams)) {
+    $projectParams = array_merge($projectParams, $jsonUniqueMembershipParams);
+}
+$projectParams = array_merge($projectParams, [
     $userId, $userId, $userId
 ]);
+
+$projectsStmt->execute($projectParams);
 $assignedProjects = $projectsStmt->fetchAll();
 
 $offProdProjectId = 0;
@@ -1401,11 +1456,13 @@ include __DIR__ . '/../includes/header.php';
                         <div class="mb-3">
                             <label>Availability</label>
                             <select name="status" class="form-select" id="statusSelect" <?php echo $isPastDateReadonly ? 'disabled' : ''; ?>>
-                                <option value="available" <?php echo ($currentStatus['status']??'') == 'available' ? 'selected' : ''; ?>>Available</option>
-                                <option value="working" <?php echo ($currentStatus['status']??'') == 'working' ? 'selected' : ''; ?>>Working</option>
-                                <option value="busy" <?php echo ($currentStatus['status']??'') == 'busy' ? 'selected' : ''; ?>>Busy / In Meeting</option>
-                                <option value="on_leave" <?php echo ($currentStatus['status']??'') == 'on_leave' ? 'selected' : ''; ?>>On Leave</option>
-                                <option value="sick_leave" <?php echo ($currentStatus['status']??'') == 'sick_leave' ? 'selected' : ''; ?>>Sick Leave</option>
+                                <?php foreach ($availabilityStatuses as $st): ?>
+                                    <?php $stKey = (string)($st['status_key'] ?? ''); ?>
+                                    <?php if ($stKey === '') continue; ?>
+                                    <option value="<?php echo htmlspecialchars($stKey); ?>" <?php echo (($currentStatus['status'] ?? '') === $stKey) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars((string)($st['status_label'] ?? ucfirst(str_replace('_', ' ', $stKey)))); ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="mb-3">

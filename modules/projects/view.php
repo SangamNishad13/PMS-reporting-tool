@@ -188,12 +188,12 @@ try {
     }
 } catch (Exception $e) { $issuePageSummaries = []; }
 
-// Fetch unique pages and grouped URLs for the project
-$uniqueStmt = $db->prepare("SELECT up.*, COUNT(gu.id) as url_count FROM unique_pages up LEFT JOIN grouped_urls gu ON up.id = gu.unique_page_id WHERE up.project_id = ? GROUP BY up.id ORDER BY up.created_at ASC");
+// Fetch unique pages (project_pages) and grouped URLs for the project
+$uniqueStmt = $db->prepare("SELECT up.id, up.project_id, up.page_name AS name, up.page_number, up.url AS canonical_url, up.screen_name, up.notes, up.created_at, up.status, up.at_tester_id, up.ft_tester_id, up.qa_id, COUNT(gu.id) as url_count FROM project_pages up LEFT JOIN grouped_urls gu ON up.id = gu.unique_page_id WHERE up.project_id = ? GROUP BY up.id ORDER BY up.created_at ASC");
 $uniqueStmt->execute([$projectId]);
 $uniquePages = $uniqueStmt->fetchAll(PDO::FETCH_ASSOC);
 
-$groupedStmt = $db->prepare("SELECT gu.id AS grouped_id, gu.url, gu.normalized_url, gu.unique_page_id, up.id AS unique_id, up.name AS unique_name, up.canonical_url, pp.id AS mapped_page_id, pp.page_name AS mapped_page_name FROM grouped_urls gu LEFT JOIN unique_pages up ON gu.unique_page_id = up.id LEFT JOIN project_pages pp ON pp.project_id = gu.project_id AND (pp.url = gu.url OR pp.url = gu.normalized_url) WHERE gu.project_id = ? ORDER BY gu.url");
+$groupedStmt = $db->prepare("SELECT gu.id AS grouped_id, gu.url, gu.normalized_url, gu.unique_page_id, up.id AS unique_id, up.page_name AS unique_name, up.url AS canonical_url, pp.id AS mapped_page_id, pp.page_name AS mapped_page_name FROM grouped_urls gu LEFT JOIN project_pages up ON gu.unique_page_id = up.id LEFT JOIN project_pages pp ON pp.project_id = gu.project_id AND (pp.url = gu.url OR pp.url = gu.normalized_url) WHERE gu.project_id = ? ORDER BY gu.url");
 $groupedStmt->execute([$projectId]);
 $groupedUrls = $groupedStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -211,17 +211,17 @@ if (!empty($groupedUrls)) {
 $uniqueIssuePages = [];
 try {
     $uniqueIssueStmt = $db->prepare("
-        SELECT 
+        SELECT
             up.id AS unique_id,
-            up.name AS unique_name,
-            up.canonical_url,
+            up.page_name AS unique_name,
+            up.url AS canonical_url,
             COUNT(gu.id) AS grouped_count,
             MIN(pp.id) AS mapped_page_id,
             MIN(pp.page_number) AS mapped_page_number,
             MIN(pp.page_name) AS mapped_page_name
-        FROM unique_pages up
+        FROM project_pages up
         LEFT JOIN grouped_urls gu ON gu.project_id = up.project_id AND gu.unique_page_id = up.id
-        LEFT JOIN project_pages pp ON pp.project_id = up.project_id AND (pp.url = gu.url OR pp.url = gu.normalized_url OR pp.url = up.canonical_url OR pp.page_name = up.name OR pp.page_number = up.name)
+        LEFT JOIN project_pages pp ON pp.project_id = up.project_id AND (pp.url = gu.url OR pp.url = gu.normalized_url OR pp.url = up.url OR pp.page_name = up.page_name OR pp.page_number = up.page_name)
         WHERE up.project_id = ?
         GROUP BY up.id
         ORDER BY up.created_at ASC
@@ -774,7 +774,7 @@ include __DIR__ . '/../../includes/header.php';
         
         // Initialize proper tab behavior for pages sub-tabs
         const pagesSubTabs = document.querySelectorAll('#pagesSubTabs .nav-link');
-        const pagesTabPanes = document.querySelectorAll('#pages_main, #unique_pages_sub, #all_urls_sub');
+        const pagesTabPanes = document.querySelectorAll('#pages_main, #project_pages_sub, #all_urls_sub');
         
         // Function to completely hide inactive panes
         function hideAllPanes() {
@@ -823,17 +823,17 @@ include __DIR__ . '/../../includes/header.php';
         hideAllPanes();
         
         // Check URL hash first (e.g., #all_urls_sub)
-        let activeTabPane = '#unique_pages_sub'; // default
-        let activeTabBtn = '#unique-sub-tab';
+        let activeTabPane = '#project_pages_sub'; // default
+        let activeTabBtn = '#project-sub-tab';
         
         if (window.location.hash) {
             const hash = window.location.hash;
             if (hash === '#all_urls_sub' || hash === '#allurls-sub-tab') {
                 activeTabPane = '#all_urls_sub';
                 activeTabBtn = '#allurls-sub-tab';
-            } else if (hash === '#unique_pages_sub' || hash === '#unique-sub-tab') {
-                activeTabPane = '#unique_pages_sub';
-                activeTabBtn = '#unique-sub-tab';
+            } else if (hash === '#project_pages_sub' || hash === '#project-sub-tab') {
+                activeTabPane = '#project_pages_sub';
+                activeTabBtn = '#project-sub-tab';
             }
         } else {
             // Check localStorage for last active tab
@@ -841,9 +841,9 @@ include __DIR__ . '/../../includes/header.php';
             if (lastActiveTab === 'all_urls') {
                 activeTabPane = '#all_urls_sub';
                 activeTabBtn = '#allurls-sub-tab';
-            } else if (lastActiveTab === 'unique_pages') {
-                activeTabPane = '#unique_pages_sub';
-                activeTabBtn = '#unique-sub-tab';
+            } else if (lastActiveTab === 'project_pages') {
+                activeTabPane = '#project_pages_sub';
+                activeTabBtn = '#project-sub-tab';
             }
         }
         
@@ -863,9 +863,9 @@ include __DIR__ . '/../../includes/header.php';
                 if (targetId === '#all_urls_sub') {
                     localStorage.setItem('pagesSubTab_' + <?php echo $projectId; ?>, 'all_urls');
                     window.location.hash = 'all_urls_sub';
-                } else if (targetId === '#unique_pages_sub') {
-                    localStorage.setItem('pagesSubTab_' + <?php echo $projectId; ?>, 'unique_pages');
-                    window.location.hash = 'unique_pages_sub';
+                } else if (targetId === '#project_pages_sub') {
+                    localStorage.setItem('pagesSubTab_' + <?php echo $projectId; ?>, 'project_pages');
+                    window.location.hash = 'project_pages_sub';
                 }
                 
                 // Activate the tab
@@ -1121,7 +1121,7 @@ include __DIR__ . '/../../includes/header.php';
         if (focusAssignBtn) {
             // First, ensure we're on the correct tab and subtab
             const pagesTab = document.querySelector('#pages-tab');
-            const uniquePagesSubTab = document.querySelector('#unique-sub-tab');
+            const uniquePagesSubTab = document.querySelector('#project-sub-tab');
             
             if (pagesTab && uniquePagesSubTab) {
                 // Activate pages tab

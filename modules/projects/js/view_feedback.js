@@ -46,8 +46,7 @@ $(document).ready(function () {
                     toolbar: [
                         ['style', ['bold', 'italic', 'underline', 'clear']],
                         ['para', ['ul', 'ol', 'paragraph']],
-                        ['insert', ['link', 'picture']],
-                        ['view', ['fullscreen']]
+                        ['insert', ['link', 'picture']]
                     ],
                     callbacks: {
                         onImageUpload: function (files) {

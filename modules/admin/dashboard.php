@@ -137,6 +137,41 @@ if ($workloadFilter && $workloadFilter !== 'all') {
     });
 }
 
+$workload = array_values($workload);
+$workloadUserIds = array_values(array_filter(array_map(static function ($row) {
+    return (int)($row['id'] ?? 0);
+}, $workload)));
+$allocatedHoursByUser = [];
+if (!empty($workloadUserIds)) {
+    $ph = implode(',', array_fill(0, count($workloadUserIds), '?'));
+    $allocStmt = $db->prepare("
+        SELECT ua.user_id, COALESCE(SUM(ua.hours_allocated), 0) AS allocated
+        FROM user_assignments ua
+        JOIN projects p ON ua.project_id = p.id
+        WHERE ua.user_id IN ($ph)
+          AND p.status NOT IN ('completed', 'cancelled')
+        GROUP BY ua.user_id
+    ");
+    $allocStmt->execute($workloadUserIds);
+    while ($allocRow = $allocStmt->fetch(PDO::FETCH_ASSOC)) {
+        $allocatedHoursByUser[(int)$allocRow['user_id']] = (float)$allocRow['allocated'];
+    }
+}
+
+foreach ($workload as &$resourceRow) {
+    $rid = (int)($resourceRow['id'] ?? 0);
+    $resourceRow['allocated_hours'] = (float)($allocatedHoursByUser[$rid] ?? 0);
+}
+unset($resourceRow);
+
+$workloadCount = count($workload);
+$avgProjects = $workloadCount > 0 ? round(array_sum(array_column($workload, 'active_projects')) / $workloadCount, 1) : 0;
+$overloaded = count(array_filter($workload, fn($r) => (int)$r['active_projects'] > 5));
+$busy = count(array_filter($workload, fn($r) => (int)$r['active_projects'] >= 3 && (int)$r['active_projects'] <= 5));
+$available = count(array_filter($workload, fn($r) => (int)$r['active_projects'] < 3));
+$inactive = count(array_filter($workload, fn($r) => (int)$r['recent_activity'] === 0));
+$total = $workloadCount;
+
 include __DIR__ . '/../../includes/header.php';
 ?>
 <div class="container-fluid">
@@ -223,35 +258,133 @@ include __DIR__ . '/../../includes/header.php';
             font-size: 0.7em;
         }
         
-        .resource-workload .table th {
-            font-size: 0.8em;
-            font-weight: 600;
+        .resource-workload {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
-        
-        .resource-workload .table td {
-            font-size: 0.85em;
-            vertical-align: middle;
+
+        .resource-workload .card-header {
+            flex: 0 0 auto;
+        }
+
+        .resource-workload .resource-workload-body,
+        .resource-workload > .card-body {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .resource-workload .resource-workload-scroll {
+            flex: 1 1 auto;
+            min-height: 220px;
+            max-height: 46vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+            border: 1px solid #f1f3f5;
+            border-radius: 8px;
+        }
+
+        .resource-workload .resource-workload-footer {
+            flex: 0 0 auto;
+            margin-top: 0.75rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid #f1f3f5;
+        }
+
+        @media (min-width: 992px) {
+            .resource-workload {
+                height: min(70vh, 740px);
+            }
+            .resource-workload .resource-workload-scroll {
+                max-height: none;
+            }
         }
         
         .progress {
             border-radius: 10px;
         }
-        
-        .progress-bar {
-            font-size: 0.75em;
-            font-weight: bold;
-        }
-        
-        .table-sticky-header {
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-        
-        .workload-summary {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-radius: 8px;
+
+        .resource-workload-stats .stat-card {
+            border: 1px solid #eef1f4;
+            border-radius: 10px;
+            background: #fafbfc;
             padding: 10px;
+        }
+
+        .resource-workload-stats .stat-value {
+            font-size: 1.15rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .resource-list {
+            display: grid;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        .resource-item {
+            border: 1px solid #eceff3;
+            border-radius: 10px;
+            padding: 10px;
+            background: #fff;
+        }
+
+        .resource-item .resource-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .resource-item .resource-name {
+            font-size: 0.92rem;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+
+        .resource-item .resource-meta {
+            margin-top: 8px;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px;
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+
+        .resource-item .resource-load {
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .resource-item .mini-progress {
+            height: 8px;
+            background: #f1f3f5;
+            border-radius: 999px;
+            overflow: hidden;
+            flex: 1 1 auto;
+        }
+
+        .resource-item .mini-progress-bar {
+            height: 100%;
+            border-radius: 999px;
+        }
+
+        .resource-item .resource-flag {
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+
+        @media (max-width: 575px) {
+            .resource-item .resource-meta {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 
@@ -263,7 +396,7 @@ include __DIR__ . '/../../includes/header.php';
                 <div class="card-header">
                     <h5>Recent Projects</h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body resource-workload-body">
                     <div class="table-responsive">
                         <table class="table table-hover">
                             <thead>
@@ -383,122 +516,97 @@ include __DIR__ . '/../../includes/header.php';
                     </div>
                 </div>
                 
-                <div class="card-body">
-                    <!-- Summary Stats -->
-                    <div class="row mb-3">
+                <div class="card-body resource-workload-body">
+                    <div class="resource-workload-stats row g-2 mb-3">
                         <div class="col-6">
-                            <div class="text-center">
-                                <h6 class="text-muted mb-1">Total Resources</h6>
-                                <h4 class="mb-0"><?php echo count($workload); ?></h4>
+                            <div class="stat-card text-center">
+                                <div class="text-muted small">Total</div>
+                                <div class="stat-value"><?php echo $workloadCount; ?></div>
                             </div>
                         </div>
                         <div class="col-6">
-                            <div class="text-center">
-                                <h6 class="text-muted mb-1">Avg Projects</h6>
-                                <h4 class="mb-0">
-                                    <?php 
-                                    $avgProjects = count($workload) > 0 ? round(array_sum(array_column($workload, 'active_projects')) / count($workload), 1) : 0;
-                                    echo $avgProjects;
-                                    ?>
-                                </h4>
+                            <div class="stat-card text-center">
+                                <div class="text-muted small">Avg Projects</div>
+                                <div class="stat-value"><?php echo $avgProjects; ?></div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stat-card text-center">
+                                <div class="text-muted small">Overloaded</div>
+                                <div class="stat-value text-danger"><?php echo $overloaded; ?></div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stat-card text-center">
+                                <div class="text-muted small">Inactive</div>
+                                <div class="stat-value text-warning"><?php echo $inactive; ?></div>
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                        <table class="table table-sm table-hover">
-                            <thead class="table-sticky-header bg-light">
-                                <tr>
-                                    <th>Resource</th>
-                                    <th>Role</th>
-                                    <th>Load</th>
-                                    <th>Activity</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($workload as $resource): ?>
-                                <tr>
-                                    <td>
+
+                    <div class="resource-workload-scroll">
+                        <div class="resource-list">
+                            <?php foreach ($workload as $resource): ?>
+                                <?php
+                                $activeProjects = (int)$resource['active_projects'];
+                                $assignedPages = (int)$resource['assigned_pages'];
+                                $loadClass = $activeProjects > 5 ? 'danger' : ($activeProjects >= 3 ? 'warning' : 'success');
+                                $roleClass = match($resource['role']) {
+                                    'project_lead' => 'primary',
+                                    'qa' => 'success',
+                                    'at_tester' => 'info',
+                                    'ft_tester' => 'warning',
+                                    default => 'secondary'
+                                };
+                                $loadPercent = min(100, ($activeProjects / 6) * 100);
+                                ?>
+                                <div class="resource-item">
+                                    <div class="resource-top">
                                         <div>
-                                            <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo $resource['id']; ?>" class="text-decoration-none">
-                                                <strong><?php echo htmlspecialchars($resource['full_name']); ?></strong>
+                                            <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo (int)$resource['id']; ?>" class="resource-name text-decoration-none">
+                                                <?php echo htmlspecialchars($resource['full_name']); ?>
                                             </a>
-                                            <?php if ($resource['critical_projects'] > 0): ?>
+                                            <?php if ((int)$resource['critical_projects'] > 0): ?>
                                                 <i class="fas fa-exclamation-triangle text-danger ms-1" title="Has critical projects"></i>
                                             <?php endif; ?>
                                         </div>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-<?php 
-                                            echo match($resource['role']) {
-                                                'project_lead' => 'primary',
-                                                'qa' => 'success',
-                                                'at_tester' => 'info',
-                                                'ft_tester' => 'warning',
-                                                default => 'secondary'
-                                            };
-                                        ?> badge-sm">
-                                            <?php echo ucfirst(str_replace('_', ' ', $resource['role'])); ?>
+                                        <span class="badge bg-<?php echo $roleClass; ?> badge-sm">
+                                            <?php echo ucfirst(str_replace('_', ' ', (string)$resource['role'])); ?>
                                         </span>
-                                    </td>
-                                    <td>
-                                        <div class="d-flex flex-column">
-                                            <span class="badge bg-<?php 
-                                                echo $resource['active_projects'] > 5 ? 'danger' : 
-                                                     ($resource['active_projects'] >= 3 ? 'warning' : 'success'); 
-                                            ?> badge-sm mb-1">
-                                                <?php echo $resource['active_projects']; ?> projects
-                                            </span>
-                                            <small class="text-muted"><?php echo $resource['assigned_pages']; ?> pages</small>
+                                    </div>
+                                    <div class="resource-load">
+                                        <span class="badge bg-<?php echo $loadClass; ?> badge-sm"><?php echo $activeProjects; ?> projects</span>
+                                        <div class="mini-progress">
+                                            <div class="mini-progress-bar bg-<?php echo $loadClass; ?>" style="width: <?php echo $loadPercent; ?>%;"></div>
                                         </div>
-                                    </td>
-                                    <td>
-                                        <div class="d-flex flex-column">
-                                            <small class="text-primary">
-                                                <?php 
-                                                // Get allocated hours for dashboard
-                                                $allocQuery = $db->prepare("SELECT COALESCE(SUM(hours_allocated), 0) as allocated FROM user_assignments ua JOIN projects p ON ua.project_id = p.id WHERE ua.user_id = ? AND p.status NOT IN ('completed', 'cancelled')");
-                                                $allocQuery->execute([$resource['id']]);
-                                                $allocated = $allocQuery->fetch()['allocated'];
-                                                echo number_format($allocated, 1);
-                                                ?>h allocated
-                                            </small>
-                                            <small class="text-muted">
-                                                <?php echo $resource['hours_last_30_days']; ?>h (30d)
-                                            </small>
-                                            <small class="text-muted">
-                                                <?php echo $resource['total_hours']; ?>h total
-                                            </small>
-                                            <?php if ($resource['recent_activity'] == 0): ?>
-                                                <small class="text-warning">
-                                                    <i class="fas fa-clock"></i> Inactive
-                                                </small>
+                                        <span class="resource-flag text-muted"><?php echo $assignedPages; ?> pages</span>
+                                    </div>
+                                    <div class="resource-meta">
+                                        <span><strong><?php echo number_format((float)$resource['allocated_hours'], 1); ?>h</strong> allocated</span>
+                                        <span><strong><?php echo number_format((float)$resource['hours_last_30_days'], 1); ?>h</strong> in 30d</span>
+                                        <span><strong><?php echo number_format((float)$resource['total_hours'], 1); ?>h</strong> total</span>
+                                        <span>
+                                            <?php if ((int)$resource['recent_activity'] === 0): ?>
+                                                <span class="text-warning"><i class="fas fa-clock"></i> Inactive</span>
+                                            <?php else: ?>
+                                                <span class="text-success"><i class="fas fa-check-circle"></i> Active</span>
                                             <?php endif; ?>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                                
-                                <?php if (empty($workload)): ?>
-                                <tr>
-                                    <td colspan="4" class="text-center text-muted py-3">
-                                        No resources found matching the selected filters.
-                                    </td>
-                                </tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
+                                        </span>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+
+                            <?php if (empty($workload)): ?>
+                                <div class="text-center text-muted py-3">
+                                    No resources found matching the selected filters.
+                                </div>
+                            <?php endif; ?>
+                        </div>
                     </div>
                     
                     <!-- Workload Distribution Chart -->
-                    <div class="mt-3">
+                    <div class="resource-workload-footer">
                         <h6 class="text-muted mb-2">Workload Distribution</h6>
-                        <?php
-                        $overloaded = count(array_filter($workload, fn($r) => $r['active_projects'] > 5));
-                        $busy = count(array_filter($workload, fn($r) => $r['active_projects'] >= 3 && $r['active_projects'] <= 5));
-                        $available = count(array_filter($workload, fn($r) => $r['active_projects'] < 3));
-                        $total = count($workload);
-                        ?>
                         <div class="progress mb-2" style="height: 20px;">
                             <?php if ($total > 0): ?>
                                 <div class="progress-bar bg-danger" style="width: <?php echo ($overloaded/$total)*100; ?>%">

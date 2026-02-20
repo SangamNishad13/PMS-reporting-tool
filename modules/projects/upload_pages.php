@@ -93,21 +93,21 @@ if (($fp = fopen($tmp, 'r')) !== false) {
     if ($header === false) { fclose($fp); echo json_encode(['error'=>'Empty CSV']); exit; }
 
     // Prepare statements
-    $findUnique = $db->prepare('SELECT id FROM unique_pages WHERE project_id = ? AND (canonical_url = ? OR name = ?) LIMIT 1');
-    $insertUnique = $db->prepare('INSERT INTO unique_pages (project_id, name, canonical_url, page_number, screen_name, notes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())');
-    $getUniqueById = $db->prepare('SELECT id, name, canonical_url, page_number, screen_name FROM unique_pages WHERE id = ? LIMIT 1');
+    $findUnique = $db->prepare('SELECT id FROM project_pages WHERE project_id = ? AND (url = ? OR page_name = ?) LIMIT 1');
+    $insertUnique = $db->prepare('INSERT INTO project_pages (project_id, page_name, url, page_number, screen_name, notes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())');
+    $getUniqueById = $db->prepare('SELECT id, page_name AS name, url AS canonical_url, page_number, screen_name FROM project_pages WHERE id = ? LIMIT 1');
     $findProjectPageByUrl = $db->prepare('SELECT id FROM project_pages WHERE project_id = ? AND url = ? LIMIT 1');
     $insertProjectPage = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, screen_name, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())');
     $findGrouped = $db->prepare('SELECT id FROM grouped_urls WHERE project_id = ? AND url = ? LIMIT 1');
     $insertGrouped = $db->prepare('INSERT INTO grouped_urls (project_id, unique_page_id, url, normalized_url, created_at) VALUES (?, ?, ?, ?, NOW())');
 
     // Get current count for unique naming and page numbering
-    $cntStmt = $db->prepare('SELECT COUNT(*) FROM unique_pages WHERE project_id = ?');
+    $cntStmt = $db->prepare('SELECT COUNT(*) FROM project_pages WHERE project_id = ?');
     $cntStmt->execute([$projectId]);
     $nextIndex = (int)$cntStmt->fetchColumn() + 1;
     
     // Get the next page number using the same logic as the API
-    $maxStmt = $db->prepare("SELECT MAX(CAST(REPLACE(page_number, 'Page ', '') AS UNSIGNED)) as maxn FROM unique_pages WHERE project_id = ? AND page_number LIKE 'Page %'");
+    $maxStmt = $db->prepare("SELECT MAX(CAST(REPLACE(page_number, 'Page ', '') AS UNSIGNED)) as maxn FROM project_pages WHERE project_id = ? AND page_number LIKE 'Page %'");
     $maxStmt->execute([$projectId]);
     $maxRow = $maxStmt->fetch(PDO::FETCH_ASSOC);
     $nextPageNumber = (int)($maxRow['maxn'] ?? 0) + 1;

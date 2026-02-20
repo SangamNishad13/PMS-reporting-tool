@@ -180,6 +180,86 @@ function sanitize_chat_html($html) {
     return $html;
 }
 
+if (!function_exists('ensureAvailabilityStatusMaster')) {
+    function ensureAvailabilityStatusMaster($db) {
+        try {
+            $db->exec("
+                CREATE TABLE IF NOT EXISTS availability_status_master (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    status_key VARCHAR(50) NOT NULL UNIQUE,
+                    status_label VARCHAR(100) NOT NULL,
+                    badge_color VARCHAR(30) NOT NULL DEFAULT 'secondary',
+                    description TEXT NULL,
+                    display_order INT NOT NULL DEFAULT 0,
+                    is_active TINYINT(1) NOT NULL DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_active_order (is_active, display_order)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ");
+
+            $seedRows = [
+                ['not_updated', 'Not Updated', 'secondary', 'No status update submitted yet', 0],
+                ['available', 'Available', 'success', 'Available for work', 10],
+                ['working', 'Working', 'primary', 'Actively working', 20],
+                ['busy', 'Busy / In Meeting', 'warning', 'Busy or in a meeting', 30],
+                ['on_leave', 'On Leave', 'danger', 'On planned leave', 40],
+                ['sick_leave', 'Sick Leave', 'danger', 'Out due to sickness', 50]
+            ];
+
+            $seedStmt = $db->prepare("
+                INSERT INTO availability_status_master
+                    (status_key, status_label, badge_color, description, display_order, is_active)
+                VALUES (?, ?, ?, ?, ?, 1)
+                ON DUPLICATE KEY UPDATE
+                    status_label = VALUES(status_label)
+            ");
+            foreach ($seedRows as $row) {
+                $seedStmt->execute($row);
+            }
+        } catch (Exception $e) {
+            // Keep call-sites resilient; they will use fallback options.
+        }
+    }
+}
+
+if (!function_exists('getAvailabilityStatusOptions')) {
+    function getAvailabilityStatusOptions($includeInactive = false) {
+        $fallback = [
+            ['status_key' => 'not_updated', 'status_label' => 'Not Updated', 'badge_color' => 'secondary', 'display_order' => 0, 'is_active' => 1],
+            ['status_key' => 'available', 'status_label' => 'Available', 'badge_color' => 'success', 'display_order' => 10, 'is_active' => 1],
+            ['status_key' => 'working', 'status_label' => 'Working', 'badge_color' => 'primary', 'display_order' => 20, 'is_active' => 1],
+            ['status_key' => 'busy', 'status_label' => 'Busy / In Meeting', 'badge_color' => 'warning', 'display_order' => 30, 'is_active' => 1],
+            ['status_key' => 'on_leave', 'status_label' => 'On Leave', 'badge_color' => 'danger', 'display_order' => 40, 'is_active' => 1],
+            ['status_key' => 'sick_leave', 'status_label' => 'Sick Leave', 'badge_color' => 'danger', 'display_order' => 50, 'is_active' => 1]
+        ];
+
+        try {
+            $db = Database::getInstance();
+            ensureAvailabilityStatusMaster($db);
+            $sql = "
+                SELECT status_key, status_label, badge_color, display_order, is_active
+                FROM availability_status_master
+            ";
+            if (!$includeInactive) {
+                $sql .= " WHERE is_active = 1";
+            }
+            $sql .= " ORDER BY display_order ASC, status_label ASC";
+            $rows = $db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+            return !empty($rows) ? $rows : $fallback;
+        } catch (Exception $e) {
+            return $fallback;
+        }
+    }
+}
+
+if (!function_exists('normalizeAvailabilityStatusKey')) {
+    function normalizeAvailabilityStatusKey($status, array $allowedStatuses, $default = 'not_updated') {
+        $status = strtolower(trim((string)$status));
+        return in_array($status, $allowedStatuses, true) ? $status : $default;
+    }
+}
+
 /**
  * Rewrite local upload URLs in HTML to secure file API URLs.
  * This avoids direct /uploads access issues on restrictive hosts.

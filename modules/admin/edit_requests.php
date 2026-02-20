@@ -4,6 +4,8 @@ require_once __DIR__ . '/../../includes/auth.php';
 $auth = new Auth();
 $auth->requireRole('admin');
 $db = Database::getInstance();
+try { $db->exec("ALTER TABLE user_daily_status MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'not_updated'"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_pending_changes MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'not_updated'"); } catch (Exception $e) {}
 
 $pageTitle = 'Edit Requests Management';
 

@@ -633,8 +633,7 @@ function renderEnvStatusDropdown($pageId, $envId, $currentStatus) {
     $statuses = [
         'not_started' => 'Not Started',
         'in_progress' => 'In Progress',
-        'pass' => 'Pass',
-        'fail' => 'Fail',
+        'completed' => 'Completed',
         'on_hold' => 'On Hold',
         'needs_review' => 'Needs Review'
     ];
@@ -664,8 +663,7 @@ function getEnvStatusOptionsHtml($selected = '') {
     $statuses = [
         'not_started' => 'Not Started',
         'in_progress' => 'In Progress',
-        'pass' => 'Pass',
-        'fail' => 'Fail',
+        'completed' => 'Completed',
         'on_hold' => 'On Hold',
         'needs_review' => 'Needs Review'
     ];
@@ -723,8 +721,6 @@ function renderQAEnvStatusDropdown($pageId, $envId, $currentStatus) {
     if (!$currentStatus) $currentStatus = "pending";
     $statuses = [
         "pending" => "Pending",
-        "pass" => "Pass",
-        "fail" => "Fail",
         "na" => "N/A",
         "completed" => "Completed"
     ];

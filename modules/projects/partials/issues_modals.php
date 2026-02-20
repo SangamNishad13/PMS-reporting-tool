@@ -5,7 +5,10 @@
             <div class="modal-header d-block pb-2">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <div>
-                        <h5 class="modal-title mb-0" id="finalEditorTitle">Final Issue Editor</h5>
+                        <h5 class="modal-title mb-0 d-flex align-items-center gap-2" id="finalEditorTitleWrap">
+                            <span id="finalEditorTitle">Final Issue Editor</span>
+                            <span class="badge bg-secondary" id="finalIssueCommentCountInTitle">0 Comments</span>
+                        </h5>
                         <div class="small text-muted">Manage issue title, details, and metadata</div>
                         <div class="small mt-1" id="finalIssuePresenceIndicator" aria-live="polite"></div>
                     </div>
@@ -47,7 +50,10 @@
                         <div class="mt-4 pt-3 border-top">
                             <ul class="nav nav-tabs" id="finalIssueTabs" role="tablist">
                                 <li class="nav-item">
-                                    <button class="nav-link active py-2 fw-bold" id="btnShowChat" data-bs-toggle="tab" data-bs-target="#tabChat">Chat / Comments</button>
+                                    <button class="nav-link active py-2 fw-bold" id="btnShowChat" data-bs-toggle="tab" data-bs-target="#tabChat">
+                                        Chat / Comments
+                                        <span class="badge bg-secondary ms-1" id="finalIssueCommentCountBadge">0</span>
+                                    </button>
                                 </li>
                                 <li class="nav-item">
                                     <button class="nav-link py-2 fw-bold" id="btnShowHistory" data-bs-toggle="tab" data-bs-target="#tabHistory">Edit History</button>

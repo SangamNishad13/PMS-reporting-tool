@@ -143,18 +143,18 @@ try {
     $pageName = trim((string)($page['page_name'] ?? ''));
     $pageNumber = trim((string)($page['page_number'] ?? ''));
 
-    // Resolve which unique page this project page belongs to.
+    // Resolve which grouped bucket this project page belongs to.
     $uniqueMatchStmt = $db->prepare("
         SELECT DISTINCT up.id
-        FROM unique_pages up
+        FROM project_pages up
         LEFT JOIN grouped_urls gu
             ON gu.project_id = up.project_id
            AND gu.unique_page_id = up.id
         WHERE up.project_id = ?
           AND (
-               (? <> '' AND (gu.url = ? OR gu.normalized_url = ? OR up.canonical_url = ?))
-               OR (? <> '' AND up.name = ?)
-               OR (? <> '' AND up.name = ?)
+               (? <> '' AND (gu.url = ? OR gu.normalized_url = ? OR up.url = ?))
+               OR (? <> '' AND up.page_name = ?)
+               OR (? <> '' AND up.page_name = ?)
           )
         LIMIT 1
     ");
@@ -361,13 +361,12 @@ include __DIR__ . '/../../includes/header.php';
                                                     style="font-size: 0.8em; min-width: 110px;">
                                                 <option value="not_started" <?php echo ($env['status'] ?? '') == 'not_started' ? 'selected' : ''; ?>>Not Started</option>
                                                 <option value="in_progress" <?php echo ($env['status'] ?? '') == 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
-                                                <option value="pass" <?php echo ($env['status'] ?? '') == 'pass' ? 'selected' : ''; ?>>Pass</option>
-                                                <option value="fail" <?php echo ($env['status'] ?? '') == 'fail' ? 'selected' : ''; ?>>Fail</option>
+                                                <option value="completed" <?php echo ($env['status'] ?? '') == 'completed' ? 'selected' : ''; ?>>Completed</option>
                                                 <option value="on_hold" <?php echo ($env['status'] ?? '') == 'on_hold' ? 'selected' : ''; ?>>On Hold</option>
                                                 <option value="needs_review" <?php echo ($env['status'] ?? '') == 'needs_review' ? 'selected' : ''; ?>>Needs Review</option>
                                             </select>
                                             <?php else: ?>
-                                            <span class="badge bg-secondary" style="font-size: 0.75em;"><?php echo ucfirst(str_replace('_', ' ', $env['status'] ?? 'not_started')); ?></span>
+                                            <span class="badge bg-secondary" style="font-size: 0.75em;"><?php echo htmlspecialchars(formatTestStatusLabel($env['status'] ?? 'not_started')); ?></span>
                                             <?php endif; ?>
                                         </div>
                                     </div>
@@ -412,13 +411,12 @@ include __DIR__ . '/../../includes/header.php';
                                                     style="font-size: 0.8em; min-width: 110px;">
                                                 <option value="not_started" <?php echo ($env['status'] ?? '') == 'not_started' ? 'selected' : ''; ?>>Not Started</option>
                                                 <option value="in_progress" <?php echo ($env['status'] ?? '') == 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
-                                                <option value="pass" <?php echo ($env['status'] ?? '') == 'pass' ? 'selected' : ''; ?>>Pass</option>
-                                                <option value="fail" <?php echo ($env['status'] ?? '') == 'fail' ? 'selected' : ''; ?>>Fail</option>
+                                                <option value="completed" <?php echo ($env['status'] ?? '') == 'completed' ? 'selected' : ''; ?>>Completed</option>
                                                 <option value="on_hold" <?php echo ($env['status'] ?? '') == 'on_hold' ? 'selected' : ''; ?>>On Hold</option>
                                                 <option value="needs_review" <?php echo ($env['status'] ?? '') == 'needs_review' ? 'selected' : ''; ?>>Needs Review</option>
                                             </select>
                                             <?php else: ?>
-                                            <span class="badge bg-secondary" style="font-size: 0.75em;"><?php echo ucfirst(str_replace('_', ' ', $env['status'] ?? 'not_started')); ?></span>
+                                            <span class="badge bg-secondary" style="font-size: 0.75em;"><?php echo htmlspecialchars(formatTestStatusLabel($env['status'] ?? 'not_started')); ?></span>
                                             <?php endif; ?>
                                         </div>
                                     </div>
@@ -462,13 +460,11 @@ include __DIR__ . '/../../includes/header.php';
                                                     data-env-id="<?php echo $env['environment_id']; ?>"
                                                     style="font-size: 0.8em; min-width: 110px;">
                                                 <option value="pending" <?php echo ($env['qa_status'] ?? '') == 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                                <option value="pass" <?php echo ($env['qa_status'] ?? '') == 'pass' ? 'selected' : ''; ?>>Pass</option>
-                                                <option value="fail" <?php echo ($env['qa_status'] ?? '') == 'fail' ? 'selected' : ''; ?>>Fail</option>
                                                 <option value="na" <?php echo ($env['qa_status'] ?? '') == 'na' ? 'selected' : ''; ?>>N/A</option>
                                                 <option value="completed" <?php echo ($env['qa_status'] ?? '') == 'completed' ? 'selected' : ''; ?>>Completed</option>
                                             </select>
                                             <?php else: ?>
-                                            <span class="badge bg-secondary" style="font-size: 0.75em;"><?php echo ucfirst(str_replace('_', ' ', $env['qa_status'] ?? 'pending')); ?></span>
+                                            <span class="badge bg-secondary" style="font-size: 0.75em;"><?php echo htmlspecialchars(formatQAStatusLabel($env['qa_status'] ?? 'pending')); ?></span>
                                             <?php endif; ?>
                                         </div>
                                     </div>

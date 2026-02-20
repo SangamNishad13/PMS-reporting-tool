@@ -46,7 +46,10 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
     </style>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <?php $summernoteHelperPath = __DIR__ . '/../assets/js/summernote_image_helper.js'; ?>
+    <?php if (file_exists($summernoteHelperPath)): ?>
     <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/summernote_image_helper.js?v=<?php echo $assetVersion; ?>"></script>
+    <?php endif; ?>
     <script>
     // Global suppression: disable browser alert/confirm/prompt, Notification prompts,
     // prevent Bootstrap modals from appearing, and hide success alerts/toasts.
@@ -258,10 +261,10 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
                                         INSERT INTO project_pages_tmp_no_view
                                             (id, project_id, page_name, page_number, url, screen_name, status, at_tester_id, ft_tester_id, qa_id, created_at, created_by, at_tester_ids, ft_tester_ids, updated_at, notes)
                                         SELECT
-                                            up.id, up.project_id, up.name, up.page_number, up.canonical_url, up.screen_name,
+                                            up.id, up.project_id, up.page_name, up.page_number, up.url, up.screen_name,
                                             up.status, up.at_tester_id, up.ft_tester_id, up.qa_id, up.created_at, up.created_by,
                                             up.at_tester_ids, up.ft_tester_ids, up.updated_at, up.notes
-                                        FROM unique_pages up
+                                        FROM project_pages up
                                         LEFT JOIN project_pages_tmp_no_view t ON t.id = up.id
                                         WHERE t.id IS NULL
                                     ");
@@ -408,6 +411,7 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
                                         <li><hr class="dropdown-divider"></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/env_status_master.php">Manage Env Status</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/qa_status_master.php">Manage QA Status</a></li>
+                                        <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/availability_status_master.php">Manage Availability Status</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/issue_statuses.php">Manage Issue Status</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/phase_master.php">Manage Phase Names</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/generic_tasks/manage_categories.php">Manage Generic Tasks</a></li>

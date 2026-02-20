@@ -76,19 +76,20 @@ echo "Done. Total pairs cleaned: {$totalPairsTouched}, total orphan rows deleted
 try {
     $fkExists = (int)$db->query("
         SELECT COUNT(*)
-        FROM information_schema.TABLE_CONSTRAINTS
+        FROM information_schema.KEY_COLUMN_USAGE
         WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'unique_pages'
-          AND CONSTRAINT_NAME = 'fk_unique_pages_project'
+          AND TABLE_NAME = 'project_pages'
+          AND COLUMN_NAME = 'project_id'
+          AND REFERENCED_TABLE_NAME = 'projects'
     ")->fetchColumn();
 
     if ($fkExists === 0) {
-        $db->exec("ALTER TABLE `unique_pages`
-                   ADD CONSTRAINT `fk_unique_pages_project`
+        $db->exec("ALTER TABLE `project_pages`
+                   ADD CONSTRAINT `fk_project_pages_project`
                    FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE");
-        echo "Added FK: fk_unique_pages_project\n";
+        echo "Added FK: fk_project_pages_project\n";
     } else {
-        echo "FK already present: fk_unique_pages_project\n";
+        echo "FK already present: fk_project_pages_project\n";
     }
 } catch (Throwable $e) {
     echo "FK check/add error: " . $e->getMessage() . "\n";

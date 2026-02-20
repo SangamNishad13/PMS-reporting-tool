@@ -88,15 +88,12 @@ if (!empty($pages)) {
                     SEPARATOR '\n'
                 ) AS grouped_urls
             FROM project_pages pp
-            LEFT JOIN unique_pages up
-                ON up.project_id = pp.project_id
-               AND (up.canonical_url = pp.url OR up.name = pp.page_name)
             LEFT JOIN grouped_urls gu
                 ON gu.project_id = pp.project_id
                AND (
                     gu.url = pp.url
                     OR gu.normalized_url = pp.url
-                    OR (up.id IS NOT NULL AND gu.unique_page_id = up.id)
+                    OR gu.unique_page_id = pp.id
                )
             WHERE pp.project_id = ?
               AND pp.id IN ($placeholders)
