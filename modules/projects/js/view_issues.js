@@ -81,6 +81,7 @@
     var issuePresenceTimer = null;
     var issuePresenceIssueId = null;
     var issuePresenceSessionToken = null;
+    var issuePresenceRenderSignature = '';
     var ISSUE_PRESENCE_PING_MS = 2000;
     var reviewPageSize = 25;
     var reviewCurrentPage = 1;
@@ -831,6 +832,25 @@
             st.textContent = '.note-btn-codeblock.active{background-color:#0d6efd!important;color:#fff!important;border-color:#0a58ca!important;}';
             document.head.appendChild(st);
         }
+        if (!document.getElementById('issue-modal-fullscreen-style')) {
+            var fs = document.createElement('style');
+            fs.id = 'issue-modal-fullscreen-style';
+            fs.textContent = ''
+                + '.issue-editor-modal-full .modal-content{height:100%;display:flex;flex-direction:column;}'
+                + '.issue-editor-modal-full .modal-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;}'
+                + '.issue-editor-modal-full .issue-summernote-full-host{flex:1;min-height:0;display:flex;flex-direction:column;}'
+                + '.issue-editor-modal-full .issue-summernote-full-editor{flex:1;min-height:0;display:flex;flex-direction:column;height:100%;}'
+                + '.issue-editor-modal-full .issue-summernote-full-editor.note-frame{height:100%;}'
+                + '.issue-editor-modal-full .issue-summernote-full-editor .note-toolbar{flex:0 0 auto;}'
+                + '.issue-editor-modal-full .issue-summernote-full-editor .note-editing-area{flex:1;min-height:0;overflow:hidden;}'
+                + '.issue-editor-modal-full .issue-summernote-full-editor .note-editable{height:100%!important;min-height:0!important;max-height:none!important;overflow-y:auto!important;overflow-x:auto!important;}'
+                + '.issue-editor-modal-full .issue-summernote-full-editor .note-statusbar{display:none!important;}'
+                + '.issue-editor-modal-full .issue-summernote-full-editor .note-resizebar{display:none!important;}'
+                + '.issue-editor-temp-hidden{display:none!important;}'
+                + '.note-btn-modalfullscreen.active{background-color:#0d6efd!important;color:#fff!important;border-color:#0a58ca!important;}';
+            document.head.appendChild(fs);
+        }
+        var fullscreenState = { hiddenEls: [], activeEditor: null, resizeHandler: null };
 
         function setCodeBlockButtonState() {
             var $btn = $el.next('.note-editor').find('.note-btn-codeblock');
@@ -848,6 +868,199 @@
                 .attr('aria-pressed', inCode ? 'true' : 'false')
                 .attr('title', 'Code Block')
                 .attr('aria-label', 'Code Block');
+        }
+
+        function isEditorModalFullscreenActive() {
+            return $el.data('issueModalFullscreen') === true;
+        }
+
+        function syncModalFullscreenButtonState() {
+            var $btn = $el.next('.note-editor').find('.note-btn-modalfullscreen');
+            if (!$btn.length) return;
+            var active = isEditorModalFullscreenActive();
+            $btn
+                .toggleClass('active', active)
+                .attr('aria-pressed', active ? 'true' : 'false')
+                .attr('title', active ? 'Exit Fullscreen' : 'Fullscreen')
+                .attr('aria-label', active ? 'Exit Fullscreen' : 'Fullscreen');
+            var $icon = $btn.find('i').first();
+            if ($icon.length) {
+                $icon.toggleClass('fa-expand', !active);
+                $icon.toggleClass('fa-compress', active);
+            }
+        }
+
+        function setEditorModalFullscreen(enabled) {
+            var $modal = $el.closest('.modal');
+            var $editor = $el.next('.note-editor');
+            if (!$modal.length || !$editor.length) return;
+            var $dialog = $modal.find('.modal-dialog').first();
+            var $content = $modal.find('.modal-content').first();
+            var $body = $content.find('.modal-body').first();
+            var $editingArea = $editor.find('.note-editing-area').first();
+            var $editable = $editor.find('.note-editable').first();
+            var $toolbar = $editor.find('.note-toolbar').first();
+
+            function markTempHidden($nodes) {
+                $nodes.each(function () {
+                    if (!this) return;
+                    var $n = jQuery(this);
+                    if ($n.hasClass('issue-editor-temp-hidden')) return;
+                    $n.addClass('issue-editor-temp-hidden').attr('aria-hidden', 'true');
+                    fullscreenState.hiddenEls.push(this);
+                });
+            }
+
+            function clearTempHidden() {
+                (fullscreenState.hiddenEls || []).forEach(function (node) {
+                    var $n = jQuery(node);
+                    $n.removeClass('issue-editor-temp-hidden').removeAttr('aria-hidden');
+                });
+                fullscreenState.hiddenEls = [];
+            }
+
+            function hideNonEditorContent() {
+                clearTempHidden();
+                if (!$content.length || !$body.length) return;
+                markTempHidden($content.children('.modal-header'));
+                markTempHidden($content.children('.modal-footer'));
+                $body.children().each(function () {
+                    var keep = (this === $editor[0]) || jQuery.contains(this, $editor[0]);
+                    if (!keep) markTempHidden(jQuery(this));
+                });
+                var node = $editor[0];
+                while (node && node !== $body[0]) {
+                    var parent = node.parentNode;
+                    if (!parent) break;
+                    jQuery(parent).children().each(function () {
+                        if (this !== node) markTempHidden(jQuery(this));
+                    });
+                    node = parent;
+                }
+            }
+
+            function applyFullscreenEditorSizing() {
+                if (!$body.length || !$editingArea.length || !$editable.length) return;
+                var bodyHeight = 0;
+                try {
+                    bodyHeight = Math.floor(($body.get(0).getBoundingClientRect() || {}).height || 0);
+                } catch (e) { bodyHeight = 0; }
+                if (!bodyHeight) bodyHeight = Math.floor(window.innerHeight || 0);
+                var toolbarHeight = Math.floor($toolbar.length ? ($toolbar.outerHeight(true) || 0) : 0);
+                var editorHeight = Math.max(220, bodyHeight - toolbarHeight - 12);
+                $editingArea.css({
+                    height: editorHeight + 'px',
+                    maxHeight: editorHeight + 'px',
+                    minHeight: '0',
+                    overflow: 'hidden'
+                });
+                $editable.css({
+                    height: editorHeight + 'px',
+                    maxHeight: editorHeight + 'px',
+                    minHeight: '0',
+                    overflowY: 'auto',
+                    overflowX: 'auto'
+                });
+            }
+
+            function clearFullscreenEditorSizing() {
+                if ($editingArea.length) {
+                    $editingArea.css({ height: '', maxHeight: '', minHeight: '', overflow: '' });
+                }
+                if ($editable.length) {
+                    $editable.css({ height: '', maxHeight: '', minHeight: '', overflowY: '', overflowX: '' });
+                }
+            }
+
+            if (enabled) {
+                $el.data('issueModalFullscreen', true);
+                fullscreenState.activeEditor = $editor.get(0);
+                $modal.addClass('issue-editor-modal-full');
+                $dialog.addClass('modal-fullscreen');
+                $editor.parent().addClass('issue-summernote-full-host');
+                $editor.addClass('issue-summernote-full-editor');
+                hideNonEditorContent();
+                setTimeout(applyFullscreenEditorSizing, 0);
+                setTimeout(applyFullscreenEditorSizing, 60);
+                if (!fullscreenState.resizeHandler) {
+                    fullscreenState.resizeHandler = function () {
+                        if ($el.data('issueModalFullscreen') === true) {
+                            applyFullscreenEditorSizing();
+                        }
+                    };
+                    window.addEventListener('resize', fullscreenState.resizeHandler);
+                }
+            } else {
+                $el.data('issueModalFullscreen', false);
+                fullscreenState.activeEditor = null;
+                $editor.removeClass('issue-summernote-full-editor');
+                $editor.parent().removeClass('issue-summernote-full-host');
+                clearFullscreenEditorSizing();
+                clearTempHidden();
+                if (fullscreenState.resizeHandler) {
+                    window.removeEventListener('resize', fullscreenState.resizeHandler);
+                    fullscreenState.resizeHandler = null;
+                }
+                if (!$modal.find('.issue-summernote-full-editor').length) {
+                    $modal.removeClass('issue-editor-modal-full');
+                    $dialog.removeClass('modal-fullscreen');
+                }
+            }
+            syncModalFullscreenButtonState();
+            setTimeout(function () { try { $el.summernote('focus'); } catch (e) { } }, 0);
+        }
+
+        function toggleEditorModalFullscreen() {
+            setEditorModalFullscreen(!isEditorModalFullscreenActive());
+        }
+
+        var modalEl = $el.closest('.modal').get(0);
+        if (modalEl && !modalEl._issueModalFullscreenEscBound) {
+            modalEl.addEventListener('keydown', function (e) {
+                var key = e.key || '';
+                var isEsc = key === 'Escape' || key === 'Esc' || e.keyCode === 27;
+                if (!isEsc) return;
+                var hasActiveFullscreen = false;
+                try {
+                    hasActiveFullscreen = !!modalEl.querySelector('.issue-summernote-full-editor');
+                } catch (err) { hasActiveFullscreen = false; }
+                if (!hasActiveFullscreen) return;
+                e.preventDefault();
+                if (typeof e.stopPropagation === 'function') e.stopPropagation();
+                if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                setEditorModalFullscreen(false);
+            }, true);
+            modalEl._issueModalFullscreenEscBound = true;
+        }
+        if (modalEl && !modalEl._issueModalFullscreenBound) {
+            modalEl.addEventListener('hidden.bs.modal', function () {
+                var $m = jQuery(modalEl);
+                $m.find('.issue-editor-temp-hidden').removeClass('issue-editor-temp-hidden').removeAttr('aria-hidden');
+                $m.removeClass('issue-editor-modal-full');
+                $m.find('.modal-dialog').removeClass('modal-fullscreen');
+                $m.find('.issue-summernote-full-editor').removeClass('issue-summernote-full-editor');
+                $m.find('.issue-summernote-full-host').removeClass('issue-summernote-full-host');
+                $m.find('.note-editing-area').css({ height: '', maxHeight: '', minHeight: '', overflow: '' });
+                $m.find('.note-editable').css({ height: '', maxHeight: '', minHeight: '', overflowY: '', overflowX: '' });
+                $m.find('.issue-summernote').each(function () {
+                    jQuery(this).data('issueModalFullscreen', false);
+                    var $btn = jQuery(this).next('.note-editor').find('.note-btn-modalfullscreen');
+                    if ($btn.length) {
+                        $btn.removeClass('active').attr('aria-pressed', 'false').attr('title', 'Fullscreen').attr('aria-label', 'Fullscreen');
+                        var $icon = $btn.find('i').first();
+                        if ($icon.length) {
+                            $icon.addClass('fa-expand').removeClass('fa-compress');
+                        }
+                    }
+                });
+                fullscreenState.hiddenEls = [];
+                fullscreenState.activeEditor = null;
+                if (fullscreenState.resizeHandler) {
+                    window.removeEventListener('resize', fullscreenState.resizeHandler);
+                    fullscreenState.resizeHandler = null;
+                }
+            });
+            modalEl._issueModalFullscreenBound = true;
         }
 
         function enableToolbarKeyboardA11y() {
@@ -1023,7 +1236,7 @@
                 ['para', ['ul', 'ol', 'paragraph', 'height']],
                 ['table', ['table']],
                 ['insert', ['link', 'picture', 'video', 'hr', 'codeBlockToggle']],
-                ['view', ['fullscreen', 'help']]
+                ['view', ['modalFullscreen', 'help']]
             ],
             styleTags: ['p', { title: 'Blockquote', tag: 'blockquote', className: 'blockquote', value: 'blockquote' }, 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
             popover: { image: [['image', ['resizeFull', 'resizeHalf', 'resizeQuarter', 'resizeNone']], ['float', ['floatLeft', 'floatRight', 'floatNone']], ['remove', ['removeMedia']], ['custom', ['imageAltText']]] },
@@ -1039,6 +1252,17 @@
                         $btn.attr('title', 'Code Block');
                         $btn.attr('aria-label', 'Code Block');
                     } catch (e) { }
+                    return $btn;
+                },
+                modalFullscreen: function () {
+                    var ui = jQuery.summernote.ui;
+                    var $btn = ui.button({
+                        contents: '<i class="fas fa-expand"></i>',
+                        className: 'note-btn-modalfullscreen',
+                        tooltip: 'Fullscreen',
+                        click: function () { toggleEditorModalFullscreen(); }
+                    }).render();
+                    syncModalFullscreenButtonState();
                     return $btn;
                 },
                 imageAltText: function (context) {
@@ -1060,6 +1284,7 @@
             callbacks: {
                 onInit: function () {
                     setTimeout(setCodeBlockButtonState, 0);
+                    setTimeout(syncModalFullscreenButtonState, 0);
                     setTimeout(enableToolbarKeyboardA11y, 0);
                     setTimeout(enableToolbarKeyboardA11y, 200);
                 },
@@ -3397,19 +3622,86 @@
     function renderIssuePresence(users) {
         var el = document.getElementById('finalIssuePresenceIndicator');
         if (!el) return;
+        if (!document.getElementById('issuePresenceAvatarStyle')) {
+            var st = document.createElement('style');
+            st.id = 'issuePresenceAvatarStyle';
+            st.textContent =
+                '.presence-user{position:relative;display:inline-flex;outline:none;}' +
+                '.presence-user .presence-avatar{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;color:#fff;font-size:10px;font-weight:700;border:2px solid #fff;box-shadow:0 0 0 1px rgba(13,110,253,.15);margin-left:-6px;}' +
+                '.presence-user .presence-user-name{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 6px);' +
+                'white-space:nowrap;background:#212529;color:#fff;border-radius:6px;padding:3px 8px;font-size:11px;line-height:1.2;' +
+                'box-shadow:0 6px 16px rgba(0,0,0,.2);opacity:0;pointer-events:none;transition:opacity .12s ease;z-index:20;}' +
+                '.presence-user .presence-user-name:after{content:"";position:absolute;left:50%;transform:translateX(-50%);top:100%;' +
+                'border:5px solid transparent;border-top-color:#212529;}' +
+                '.presence-user:hover .presence-user-name,.presence-user:focus .presence-user-name,.presence-user:focus-visible .presence-user-name{opacity:1;}' +
+                '.presence-user:focus-visible .presence-avatar{box-shadow:0 0 0 2px #0d6efd,0 0 0 4px #fff;}';
+            document.head.appendChild(st);
+        }
+
         var currentUserId = String(ProjectConfig.userId || '');
-        var totalActive = Array.isArray(users) ? users.length : 0;
-        var others = Array.isArray(users) ? users.filter(function (u) { return String(u.user_id || '') !== currentUserId; }) : [];
-        if (!others.length) {
+        var activeUsers = Array.isArray(users) ? users : [];
+
+        if (!activeUsers.length) {
+            issuePresenceRenderSignature = '';
             el.className = 'small mt-1 text-muted';
-            el.textContent = totalActive > 0
-                ? 'Active on this issue: You'
-                : 'No active viewers/editors on this issue.';
+            el.textContent = 'No active viewers/editors on this issue.';
             return;
         }
-        var names = others.map(function (u) { return u.full_name || 'User'; });
-        el.className = 'small mt-1 text-warning';
-        el.textContent = 'Currently active on this issue: You, ' + names.join(', ');
+
+        var getInitials = function (name) {
+            var parts = String(name || 'User').trim().split(/\s+/).filter(Boolean);
+            if (!parts.length) return 'U';
+            if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+            return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+        };
+
+        var palette = ['#0d6efd', '#198754', '#fd7e14', '#6f42c1', '#0dcaf0', '#dc3545', '#20c997', '#6610f2'];
+        var colorForId = function (id) {
+            var n = Math.abs(parseInt(String(id || '0'), 10) || 0);
+            return palette[n % palette.length];
+        };
+
+        var displayUsers = activeUsers
+            .map(function (u) {
+                var uid = String(u.user_id || '');
+                var name = (uid === currentUserId) ? 'You' : String(u.full_name || 'User');
+                return { id: uid, name: name, initials: getInitials(name), color: colorForId(uid) };
+            });
+
+        var nextSignature = JSON.stringify(displayUsers.map(function (u) {
+            return { id: u.id, name: u.name, initials: u.initials, color: u.color };
+        }));
+        if (issuePresenceRenderSignature === nextSignature) return;
+        issuePresenceRenderSignature = nextSignature;
+
+        var focusedUserId = null;
+        var activeEl = document.activeElement;
+        if (activeEl && el.contains(activeEl)) {
+            var focusedUser = activeEl.closest('.presence-user');
+            if (focusedUser) focusedUserId = String(focusedUser.getAttribute('data-user-id') || '');
+        }
+
+        var avatarHtml = displayUsers.map(function (u) {
+            return '<span class="presence-user" tabindex="0" data-user-id="' + escapeAttr(u.id) + '" aria-label="' + escapeAttr(u.name) + '">' +
+                '<span class="presence-avatar" style="background:' + u.color + ';">' +
+                escapeHtml(u.initials) + '</span>' +
+                '<span class="presence-user-name">' + escapeHtml(u.name) + '</span>' +
+                '</span>';
+        }).join('');
+
+        el.className = 'small mt-1';
+        el.innerHTML =
+            '<div class="d-flex flex-wrap align-items-center gap-2">' +
+            '<span class="text-muted">Active users:</span>' +
+            '<span style="display:inline-flex;padding-left:6px;">' + avatarHtml + '</span>' +
+            '</div>';
+
+        if (focusedUserId) {
+            var nextFocusEl = el.querySelector('.presence-user[data-user-id="' + escapeAttr(focusedUserId) + '"]');
+            if (nextFocusEl) {
+                try { nextFocusEl.focus(); } catch (e) { }
+            }
+        }
     }
 
     async function pingIssuePresence(issueId) {
@@ -3621,6 +3913,7 @@
         var listEl = document.getElementById('finalIssueCommentsList');
         if (!listEl) return;
         var items = issueData.comments[issueId || 'new'] || [];
+        updateIssueCommentCount(items);
 
         if (!items.length) {
             listEl.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-comments fa-3x mb-3 opacity-25"></i><p>No comments yet. Start the conversation!</p></div>';
@@ -3738,6 +4031,100 @@
                 showIssueCommentHistory(commentId);
             });
         });
+    }
+
+    function updateIssueCommentCount(items) {
+        var titleBadge = document.getElementById('finalIssueCommentCountInTitle');
+        var tabBadge = document.getElementById('finalIssueCommentCountBadge');
+        if (!titleBadge && !tabBadge) return;
+        var list = Array.isArray(items) ? items : [];
+        var visibleCount = list.filter(function (it) { return !it || !it.deleted_at; }).length;
+        var countText = String(visibleCount);
+        if (titleBadge) titleBadge.textContent = countText + (visibleCount === 1 ? ' Comment' : ' Comments');
+        if (tabBadge) tabBadge.textContent = countText;
+    }
+
+    function extractMentionUserIdsFromHtml(html) {
+        var mentions = [];
+        var mentionRegex = /@(\w+)/g;
+        var match;
+        while ((match = mentionRegex.exec(String(html || ''))) !== null) {
+            var username = match[1];
+            var users = ProjectConfig.projectUsers || [];
+            var user = users.find(function (u) {
+                var uUsername = String(u.username || '').toLowerCase();
+                var uFullNameAsUser = String(u.full_name || '').toLowerCase().replace(/\s+/g, '');
+                var target = String(username || '').toLowerCase();
+                return uUsername === target || uFullNameAsUser === target;
+            });
+            if (user && mentions.indexOf(user.id) === -1) {
+                mentions.push(user.id);
+            }
+        }
+        return mentions;
+    }
+
+    async function submitIssueComment(issueId, html, commentType, replyTo, options) {
+        var opts = options || {};
+        var key = String(issueId || '').trim();
+        var rawHtml = String(html || '');
+        var plain = rawHtml.replace(/<[^>]*>/g, '').trim();
+        if (!key || !plain) return false;
+
+        var mentions = extractMentionUserIdsFromHtml(rawHtml);
+        var fd = new FormData();
+        fd.append('action', 'create');
+        fd.append('project_id', projectId);
+        fd.append('issue_id', key);
+        fd.append('comment_html', rawHtml);
+        fd.append('comment_type', (commentType || 'normal'));
+        fd.append('mentions', JSON.stringify(mentions));
+        if (replyTo) fd.append('reply_to', String(replyTo));
+
+        try {
+            var response = await fetch(issueCommentsApi, { method: 'POST', body: fd, credentials: 'same-origin' });
+            var res = await response.json();
+            if (!res || res.error) {
+                if (!opts.silent && typeof showToast === 'function') {
+                    showToast((res && res.error) ? res.error : 'Failed to add comment', 'danger');
+                }
+                return false;
+            }
+
+            if (!issueData.comments[key]) issueData.comments[key] = [];
+            if (res.comment) {
+                upsertIssueComment(key, res.comment);
+            } else {
+                issueData.comments[key].unshift({
+                    id: res.id || ('tmp_' + Date.now()),
+                    user_id: ProjectConfig.userId,
+                    user_name: 'You',
+                    text: rawHtml,
+                    time: new Date().toLocaleString(),
+                    reply_to: replyTo || null,
+                    comment_type: commentType || 'normal',
+                    can_edit: true,
+                    can_delete: true,
+                    can_view_history: isAdminUser
+                });
+            }
+
+            if (opts.clearEditor) {
+                if (window.jQuery && jQuery.fn.summernote) jQuery('#finalIssueCommentEditor').summernote('code', '');
+                var commentTypeEl = document.getElementById('finalIssueCommentType');
+                if (commentTypeEl) commentTypeEl.value = 'normal';
+                var previewEl = document.getElementById('issueCommentReplyPreview');
+                if (previewEl) previewEl.style.display = 'none';
+                var replyToEl = document.getElementById('replyToCommentId');
+                if (replyToEl) replyToEl.value = '';
+            }
+
+            renderIssueComments(key);
+            return true;
+        } catch (err) {
+            if (!opts.silent && typeof showToast === 'function') showToast('Failed to add comment', 'danger');
+            return false;
+        }
     }
 
     function upsertIssueComment(issueId, updatedComment) {
@@ -3962,73 +4349,7 @@
         var replyToEl = document.getElementById('replyToCommentId');
         var replyTo = replyToEl ? replyToEl.value : '';
 
-        // Extract mentions from comment
-        var mentions = [];
-        var mentionRegex = /@(\w+)/g;
-        var match;
-        while ((match = mentionRegex.exec(html)) !== null) {
-            var username = match[1];
-            // Find user ID by username
-            var users = ProjectConfig.projectUsers || [];
-            var user = users.find(function (u) {
-                var uUsername = String(u.username || '').toLowerCase();
-                var uFullNameAsUser = String(u.full_name || '').toLowerCase().replace(/\s+/g, '');
-                var target = String(username || '').toLowerCase();
-                return uUsername === target || uFullNameAsUser === target;
-            });
-            if (user && mentions.indexOf(user.id) === -1) {
-                mentions.push(user.id);
-            }
-        }
-
-        var fd = new FormData();
-        fd.append('action', 'create');
-        fd.append('project_id', projectId);
-        fd.append('issue_id', key);
-        fd.append('comment_html', html);
-        fd.append('comment_type', commentType);
-        fd.append('mentions', JSON.stringify(mentions));
-        if (replyTo) {
-            fd.append('reply_to', replyTo);
-        }
-
-        fetch(issueCommentsApi, { method: 'POST', body: fd, credentials: 'same-origin' }).then(r => r.json()).then(function (res) {
-            if (!res || res.error) return;
-            if (!issueData.comments[key]) issueData.comments[key] = [];
-            if (res.comment) {
-                upsertIssueComment(key, res.comment);
-            } else {
-                issueData.comments[key].unshift({
-                    id: res.id || ('tmp_' + Date.now()),
-                    user_id: ProjectConfig.userId,
-                    user_name: 'You',
-                    text: html,
-                    time: new Date().toLocaleString(),
-                    reply_to: replyTo || null,
-                    comment_type: commentType,
-                    can_edit: true,
-                    can_delete: true,
-                    can_view_history: isAdminUser
-                });
-            }
-            if (window.jQuery && jQuery.fn.summernote) jQuery('#finalIssueCommentEditor').summernote('code', '');
-
-            // Reset comment type to normal
-            if (commentTypeEl) {
-                commentTypeEl.value = 'normal';
-            }
-
-            // Hide reply preview
-            var previewEl = document.getElementById('issueCommentReplyPreview');
-            if (previewEl) {
-                previewEl.style.display = 'none';
-            }
-            if (replyToEl) {
-                replyToEl.value = '';
-            }
-
-            renderIssueComments(key);
-        });
+        submitIssueComment(key, html, commentType, replyTo, { clearEditor: true });
     }
 
     function loadIssueComments(issueId) {
@@ -4315,6 +4636,13 @@
 
         if (!data.title) { issueNotify('Issue title is required.', 'warning'); return; }
 
+        var pendingCommentHtml = (window.jQuery && jQuery.fn.summernote)
+            ? jQuery('#finalIssueCommentEditor').summernote('code')
+            : ((document.getElementById('finalIssueCommentEditor') || {}).value || '');
+        var pendingCommentPlain = String(pendingCommentHtml || '').replace(/<[^>]*>/g, '').trim();
+        var pendingCommentType = ((document.getElementById('finalIssueCommentType') || {}).value || 'normal');
+        var pendingReplyTo = ((document.getElementById('replyToCommentId') || {}).value || '');
+
         try {
             var fd = new FormData();
             fd.append('action', editId ? 'update' : 'create');
@@ -4355,6 +4683,19 @@
             var idx = list.findIndex(function (it) { return String(it.id) === String(payload.id); });
             if (idx >= 0) list[idx] = payload; else list.unshift(payload);
             store[selectedPageId].final = list;
+
+            var savedIssueId = String(editId || json.id || '');
+            var pendingCommentSaved = true;
+            if (pendingCommentPlain && savedIssueId) {
+                pendingCommentSaved = await submitIssueComment(savedIssueId, pendingCommentHtml, pendingCommentType, pendingReplyTo, {
+                    clearEditor: true,
+                    silent: true
+                });
+                if (!pendingCommentSaved) {
+                    issueNotify('Issue saved, but comment could not be saved. Please click "Add Comment" and try again.', 'warning');
+                    return;
+                }
+            }
 
             renderFinalIssues();
             updateSelectionButtons();
