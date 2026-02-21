@@ -3,7 +3,7 @@ require_once __DIR__ . '/../config/settings.php';
 
 class EmailSender {
     private $settings;
-    private $smtpTimeout = 20;
+    private $smtpTimeout = 3;
     
     public function __construct() {
         $this->settings = include(__DIR__ . '/../config/settings.php');
@@ -35,7 +35,11 @@ class EmailSender {
                 return $this->sendViaSmtp($to, $subject, $body, $isHtml, $fromEmail, $fromName);
             } catch (Throwable $e) {
                 error_log('SMTP send failed: ' . $e->getMessage());
+                // When SMTP is explicitly configured, do not fall back to localhost mail().
+                return false;
             }
+        } else {
+            error_log('EmailSender: SMTP not configured; falling back to mail()');
         }
 
         // Fallback to mail() if SMTP is unavailable.
@@ -48,7 +52,13 @@ class EmailSender {
             $headers[] = 'X-Mailer: PHP/' . phpversion();
             $headers[] = 'X-Priority: 3';
             $fullHeaders = implode("\r\n", $headers);
-            return mail($to, $subject, $body, $fullHeaders);
+            $ok = mail($to, $subject, $body, $fullHeaders);
+            if (!$ok) {
+                $lastError = error_get_last();
+                $lastMessage = is_array($lastError) ? (string)($lastError['message'] ?? '') : '';
+                error_log('mail() send failed for ' . $to . ($lastMessage !== '' ? (': ' . $lastMessage) : ''));
+            }
+            return $ok;
         } catch (Throwable $e) {
             error_log('Mail send failed: ' . $e->getMessage());
             return false;
@@ -58,7 +68,7 @@ class EmailSender {
     private function isSmtpConfigured() {
         $host = trim((string)($this->settings['smtp_host'] ?? ''));
         $username = trim((string)($this->settings['smtp_username'] ?? ''));
-        $password = (string)($this->settings['smtp_password'] ?? '');
+        $password = trim((string)($this->settings['smtp_password'] ?? ''));
         return $host !== '' && $username !== '' && $password !== '';
     }
 
@@ -72,8 +82,8 @@ class EmailSender {
         } else {
             $auth = (bool)$authValue;
         }
-        $username = (string)($this->settings['smtp_username'] ?? '');
-        $password = (string)($this->settings['smtp_password'] ?? '');
+        $username = trim((string)($this->settings['smtp_username'] ?? ''));
+        $password = trim((string)($this->settings['smtp_password'] ?? ''));
 
         $remoteHost = ($secure === 'ssl') ? ('ssl://' . $host) : $host;
         $fp = @stream_socket_client($remoteHost . ':' . $port, $errno, $errstr, $this->smtpTimeout, STREAM_CLIENT_CONNECT);
@@ -99,9 +109,21 @@ class EmailSender {
         }
 
         if ($auth) {
-            $this->sendCommand($fp, 'AUTH LOGIN', [334]);
-            $this->sendCommand($fp, base64_encode($username), [334]);
-            $this->sendCommand($fp, base64_encode($password), [235]);
+            $authed = false;
+            try {
+                $this->sendCommand($fp, 'AUTH LOGIN', [334]);
+                $this->sendCommand($fp, base64_encode($username), [334]);
+                $this->sendCommand($fp, base64_encode($password), [235]);
+                $authed = true;
+            } catch (Exception $loginEx) {
+                // Some servers prefer AUTH PLAIN over LOGIN.
+                $authPlain = base64_encode("\0" . $username . "\0" . $password);
+                $this->sendCommand($fp, 'AUTH PLAIN ' . $authPlain, [235]);
+                $authed = true;
+            }
+            if (!$authed) {
+                throw new Exception('SMTP authentication failed');
+            }
         }
 
         $this->sendCommand($fp, 'MAIL FROM:<' . $fromEmail . '>', [250]);

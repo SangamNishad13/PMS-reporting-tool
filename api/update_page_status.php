@@ -45,12 +45,40 @@ if (!in_array($statusType, ['testing', 'qa'])) {
 if ($statusType === 'testing') {
     $validStatuses = ['not_started', 'in_progress', 'completed', 'on_hold', 'needs_review'];
 } else {
-    $validStatuses = ['pending', 'na', 'completed'];
+    $qaAliases = [
+        'pending' => 'not_started',
+        'na' => 'on_hold',
+        'pass' => 'completed',
+        'fail' => 'needs_review'
+    ];
+    $status = strtolower(trim((string)$status));
+    if (isset($qaAliases[$status])) {
+        $status = $qaAliases[$status];
+    }
+    $validStatuses = ['not_started', 'in_progress', 'completed', 'on_hold', 'needs_review'];
 }
 
 if (!in_array($status, $validStatuses)) {
     echo json_encode(['success' => false, 'message' => 'Invalid status value']);
     exit;
+}
+
+function mapComputedToPageStatus(string $status): string {
+    $allowed = ['not_started', 'in_progress', 'on_hold', 'qa_in_progress', 'in_fixing', 'needs_review', 'completed'];
+    $normalized = strtolower(trim($status));
+    if (in_array($normalized, $allowed, true)) {
+        return $normalized;
+    }
+
+    $legacyMap = [
+        'not_tested' => 'not_started',
+        'in_testing' => 'in_progress',
+        'testing_failed' => 'in_fixing',
+        'tested' => 'needs_review',
+        'qa_review' => 'qa_in_progress',
+        'qa_failed' => 'in_fixing'
+    ];
+    return $legacyMap[$normalized] ?? 'in_progress';
 }
 
 try {
@@ -95,6 +123,17 @@ try {
         WHERE page_id = ? AND environment_id = ?
     ");
     $updateStmt->execute([$status, $userId, $pageId, $environmentId]);
+
+    // Recompute and persist global page status from AT/FT/QA environment status mix
+    $pageStmt = $db->prepare("SELECT * FROM project_pages WHERE id = ?");
+    $pageStmt->execute([$pageId]);
+    $pageData = $pageStmt->fetch(PDO::FETCH_ASSOC);
+    $computedStatus = computePageStatus($db, $pageData ?: ['id' => $pageId]);
+    $mappedStatus = mapComputedToPageStatus($computedStatus);
+    $db->prepare("UPDATE project_pages SET status = ?, updated_at = NOW() WHERE id = ?")->execute([$mappedStatus, $pageId]);
+    if (!empty($pageEnv['project_id'])) {
+        ensureProjectInProgress($db, $pageEnv['project_id']);
+    }
     
     // Log activity
     logActivity($db, $userId, 'update_page_env_status', 'project', $pageEnv['project_id'], [
@@ -107,7 +146,9 @@ try {
     
     echo json_encode([
         'success' => true, 
-        'message' => ucfirst($statusType) . ' status updated successfully'
+        'message' => ucfirst($statusType) . ' status updated successfully',
+        'global_status' => $mappedStatus,
+        'global_status_label' => formatPageProgressStatusLabel($mappedStatus)
     ]);
     
 } catch (Exception $e) {

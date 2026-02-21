@@ -336,7 +336,7 @@ include __DIR__ . '/../../includes/header.php';
                 <div class="col-md-4">
                     <div class="card border">
                         <div class="card-header py-1 bg-info-subtle">
-                            <strong class="small"><i class="fas fa-mobile-alt me-1"></i>AT (Env · Status)</strong>
+                            <strong class="small"><i class="fas fa-mobile-alt me-1"></i>AT (Env - Status)</strong>
                         </div>
                         <div class="card-body p-2">
                             <?php 
@@ -386,7 +386,7 @@ include __DIR__ . '/../../includes/header.php';
                 <div class="col-md-4">
                     <div class="card border">
                         <div class="card-header py-1 bg-success-subtle">
-                            <strong class="small"><i class="fas fa-desktop me-1"></i>FT (Env · Status)</strong>
+                            <strong class="small"><i class="fas fa-desktop me-1"></i>FT (Env - Status)</strong>
                         </div>
                         <div class="card-body p-2">
                             <?php 
@@ -436,7 +436,7 @@ include __DIR__ . '/../../includes/header.php';
                 <div class="col-md-4">
                     <div class="card border">
                         <div class="card-header py-1 bg-warning-subtle">
-                            <strong class="small"><i class="fas fa-check-circle me-1"></i>QA (Env · Status)</strong>
+                            <strong class="small"><i class="fas fa-check-circle me-1"></i>QA (Env - Status)</strong>
                         </div>
                         <div class="card-body p-2">
                             <?php 
@@ -454,17 +454,32 @@ include __DIR__ . '/../../includes/header.php';
                                         </div>
                                         <div>
                                             <?php if (in_array($userRole, ['admin', 'super_admin', 'project_lead', 'qa']) || $env['qa_id'] == $userId): ?>
+                                            <?php
+                                                $qaStatusRaw = strtolower(trim((string)($env['qa_status'] ?? 'not_started')));
+                                                $qaStatusMap = [
+                                                    'pending' => 'not_started',
+                                                    'na' => 'on_hold',
+                                                    'pass' => 'completed',
+                                                    'fail' => 'needs_review'
+                                                ];
+                                                $qaStatus = $qaStatusMap[$qaStatusRaw] ?? $qaStatusRaw;
+                                                if (!in_array($qaStatus, ['not_started', 'in_progress', 'completed', 'on_hold', 'needs_review'], true)) {
+                                                    $qaStatus = 'not_started';
+                                                }
+                                            ?>
                                             <select class="form-select form-select-sm env-status-update" 
                                                     data-status-type="qa"
                                                     data-page-id="<?php echo $pageId; ?>" 
                                                     data-env-id="<?php echo $env['environment_id']; ?>"
                                                     style="font-size: 0.8em; min-width: 110px;">
-                                                <option value="pending" <?php echo ($env['qa_status'] ?? '') == 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                                <option value="na" <?php echo ($env['qa_status'] ?? '') == 'na' ? 'selected' : ''; ?>>N/A</option>
-                                                <option value="completed" <?php echo ($env['qa_status'] ?? '') == 'completed' ? 'selected' : ''; ?>>Completed</option>
+                                                <option value="not_started" <?php echo $qaStatus === 'not_started' ? 'selected' : ''; ?>>Not Started</option>
+                                                <option value="in_progress" <?php echo $qaStatus === 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
+                                                <option value="completed" <?php echo $qaStatus === 'completed' ? 'selected' : ''; ?>>Completed</option>
+                                                <option value="on_hold" <?php echo $qaStatus === 'on_hold' ? 'selected' : ''; ?>>On Hold</option>
+                                                <option value="needs_review" <?php echo $qaStatus === 'needs_review' ? 'selected' : ''; ?>>Needs Review</option>
                                             </select>
                                             <?php else: ?>
-                                            <span class="badge bg-secondary" style="font-size: 0.75em;"><?php echo htmlspecialchars(formatQAStatusLabel($env['qa_status'] ?? 'pending')); ?></span>
+                                            <span class="badge bg-secondary" style="font-size: 0.75em;"><?php echo htmlspecialchars(formatQAStatusLabel($env['qa_status'] ?? 'not_started')); ?></span>
                                             <?php endif; ?>
                                         </div>
                                     </div>

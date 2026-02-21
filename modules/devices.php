@@ -158,7 +158,7 @@ include '../includes/header.php';
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="submitRequest()">Submit Request</button>
+                <button type="button" class="btn btn-primary" id="requestSubmitBtn" onclick="submitRequest()">Submit Request</button>
             </div>
         </div>
     </div>
@@ -506,6 +506,14 @@ function getDeviceIcon(type) {
     return icons[type] || 'desktop';
 }
 
+function notify(message, variant) {
+    if (typeof showToast === 'function') {
+        showToast(message, variant || 'info');
+    } else {
+        console.log((variant || 'info') + ': ' + message);
+    }
+}
+
 function showRequestModal(deviceId) {
     const device = devices.find(d => d.id == deviceId);
     if (!device) return;
@@ -524,33 +532,48 @@ function showRequestModal(deviceId) {
         $('#requestHelpText').text('Your request will be sent to the device holder. They can accept your request, or an admin can approve it.');
     }
     $('#requestReason').val('');
+    $('#requestSubmitBtn').prop('disabled', false).html('Submit Request');
     $('#requestModal').modal('show');
 }
 
 function submitRequest() {
     const reason = $('#requestReason').val().trim();
     if (!reason) {
-        alert('Please provide a reason for your request');
+        notify('Please provide a reason for your request', 'warning');
         return;
     }
     
     const formData = new FormData($('#requestForm')[0]);
     const action = $('#requestAction').val() || 'request_switch';
+    const $submitBtn = $('#requestSubmitBtn');
     formData.append('action', action);
+
+    $submitBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Submitting...');
+    try {
+        const modalEl = document.getElementById('requestModal');
+        if (modalEl && window.bootstrap && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        } else {
+            $('#requestModal').modal('hide');
+        }
+    } catch (e) {
+        $('#requestModal').modal('hide');
+    }
     
     $.ajax({
         url: '../api/devices.php',
         method: 'POST',
+        dataType: 'json',
         data: formData,
         processData: false,
         contentType: false,
         success: function(response) {
             if (response.success) {
-                alert(response.message);
-                $('#requestModal').modal('hide');
+                notify(response.message || 'Request submitted successfully', 'success');
                 loadMyRequests();
             } else {
-                alert('Error: ' + response.message);
+                notify('Error: ' + (response.message || 'Request failed'), 'danger');
+                $('#requestModal').modal('show');
             }
         },
         error: function(xhr) {
@@ -563,7 +586,11 @@ function submitRequest() {
                     if (parsed && parsed.message) msg = parsed.message;
                 } catch (e) {}
             }
-            alert(msg);
+            notify(msg, 'danger');
+            $('#requestModal').modal('show');
+        },
+        complete: function() {
+            $submitBtn.prop('disabled', false).html('Submit Request');
         }
     });
 }
@@ -583,10 +610,10 @@ function submitDevice(deviceId) {
             device_id: deviceId
         }, function(response) {
             if (response.success) {
-                alert(response.message);
+                notify(response.message || 'Device submitted successfully', 'success');
                 loadDevices();
             } else {
-                alert('Error: ' + response.message);
+                notify('Error: ' + (response.message || 'Action failed'), 'danger');
             }
         });
     });

@@ -23,8 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($targetUserId > 0 && $projectId > 0) {
                 if (grantQaStatusPermission($db, $targetUserId, 'project', $projectId, $userId, $expiresAt, $notes)) {
-                    $notify = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'permission_update', ?, ?)");
-                    $notify->execute([$targetUserId, 'QA status update access granted for one project.', '/modules/projects/view.php?id=' . $projectId]);
+                    createNotification($db, $targetUserId, 'permission_update', 'QA status update access granted for one project.', '/modules/projects/view.php?id=' . $projectId);
                     $_SESSION['success'] = 'Project-level QA status permission granted.';
                 } else {
                     $_SESSION['error'] = 'Failed to grant project-level permission.';
@@ -42,8 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($targetUserId > 0 && $clientId > 0) {
                 if (grantQaStatusPermission($db, $targetUserId, 'client', $clientId, $userId, $expiresAt, $notes)) {
-                    $notify = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'permission_update', ?, ?)");
-                    $notify->execute([$targetUserId, 'QA status update access granted for all projects under one client.', '/modules/project_lead/my_projects.php']);
+                    createNotification($db, $targetUserId, 'permission_update', 'QA status update access granted for all projects under one client.', '/modules/project_lead/my_projects.php');
                     $_SESSION['success'] = 'Client-level QA status permission granted.';
                 } else {
                     $_SESSION['error'] = 'Failed to grant client-level permission.';

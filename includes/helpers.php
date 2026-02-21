@@ -165,17 +165,34 @@ function getBaseDir() {
  * @return bool
  */
 function createNotification($db, $userId, $type, $message, $link = null) {
+    static $emailMirrorTemporarilyDisabled = false;
     $userId = (int)$userId;
     if ($userId <= 0) return false;
 
-    $type = in_array($type, ['mention', 'assignment', 'system'], true) ? $type : 'system';
+    $allowedTypes = [
+        'mention',
+        'assignment',
+        'system',
+        'edit_request',
+        'edit_request_response',
+        'permission_update',
+        'deadline'
+    ];
+    $type = in_array($type, $allowedTypes, true) ? $type : 'system';
     $message = trim((string)$message);
     $link = $link ? trim((string)$link) : null;
     if ($link === '') $link = null;
+    if ($link === null) {
+        // Fallback to current request so notification opens the same page context.
+        $reqUri = trim((string)($_SERVER['REQUEST_URI'] ?? ''));
+        if ($reqUri !== '') {
+            $link = $reqUri;
+        }
+    }
     if ($link !== null) {
         // Normalize to app-relative path (avoid double baseDir in renderers)
         $baseDir = getBaseDir();
-        if ($baseDir && strpos($link, $baseDir . '/') === 0) {
+        if (!preg_match('/^https?:\/\//i', $link) && $baseDir && strpos($link, $baseDir . '/') === 0) {
             $link = substr($link, strlen($baseDir));
             if ($link === '') $link = '/';
         }
@@ -183,7 +200,81 @@ function createNotification($db, $userId, $type, $message, $link = null) {
 
     try {
         $stmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, ?, ?, ?)");
-        return $stmt->execute([$userId, $type, $message, $link]);
+        $ok = $stmt->execute([$userId, $type, $message, $link]);
+        if (!$ok) {
+            return false;
+        }
+
+        // Best-effort email mirror for in-app notifications.
+        // Never block primary request flow if email transport is failing.
+        try {
+            if ($emailMirrorTemporarilyDisabled) {
+                return true;
+            }
+            $userStmt = $db->prepare("SELECT full_name, email FROM users WHERE id = ? AND is_active = 1 LIMIT 1");
+            $userStmt->execute([$userId]);
+            $recipient = $userStmt->fetch(PDO::FETCH_ASSOC);
+            $recipientEmail = trim((string)($recipient['email'] ?? ''));
+            if ($recipientEmail !== '' && filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+                $emailFile = __DIR__ . '/email.php';
+                if (file_exists($emailFile)) {
+                    require_once $emailFile;
+                }
+
+                if (class_exists('EmailSender')) {
+                    $recipientName = trim((string)($recipient['full_name'] ?? 'User'));
+                    $subjectType = ucfirst(str_replace('_', ' ', $type));
+                    $subject = 'PMS Notification: ' . $subjectType;
+
+                    $settings = @include(__DIR__ . '/../config/settings.php');
+                    $appUrl = is_array($settings) ? trim((string)($settings['app_url'] ?? '')) : '';
+                    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                    $baseDir = getBaseDir();
+                    if ($appUrl === '') {
+                        $appUrl = rtrim($scheme . '://' . $host . $baseDir, '/');
+                    }
+                    $linkPath = trim((string)($link ?? ''));
+                    if ($linkPath !== '') {
+                        if (preg_match('/^https?:\/\//i', $linkPath)) {
+                            $fullLink = $linkPath;
+                        } else {
+                            if ($baseDir && strpos($linkPath, $baseDir . '/') === 0) {
+                                $linkPath = substr($linkPath, strlen($baseDir));
+                            }
+                            $fullLink = rtrim($appUrl, '/') . '/' . ltrim($linkPath, '/');
+                        }
+                    } else {
+                        $fullLink = rtrim($appUrl, '/') . '/modules/notifications.php';
+                    }
+
+                    $safeName = htmlspecialchars($recipientName, ENT_QUOTES, 'UTF-8');
+                    $safeMessage = nl2br(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'));
+                    $safeLink = htmlspecialchars($fullLink, ENT_QUOTES, 'UTF-8');
+
+                    $body = ''
+                        . '<!doctype html><html><body style="font-family:Arial,sans-serif;line-height:1.5;">'
+                        . '<p>Hello ' . $safeName . ',</p>'
+                        . '<p>You have a new notification in PMS:</p>'
+                        . '<p style="background:#f5f7fb;padding:12px;border-radius:6px;">' . $safeMessage . '</p>'
+                        . '<p><a href="' . $safeLink . '">Open Notification</a></p>'
+                        . '<p style="color:#6c757d;font-size:12px;">This is an automated message from PMS.</p>'
+                        . '</body></html>';
+
+                    $mailer = new EmailSender();
+                    $sent = $mailer->send($recipientEmail, $subject, $body, true);
+                    if (!$sent) {
+                        $emailMirrorTemporarilyDisabled = true;
+                        error_log('createNotification email mirror failed: mailer returned false for user_id=' . $userId);
+                    }
+                }
+            }
+        } catch (Exception $mailEx) {
+            $emailMirrorTemporarilyDisabled = true;
+            error_log('createNotification email mirror failed: ' . $mailEx->getMessage());
+        }
+
+        return true;
     } catch (Exception $e) {
         error_log('createNotification error: ' . $e->getMessage());
         return false;
@@ -343,114 +434,145 @@ function getAssignedNamesHtml($db, $page, $prefix) {
     return implode('<br>', $parts);
 }
 
+function normalizeTestingStatusForPage($status) {
+    $s = strtolower(trim((string)$status));
+    if ($s === '' || $s === 'not_started' || $s === 'pending') return 'not_started';
+    if (in_array($s, ['completed', 'pass'], true)) return 'completed';
+    if (in_array($s, ['on_hold', 'hold', 'na'], true)) return 'on_hold';
+    if (in_array($s, ['fail', 'failed', 'testing_failed', 'in_fixing'], true)) return 'in_fixing';
+    if (in_array($s, ['in_testing', 'tested', 'needs_review', 'qa_in_progress'], true)) return 'in_progress';
+    if (in_array($s, ['in_progress', 'ongoing', 'inprogress'], true)) return 'in_progress';
+    return 'in_progress';
+}
+
+function normalizeQaStatusForPage($status) {
+    $s = strtolower(trim((string)$status));
+    if ($s === '' || $s === 'not_started' || $s === 'pending') return 'not_started';
+    if (in_array($s, ['completed', 'pass'], true)) return 'completed';
+    if (in_array($s, ['on_hold', 'hold', 'na'], true)) return 'on_hold';
+    if (in_array($s, ['fail', 'failed', 'qa_failed', 'in_fixing'], true)) return 'in_fixing';
+    if (in_array($s, ['in_progress', 'ongoing', 'inprogress', 'needs_review', 'qa_in_progress'], true)) return 'in_progress';
+    return 'in_progress';
+}
+
 /**
- * Compute page status based on latest testing and QA results
- * Mapping (approved):
- * - on_hold : manual override
- * - not_tested : no testing_results exist
- * - in_testing : latest testing_result status = in_progress
- * - testing_failed : latest testing_result status = fail
- * - tested : latest testing_result = pass and no QA results yet
- * - qa_review : QA exists but no final status (fallback)
- * - qa_failed : latest QA status = fail
- * - completed : latest QA status = pass
+ * Compute aggregate page status from AT/FT testing status and QA status permutations.
+ * Returns a project_pages.status-compatible key.
+ *
+ * @param array $envRows Rows containing status + qa_status (or env_status + env_qa_status)
+ * @return string
+ */
+function computeAggregatePageStatusFromEnvRows(array $envRows) {
+    if (empty($envRows)) return 'not_started';
+
+    $testAllNotStarted = true;
+    $testAllCompleted = true;
+    $testHasStarted = false;
+    $testHasInProgress = false;
+    $testHasOnHold = false;
+    $testHasFixing = false;
+
+    $qaAllNotStarted = true;
+    $qaAllCompleted = true;
+    $qaHasStarted = false;
+    $qaHasInProgress = false;
+    $qaHasOnHold = false;
+    $qaHasFixing = false;
+
+    foreach ($envRows as $row) {
+        $rawTest = $row['status'] ?? ($row['env_status'] ?? '');
+        $rawQa = $row['qa_status'] ?? ($row['env_qa_status'] ?? '');
+
+        $testState = normalizeTestingStatusForPage($rawTest);
+        $qaState = normalizeQaStatusForPage($rawQa);
+
+        if ($testState !== 'not_started') {
+            $testAllNotStarted = false;
+            $testHasStarted = true;
+        }
+        if ($testState !== 'completed') {
+            $testAllCompleted = false;
+        }
+        if ($testState === 'in_progress') $testHasInProgress = true;
+        if ($testState === 'on_hold') $testHasOnHold = true;
+        if ($testState === 'in_fixing') $testHasFixing = true;
+
+        if ($qaState !== 'not_started') {
+            $qaAllNotStarted = false;
+            $qaHasStarted = true;
+        }
+        if ($qaState !== 'completed') {
+            $qaAllCompleted = false;
+        }
+        if ($qaState === 'in_progress') $qaHasInProgress = true;
+        if ($qaState === 'on_hold') $qaHasOnHold = true;
+        if ($qaState === 'in_fixing') $qaHasFixing = true;
+    }
+
+    if ($testHasFixing || $qaHasFixing) return 'in_fixing';
+
+    if ($testAllNotStarted && $qaAllNotStarted) return 'not_started';
+    if ($testAllCompleted && $qaAllCompleted) return 'completed';
+
+    if ($testAllCompleted && $qaHasInProgress) return 'qa_in_progress';
+    if ($testAllCompleted && $qaAllNotStarted) return 'needs_review';
+
+    if (($testHasOnHold && !$testHasInProgress && !$qaHasStarted) || ($qaHasOnHold && $testAllCompleted && !$qaHasInProgress)) {
+        return 'on_hold';
+    }
+
+    if ($testHasStarted || $qaHasStarted) return 'in_progress';
+
+    return 'not_started';
+}
+
+/**
+ * Detect assignment-gap status for a page from environment rows.
+ * Returns one of: need_assignment, tester_not_assigned, qa_not_assigned, ''.
+ *
+ * @param array $envRows
+ * @return string
+ */
+function computePageAssignmentGapStatusFromEnvRows(array $envRows) {
+    if (empty($envRows)) return 'need_assignment';
+
+    $hasTester = false;
+    $hasQa = false;
+    foreach ($envRows as $row) {
+        if (!empty($row['at_tester_id']) || !empty($row['ft_tester_id'])) {
+            $hasTester = true;
+        }
+        if (!empty($row['qa_id'])) {
+            $hasQa = true;
+        }
+    }
+
+    if (!$hasTester && !$hasQa) return 'need_assignment';
+    if (!$hasTester) return 'tester_not_assigned';
+    if (!$hasQa) return 'qa_not_assigned';
+    return '';
+}
+
+/**
+ * Compute page status based on environment testing + QA status permutations.
  *
  * @param PDO $db
- * @param array $page project_pages row (must include at least 'id' and may include 'status')
- * @return string one of the status keys above
+ * @param array $page project_pages row (must include at least id)
+ * @return string
  */
 function computePageStatus($db, $page) {
-    if (empty($page) || empty($page['id'])) return 'not_tested';
-    // Manual override
-    if (!empty($page['status']) && $page['status'] === 'on_hold') return 'on_hold';
+    if (empty($page) || empty($page['id'])) return 'not_started';
 
     $pageId = (int)$page['id'];
-
-    // Check environment-specific statuses first if they exist
-    $envStmt = $db->prepare("SELECT status FROM page_environments WHERE page_id = ?");
+    $envStmt = $db->prepare("SELECT status, qa_status FROM page_environments WHERE page_id = ?");
     $envStmt->execute([$pageId]);
-    $envStatuses = $envStmt->fetchAll(PDO::FETCH_COLUMN);
+    $envRows = $envStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    if (!empty($envStatuses)) {
-        if (in_array('fail', $envStatuses)) return 'testing_failed';
-        if (in_array('in_progress', $envStatuses)) return 'in_testing';
-        if (in_array('needs_review', $envStatuses)) return 'tested';
-        if (in_array('completed', $envStatuses) && !in_array('fail', $envStatuses)) {
-            // Check if ALL are completed or pass
-            $allDone = true;
-            foreach ($envStatuses as $status) {
-                if ($status !== 'completed' && $status !== 'pass' && $status !== 'na') {
-                    $allDone = false;
-                    break;
-                }
-            }
-            if ($allDone) return 'completed';
-        }
-        
-        // If all are pass, check QA
-        $allPass = true;
-        foreach ($envStatuses as $status) {
-            if ($status !== 'pass') {
-                $allPass = false;
-                break;
-            }
-        }
-        
-        if ($allPass) {
-            // Check QA environment statuses
-            $qaEnvStmt = $db->prepare("SELECT qa_status FROM page_environments WHERE page_id = ?");
-            $qaEnvStmt->execute([$pageId]);
-            $qaEnvStatuses = $qaEnvStmt->fetchAll(PDO::FETCH_COLUMN);
-
-            $allQAPass = true;
-            if (empty($qaEnvStatuses)) {
-                $allQAPass = false;
-            } else {
-                foreach ($qaEnvStatuses as $qs) {
-                    if ($qs !== 'pass' && $qs !== 'completed' && $qs !== 'na') {
-                        $allQAPass = false;
-                        break;
-                    }
-                }
-            }
-
-            if ($allQAPass) return 'completed';
-
-            $stmt = $db->prepare("SELECT status FROM qa_results WHERE page_id = ? ORDER BY qa_date DESC LIMIT 1");
-            $stmt->execute([$pageId]);
-            $qr = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$qr) return 'tested';
-
-            $qaStatus = $qr['status'] ?? null;
-            if ($qaStatus === 'pass') return 'completed';
-            if ($qaStatus === 'fail') return 'qa_failed';
-            return 'qa_review';
-        }
+    if (!empty($envRows)) {
+        return computeAggregatePageStatusFromEnvRows($envRows);
     }
 
-    // Fallback to latest testing result if no environments or environment logic didn't return
-    $stmt = $db->prepare("SELECT status FROM testing_results WHERE page_id = ? ORDER BY tested_at DESC LIMIT 1");
-    $stmt->execute([$pageId]);
-    $tr = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$tr) {
-        return 'not_tested';
-    }
-
-    $testStatus = $tr['status'] ?? null;
-    if ($testStatus === 'in_progress' || $testStatus === 'ongoing') return 'in_testing';
-    if ($testStatus === 'fail') return 'testing_failed';
-    if ($testStatus !== 'pass') return 'in_testing';
-
-    // If testing passed, check QA
-    $stmt = $db->prepare("SELECT status FROM qa_results WHERE page_id = ? ORDER BY qa_date DESC LIMIT 1");
-    $stmt->execute([$pageId]);
-    $qr = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$qr) return 'tested';
-
-    $qaStatus = $qr['status'] ?? null;
-    if ($qaStatus === 'pass') return 'completed';
-    if ($qaStatus === 'fail') return 'qa_failed';
-    return 'qa_review';
+    return normalizeTestingStatusForPage($page['status'] ?? 'not_started');
 }
 
 /**
@@ -480,9 +602,11 @@ function formatQAStatusLabel($status) {
     if ($s === 'pass') return 'QA Approved';
     if (in_array($s, ['in_progress', 'inprogress', 'ongoing'])) return 'In Progress';
     if (in_array($s, ['on_hold', 'hold'])) return 'On Hold';
-    if ($s === 'pending') return 'Pending';
+    if ($s === 'not_started' || $s === 'pending') return 'Not Started';
     if (in_array($s, ['fail', 'failed'])) return 'QA Rejected';
-    return ucfirst($s);
+    if ($s === 'needs_review') return 'Needs Review';
+    if ($s === 'completed') return 'Completed';
+    return ucfirst(str_replace('_', ' ', $s));
 }
 
 /**
@@ -497,6 +621,30 @@ function formatProjectStatusLabel($status) {
     if ($s === 'on_hold') return 'On Hold';
     if ($s === 'completed') return 'Completed';
     if ($s === 'cancelled') return 'Cancelled';
+    return ucfirst(str_replace('_', ' ', $s));
+}
+
+/**
+ * Human-friendly label for page progress status.
+ * Keeps "in_progress" explicit as "Testing In Progress".
+ */
+function formatPageProgressStatusLabel($status) {
+    $s = strtolower(trim((string)$status));
+    if ($s === 'need_assignment') return 'Need Assignment';
+    if ($s === 'tester_not_assigned') return 'Tester Not Assigned';
+    if ($s === 'qa_not_assigned') return 'QA Not Assigned';
+    if ($s === '' || $s === 'not_started') return 'Not Started';
+    if ($s === 'in_progress') return 'Testing In Progress';
+    if ($s === 'qa_in_progress') return 'QA In Progress';
+    if ($s === 'in_fixing') return 'In Fixing';
+    if ($s === 'needs_review') return 'Needs Review';
+    if ($s === 'on_hold') return 'On Hold';
+    if ($s === 'completed') return 'Completed';
+    if ($s === 'not_tested') return 'Not Started';
+    if ($s === 'in_testing') return 'Testing In Progress';
+    if ($s === 'qa_review') return 'QA In Progress';
+    if ($s === 'testing_failed' || $s === 'qa_failed') return 'In Fixing';
+    if ($s === 'tested') return 'Needs Review';
     return ucfirst(str_replace('_', ' ', $s));
 }
 
@@ -550,16 +698,21 @@ function formatTestingHomeStatus($db, $page) {
     $computed = computePageStatus($db, $page);
 
     switch ($computed) {
+        case 'not_started':
         case 'not_tested':
             return 'Not Started';
+        case 'in_progress':
         case 'in_testing':
-            return 'In Progress';
+            return 'Testing In Progress';
         case 'testing_failed':
-            return 'In Progress';
+            return 'In Fixing';
+        case 'needs_review':
         case 'tested':
             return 'Needs Review';
+        case 'qa_in_progress':
         case 'qa_review':
             return 'QA In Progress';
+        case 'in_fixing':
         case 'qa_failed':
             return 'In Fixing';
         case 'completed':
@@ -718,11 +871,25 @@ function ensureProjectInProgress($db, $projectId) {
 function renderQAEnvStatusDropdown($pageId, $envId, $currentStatus) {
     global $userRole, $userId;
     
-    if (!$currentStatus) $currentStatus = "pending";
+    $statusMap = [
+        'pending' => 'not_started',
+        'na' => 'on_hold',
+        'pass' => 'completed',
+        'fail' => 'needs_review'
+    ];
+
+    $normalizedStatus = strtolower(trim((string)$currentStatus));
+    if (isset($statusMap[$normalizedStatus])) {
+        $normalizedStatus = $statusMap[$normalizedStatus];
+    }
+    if ($normalizedStatus === '') $normalizedStatus = "not_started";
+
     $statuses = [
-        "pending" => "Pending",
-        "na" => "N/A",
-        "completed" => "Completed"
+        "not_started" => "Not Started",
+        "in_progress" => "In Progress",
+        "completed" => "Completed",
+        "on_hold" => "On Hold",
+        "needs_review" => "Needs Review"
     ];
     
     // Check if user can edit (admin, project_lead, qa, or assigned QA)
@@ -735,7 +902,7 @@ function renderQAEnvStatusDropdown($pageId, $envId, $currentStatus) {
     $html .= 'style="font-size: 0.75rem; min-width: 120px;">';
     
     foreach ($statuses as $val => $label) {
-        $selected = ($val === $currentStatus) ? ' selected' : '';
+        $selected = ($val === $normalizedStatus) ? ' selected' : '';
         $html .= '<option value="' . $val . '"' . $selected . '>' . $label . '</option>';
     }
     

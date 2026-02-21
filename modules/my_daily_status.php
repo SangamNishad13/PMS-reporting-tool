@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/helpers.php';
 
 $auth = new Auth();
 $auth->requireLogin();
@@ -45,6 +46,7 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
 } catch (Exception $e) {}
 try { $db->exec("ALTER TABLE user_edit_requests ADD COLUMN request_type ENUM('edit','delete') NOT NULL DEFAULT 'edit'"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE user_edit_requests ADD COLUMN locked_at TIMESTAMP NULL DEFAULT NULL"); } catch (Exception $e) {}
 try { $db->exec("UPDATE user_edit_requests SET request_type = 'delete' WHERE reason LIKE 'Deletion request for time log ID %'"); } catch (Exception $e) {}
 try { $db->exec("UPDATE user_edit_requests SET request_type = 'edit' WHERE request_type IS NULL OR request_type = ''"); } catch (Exception $e) {}
 try { $db->exec("ALTER TABLE user_edit_requests DROP INDEX uq_user_date"); } catch (Exception $e) {}
@@ -113,7 +115,7 @@ if (!function_exists('recordProjectTimeLogHistory')) {
 if (isset($_GET['action']) && $_GET['action'] === 'check_edit_request') {
     $reqDate = $_GET['date'] ?? $date;
     $stmt = $db->prepare("
-        SELECT status
+        SELECT status, locked_at
         FROM user_edit_requests
         WHERE user_id = ?
           AND req_date = ?
@@ -123,12 +125,16 @@ if (isset($_GET['action']) && $_GET['action'] === 'check_edit_request') {
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $status = $row['status'] ?? null;
     $pending = ($status === 'pending');
-    $approved = ($status === 'approved');
+    $pendingLocked = ($pending && !empty($row['locked_at']));
+    // Keep UI behavior consistent: only "pending" is actionable in the client.
+    // Approved/used/rejected requests should show normal "Request Edit" flow.
+    $approved = false;
     $rejected = ($status === 'rejected');
     $used = ($status === 'used');
     header('Content-Type: application/json');
     echo json_encode([
         'pending' => $pending,
+        'pending_locked' => $pendingLocked,
         'approved' => $approved,
         'rejected' => $rejected,
         'used' => $used,
@@ -144,7 +150,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'request_edit') {
     
     try {
         // Insert or update request to pending
-        $stmt = $db->prepare("INSERT INTO user_edit_requests (user_id, req_date, request_type, status, reason) VALUES (?, ?, 'edit', 'pending', ?) ON DUPLICATE KEY UPDATE request_type='edit', status='pending', reason=VALUES(reason), updated_at=NOW()");
+        $stmt = $db->prepare("INSERT INTO user_edit_requests (user_id, req_date, request_type, status, reason, locked_at) VALUES (?, ?, 'edit', 'pending', ?, NULL) ON DUPLICATE KEY UPDATE request_type='edit', status='pending', reason=VALUES(reason), locked_at=NULL, updated_at=NOW()");
         $stmt->execute([$userId, $reqDate, $reason]);
 
         // Insert notification for all admins
@@ -166,14 +172,57 @@ if (isset($_POST['action']) && $_POST['action'] === 'request_edit') {
         $link = "/modules/admin/edit_requests.php";
         
         foreach ($admins as $admin) {
-            $nStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'edit_request', ?, ?)");
-            $nStmt->execute([$admin['id'], $msg, $link]);
+            createNotification($db, (int)$admin['id'], 'edit_request', $msg, $link);
         }
         
         header('Content-Type: application/json');
         echo json_encode(['success' => true, 'message' => 'Edit request sent to ' . count($admins) . ' admin(s)']);
         exit;
         
+    } catch (Exception $e) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+        exit;
+    }
+}
+
+// Handle AJAX: finalize pending changes so user cannot modify further
+if (isset($_POST['action']) && $_POST['action'] === 'submit_pending') {
+    $reqDate = $_POST['date'] ?? $date;
+    try {
+        $rowStmt = $db->prepare("
+            SELECT id, status, locked_at
+            FROM user_edit_requests
+            WHERE user_id = ?
+              AND req_date = ?
+              AND request_type = 'edit'
+            LIMIT 1
+        ");
+        $rowStmt->execute([$userId, $reqDate]);
+        $reqRow = $rowStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$reqRow || (string)($reqRow['status'] ?? '') !== 'pending') {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'No pending edit request found for this date']);
+            exit;
+        }
+
+        if (!empty($reqRow['locked_at'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'already_submitted' => true]);
+            exit;
+        }
+
+        $updStmt = $db->prepare("
+            UPDATE user_edit_requests
+            SET locked_at = NOW(), updated_at = NOW()
+            WHERE id = ?
+        ");
+        $updStmt->execute([(int)$reqRow['id']]);
+
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'message' => 'Pending changes submitted']);
+        exit;
     } catch (Exception $e) {
         header('Content-Type: application/json');
         echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
@@ -189,6 +238,22 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_pending') {
     $personal_note = $_POST['personal_note'] ?? '';
     
     try {
+        $lockStmt = $db->prepare("
+            SELECT locked_at
+            FROM user_edit_requests
+            WHERE user_id = ?
+              AND req_date = ?
+              AND request_type = 'edit'
+            LIMIT 1
+        ");
+        $lockStmt->execute([$userId, $reqDate]);
+        $lockRow = $lockStmt->fetch(PDO::FETCH_ASSOC);
+        if ($lockRow && !empty($lockRow['locked_at'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Request already submitted. You can no longer modify pending changes.']);
+            exit;
+        }
+
         // Create pending changes table if not exists
         $db->exec("CREATE TABLE IF NOT EXISTS user_pending_changes (
             id INT PRIMARY KEY AUTO_INCREMENT,
@@ -207,7 +272,33 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_pending') {
         $db->exec("ALTER TABLE user_pending_changes MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'not_updated'");
         
         // Save pending changes
-        $pendingLogs = $_POST['pending_time_logs'] ?? '[]';
+        $hasPendingLogsInput = array_key_exists('pending_time_logs', $_POST);
+        $appendPendingLogs = (isset($_POST['pending_time_logs_append']) && (string)$_POST['pending_time_logs_append'] === '1');
+        $existingPendingLogsRaw = '[]';
+        try {
+            $existingStmt = $db->prepare("SELECT pending_time_logs FROM user_pending_changes WHERE user_id = ? AND req_date = ? LIMIT 1");
+            $existingStmt->execute([$userId, $reqDate]);
+            $existingPendingLogsRaw = (string)($existingStmt->fetchColumn() ?: '[]');
+        } catch (Exception $e) {
+            $existingPendingLogsRaw = '[]';
+        }
+        $existingPendingLogs = json_decode($existingPendingLogsRaw, true);
+        if (!is_array($existingPendingLogs)) {
+            $existingPendingLogs = [];
+        }
+
+        $resolvedPendingLogs = $existingPendingLogs;
+        if ($hasPendingLogsInput) {
+            $incomingPendingLogs = json_decode((string)$_POST['pending_time_logs'], true);
+            if (!is_array($incomingPendingLogs)) {
+                $incomingPendingLogs = [];
+            }
+            $resolvedPendingLogs = $appendPendingLogs
+                ? array_values(array_merge($existingPendingLogs, $incomingPendingLogs))
+                : $incomingPendingLogs;
+        }
+        $pendingLogs = json_encode($resolvedPendingLogs, JSON_UNESCAPED_UNICODE);
+
         $stmt = $db->prepare("INSERT INTO user_pending_changes (user_id, req_date, status, notes, personal_note, pending_time_logs) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE status=VALUES(status), notes=VALUES(notes), personal_note=VALUES(personal_note), pending_time_logs=VALUES(pending_time_logs), updated_at=NOW()");
         $stmt->execute([$userId, $reqDate, $status, $notes, $personal_note, $pendingLogs]);
         
@@ -667,8 +758,7 @@ if ($isTimeLogPost) {
                 $msg = $userName . " requested edit approval for time log on " . $date;
                 $link = "/modules/admin/edit_requests.php";
                 foreach ($admins as $admin) {
-                    $nStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'edit_request', ?, ?)");
-                    $nStmt->execute([$admin['id'], $msg, $link]);
+                    createNotification($db, (int)$admin['id'], 'edit_request', $msg, $link);
                 }
 
                 $_SESSION['success'] = "Edit request sent to admin for approval. Your log will be applied after approval.";
@@ -906,8 +996,7 @@ if (isset($_GET['delete_log_request'])) {
             $msg = $userName . " requested deletion approval for time log on " . $date . " (Log ID: " . $logId . ")";
             $link = "/modules/admin/edit_requests.php";
             foreach ($admins as $admin) {
-                $nStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'edit_request', ?, ?)");
-                $nStmt->execute([$admin['id'], $msg, $link]);
+                createNotification($db, (int)$admin['id'], 'edit_request', $msg, $link);
             }
 
             $_SESSION['success'] = "Deletion request sent to admin for approval.";
@@ -1050,8 +1139,7 @@ if (isset($_GET['edit_log_request'])) {
             $msg = $userName . " requested edit approval for time log on " . $date . " (Log ID: " . $logId . ")";
             $link = "/modules/admin/edit_requests.php";
             foreach ($admins as $admin) {
-                $nStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'edit_request', ?, ?)");
-                $nStmt->execute([$admin['id'], $msg, $link]);
+                createNotification($db, (int)$admin['id'], 'edit_request', $msg, $link);
             }
 
             $_SESSION['success'] = "Edit request sent to admin for approval.";
@@ -1230,7 +1318,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_personal_note') {
 if (isset($_GET['action']) && $_GET['action'] === 'check_edit_request') {
     $reqDate = $_GET['date'] ?? $date;
     $stmt = $db->prepare("
-        SELECT status
+        SELECT status, locked_at
         FROM user_edit_requests
         WHERE user_id = ?
           AND req_date = ?
@@ -1239,9 +1327,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'check_edit_request') {
     $stmt->execute([$userId, $reqDate]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $pending = ($row && $row['status'] === 'pending');
-    $approved = ($row && $row['status'] === 'approved');
+    $pendingLocked = ($pending && !empty($row['locked_at']));
+    $approved = false;
     header('Content-Type: application/json');
-    echo json_encode(['pending' => $pending, 'approved' => $approved]);
+    echo json_encode(['pending' => $pending, 'pending_locked' => $pendingLocked, 'approved' => $approved]);
     exit;
 }
 
@@ -3046,7 +3135,14 @@ function handleEditLogRequest(logId, dateStr, logData) {
             '&new_generic_task_detail=' + encodeURIComponent(genericDetail) +
             '&new_hours=' + encodeURIComponent(h) +
             '&new_description=' + encodeURIComponent(d);
-        window.location.href = url;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Sending...';
+        try {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        } catch (e) {}
+        setTimeout(function () {
+            window.location.href = url;
+        }, 60);
     };
 
     try {

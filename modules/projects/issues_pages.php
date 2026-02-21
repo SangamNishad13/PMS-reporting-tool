@@ -66,6 +66,16 @@ $pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_p
 $pagesStmt->execute([$projectId]);
 $projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Environments list for filters
+$envList = [];
+try {
+    $envListStmt = $db->prepare("SELECT id, name FROM testing_environments ORDER BY name");
+    $envListStmt->execute();
+    $envList = $envListStmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $envList = [];
+}
+
 // Issue page summaries - Count actual issues from issues table
 $issuePageSummaries = [];
 try {
@@ -259,10 +269,74 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
             </div>
         </div>
+
+        <div class="row g-3 p-3 border-bottom" id="issuesPagesFiltersRow">
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Search</label>
+                <input id="issuesPagesFilterSearch" class="form-control form-control-sm" placeholder="Search name or URL..." />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">User Filter</label>
+                <select id="issuesPagesFilterUser" class="form-select form-select-sm">
+                    <option value="">All Users</option>
+                    <?php foreach ($projectUsers as $pu): ?>
+                        <option value="<?php echo htmlspecialchars($pu['full_name']); ?>"><?php echo htmlspecialchars($pu['full_name']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Environment</label>
+                <select id="issuesPagesFilterEnv" class="form-select form-select-sm">
+                    <option value="">All Environments</option>
+                    <?php foreach ($envList as $env): ?>
+                        <option value="<?php echo htmlspecialchars($env['name']); ?>"><?php echo htmlspecialchars($env['name']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">QA Filter</label>
+                <select id="issuesPagesFilterQa" class="form-select form-select-sm">
+                    <option value="">All QA</option>
+                    <?php foreach ($projectUsers as $pu): ?>
+                        <option value="<?php echo htmlspecialchars($pu['full_name']); ?>"><?php echo htmlspecialchars($pu['full_name']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small text-muted">Page Status</label>
+                <select id="issuesPagesFilterStatus" class="form-select form-select-sm">
+                    <option value="">All Status</option>
+                    <option value="Need Assignment">Need Assignment</option>
+                    <option value="Tester Not Assigned">Tester Not Assigned</option>
+                    <option value="QA Not Assigned">QA Not Assigned</option>
+                    <option value="Not Started">Not Started</option>
+                    <option value="Testing In Progress">Testing In Progress</option>
+                    <option value="QA In Progress">QA In Progress</option>
+                    <option value="Needs Review">Needs Review</option>
+                    <option value="In Fixing">In Fixing</option>
+                    <option value="On Hold">On Hold</option>
+                    <option value="Completed">Completed</option>
+                </select>
+            </div>
+        </div>
         
         <div class="row g-3 p-3" id="issuesPagesRow">
             <div class="col-lg-12" id="issuesPagesCol">
                 <div class="table-responsive" id="issuesPageList">
+                    <?php
+                    $issuePageEnvStmt = $db->prepare("
+                        SELECT pe.status AS env_status, pe.qa_status AS env_qa_status, pe.at_tester_id, pe.ft_tester_id, pe.qa_id,
+                               te.name AS env_name,
+                               at_u.full_name AS at_name, ft_u.full_name AS ft_name, qa_u.full_name AS qa_name
+                        FROM page_environments pe
+                        JOIN testing_environments te ON pe.environment_id = te.id
+                        LEFT JOIN users at_u ON pe.at_tester_id = at_u.id
+                        LEFT JOIN users ft_u ON pe.ft_tester_id = ft_u.id
+                        LEFT JOIN users qa_u ON pe.qa_id = qa_u.id
+                        WHERE pe.page_id = ?
+                        ORDER BY te.name
+                    ");
+                    ?>
                     <table class="table table-hover table-sm align-middle mb-0 resizable-table">
                         <thead class="table-light">
                             <tr>
@@ -273,6 +347,7 @@ include __DIR__ . '/../../includes/header.php';
                                 <th style="width: 150px;">Members<div class="col-resizer"></div></th>
                                 <th style="width: 120px;">Environment<div class="col-resizer"></div></th>
                                 <th style="width: 120px;">Prod Hours<div class="col-resizer"></div></th>
+                                <th style="width: 150px;">Page Status<div class="col-resizer"></div></th>
                                 <th style="width: 120px;">Grouped URLs</th>
                             </tr>
                         </thead>
@@ -293,13 +368,62 @@ include __DIR__ . '/../../includes/header.php';
     $pageUrls = $urlsByUniqueId[$u['unique_id']] ?? [];
     $hasUrls = !empty($pageUrls);
     $urlCount = count($pageUrls);
+
+    $envRows = [];
+    if ($mappedPageId > 0) {
+        try {
+            $issuePageEnvStmt->execute([$mappedPageId]);
+            $envRows = $issuePageEnvStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            $envRows = [];
+        }
+    }
+
+    $pageStatusKey = ($mappedPageId > 0 && !empty($sum['status'])) ? (string)$sum['status'] : 'not_started';
+    $assignmentGapStatus = computePageAssignmentGapStatusFromEnvRows($envRows);
+    if ($assignmentGapStatus !== '') {
+        $pageStatusKey = $assignmentGapStatus;
+    } elseif (!empty($envRows)) {
+        $pageStatusKey = computeAggregatePageStatusFromEnvRows($envRows);
+    }
+    $pageStatusLabel = formatPageProgressStatusLabel($pageStatusKey);
+    $pageStatusBadge = 'secondary';
+    if ($pageStatusKey === 'completed') $pageStatusBadge = 'success';
+    elseif ($pageStatusKey === 'in_progress') $pageStatusBadge = 'warning text-dark';
+    elseif ($pageStatusKey === 'qa_in_progress') $pageStatusBadge = 'info text-dark';
+    elseif ($pageStatusKey === 'needs_review') $pageStatusBadge = 'primary';
+    elseif ($pageStatusKey === 'in_fixing') $pageStatusBadge = 'danger';
+    elseif ($pageStatusKey === 'on_hold') $pageStatusBadge = 'light text-dark border';
+    elseif ($pageStatusKey === 'need_assignment') $pageStatusBadge = 'dark';
+
+    $atNames = [];
+    $ftNames = [];
+    $qaNames = [];
+    foreach ($envRows as $er) {
+        if (!empty($er['at_tester_id'])) {
+            $atNames[] = trim((string)($er['at_name'] ?? ('User #' . (int)$er['at_tester_id'])));
+        }
+        if (!empty($er['ft_tester_id'])) {
+            $ftNames[] = trim((string)($er['ft_name'] ?? ('User #' . (int)$er['ft_tester_id'])));
+        }
+        if (!empty($er['qa_id'])) {
+            $qaNames[] = trim((string)($er['qa_name'] ?? ('User #' . (int)$er['qa_id'])));
+        }
+    }
+    $atNames = array_values(array_unique(array_filter($atNames)));
+    $ftNames = array_values(array_unique(array_filter($ftNames)));
+    $qaNames = array_values(array_unique(array_filter($qaNames)));
+    $testerFilterText = trim(implode(', ', array_unique(array_merge($atNames, $ftNames, $qaNames))));
+    $qaFilterText = trim(implode(', ', $qaNames));
 ?>
                             <tr class="issues-page-row" 
                                 data-unique-id="<?php echo (int)$u['unique_id']; ?>"
                                 data-page-id="<?php echo (int)$mappedPageId; ?>"
                                 data-page-name="<?php echo htmlspecialchars($displayName); ?>"
-                                data-page-tester="<?php echo htmlspecialchars($tester ?: '-'); ?>"
+                                data-page-tester="<?php echo htmlspecialchars($testerFilterText ?: ($tester ?: '-')); ?>"
+                                data-page-qa="<?php echo htmlspecialchars($qaFilterText ?: '-'); ?>"
                                 data-page-env="<?php echo htmlspecialchars($envs ?: '-'); ?>"
+                                data-page-status="<?php echo htmlspecialchars($pageStatusLabel); ?>"
                                 data-page-issues="<?php echo $count; ?>"
                                 style="cursor: pointer;"
                                 onclick="window.location.href='<?php echo $baseDir; ?>/modules/projects/issues_page_detail.php?project_id=<?php echo $projectId; ?>&page_id=<?php echo (int)$mappedPageId; ?>'">
@@ -324,6 +448,11 @@ include __DIR__ . '/../../includes/header.php';
                                 <td class="small"><?php echo htmlspecialchars($envs ?: '-'); ?></td>
                                 <td class="small"><?php echo number_format($prodHours, 2); ?> hrs</td>
                                 <td>
+                                    <span class="badge bg-<?php echo htmlspecialchars($pageStatusBadge); ?>">
+                                        <?php echo htmlspecialchars($pageStatusLabel); ?>
+                                    </span>
+                                </td>
+                                <td>
                                     <?php if ($hasUrls): ?>
                                     <button class="btn btn-xs btn-outline-secondary" 
                                             type="button" 
@@ -340,7 +469,7 @@ include __DIR__ . '/../../includes/header.php';
                             </tr>
                             <?php if ($hasUrls): ?>
                             <tr class="collapse" id="urls-<?php echo (int)$u['unique_id']; ?>">
-                                <td colspan="8" class="p-0 border-0">
+                                <td colspan="9" class="p-0 border-0">
                                     <div class="bg-light p-3 border-top">
                                         <div class="small fw-bold text-muted mb-2">
                                             <i class="fas fa-link me-1"></i> Grouped URLs (<?php echo $urlCount; ?>)
@@ -359,7 +488,7 @@ include __DIR__ . '/../../includes/header.php';
                             <?php endif; ?>
 <?php endforeach; else: ?>
                             <tr>
-                                <td colspan="8" class="text-center text-muted py-5">
+                                <td colspan="9" class="text-center text-muted py-5">
                                     <i class="fas fa-inbox fa-3x mb-3 opacity-25"></i>
                                     <div>No unique pages added yet.</div>
                                 </td>
@@ -404,6 +533,62 @@ include __DIR__ . '/partials/issues_modals.php';
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js"></script>
 
 <script>
+// Filters for issues_pages.php
+(function() {
+    function updateIssuesPagesNoDataRow() {
+        var $tbody = $('#issuesPageList table tbody');
+        if (!$tbody.length) return;
+
+        $tbody.find('tr#issuesPagesNoDataRow').remove();
+        var visibleCount = $('#issuesPageList .issues-page-row:visible').length;
+        if (visibleCount > 0) return;
+
+        $tbody.append(
+            '<tr id="issuesPagesNoDataRow">' +
+                '<td colspan="9" class="text-center text-muted py-4">' +
+                    '<i class="fas fa-search me-2"></i>No data found' +
+                '</td>' +
+            '</tr>'
+        );
+    }
+
+    function applyIssuesPagesFilters() {
+        var q = ($('#issuesPagesFilterSearch').val() || '').toLowerCase().trim();
+        var user = ($('#issuesPagesFilterUser').val() || '').toLowerCase().trim();
+        var env = ($('#issuesPagesFilterEnv').val() || '').toLowerCase().trim();
+        var qa = ($('#issuesPagesFilterQa').val() || '').toLowerCase().trim();
+        var status = ($('#issuesPagesFilterStatus').val() || '').toLowerCase().trim();
+
+        $('#issuesPageList .issues-page-row').each(function() {
+            var $row = $(this);
+            var name = String($row.data('page-name') || '').toLowerCase();
+            var tester = String($row.data('page-tester') || '').toLowerCase();
+            var qaText = String($row.data('page-qa') || '').toLowerCase();
+            var envText = String($row.data('page-env') || '').toLowerCase();
+            var statusText = String($row.data('page-status') || '').toLowerCase();
+            var urlText = $row.find('td').eq(1).find('.text-muted').text().toLowerCase();
+
+            var show = true;
+            if (q && name.indexOf(q) === -1 && urlText.indexOf(q) === -1) show = false;
+            if (user && show && tester.indexOf(user) === -1) show = false;
+            if (env && show && envText.indexOf(env) === -1) show = false;
+            if (qa && show && qaText.indexOf(qa) === -1) show = false;
+            if (status && show && statusText.indexOf(status) === -1) show = false;
+
+            $row.toggle(show);
+            var uniqueId = $row.data('unique-id');
+            var $collapseRow = $('#urls-' + uniqueId).closest('tr');
+            if ($collapseRow.length) $collapseRow.toggle(show);
+        });
+
+        updateIssuesPagesNoDataRow();
+    }
+
+    $(document).on('input', '#issuesPagesFilterSearch', applyIssuesPagesFilters);
+    $(document).on('change', '#issuesPagesFilterUser, #issuesPagesFilterEnv, #issuesPagesFilterQa, #issuesPagesFilterStatus', applyIssuesPagesFilters);
+    updateIssuesPagesNoDataRow();
+})();
+
 // Column Resizer for Issues Pages Table
 (function() {
     var resizableTable = document.querySelector('.resizable-table');

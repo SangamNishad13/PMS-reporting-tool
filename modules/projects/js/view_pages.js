@@ -274,12 +274,14 @@ $(document).ready(function () {
         var user = $('#uniqueFilterUser').val();
         var env = $('#uniqueFilterEnv').val();
         var qa = $('#uniqueFilterQa').val();
+        var pageStatus = $('#uniqueFilterPageStatus').val().toLowerCase().trim();
         $('#project_pages_sub table tbody tr').each(function () {
             var name = $(this).find('td').eq(2).text().toLowerCase();
             var url = $(this).find('td').eq(3).text().toLowerCase();
             var ft = $(this).find('td').eq(5).text().toLowerCase();
             var at = $(this).find('td').eq(6).text().toLowerCase();
             var qaText = $(this).find('td').eq(7).text().toLowerCase();
+            var pageStatusText = $(this).find('td').eq(8).text().toLowerCase();
             var envText = $(this).find('td').eq(5).text().toLowerCase() + ' ' + $(this).find('td').eq(6).text().toLowerCase();
             var show = true;
             if (q && name.indexOf(q) === -1 && url.indexOf(q) === -1) show = false;
@@ -293,11 +295,14 @@ $(document).ready(function () {
             if (qa && show) {
                 if (qaText.indexOf(qa.toLowerCase()) === -1) show = false;
             }
+            if (pageStatus && show) {
+                if (pageStatusText.indexOf(pageStatus) === -1) show = false;
+            }
             if (show) $(this).show(); else $(this).hide();
         });
     }
     $('#uniqueFilter').on('input', applyUniqueFilters);
-    $('#uniqueFilterUser, #uniqueFilterEnv, #uniqueFilterQa').on('change', applyUniqueFilters);
+    $('#uniqueFilterUser, #uniqueFilterEnv, #uniqueFilterQa, #uniqueFilterPageStatus').on('change', applyUniqueFilters);
 
     // All URLs filter handling
     function applyAllUrlsFilters() {

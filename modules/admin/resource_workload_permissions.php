@@ -63,8 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $notifMsg .= " Expires: " . date('M d, Y H:i', strtotime($expiresAt));
                         }
                         $notifLink = "/modules/admin/resource_workload.php";
-                        $notifStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'permission_update', ?, ?)");
-                        $notifStmt->execute([$projectLeadId, $notifMsg, $notifLink]);
+                        createNotification($db, (int)$projectLeadId, 'permission_update', $notifMsg, $notifLink);
                     } catch (Exception $e) {
                         // Do not block permission grant if notification fails.
                     }
@@ -76,8 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $notifMsg .= " Access expires on " . date('M d, Y H:i', strtotime($expiresAt)) . ".";
                         }
                         $notifLink = "/modules/admin/resource_workload.php";
-                        $notifStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'permission_update', ?, ?)");
-                        $notifStmt->execute([$projectLeadId, $notifMsg, $notifLink]);
+                        createNotification($db, (int)$projectLeadId, 'permission_update', $notifMsg, $notifLink);
                     } catch (Exception $e) {
                         // Keep permission grant successful even if notification insert fails.
                     }
@@ -127,8 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     try {
                         $notifMsg = "Your access to Resource Workload has been revoked.";
                         $notifLink = "/modules/admin/resource_workload.php";
-                        $notifStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'permission_update', ?, ?)");
-                        $notifStmt->execute([(int)$permission['user_id'], $notifMsg, $notifLink]);
+                        createNotification($db, (int)$permission['user_id'], 'permission_update', $notifMsg, $notifLink);
                     } catch (Exception $e) {
                         // Do not block revoke if notification fails.
                     }
@@ -137,8 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     try {
                         $notifMsg = "Your resource workload access has been revoked.";
                         $notifLink = "/modules/admin/resource_workload.php";
-                        $notifStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'permission_update', ?, ?)");
-                        $notifStmt->execute([(int)$permission['user_id'], $notifMsg, $notifLink]);
+                        createNotification($db, (int)$permission['user_id'], 'permission_update', $notifMsg, $notifLink);
                     } catch (Exception $e) {
                         // Keep revoke successful even if notification insert fails.
                     }

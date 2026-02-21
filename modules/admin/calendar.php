@@ -518,6 +518,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error('FullCalendar failed to load');
         return;
     }
+    var statusFilterStorageKey = 'admin_calendar_status_filters_v1';
 
     var calendarEl = document.getElementById('calendar');
     
@@ -532,7 +533,54 @@ document.addEventListener('DOMContentLoaded', function() {
     function getSelectedFilters() {
         var checkboxes = document.querySelectorAll('.status-filter-check:checked');
         var filters = Array.from(checkboxes).map(cb => cb.value);
-        return filters.length > 0 ? filters.join(',') : 'all';
+        return filters.length > 0 ? filters.join(',') : 'none';
+    }
+
+    function getSelectedFilterSet() {
+        return new Set(
+            Array.from(document.querySelectorAll('.status-filter-check:checked')).map(function(cb) {
+                return String(cb.value || '').toLowerCase();
+            })
+        );
+    }
+
+    function isStatusVisibleByFilter(statusType, selectedSet) {
+        var key = String(statusType || '').toLowerCase();
+        if (!selectedSet || selectedSet.size === 0) return false;
+        if (selectedSet.has(key)) return true;
+        if ((key === 'on_leave' || key === 'sick_leave') && selectedSet.has('leave')) return true;
+        return false;
+    }
+
+    function applyStatusFilterToRenderedEvents() {
+        var selectedSet = getSelectedFilterSet();
+        var eventEls = calendarEl.querySelectorAll('.fc-event[data-status-type], .fc-daygrid-event[data-status-type]');
+        eventEls.forEach(function(el) {
+            var statusType = String(el.getAttribute('data-status-type') || '').toLowerCase();
+            el.style.display = isStatusVisibleByFilter(statusType, selectedSet) ? '' : 'none';
+        });
+    }
+
+    function applySavedStatusFilters() {
+        try {
+            var raw = localStorage.getItem(statusFilterStorageKey);
+            if (!raw) return;
+            var saved = JSON.parse(raw);
+            if (!Array.isArray(saved)) return;
+            var boxes = document.querySelectorAll('.status-filter-check');
+            boxes.forEach(function(cb) {
+                cb.checked = saved.indexOf(cb.value) !== -1;
+            });
+        } catch (e) {}
+    }
+
+    function saveStatusFilters() {
+        try {
+            var selected = Array.from(document.querySelectorAll('.status-filter-check:checked')).map(function(cb) {
+                return cb.value;
+            });
+            localStorage.setItem(statusFilterStorageKey, JSON.stringify(selected));
+        } catch (e) {}
     }
     
     // Helper to read current user selection
@@ -544,7 +592,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Function to construct URL for main events
     function getEventsUrl() {
         var userId = getSelectedUserId();
-        return '<?php echo $_SERVER["PHP_SELF"]; ?>?action=get_events&status_filter=' + getSelectedFilters() + (userId ? '&user_id=' + encodeURIComponent(userId) : '');
+        return '<?php echo $_SERVER["PHP_SELF"]; ?>?action=get_events' + (userId ? '&user_id=' + encodeURIComponent(userId) : '');
     }
 
     // Refresh only the main events source
@@ -762,8 +810,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (info.event.extendedProps.role) el.setAttribute('data-user-role', info.event.extendedProps.role);
                     if (info.event.extendedProps.statusType) el.setAttribute('data-status-type', info.event.extendedProps.statusType);
                     if (typeof info.event.startStr !== 'undefined') el.setAttribute('data-date', info.event.startStr);
+                    if (props.statusType) {
+                        var selectedSet = getSelectedFilterSet();
+                        if (!isStatusVisibleByFilter(props.statusType, selectedSet)) {
+                            el.style.display = 'none';
+                        }
+                    }
                 }
             } catch (e) { /* ignore */ }
+        },
+        eventsSet: function() {
+            applyStatusFilterToRenderedEvents();
         },
         eventClick: function(info) {
             // Handle Edit Request Click
@@ -823,7 +880,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle checkbox filter changes
     document.querySelectorAll('.status-filter-check').forEach(function(checkbox) {
         checkbox.addEventListener('change', function() {
-            refreshMainEvents();
+            saveStatusFilters();
+            applyStatusFilterToRenderedEvents();
         });
     });
     
@@ -854,6 +912,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Restore persisted filters after handlers are attached.
+    applySavedStatusFilters();
+    applyStatusFilterToRenderedEvents();
 });
 </script>
 

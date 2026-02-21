@@ -30,14 +30,18 @@ return [
     ],
     
     // Email Settings
-    'mail_from' => 'noreply@example.com',
-    'mail_from_name' => 'Project Management System',
-    'smtp_host' => 'smtp.example.com',
-    'smtp_port' => 587,
-    'smtp_secure' => 'tls',
-    'smtp_auth' => true,
-    'smtp_username' => 'user@example.com',
-    'smtp_password' => 'password',
+    'mail_from' => getenv('MAIL_FROM') ?: 'noreply@athenaeumtransformation.com',
+    'mail_from_name' => getenv('MAIL_FROM_NAME') ?: 'Athenaeum PMS',
+    'smtp_host' => getenv('SMTP_HOST') ?: 'mail.athenaeumtransformation.com',
+    'smtp_port' => (int)(getenv('SMTP_PORT') ?: 465),
+    'smtp_secure' => getenv('SMTP_SECURE') ?: 'ssl',
+    'smtp_auth' => (function () {
+        $v = getenv('SMTP_AUTH');
+        if ($v === false || $v === '') return true;
+        return !in_array(strtolower(trim((string)$v)), ['0', 'false', 'no', 'off'], true);
+    })(),
+    'smtp_username' => getenv('SMTP_USERNAME') ?: 'noreply@athenaeumtransformation.com',
+    'smtp_password' => getenv('SMTP_PASSWORD') ?: 'Sakshi@2026',
     
     // Features
     'allow_registration' => false,

@@ -4,6 +4,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/helpers.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Content-Type: application/json');
@@ -152,8 +153,7 @@ switch ($action) {
                         if ($pageId) $params[] = "page_id=" . $pageId;
                         if (!empty($params)) $link .= "?" . implode("&", $params);
                         
-                        $nStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'mention', ?, ?)");
-                        $nStmt->execute([$user['id'], $notifyMsg, $link]);
+                        createNotification($db, (int)$user['id'], 'mention', $notifyMsg, $link);
                     }
                 }
             }

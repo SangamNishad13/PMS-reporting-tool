@@ -357,7 +357,22 @@ if (!empty($qaPendingRows)) {
 </style>
 
 <?php include __DIR__ . '/../../includes/header.php'; ?>
-<div class="container-fluid">
+<style>
+.dashboard-no-page-overflow {
+    overflow-x: clip;
+}
+.dashboard-no-page-overflow .table-responsive {
+    max-width: 100%;
+    max-height: 420px;
+    overflow-x: auto;
+    overflow-y: auto;
+}
+.dashboard-no-page-overflow .list-group {
+    max-height: 420px;
+    overflow-y: auto;
+}
+</style>
+<div class="container-fluid dashboard-no-page-overflow">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2>QA Dashboard</h2>
         <a href="page_assignment.php" class="btn btn-primary">
@@ -399,7 +414,7 @@ if (!empty($qaPendingRows)) {
             <?php endif; ?>
         </div>
     </div>
-    
+
     <!-- Welcome Card -->
     <div class="card mb-3 bg-light">
         <div class="card-body">

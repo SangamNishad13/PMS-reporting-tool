@@ -204,7 +204,20 @@ try {
 
         if (!empty($notifyUserIds)) {
             $senderName = trim((string)($_SESSION['full_name'] ?? 'A user'));
-            $link = getBaseDir() . '/modules/projects/view.php?id=' . (int)$projectId . '#issues';
+            $baseDir = getBaseDir();
+            $pageIdForIssue = 0;
+            try {
+                $pageStmt = $db->prepare("SELECT page_id FROM issues WHERE id = ? AND project_id = ? LIMIT 1");
+                $pageStmt->execute([(int)$issueId, (int)$projectId]);
+                $pageIdForIssue = (int)($pageStmt->fetchColumn() ?: 0);
+            } catch (Exception $e) {
+                $pageIdForIssue = 0;
+            }
+            if ($pageIdForIssue > 0) {
+                $link = $baseDir . '/modules/projects/issues_page_detail.php?project_id=' . (int)$projectId . '&page_id=' . $pageIdForIssue;
+            } else {
+                $link = $baseDir . '/modules/projects/issues.php?project_id=' . (int)$projectId;
+            }
             foreach ($notifyUserIds as $targetUserId) {
                 createNotification(
                     $db,

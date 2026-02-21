@@ -212,7 +212,7 @@ if (!function_exists('ensureAvailabilityStatusMaster')) {
                     (status_key, status_label, badge_color, description, display_order, is_active)
                 VALUES (?, ?, ?, ?, ?, 1)
                 ON DUPLICATE KEY UPDATE
-                    status_label = VALUES(status_label)
+                    status_key = status_key
             ");
             foreach ($seedRows as $row) {
                 $seedStmt->execute($row);

@@ -296,7 +296,22 @@ $total = $workloadCount;
 
 include __DIR__ . '/../../includes/header.php';
 ?>
-<div class="container-fluid">
+<style>
+.dashboard-no-page-overflow {
+    overflow-x: clip;
+}
+.dashboard-no-page-overflow .table-responsive {
+    max-width: 100%;
+    max-height: 420px;
+    overflow-x: auto;
+    overflow-y: auto;
+}
+.dashboard-no-page-overflow .list-group {
+    max-height: 420px;
+    overflow-y: auto;
+}
+</style>
+<div class="container-fluid dashboard-no-page-overflow">
     <div class="d-flex justify-content-between align-items-center mb-2">
     </div>
     <div class="d-flex flex-wrap gap-2 mb-3">
@@ -308,7 +323,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="card mb-3 border-warning">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h6 class="mb-0"><i class="fas fa-inbox"></i> Pending Requests (All Modules)</h6>
-            <span class="badge bg-warning text-dark"><?php echo (int)$pendingTotalCount; ?> pending</span>
+            <span class="badge bg-warning text-dark" id="pendingTotalBadge"><?php echo (int)$pendingTotalCount; ?> pending</span>
         </div>
         <div class="card-body">
             <?php if ((int)$pendingTotalCount === 0): ?>
@@ -332,7 +347,10 @@ include __DIR__ . '/../../includes/header.php';
                     <h6 class="mb-2">Latest Pending Requests</h6>
                     <div class="list-group">
                         <?php foreach ($pendingFeed as $feed): ?>
-                            <div class="list-group-item">
+                            <div class="list-group-item"
+                                 data-pending-item="1"
+                                 data-action-kind="<?php echo htmlspecialchars((string)($feed['action_kind'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
+                                 data-request-id="<?php echo (int)($feed['request_id'] ?? 0); ?>">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <div>
                                         <span class="badge bg-secondary me-2"><?php echo htmlspecialchars((string)$feed['type']); ?></span>
@@ -347,22 +365,12 @@ include __DIR__ . '/../../includes/header.php';
                                         <button type="button" class="btn btn-sm btn-danger" onclick="respondDeviceRequestFromDashboard(<?php echo (int)$feed['request_id']; ?>, 'reject')">Reject</button>
                                         <a href="<?php echo htmlspecialchars((string)$feed['link']); ?>" class="btn btn-sm btn-outline-secondary">Open</a>
                                     <?php elseif (($feed['action_kind'] ?? '') === 'hours' && (int)($feed['request_id'] ?? 0) > 0): ?>
-                                        <form method="POST" action="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/edit_requests.php" class="d-inline">
-                                            <input type="hidden" name="request_id" value="<?php echo (int)$feed['request_id']; ?>">
-                                            <input type="hidden" name="action" value="approved">
-                                            <input type="hidden" name="user_id" value="<?php echo (int)($feed['user_id'] ?? 0); ?>">
-                                            <input type="hidden" name="date" value="<?php echo htmlspecialchars((string)($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
-                                            <input type="hidden" name="return_to" value="<?php echo htmlspecialchars($baseDir . '/modules/admin/dashboard.php', ENT_QUOTES, 'UTF-8'); ?>">
-                                            <button type="submit" class="btn btn-sm btn-success">Accept</button>
-                                        </form>
-                                        <form method="POST" action="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/edit_requests.php" class="d-inline">
-                                            <input type="hidden" name="request_id" value="<?php echo (int)$feed['request_id']; ?>">
-                                            <input type="hidden" name="action" value="rejected">
-                                            <input type="hidden" name="user_id" value="<?php echo (int)($feed['user_id'] ?? 0); ?>">
-                                            <input type="hidden" name="date" value="<?php echo htmlspecialchars((string)($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
-                                            <input type="hidden" name="return_to" value="<?php echo htmlspecialchars($baseDir . '/modules/admin/dashboard.php', ENT_QUOTES, 'UTF-8'); ?>">
-                                            <button type="submit" class="btn btn-sm btn-danger">Reject</button>
-                                        </form>
+                                        <button type="button"
+                                                class="btn btn-sm btn-success"
+                                                onclick="respondHoursRequestFromDashboard(<?php echo (int)$feed['request_id']; ?>, <?php echo (int)($feed['user_id'] ?? 0); ?>, '<?php echo htmlspecialchars((string)($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>', 'approved')">Accept</button>
+                                        <button type="button"
+                                                class="btn btn-sm btn-danger"
+                                                onclick="respondHoursRequestFromDashboard(<?php echo (int)$feed['request_id']; ?>, <?php echo (int)($feed['user_id'] ?? 0); ?>, '<?php echo htmlspecialchars((string)($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>', 'rejected')">Reject</button>
                                         <a href="<?php echo htmlspecialchars((string)$feed['link']); ?>" class="btn btn-sm btn-outline-secondary">Open</a>
                                     <?php else: ?>
                                         <a href="<?php echo htmlspecialchars((string)$feed['link']); ?>" class="btn btn-sm btn-outline-secondary">Open</a>
@@ -396,7 +404,7 @@ include __DIR__ . '/../../includes/header.php';
             <?php endif; ?>
         </div>
     </div>
-    
+
     <!-- Statistics Cards -->
     <!-- Statistics Cards -->
     <div class="row mb-4 g-3">
@@ -848,9 +856,56 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 <script>
+function removePendingFeedItem(actionKind, requestId) {
+    var sel = '.list-group-item[data-pending-item="1"][data-action-kind="' + actionKind + '"][data-request-id="' + String(requestId) + '"]';
+    var item = document.querySelector(sel);
+    if (item) {
+        item.remove();
+    }
+
+    var badge = document.getElementById('pendingTotalBadge');
+    if (badge) {
+        var m = String(badge.textContent || '').match(/\d+/);
+        var current = m ? parseInt(m[0], 10) : 0;
+        var next = Math.max(0, current - 1);
+        badge.textContent = next + ' pending';
+    }
+
+    var list = document.querySelector('.card.border-warning .list-group');
+    if (list && list.children.length === 0) {
+        list.innerHTML = '<div class="list-group-item text-muted">No pending requests right now.</div>';
+    }
+}
+
+function optimisticallyRemovePendingItem(actionKind, requestId) {
+    var sel = '.list-group-item[data-pending-item="1"][data-action-kind="' + actionKind + '"][data-request-id="' + String(requestId) + '"]';
+    var item = document.querySelector(sel);
+    if (!item || !item.parentNode) return null;
+
+    var parent = item.parentNode;
+    var nextSibling = item.nextSibling;
+    removePendingFeedItem(actionKind, requestId);
+
+    return function restore() {
+        if (!parent) return;
+        if (nextSibling && nextSibling.parentNode === parent) {
+            parent.insertBefore(item, nextSibling);
+        } else {
+            parent.appendChild(item);
+        }
+        var badge = document.getElementById('pendingTotalBadge');
+        if (badge) {
+            var m = String(badge.textContent || '').match(/\d+/);
+            var current = m ? parseInt(m[0], 10) : 0;
+            badge.textContent = (current + 1) + ' pending';
+        }
+    };
+}
+
 function respondDeviceRequestFromDashboard(requestId, action) {
     const actionLabel = action === 'approve' ? 'accept' : 'reject';
     confirmModal(`Are you sure you want to ${actionLabel} this device request?`, function() {
+        var restoreItem = optimisticallyRemovePendingItem('device', requestId);
         $.post('<?php echo htmlspecialchars($devicesApiUrl, ENT_QUOTES, 'UTF-8'); ?>', {
             action: 'respond_to_request',
             request_id: requestId,
@@ -858,11 +913,13 @@ function respondDeviceRequestFromDashboard(requestId, action) {
             response_notes: 'Processed from admin dashboard'
         }, function(response) {
             if (response && response.success) {
-                location.reload();
+                showToast('Device request ' + (action === 'approve' ? 'accepted' : 'rejected') + '.', 'success');
             } else {
+                if (typeof restoreItem === 'function') restoreItem();
                 showToast((response && response.message) ? response.message : 'Failed to process request', 'danger');
             }
         }).fail(function(xhr) {
+            if (typeof restoreItem === 'function') restoreItem();
             let msg = 'Failed to process request';
             if (xhr && xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
             showToast(msg, 'danger');
@@ -871,6 +928,39 @@ function respondDeviceRequestFromDashboard(requestId, action) {
         title: action === 'approve' ? 'Confirm Accept' : 'Confirm Reject',
         confirmText: action === 'approve' ? 'Accept' : 'Reject',
         confirmClass: action === 'approve' ? 'btn-success' : 'btn-danger'
+    });
+}
+
+function respondHoursRequestFromDashboard(requestId, userId, reqDate, action) {
+    var actionLabel = action === 'approved' ? 'accept' : 'reject';
+    confirmModal('Are you sure you want to ' + actionLabel + ' this hours request?', function() {
+        var restoreItem = optimisticallyRemovePendingItem('hours', requestId);
+        var fd = new FormData();
+        fd.append('request_id', String(requestId));
+        fd.append('action', action);
+        fd.append('user_id', String(userId));
+        fd.append('date', String(reqDate || ''));
+        fd.append('return_to', '<?php echo htmlspecialchars($baseDir . '/modules/admin/dashboard.php', ENT_QUOTES, 'UTF-8'); ?>');
+
+        fetch('<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/edit_requests.php', {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin'
+        })
+        .then(function(resp) {
+            if (!resp.ok) {
+                throw new Error('HTTP ' + resp.status);
+            }
+            showToast('Hours request ' + (action === 'approved' ? 'accepted' : 'rejected') + '.', 'success');
+        })
+        .catch(function(err) {
+            if (typeof restoreItem === 'function') restoreItem();
+            showToast('Failed to process hours request.', 'danger');
+        });
+    }, {
+        title: action === 'approved' ? 'Confirm Accept' : 'Confirm Reject',
+        confirmText: action === 'approved' ? 'Accept' : 'Reject',
+        confirmClass: action === 'approved' ? 'btn-success' : 'btn-danger'
     });
 }
 </script>

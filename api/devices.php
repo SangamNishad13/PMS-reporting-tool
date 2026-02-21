@@ -664,27 +664,23 @@ try {
                 $stmt->execute([$request['device_id']]);
                 
                 // Create notification for requester (device request approved)
-                $stmt = $pdo->prepare("
-                    INSERT INTO notifications (user_id, type, message, link, is_read)
-                    VALUES (?, 'system', ?, ?, FALSE)
-                ");
-                $stmt->execute([
-                    $request['requested_by'],
+                createNotification(
+                    $pdo,
+                    (int)$request['requested_by'],
+                    'system',
                     'Your device request for ' . $device_name . ' has been approved',
                     $devicesLink
-                ]);
+                );
                 
                 // Create notification for previous holder (device reassigned) - only if not the one who approved
                 if (!empty($request['current_holder']) && $request['current_holder'] != $user_id) {
-                    $stmt = $pdo->prepare("
-                        INSERT INTO notifications (user_id, type, message, link, is_read)
-                        VALUES (?, 'system', ?, ?, FALSE)
-                    ");
-                    $stmt->execute([
-                        $request['current_holder'],
+                    createNotification(
+                        $pdo,
+                        (int)$request['current_holder'],
+                        'system',
                         $device_name . ' has been reassigned to ' . $requester_name,
                         $devicesLink
-                    ]);
+                    );
                 }
             } else {
                 // Rejected - notify requester
@@ -693,15 +689,13 @@ try {
                 $device = $stmt->fetch();
                 $device_name = $device['device_name'] . ' (' . $device['device_type'] . ')';
                 
-                $stmt = $pdo->prepare("
-                    INSERT INTO notifications (user_id, type, message, link, is_read)
-                    VALUES (?, 'system', ?, ?, FALSE)
-                ");
-                $stmt->execute([
-                    $request['requested_by'],
+                createNotification(
+                    $pdo,
+                    (int)$request['requested_by'],
+                    'system',
                     'Your device request for ' . $device_name . ' has been rejected',
                     $devicesLink
-                ]);
+                );
             }
             
             // Update request status
@@ -760,6 +754,7 @@ try {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
+    error_log('devices.php error: action=' . (string)$action . ' user_id=' . (int)$user_id . ' message=' . $e->getMessage());
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }

@@ -1345,7 +1345,6 @@
         var mentionDropdown = null;
         var mentionIndex = -1;
         var mentionList = [];
-        var lastAtPosition = null;
 
         // Create mention dropdown
         var dropdownHtml = '<div id="issueMentionDropdown" class="dropdown-menu" style="display:none; position:fixed; z-index:99999; max-height:200px; overflow-y:auto;"></div>';
@@ -1354,8 +1353,36 @@
         }
         mentionDropdown = document.getElementById('issueMentionDropdown');
 
+        function getMentionContext($editable) {
+            if (!$editable || !$editable.length) return null;
+            var editableEl = $editable[0];
+            var sel = window.getSelection();
+            if (!sel || sel.rangeCount === 0) return null;
+            var range = sel.getRangeAt(0);
+            if (!editableEl.contains(range.endContainer)) return null;
+
+            var preRange = range.cloneRange();
+            preRange.selectNodeContents(editableEl);
+            preRange.setEnd(range.endContainer, range.endOffset);
+            var textBeforeCaret = String(preRange.toString() || '');
+
+            var lastAtPos = textBeforeCaret.lastIndexOf('@');
+            if (lastAtPos < 0) return null;
+
+            // Mention should only be active while caret is in the same token as '@'
+            var query = textBeforeCaret.substring(lastAtPos + 1);
+            if (/\s/.test(query)) return null;
+            if (query.length > 50) return null;
+            if (!/^[\w]*$/.test(query)) return null;
+
+            return {
+                query: query
+            };
+        }
+
         // Handle keydown in Summernote (for preventing default behavior)
-        $editor.on('summernote.keydown', function (we, e) {
+        $editor.off('summernote.keydown.issueMention');
+        $editor.on('summernote.keydown.issueMention', function (we, e) {
             // Check if dropdown is visible
             var dropdownVisible = mentionDropdown && mentionDropdown.style.display === 'block';
 
@@ -1397,7 +1424,8 @@
         });
 
         // Handle keyup in Summernote (for showing/hiding dropdown)
-        $editor.on('summernote.keyup', function (we, e) {
+        $editor.off('summernote.keyup.issueMention');
+        $editor.on('summernote.keyup.issueMention', function (we, e) {
             // Don't process if we just handled navigation keys
             if (mentionDropdown && mentionDropdown.style.display === 'block') {
                 if ([9, 13, 27, 38, 40].indexOf(e.keyCode) !== -1) {
@@ -1414,27 +1442,13 @@
             var $editable = $editor.next('.note-editor').find('.note-editable');
             if (!$editable.length) return;
 
-            var text = $editable.text();
-            var lastAtPos = text.lastIndexOf('@');
-
-            // Check if @ was just typed or we're typing after @
-            if (lastAtPos >= 0) {
-                var afterAt = text.substring(lastAtPos + 1);
-                // Check if we're still in a mention (no space after @)
-                var spacePos = afterAt.indexOf(' ');
-                var query = spacePos >= 0 ? afterAt.substring(0, spacePos) : afterAt;
-
-                // Only show dropdown if query is reasonable (no special chars, reasonable length)
-                if (query.length <= 50 && /^[\w]*$/.test(query)) {
-                    showMentionDropdown(query, $editable);
-                } else if (query.length === 0) {
-                    showMentionDropdown('', $editable);
-                } else {
-                    hideMentionDropdown();
-                }
-            } else {
+            var mentionContext = getMentionContext($editable);
+            if (!mentionContext) {
                 hideMentionDropdown();
+                return;
             }
+
+            showMentionDropdown(mentionContext.query, $editable);
         });
 
         function showMentionDropdown(query, $editable) {
@@ -1511,7 +1525,10 @@
         function hideMentionDropdown() {
             if (mentionDropdown) {
                 mentionDropdown.style.display = 'none';
+                mentionDropdown.innerHTML = '';
             }
+            mentionList = [];
+            mentionIndex = -1;
         }
 
         function moveMentionHighlight(direction) {
@@ -1583,6 +1600,21 @@
             }
             hideMentionDropdown();
         }
+
+        // Hide dropdown when clicking outside mention UI.
+        jQuery(document).off('mousedown.issueMention').on('mousedown.issueMention', function (e) {
+            var $target = jQuery(e.target);
+            var clickedInDropdown = $target.closest('#issueMentionDropdown').length > 0;
+            var clickedInEditor = $target.closest('#finalIssueModal .note-editor').length > 0;
+            if (!clickedInDropdown && !clickedInEditor) {
+                hideMentionDropdown();
+            }
+        });
+
+        // Ensure stale dropdown is cleared when issue modal closes.
+        jQuery('#finalIssueModal').off('hidden.bs.modal.issueMention').on('hidden.bs.modal.issueMention', function () {
+            hideMentionDropdown();
+        });
     }
 
     function showFinalIssuesTab() {

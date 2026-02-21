@@ -38,7 +38,7 @@ $projectsStmt = $db->prepare("
     SELECT p.id, p.title, p.po_number
     FROM projects p
     LEFT JOIN user_assignments ua ON p.id = ua.project_id AND ua.user_id = ?
-    WHERE p.status = 'in_progress' AND (ua.id IS NOT NULL OR p.project_lead_id = ? OR p.po_number = 'OFF-PROD-001')
+    WHERE p.status NOT IN ('cancelled', 'archived') AND (ua.id IS NOT NULL OR p.project_lead_id = ? OR p.po_number = 'OFF-PROD-001')
     ORDER BY p.po_number = 'OFF-PROD-001', p.title
 ");
 $projectsStmt->execute([$userId, $userId]);
@@ -648,7 +648,7 @@ $canEditFuture = true;
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-warning">Send Request</button>
+                    <button type="submit" class="btn btn-warning" id="editRequestSendBtn">Send Request</button>
                 </div>
             </form>
         </div>
@@ -660,16 +660,28 @@ $canEditFuture = true;
 <style>
 #calendarEditModal .modal-dialog {
     max-width: min(1140px, 96vw);
+    margin: 0.75rem auto;
+    height: calc(100vh - 1.5rem);
 }
 #calendarEditModal .modal-content {
-    max-height: 92vh;
+    height: 100%;
+    max-height: none;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+}
+#calendarEditModal #calendarEditForm {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
 }
 #calendarEditModal .modal-body {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     padding-bottom: 1rem;
 }
 #calendarEditModal .modal-footer {
@@ -930,11 +942,13 @@ document.addEventListener('DOMContentLoaded', function() {
         var isFutureDate = normalizedDate > todayStr;
         var isPastDate = normalizedDate < todayStr;
         var reqFooterBtn = document.getElementById('requestEditFooterBtn');
-        if (reqFooterBtn) {
-            // Show Request Edit for today/past; hide only for future dates.
-            reqFooterBtn.style.display = isFutureDate ? 'none' : 'inline-block';
-            reqFooterBtn.onclick = isFutureDate ? null : function() { openEditRequestModal(normalizedDate); };
+        function showRequestFooter(show) {
+            if (!reqFooterBtn) return;
+            reqFooterBtn.style.display = show ? 'inline-block' : 'none';
+            reqFooterBtn.onclick = show ? function() { openEditRequestModal(normalizedDate); } : null;
         }
+        // Default hidden; each branch decides explicitly.
+        showRequestFooter(false);
 
         if (isPastDate) {
             // Request Edit is handled by fixed footer button.
@@ -951,49 +965,52 @@ document.addEventListener('DOMContentLoaded', function() {
             // Never show Request Edit for future dates
             if (isFutureDate) return;
 
-            checkEditRequestStatus(normalizedDate, function(pending, approved, status) {
+            checkEditRequestStatus(normalizedDate, function(pending, approved, status, pendingLocked) {
                 if (pending) {
-                    var pendingBtnEditable = document.createElement('button');
-                    pendingBtnEditable.type = 'button';
-                    pendingBtnEditable.className = 'btn btn-warning dynamic-btn';
-                    pendingBtnEditable.textContent = 'Edit Pending Changes';
-                    pendingBtnEditable.onclick = function() {
-                        enableEditingForPendingRequest(normalizedDate);
-                    };
-                    modalFooter.insertBefore(pendingBtnEditable, cancelBtn);
+                    // Pending exists: if submitted, keep read-only. Otherwise allow pending edit.
+                    showRequestFooter(false);
+                    if (pendingLocked) {
+                        disableEditing();
+                    } else {
+                        var pendingBtnEditable = document.createElement('button');
+                        pendingBtnEditable.type = 'button';
+                        pendingBtnEditable.className = 'btn btn-warning dynamic-btn';
+                        pendingBtnEditable.textContent = 'Edit Pending Changes';
+                        pendingBtnEditable.onclick = function() {
+                            enableEditingForPendingRequest(normalizedDate);
+                        };
+                        modalFooter.insertBefore(pendingBtnEditable, cancelBtn);
+                    }
+                } else {
+                    showRequestFooter(true);
                 }
             });
 
         } else {
             // Past dates - check approval status
-            checkEditRequestStatus(normalizedDate, function(pending, approved, status) {
+            checkEditRequestStatus(normalizedDate, function(pending, approved, status, pendingLocked) {
                 if (approved) {
-                    // Approved - can edit
-                    var editBtn = document.createElement('button');
-                    editBtn.type = 'button';
-                    editBtn.className = 'btn btn-success dynamic-btn';
-                    editBtn.textContent = 'Edit (Approved)';
-                    editBtn.onclick = function() {
-                        enableEditing();
-                        editBtn.style.display = 'none';
-                        var saveBtn = document.createElement('button');
-                        saveBtn.type = 'submit';
-                        saveBtn.className = 'btn btn-success dynamic-btn';
-                        saveBtn.textContent = 'Save Changes';
-                        modalFooter.insertBefore(saveBtn, cancelBtn);
-                    };
-                    modalFooter.insertBefore(editBtn, cancelBtn);
-                    
+                    // Approved requests are already applied by admin flow.
+                    // User should raise a fresh request for any further edits.
+                    showRequestFooter(true);
                 } else if (pending) {
-                    // Pending - can edit pending changes
-                    var editBtn = document.createElement('button');
-                    editBtn.type = 'button';
-                    editBtn.className = 'btn btn-warning dynamic-btn';
-                    editBtn.textContent = 'Edit Pending Changes';
-                    editBtn.onclick = function() {
-                        enableEditingForPendingRequest(normalizedDate);
-                    };
-                    modalFooter.insertBefore(editBtn, cancelBtn);
+                    // Pending exists: if submitted, keep read-only. Otherwise allow pending edit.
+                    showRequestFooter(false);
+                    if (pendingLocked) {
+                        disableEditing();
+                    } else {
+                        var editBtn = document.createElement('button');
+                        editBtn.type = 'button';
+                        editBtn.className = 'btn btn-warning dynamic-btn';
+                        editBtn.textContent = 'Edit Pending Changes';
+                        editBtn.onclick = function() {
+                            enableEditingForPendingRequest(normalizedDate);
+                        };
+                        modalFooter.insertBefore(editBtn, cancelBtn);
+                    }
+                } else {
+                    // No pending/approved request: show only Request Edit.
+                    showRequestFooter(true);
                 }
             });
         }
@@ -1003,10 +1020,10 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch('<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/my_daily_status.php?action=check_edit_request&date=' + encodeURIComponent(date))
             .then(response => response.json())
             .then(data => {
-                callback(data.pending || false, data.approved || false, data.status || null);
+                callback(data.pending || false, data.approved || false, data.status || null, data.pending_locked || false);
             })
             .catch(() => {
-                callback(false, false, null);
+                callback(false, false, null, false);
             });
     }
 
@@ -1023,12 +1040,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     document.getElementById('calStatus').value = data.status || 'not_updated';
                     document.getElementById('calNotes').value = data.notes || '';
                     document.getElementById('calPersonalNote').value = data.personal_note || '';
-                    
+
                     var modalTitle = document.querySelector('#calendarEditModal .modal-title');
-                    if (data.is_pending) {
-                        modalTitle.textContent = 'Update My Availability (Pending Changes)';
-                        modalTitle.className = 'modal-title text-warning';
-                    } else {
+                    if (modalTitle) {
                         modalTitle.textContent = 'Update My Availability';
                         modalTitle.className = 'modal-title';
                     }
@@ -1181,11 +1195,29 @@ document.addEventListener('DOMContentLoaded', function() {
     function openEditRequestModal(date) {
         document.getElementById('requestDate').value = date;
         document.getElementById('editReason').value = '';
+        var sendBtn = document.getElementById('editRequestSendBtn');
+        if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send Request';
+        }
         var modal = new bootstrap.Modal(document.getElementById('editRequestModal'));
         modal.show();
     }
 
     function sendEditRequestWithReason(date, reason) {
+        var sendBtn = document.getElementById('editRequestSendBtn');
+        if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+        }
+        var modalEl = document.getElementById('editRequestModal');
+        try {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        } catch (e) {}
+
+        // Optimistic UI: allow editing immediately after click.
+        enableEditingForPendingRequest(date);
+
         var formData = new FormData();
         formData.append('action', 'request_edit');
         formData.append('date', date);
@@ -1198,17 +1230,31 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                var reasonModal = bootstrap.Modal.getInstance(document.getElementById('editRequestModal'));
-                if (reasonModal) reasonModal.hide();
-                
-                enableEditingForPendingRequest(date);
                 showToast('Edit request sent successfully! You can now make changes that will be saved as pending.', 'success');
             } else {
+                // Rollback optimistic state on server failure.
+                disableEditing();
+                addModalButtons(date);
                 showToast('Failed to send edit request: ' + (data.error || 'Unknown error'), 'danger');
+                try {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                } catch (e) {}
             }
         })
         .catch(error => {
+            // Rollback optimistic state on request failure.
+            disableEditing();
+            addModalButtons(date);
             showToast('Failed to send edit request. Please try again.', 'danger');
+            try {
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            } catch (e) {}
+        })
+        .finally(() => {
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send Request';
+            }
         });
     }
 
@@ -1223,23 +1269,39 @@ document.addEventListener('DOMContentLoaded', function() {
             var saveBtn = document.createElement('button');
             saveBtn.type = 'button';
             saveBtn.className = 'btn btn-warning dynamic-btn';
-            saveBtn.textContent = 'Save as Pending';
+            saveBtn.textContent = 'Save Pending Changes';
             saveBtn.onclick = function() {
-                savePendingChanges(date);
+                savePendingChanges(date, false);
             };
             modalFooter.insertBefore(saveBtn, cancelBtn);
+
+            var submitBtn = document.createElement('button');
+            submitBtn.type = 'button';
+            submitBtn.className = 'btn btn-primary dynamic-btn';
+            submitBtn.textContent = 'Submit Pending';
+            submitBtn.onclick = function() {
+                confirmModal('Submit pending changes now? After submit, you will not be able to change them until admin reviews.', function() {
+                    submitPendingChanges(date);
+                }, {
+                    title: 'Submit Pending Changes',
+                    confirmText: 'Submit',
+                    confirmClass: 'btn-primary'
+                });
+            };
+            modalFooter.insertBefore(submitBtn, cancelBtn);
+        }
+
+        var reqFooterBtn = document.getElementById('requestEditFooterBtn');
+        if (reqFooterBtn) {
+            reqFooterBtn.style.display = 'none';
+            reqFooterBtn.onclick = null;
         }
         
         enableEditing();
-        
-        var modalTitle = document.querySelector('#calendarEditModal .modal-title');
-        if (modalTitle) {
-            modalTitle.textContent = 'Update My Availability (Pending Approval)';
-            modalTitle.className = 'modal-title text-warning';
-        }
     }
 
-    function savePendingChanges(date) {
+    function savePendingChanges(date, closeOnSuccess) {
+        var shouldClose = (closeOnSuccess === true);
         var formData = new FormData();
         formData.append('action', 'save_pending');
         formData.append('date', date);
@@ -1257,15 +1319,59 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (window._myCalendar) {
                     window._myCalendar.refetchEvents();
                 }
-                var modal = bootstrap.Modal.getInstance(document.getElementById('calendarEditModal'));
-                if (modal) modal.hide();
-                showToast('Changes saved as pending! They will be applied once admin approves.', 'success');
+                if (shouldClose) {
+                    var modal = bootstrap.Modal.getInstance(document.getElementById('calendarEditModal'));
+                    if (modal) modal.hide();
+                }
+                showToast('Pending changes saved.', 'success');
             } else {
                 showToast('Failed to save pending changes: ' + (data.error || 'Unknown error'), 'danger');
             }
         })
             .catch(error => {
             showToast('Request failed. Please try again.', 'danger');
+        });
+    }
+
+    function submitPendingChanges(date) {
+        var formData = new FormData();
+        formData.append('action', 'save_pending');
+        formData.append('date', date);
+        formData.append('status', document.getElementById('calStatus').value);
+        formData.append('notes', document.getElementById('calNotes').value);
+        formData.append('personal_note', document.getElementById('calPersonalNote').value);
+
+        fetch('<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/my_daily_status.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(function(saveResp) {
+            if (!saveResp || !saveResp.success) {
+                throw new Error((saveResp && saveResp.error) ? saveResp.error : 'Failed to save pending changes.');
+            }
+            var submitFd = new FormData();
+            submitFd.append('action', 'submit_pending');
+            submitFd.append('date', date);
+            return fetch('<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/my_daily_status.php', {
+                method: 'POST',
+                body: submitFd
+            });
+        })
+        .then(response => response.json())
+        .then(function(submitResp) {
+            if (!submitResp || !submitResp.success) {
+                throw new Error((submitResp && submitResp.error) ? submitResp.error : 'Failed to submit pending changes.');
+            }
+            disableEditing();
+            addModalButtons(date);
+            if (window._myCalendar) {
+                window._myCalendar.refetchEvents();
+            }
+            showToast('Pending changes submitted. You can no longer edit until admin reviews.', 'success');
+        })
+        .catch(function(err) {
+            showToast(err.message || 'Failed to submit pending changes.', 'danger');
         });
     }
 
@@ -1373,6 +1479,9 @@ document.addEventListener('DOMContentLoaded', function() {
             var pageColEl = document.getElementById('pageTestingContainer');
             var envColEl = document.getElementById('productionEnvCol');
             var calFormEl = document.getElementById('logProductionHoursForm');
+            if (submitBtn && submitBtn.dataset.logging === '1') {
+                return false;
+            }
 
             if (!date) {
                 notifyCalendar('Date is missing. Reopen the modal and try again.', 'warning');
@@ -1403,6 +1512,7 @@ document.addEventListener('DOMContentLoaded', function() {
             var oldLabel = submitBtn ? submitBtn.textContent : '';
             if (submitBtn) {
                 submitBtn.disabled = true;
+                submitBtn.dataset.logging = '1';
                 submitBtn.textContent = 'Logging...';
             }
 
@@ -1420,6 +1530,87 @@ document.addEventListener('DOMContentLoaded', function() {
             fd.append('hours', hoursEl.value);
             fd.append('description', descEl ? descEl.value : '');
             fd.append('is_utilized', 1);
+
+            // For older past dates, hours should be saved into pending changes (not directly logged).
+            var t = new Date();
+            var todayStr = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+            var isOlderPastDate = date < todayStr && !isEditableDate(date);
+            if (!isAdmin && isOlderPastDate) {
+                checkEditRequestStatus(date, function(pending, approved, status, pendingLocked) {
+                    if (!pending) {
+                        notifyCalendar('Please send an Edit Request first for this date.', 'warning');
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = oldLabel || 'Log Hours';
+                        }
+                        return;
+                    }
+                    if (pendingLocked) {
+                        notifyCalendar('Pending changes are already submitted and locked. You cannot edit until admin reviews.', 'warning');
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = oldLabel || 'Log Hours';
+                        }
+                        return;
+                    }
+
+                    var pendingEntry = {
+                        project_id: projectValue,
+                        task_type: taskTypeEl ? taskTypeEl.value : '',
+                        page_ids: pageEl ? Array.from(pageEl.selectedOptions || []).map(function(o){ return o.value; }).filter(Boolean) : [],
+                        environment_ids: envEl ? Array.from(envEl.selectedOptions || []).map(function(o){ return o.value; }).filter(Boolean) : [],
+                        testing_type: testingTypeEl ? testingTypeEl.value : '',
+                        issue_id: '',
+                        hours: hoursEl.value,
+                        description: descEl ? descEl.value : '',
+                        is_utilized: 1
+                    };
+
+                    var pendingFd = new FormData();
+                    pendingFd.append('action', 'save_pending');
+                    pendingFd.append('date', date);
+                    pendingFd.append('status', document.getElementById('calStatus') ? document.getElementById('calStatus').value : 'not_updated');
+                    pendingFd.append('notes', document.getElementById('calNotes') ? document.getElementById('calNotes').value : '');
+                    pendingFd.append('personal_note', document.getElementById('calPersonalNote') ? document.getElementById('calPersonalNote').value : '');
+                    pendingFd.append('pending_time_logs', JSON.stringify([pendingEntry]));
+                    pendingFd.append('pending_time_logs_append', '1');
+
+                    fetch('<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/my_daily_status.php', {
+                        method: 'POST',
+                        body: pendingFd,
+                        credentials: 'same-origin'
+                    })
+                    .then(function(r){ return r.json(); })
+                    .then(function(resp){
+                        if (resp && resp.success) {
+                            loadProductionHours(date);
+                            if (window._myCalendar && typeof window._myCalendar.refetchEvents === 'function') window._myCalendar.refetchEvents();
+                            addModalButtons(date);
+                            try {
+                                var logModalInst = bootstrap.Modal.getOrCreateInstance(document.getElementById('calendarLogHoursModal'));
+                                logModalInst.hide();
+                            } catch (err) {}
+                            if (calFormEl) calFormEl.reset();
+                            if (pageColEl) pageColEl.style.display = 'none';
+                            if (envColEl) envColEl.style.display = 'none';
+                            notifyCalendar('Hours saved to pending changes.', 'success');
+                        } else {
+                            notifyCalendar('Failed to save pending hours: ' + ((resp && (resp.error || resp.message)) || 'Unknown error'), 'danger');
+                        }
+                    })
+                    .catch(function(err){
+                        notifyCalendar('Error saving pending hours: ' + err.message, 'danger');
+                    })
+                    .finally(function(){
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            delete submitBtn.dataset.logging;
+                            submitBtn.textContent = oldLabel || 'Log Hours';
+                        }
+                    });
+                });
+                return false;
+            }
 
             fetch('<?php echo $baseDir; ?>/api/project_hours.php', { method: 'POST', body: fd, credentials: 'same-origin' })
                 .then(function(r){
@@ -1458,10 +1649,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 .finally(function(){
                     if (submitBtn) {
                         submitBtn.disabled = false;
+                        delete submitBtn.dataset.logging;
                         submitBtn.textContent = oldLabel || 'Log Hours';
                     }
                 });
         } catch (err) {
+            var submitBtnOnError = document.getElementById('logTimeBtn');
+            if (submitBtnOnError) {
+                submitBtnOnError.disabled = false;
+                delete submitBtnOnError.dataset.logging;
+                submitBtnOnError.textContent = 'Log Hours';
+            }
             notifyCalendar('Log form error: ' + err.message, 'danger');
         }
         return false;
@@ -1473,12 +1671,6 @@ document.addEventListener('DOMContentLoaded', function() {
         globalCalForm.addEventListener('submit', submitCalendarLogHours);
         globalCalForm.dataset.boundSubmit = '1';
     }
-    var globalLogBtn = document.getElementById('logTimeBtn');
-    if (globalLogBtn && !globalLogBtn.dataset.boundClick) {
-        globalLogBtn.addEventListener('click', submitCalendarLogHours);
-        globalLogBtn.dataset.boundClick = '1';
-    }
-
     var openLogBtn = document.getElementById('openLogHoursModalBtn');
     if (openLogBtn && !openLogBtn.dataset.boundClick) {
         openLogBtn.addEventListener('click', function() {

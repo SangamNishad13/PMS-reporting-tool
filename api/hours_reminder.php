@@ -1,6 +1,7 @@
 <?php
 require_once '../config/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/helpers.php';
 
 header('Content-Type: application/json');
 
@@ -76,6 +77,10 @@ try {
                             total_hours = ?
                         ");
                         $stmt->execute([$user_id, $today, $totalHours, $totalHours]);
+
+                        // Mirror reminder as in-app notification (email mirror handled in helper).
+                        $reminderLink = '/modules/my_daily_status.php?date=' . $today;
+                        createNotification($pdo, (int)$user_id, 'system', $message, $reminderLink);
                     }
                 }
             }

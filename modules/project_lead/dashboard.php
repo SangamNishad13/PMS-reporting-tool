@@ -86,7 +86,22 @@ foreach ($teamMembers as &$member) {
 
 include __DIR__ . '/../../includes/header.php';
 ?>
-<div class="container-fluid">
+<style>
+.dashboard-no-page-overflow {
+    overflow-x: clip;
+}
+.dashboard-no-page-overflow .table-responsive {
+    max-width: 100%;
+    max-height: 420px;
+    overflow-x: auto;
+    overflow-y: auto;
+}
+.dashboard-no-page-overflow .list-group {
+    max-height: 420px;
+    overflow-y: auto;
+}
+</style>
+<div class="container-fluid dashboard-no-page-overflow">
     <!-- <div class="alert alert-success">
         <strong>NEW VERSION LOADED!</strong> This is the updated dashboard (<?php echo date('Y-m-d H:i:s'); ?>)
     </div> -->

@@ -232,22 +232,38 @@
                                     <td>
                                         <?php if (in_array($userRole, ['admin', 'super_admin', 'project_lead', 'qa']) || 
                                                   $env['qa_id'] == $userId): ?>
+                                        <?php
+                                            $qaStatusRaw = strtolower(trim((string)($env['qa_status'] ?? 'not_started')));
+                                            $qaStatusMap = [
+                                                'pending' => 'not_started',
+                                                'na' => 'on_hold',
+                                                'pass' => 'completed',
+                                                'fail' => 'needs_review'
+                                            ];
+                                            $qaStatus = $qaStatusMap[$qaStatusRaw] ?? $qaStatusRaw;
+                                            if (!in_array($qaStatus, ['not_started', 'in_progress', 'completed', 'on_hold', 'needs_review'], true)) {
+                                                $qaStatus = 'not_started';
+                                            }
+                                        ?>
                                         <select class="form-select form-select-sm env-status-update" 
                                                 data-page-id="<?php echo $page['id']; ?>" 
                                                 data-env-id="<?php echo $env['environment_id']; ?>"
                                                 data-status-type="qa"
                                                 style="font-size: 0.75rem;">
-                                            <option value="pending" <?php echo $env['qa_status'] === 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                            <option value="na" <?php echo $env['qa_status'] === 'na' ? 'selected' : ''; ?>>N/A</option>
-                                            <option value="completed" <?php echo $env['qa_status'] === 'completed' ? 'selected' : ''; ?>>Completed</option>
+                                            <option value="not_started" <?php echo $qaStatus === 'not_started' ? 'selected' : ''; ?>>Not Started</option>
+                                            <option value="in_progress" <?php echo $qaStatus === 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
+                                            <option value="completed" <?php echo $qaStatus === 'completed' ? 'selected' : ''; ?>>Completed</option>
+                                            <option value="on_hold" <?php echo $qaStatus === 'on_hold' ? 'selected' : ''; ?>>On Hold</option>
+                                            <option value="needs_review" <?php echo $qaStatus === 'needs_review' ? 'selected' : ''; ?>>Needs Review</option>
                                         </select>
                                         <?php else: ?>
                                         <span class="badge bg-<?php 
                                             echo $env['qa_status'] === 'completed' ? 'success' : 
-                                                 ($env['qa_status'] === 'pending' ? 'primary' : 
-                                                  ($env['qa_status'] === 'na' ? 'secondary' : 'secondary'));
+                                                 ($env['qa_status'] === 'in_progress' ? 'primary' : 
+                                                  ($env['qa_status'] === 'on_hold' ? 'warning' : 
+                                                   ($env['qa_status'] === 'needs_review' ? 'info' : 'secondary')));
                                         ?> small">
-                                            <?php echo htmlspecialchars(formatQAStatusLabel($env['qa_status'] ?? 'pending')); ?>
+                                            <?php echo htmlspecialchars(formatQAStatusLabel($env['qa_status'] ?? 'not_started')); ?>
                                         </span>
                                         <?php endif; ?>
                                     </td>
@@ -295,11 +311,11 @@
                 
                 <!-- Filters row -->
                 <div class="row mb-3">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label small text-muted">Search</label>
                         <input id="uniqueFilter" class="form-control form-control-sm" placeholder="Search name or URL..." />
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label small text-muted">User Filter</label>
                         <select id="uniqueFilterUser" class="form-select form-select-sm">
                             <option value="">All Users</option>
@@ -308,7 +324,7 @@
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label small text-muted">Environment</label>
                         <select id="uniqueFilterEnv" class="form-select form-select-sm">
                             <option value="">All Environments</option>
@@ -322,13 +338,29 @@
                             ?>
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label small text-muted">QA Filter</label>
                         <select id="uniqueFilterQa" class="form-select form-select-sm">
                             <option value="">All QA</option>
                             <?php foreach ($projectUsers as $pu): ?>
                                 <option value="<?php echo htmlspecialchars($pu['full_name']); ?>"><?php echo htmlspecialchars($pu['full_name']); ?></option>
                             <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted">Page Status</label>
+                        <select id="uniqueFilterPageStatus" class="form-select form-select-sm">
+                            <option value="">All Status</option>
+                            <option value="Need Assignment">Need Assignment</option>
+                            <option value="Tester Not Assigned">Tester Not Assigned</option>
+                            <option value="QA Not Assigned">QA Not Assigned</option>
+                            <option value="Not Started">Not Started</option>
+                            <option value="Testing In Progress">Testing In Progress</option>
+                            <option value="QA In Progress">QA In Progress</option>
+                            <option value="Needs Review">Needs Review</option>
+                            <option value="In Fixing">In Fixing</option>
+                            <option value="On Hold">On Hold</option>
+                            <option value="Completed">Completed</option>
                         </select>
                     </div>
                 </div>
@@ -393,6 +425,10 @@
                                 </th>
                                 <th style="width:150px; position: relative;">
                                     QA (Env - Status)
+                                    <div class="col-resizer"></div>
+                                </th>
+                                <th style="width:150px; position: relative;">
+                                    Page Status
                                     <div class="col-resizer"></div>
                                 </th>
                                 <th style="width:200px; position: relative;">
@@ -474,6 +510,23 @@
                                             $envRows = $envListStmt->fetchAll(PDO::FETCH_ASSOC);
                                         } catch (Exception $e) { $envRows = []; }
                                     }
+                                    $pageStatusKey = $mapped['status'] ?? 'not_started';
+                                    $assignmentGapStatus = computePageAssignmentGapStatusFromEnvRows($envRows);
+                                    if ($assignmentGapStatus !== '') {
+                                        $pageStatusKey = $assignmentGapStatus;
+                                    } elseif (!empty($envRows)) {
+                                        $pageStatusKey = computeAggregatePageStatusFromEnvRows($envRows);
+                                    }
+                                    $pageStatusLabel = formatPageProgressStatusLabel($pageStatusKey);
+                                    $pageStatusBadge = 'secondary';
+                                    if ($pageStatusKey === 'completed') $pageStatusBadge = 'success';
+                                    elseif ($pageStatusKey === 'in_progress') $pageStatusBadge = 'warning text-dark';
+                                    elseif ($pageStatusKey === 'qa_in_progress') $pageStatusBadge = 'info text-dark';
+                                    elseif ($pageStatusKey === 'needs_review') $pageStatusBadge = 'primary';
+                                    elseif ($pageStatusKey === 'in_fixing') $pageStatusBadge = 'danger';
+                                    elseif ($pageStatusKey === 'on_hold') $pageStatusBadge = 'light text-dark border';
+                                    elseif ($pageStatusKey === 'need_assignment') $pageStatusBadge = 'dark';
+                                    elseif ($pageStatusKey === 'tester_not_assigned' || $pageStatusKey === 'qa_not_assigned') $pageStatusBadge = 'secondary';
                                 ?>
                                 <td>
                                     <?php
@@ -551,7 +604,7 @@
                                                 if ($envName === '') $envName = 'Env #' . (int)$er['environment_id'];
                                                 $qa = htmlspecialchars($qaName);
                                                 $envLabel = htmlspecialchars($envName);
-                                                $qaStatus = $er['env_qa_status'] ?? 'pending';
+                                                $qaStatus = $er['env_qa_status'] ?? 'not_started';
                                                 $statusHtml = renderQAEnvStatusDropdown($pageIdForEnv, $er['environment_id'], $qaStatus);
                                                 echo '<div class="d-flex align-items-center justify-content-between gap-2 mb-1">';
                                                 echo '<div class="flex-grow-1 text-truncate"><strong>' . $qa . '</strong> <small class="text-muted">&middot; ' . $envLabel . '</small></div>';
@@ -571,6 +624,11 @@
                                         echo '<span class="text-muted">No QA assignments</span>';
                                     }
                                     ?>
+                                </td>
+                                <td>
+                                    <span class="badge bg-<?php echo htmlspecialchars($pageStatusBadge); ?>">
+                                        <?php echo htmlspecialchars($pageStatusLabel); ?>
+                                    </span>
                                 </td>
                                 <td>
                                     <?php $notesDisplay = (isset($mapped['notes']) && strlen(trim((string)$mapped['notes'])) > 0) ? $mapped['notes'] : ($u['notes'] ?? ''); ?>
@@ -713,7 +771,7 @@
                             </div>
                             <?php endif; ?>
                         <?php endforeach; else: ?>
-                            <tr><td colspan="10" class="text-muted">No unique pages defined for this project.</td></tr>
+                            <tr><td colspan="11" class="text-muted">No unique pages defined for this project.</td></tr>
                         <?php endif; ?>
                         </tbody>
                     </table>

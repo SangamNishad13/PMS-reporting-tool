@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
 $auth->requireRole('admin');
@@ -218,6 +219,29 @@ function applyPendingChanges($db, $userId, $date) {
     }
 }
 
+function clearPendingChangesOnReject($db, $userId, $date) {
+    try {
+        $dropPending = $db->prepare("DELETE FROM user_pending_changes WHERE user_id = ? AND req_date = ?");
+        $dropPending->execute([$userId, $date]);
+    } catch (Exception $e) {
+        error_log("Failed clearing user_pending_changes on reject: " . $e->getMessage());
+    }
+
+    try {
+        $rejDel = $db->prepare("UPDATE user_pending_log_deletions SET status = 'rejected', updated_at = NOW() WHERE user_id = ? AND req_date = ? AND status = 'pending'");
+        $rejDel->execute([$userId, $date]);
+    } catch (Exception $e) {
+        error_log("Failed rejecting pending log deletions: " . $e->getMessage());
+    }
+
+    try {
+        $rejEdit = $db->prepare("UPDATE user_pending_log_edits SET status = 'rejected', updated_at = NOW() WHERE user_id = ? AND req_date = ? AND status = 'pending'");
+        $rejEdit->execute([$userId, $date]);
+    } catch (Exception $e) {
+        error_log("Failed rejecting pending log edits: " . $e->getMessage());
+    }
+}
+
 // Handle approve/reject actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $requestId = $_POST['request_id'] ?? null;
@@ -242,27 +266,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $reqData = $reqStmt->fetch(PDO::FETCH_ASSOC);
                     
                     if ($reqData) {
-                        // Update request status
+                        $finalRequestStatus = ($bulkAction === 'approved') ? 'used' : 'rejected';
                         $stmt = $db->prepare("UPDATE user_edit_requests SET status = ?, updated_at = NOW() WHERE id = ?");
-                        $stmt->execute([$bulkAction, $reqId]);
+                        $stmt->execute([$finalRequestStatus, $reqId]);
                         
                         // If approved, apply pending changes
                         if ($bulkAction === 'approved') {
                             applyPendingChanges($db, $reqData['user_id'], $reqData['req_date']);
                         } else {
-                            // Mark pending delete requests as rejected for this user/date
-                            $rejDel = $db->prepare("UPDATE user_pending_log_deletions SET status = 'rejected', updated_at = NOW() WHERE user_id = ? AND req_date = ? AND status = 'pending'");
-                            $rejDel->execute([$reqData['user_id'], $reqData['req_date']]);
-                            $rejEdit = $db->prepare("UPDATE user_pending_log_edits SET status = 'rejected', updated_at = NOW() WHERE user_id = ? AND req_date = ? AND status = 'pending'");
-                            $rejEdit->execute([$reqData['user_id'], $reqData['req_date']]);
+                            clearPendingChangesOnReject($db, $reqData['user_id'], $reqData['req_date']);
                         }
                         
                         // Send notification back to user
-                        $message = "Your edit request for {$reqData['req_date']} has been {$bulkAction} by {$adminName}";
+                        $actionLabel = $bulkAction === 'approved' ? 'approved' : 'rejected';
+                        $message = "Your edit request for {$reqData['req_date']} has been {$actionLabel} by {$adminName}";
                         $link = "/modules/calendar.php?date={$reqData['req_date']}";
                         
-                        $notifStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'edit_request_response', ?, ?)");
-                        $notifStmt->execute([$reqData['user_id'], $message, $link]);
+                        createNotification($db, (int)$reqData['user_id'], 'edit_request_response', $message, $link);
                         
                         $successCount++;
                     }
@@ -278,30 +298,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Handle single actions
     elseif ($requestId && $action && in_array($action, ['approved', 'rejected'])) {
         try {
-            // Update request status
+            $finalRequestStatus = ($action === 'approved') ? 'used' : 'rejected';
             $stmt = $db->prepare("UPDATE user_edit_requests SET status = ?, updated_at = NOW() WHERE id = ?");
-            $stmt->execute([$action, $requestId]);
+            $stmt->execute([$finalRequestStatus, $requestId]);
             
             // If approved, apply pending changes
             if ($action === 'approved') {
                 applyPendingChanges($db, $userId, $date);
             } else {
-                // Mark pending delete requests as rejected for this user/date
-                $rejDel = $db->prepare("UPDATE user_pending_log_deletions SET status = 'rejected', updated_at = NOW() WHERE user_id = ? AND req_date = ? AND status = 'pending'");
-                $rejDel->execute([$userId, $date]);
-                $rejEdit = $db->prepare("UPDATE user_pending_log_edits SET status = 'rejected', updated_at = NOW() WHERE user_id = ? AND req_date = ? AND status = 'pending'");
-                $rejEdit->execute([$userId, $date]);
+                clearPendingChangesOnReject($db, $userId, $date);
             }
             
             // Send notification back to user
             $adminName = $_SESSION['full_name'] ?? 'Admin';
-            $message = "Your edit request for {$date} has been {$action} by {$adminName}";
+            $actionLabel = $action === 'approved' ? 'approved' : 'rejected';
+            $message = "Your edit request for {$date} has been {$actionLabel} by {$adminName}";
             $link = "/modules/calendar.php?date={$date}";
             
-            $notifStmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, 'edit_request_response', ?, ?)");
-            $notifStmt->execute([$userId, $message, $link]);
+            createNotification($db, (int)$userId, 'edit_request_response', $message, $link);
             
-            $_SESSION['success'] = "Edit request {$action} successfully";
+            $_SESSION['success'] = "Edit request {$actionLabel} successfully";
             
         } catch (Exception $e) {
             $_SESSION['error'] = "Failed to update request: " . $e->getMessage();
