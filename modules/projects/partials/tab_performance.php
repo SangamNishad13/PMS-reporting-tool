@@ -11,48 +11,120 @@ try {
     $hasQaStatusMaster = false;
 }
 
+$hasReporterQaStatusTable = false;
+try {
+    $db->query("SELECT 1 FROM issue_reporter_qa_status LIMIT 1");
+    $hasReporterQaStatusTable = true;
+} catch (Exception $e) {
+    $hasReporterQaStatusTable = false;
+}
+
 $performanceData = [];
 $projectStats = [
     'total_comments' => 0,
     'total_issues' => 0,
+    'total_project_issues' => 0,
     'avg_error_rate' => 0,
+    'avg_error_rate_percent' => 0,
     'total_resources' => 0
 ];
 
+try {
+    $countStmt = $db->prepare("SELECT COUNT(*) FROM issues WHERE project_id = ?");
+    $countStmt->execute([$projectId]);
+    $projectStats['total_project_issues'] = (int)$countStmt->fetchColumn();
+} catch (Exception $e) {
+    $projectStats['total_project_issues'] = 0;
+}
+
 if ($hasQaStatusMaster) {
-    // Primary source: issue metadata qa_status (used by current Issues flow).
-    $perfSql = "SELECT
-                    u.id AS user_id,
-                    u.full_name,
-                    u.username,
-                    u.role,
-                    COUNT(im.id) AS total_comments,
-                    COUNT(DISTINCT i.id) AS total_issues,
-                    SUM(COALESCE(qsm.error_points, 0)) AS total_error_points,
-                    AVG(COALESCE(qsm.error_points, 0)) AS avg_error_points,
-                    SUM(CASE WHEN qsm.severity_level = '1' THEN 1 ELSE 0 END) AS minor_issues,
-                    SUM(CASE WHEN qsm.severity_level = '2' THEN 1 ELSE 0 END) AS moderate_issues,
-                    SUM(CASE WHEN qsm.severity_level = '3' THEN 1 ELSE 0 END) AS major_issues,
-                    MAX(i.updated_at) AS last_activity_date
-                FROM issues i
-                INNER JOIN users u ON i.reporter_id = u.id
-                INNER JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'qa_status'
-                INNER JOIN qa_status_master qsm
-                    ON (
-                        LOWER(TRIM(qsm.status_key)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
-                        OR LOWER(TRIM(qsm.status_label)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
-                    )
-                   AND qsm.is_active = 1
-                WHERE i.project_id = ?
-                  AND u.role NOT IN ('admin', 'super_admin')
-                GROUP BY u.id, u.full_name, u.username, u.role
-                ORDER BY total_error_points DESC, total_comments DESC";
+    // Primary source: reporter-level QA status mapping.
+    if ($hasReporterQaStatusTable) {
+        $perfSql = "SELECT
+                        u.id AS user_id,
+                        u.full_name,
+                        u.username,
+                        u.role,
+                        COUNT(irqs.id) AS total_comments,
+                        COUNT(DISTINCT i.id) AS total_issues,
+                        SUM(COALESCE(qsm.error_points, 0)) AS total_error_points,
+                        AVG(COALESCE(qsm.error_points, 0)) AS avg_error_points,
+                        SUM(CASE WHEN qsm.severity_level = '1' THEN 1 ELSE 0 END) AS minor_issues,
+                        SUM(CASE WHEN qsm.severity_level = '2' THEN 1 ELSE 0 END) AS moderate_issues,
+                        SUM(CASE WHEN qsm.severity_level = '3' THEN 1 ELSE 0 END) AS major_issues,
+                        MAX(irqs.updated_at) AS last_activity_date
+                    FROM issues i
+                    INNER JOIN issue_reporter_qa_status irqs ON irqs.issue_id = i.id
+                    INNER JOIN users u ON u.id = irqs.reporter_user_id
+                    INNER JOIN qa_status_master qsm
+                        ON FIND_IN_SET(
+                            LOWER(TRIM(qsm.status_key)),
+                            REPLACE(
+                                REPLACE(
+                                    REPLACE(
+                                        REPLACE(LOWER(TRIM(irqs.qa_status_key)), ' ', ''),
+                                        '[', ''
+                                    ),
+                                    ']', ''
+                                ),
+                                CHAR(34), ''
+                            )
+                        ) > 0
+                       AND qsm.is_active = 1
+                    WHERE i.project_id = ?
+                      AND u.role NOT IN ('admin', 'super_admin')
+                    GROUP BY u.id, u.full_name, u.username, u.role
+                    ORDER BY total_error_points DESC, total_comments DESC";
 
-    $perfStmt = $db->prepare($perfSql);
-    $perfStmt->execute([$projectId]);
-    $performanceData = $perfStmt->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $perfStmt = $db->prepare($perfSql);
+            $perfStmt->execute([$projectId]);
+            $performanceData = $perfStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log('tab_performance reporter-level query failed: ' . $e->getMessage());
+            $performanceData = [];
+        }
+    }
 
-    // Fallback for legacy rows that were stored in user_qa_performance.
+    // Fallback: legacy issue metadata qa_status (single QA status shared across reporters).
+    if (empty($performanceData)) {
+        $metaSql = "SELECT
+                        u.id AS user_id,
+                        u.full_name,
+                        u.username,
+                        u.role,
+                        COUNT(im.id) AS total_comments,
+                        COUNT(DISTINCT i.id) AS total_issues,
+                        SUM(COALESCE(qsm.error_points, 0)) AS total_error_points,
+                        AVG(COALESCE(qsm.error_points, 0)) AS avg_error_points,
+                        SUM(CASE WHEN qsm.severity_level = '1' THEN 1 ELSE 0 END) AS minor_issues,
+                        SUM(CASE WHEN qsm.severity_level = '2' THEN 1 ELSE 0 END) AS moderate_issues,
+                        SUM(CASE WHEN qsm.severity_level = '3' THEN 1 ELSE 0 END) AS major_issues,
+                        MAX(i.updated_at) AS last_activity_date
+                    FROM issues i
+                    INNER JOIN users u ON i.reporter_id = u.id
+                    INNER JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'qa_status'
+                    INNER JOIN qa_status_master qsm
+                        ON (
+                            LOWER(TRIM(qsm.status_key)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                            OR LOWER(TRIM(qsm.status_label)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                        )
+                       AND qsm.is_active = 1
+                    WHERE i.project_id = ?
+                      AND u.role NOT IN ('admin', 'super_admin')
+                    GROUP BY u.id, u.full_name, u.username, u.role
+                    ORDER BY total_error_points DESC, total_comments DESC";
+        try {
+            $metaStmt = $db->prepare($metaSql);
+            $metaStmt->execute([$projectId]);
+            $performanceData = $metaStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log('tab_performance legacy meta query failed: ' . $e->getMessage());
+            $performanceData = [];
+        }
+    }
+
+    // Fallback for very old rows stored in user_qa_performance.
     if (empty($performanceData)) {
         $legacySql = "SELECT 
                         u.id as user_id,
@@ -74,9 +146,14 @@ if ($hasQaStatusMaster) {
                     AND u.role NOT IN ('admin', 'super_admin')
                     GROUP BY u.id, u.full_name, u.username, u.role
                     ORDER BY total_error_points DESC, total_comments DESC";
-        $legacyStmt = $db->prepare($legacySql);
-        $legacyStmt->execute([$projectId]);
-        $performanceData = $legacyStmt->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $legacyStmt = $db->prepare($legacySql);
+            $legacyStmt->execute([$projectId]);
+            $performanceData = $legacyStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log('tab_performance legacy performance table query failed: ' . $e->getMessage());
+            $performanceData = [];
+        }
     }
     
     // Calculate error rate and performance score for each user
@@ -112,6 +189,7 @@ if ($hasQaStatusMaster) {
         $projectStats['total_comments'] = array_sum(array_column($performanceData, 'total_comments'));
         $projectStats['total_issues'] = array_sum(array_column($performanceData, 'total_issues'));
         $projectStats['avg_error_rate'] = round(array_sum(array_column($performanceData, 'error_rate')) / count($performanceData), 2);
+        $projectStats['avg_error_rate_percent'] = round(min(100, ($projectStats['avg_error_rate'] / 3) * 100), 1);
     }
 }
 ?>
@@ -141,8 +219,8 @@ if ($hasQaStatusMaster) {
         <?php else: ?>
         
         <!-- Project Statistics -->
-        <div class="row mb-4">
-            <div class="col-md-3">
+        <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-5 g-3 mb-4">
+            <div class="col">
                 <div class="card border-primary">
                     <div class="card-body text-center">
                         <i class="fas fa-users fa-2x text-primary mb-2"></i>
@@ -151,7 +229,7 @@ if ($hasQaStatusMaster) {
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col">
                 <div class="card border-info">
                     <div class="card-body text-center">
                         <i class="fas fa-comments fa-2x text-info mb-2"></i>
@@ -160,7 +238,7 @@ if ($hasQaStatusMaster) {
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col">
                 <div class="card border-secondary">
                     <div class="card-body text-center">
                         <i class="fas fa-bug fa-2x text-secondary mb-2"></i>
@@ -169,12 +247,21 @@ if ($hasQaStatusMaster) {
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col">
+                <div class="card border-dark">
+                    <div class="card-body text-center">
+                        <i class="fas fa-list-check fa-2x text-dark mb-2"></i>
+                        <h4 class="mb-0"><?php echo $projectStats['total_project_issues']; ?></h4>
+                        <small class="text-muted">Total Issues</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
                 <div class="card border-warning">
                     <div class="card-body text-center">
                         <i class="fas fa-exclamation-triangle fa-2x text-warning mb-2"></i>
-                        <h4 class="mb-0"><?php echo $projectStats['avg_error_rate']; ?></h4>
-                        <small class="text-muted">Avg Error Rate</small>
+                        <h4 class="mb-0"><?php echo $projectStats['avg_error_rate_percent']; ?>%</h4>
+                        <small class="text-muted">Avg Error Rate (%)</small>
                     </div>
                 </div>
             </div>
