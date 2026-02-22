@@ -945,17 +945,27 @@ function respondHoursRequestFromDashboard(requestId, userId, reqDate, action) {
         fetch('<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/edit_requests.php', {
             method: 'POST',
             body: fd,
-            credentials: 'same-origin'
+            credentials: 'same-origin',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            }
         })
         .then(function(resp) {
             if (!resp.ok) {
                 throw new Error('HTTP ' + resp.status);
             }
+            return resp.json();
+        })
+        .then(function(payload) {
+            if (!payload || payload.success !== true) {
+                throw new Error((payload && payload.message) ? payload.message : 'Request failed');
+            }
             showToast('Hours request ' + (action === 'approved' ? 'accepted' : 'rejected') + '.', 'success');
         })
         .catch(function(err) {
             if (typeof restoreItem === 'function') restoreItem();
-            showToast('Failed to process hours request.', 'danger');
+            showToast('Failed to process hours request: ' + (err && err.message ? err.message : 'Unknown error'), 'danger');
         });
     }, {
         title: action === 'approved' ? 'Confirm Accept' : 'Confirm Reject',

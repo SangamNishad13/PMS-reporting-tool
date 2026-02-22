@@ -244,6 +244,10 @@ function clearPendingChangesOnReject($db, $userId, $date) {
 
 // Handle approve/reject actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $isAjaxRequest = (
+        (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') ||
+        (isset($_SERVER['HTTP_ACCEPT']) && stripos((string)$_SERVER['HTTP_ACCEPT'], 'application/json') !== false)
+    );
     $requestId = $_POST['request_id'] ?? null;
     $action = $_POST['action'] ?? null;
     $userId = $_POST['user_id'] ?? null;
@@ -332,6 +336,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (strpos($returnTo, $baseDir . '/modules/admin/') === 0 || strpos($returnTo, '/modules/admin/') === 0) {
             $redirectTarget = $returnTo;
         }
+    }
+
+    if ($isAjaxRequest) {
+        $successMsg = isset($_SESSION['success']) ? (string)$_SESSION['success'] : '';
+        $errorMsg = isset($_SESSION['error']) ? (string)$_SESSION['error'] : '';
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => ($errorMsg === ''),
+            'message' => ($errorMsg === '' ? $successMsg : $errorMsg),
+            'redirect' => $redirectTarget
+        ]);
+        unset($_SESSION['success'], $_SESSION['error']);
+        exit;
     }
 
     header("Location: " . $redirectTarget);
