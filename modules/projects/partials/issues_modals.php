@@ -115,12 +115,6 @@
                                 </option>
                             <?php endforeach; ?>
                         </select>
-                        <label class="form-label mt-2">QA Status (Multi-select)</label>
-                        <select id="finalIssueQaStatus" class="form-select form-select-sm issue-select2-tags" multiple>
-                            <?php foreach ($qaStatuses as $qs): ?>
-                                <option value="<?php echo htmlspecialchars($qs['status_key']); ?>"><?php echo htmlspecialchars($qs['status_label']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
                         <label class="form-label mt-2">Page Name(s)</label>
                         <select id="finalIssuePages" class="form-select form-select-sm issue-select2" multiple>
                             <?php foreach ($projectPages as $p): ?>
@@ -150,6 +144,11 @@
                                 <option value="<?php echo (int)$u['id']; ?>"><?php echo htmlspecialchars($u['full_name']); ?></option>
                             <?php endforeach; ?>
                         </select>
+                        <div id="reporterQaStatusContainer" class="mt-2 d-none">
+                            <label class="form-label mb-1">QA Status By Reporter</label>
+                            <div id="reporterQaStatusRows" class="small border rounded p-2 bg-light"></div>
+                            <small class="text-muted">This mapping is used for reporter-wise performance scoring.</small>
+                        </div>
                         <!-- Dynamic Metadata Container -->
                         <div id="finalIssueMetadataContainer"></div>
                     </div>

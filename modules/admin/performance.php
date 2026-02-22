@@ -18,6 +18,14 @@ try {
     $hasQaStatusMaster = false;
 }
 
+$hasReporterQaStatusTable = false;
+try {
+    $db->query("SELECT 1 FROM issue_reporter_qa_status LIMIT 1");
+    $hasReporterQaStatusTable = true;
+} catch (Exception $e) {
+    $hasReporterQaStatusTable = false;
+}
+
 // Filters
 $filters = [
     'start_date' => $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days')),
@@ -46,38 +54,45 @@ if (!$hasQaStatusMaster) {
 } else {
     // Build WHERE clause for filters
     $where = ['1=1'];
+    $whereLegacy = ['1=1'];
     $params = [];
     
     if (!empty($filters['start_date'])) {
-        $where[] = 'DATE(i.updated_at) >= ?';
+        $where[] = 'DATE(irqs.updated_at) >= ?';
+        $whereLegacy[] = 'DATE(i.updated_at) >= ?';
         $params[] = $filters['start_date'];
     }
     if (!empty($filters['end_date'])) {
-        $where[] = 'DATE(i.updated_at) <= ?';
+        $where[] = 'DATE(irqs.updated_at) <= ?';
+        $whereLegacy[] = 'DATE(i.updated_at) <= ?';
         $params[] = $filters['end_date'];
     }
     if (!empty($filters['project_id'])) {
         $where[] = 'i.project_id = ?';
+        $whereLegacy[] = 'i.project_id = ?';
         $params[] = $filters['project_id'];
     }
     if (!empty($filters['user_id'])) {
-        $where[] = 'i.reporter_id = ?';
+        $where[] = 'u.id = ?';
+        $whereLegacy[] = 'i.reporter_id = ?';
         $params[] = $filters['user_id'];
     }
     if (!empty($filters['severity_level'])) {
         $where[] = 'qsm.severity_level = ?';
+        $whereLegacy[] = 'qsm.severity_level = ?';
         $params[] = $filters['severity_level'];
     }
     
     $whereSql = implode(' AND ', $where);
+    $whereLegacySql = implode(' AND ', $whereLegacy);
     
-    // Get aggregated performance data per user from issue metadata QA statuses
+    // Primary source: reporter-level QA status mapping.
     $sql = "SELECT 
                 u.id as user_id,
                 u.full_name,
                 u.username,
                 u.role,
-                COUNT(im.id) as total_comments,
+                COUNT(irqs.id) as total_comments,
                 COUNT(DISTINCT i.id) as total_issues,
                 COUNT(DISTINCT i.project_id) as total_projects,
                 SUM(COALESCE(qsm.error_points, 0)) as total_error_points,
@@ -85,24 +100,80 @@ if (!$hasQaStatusMaster) {
                 SUM(CASE WHEN qsm.severity_level = '1' THEN 1 ELSE 0 END) as minor_issues,
                 SUM(CASE WHEN qsm.severity_level = '2' THEN 1 ELSE 0 END) as moderate_issues,
                 SUM(CASE WHEN qsm.severity_level = '3' THEN 1 ELSE 0 END) as major_issues,
-                MAX(i.updated_at) as last_activity_date
+                MAX(irqs.updated_at) as last_activity_date
             FROM issues i
-            JOIN users u ON i.reporter_id = u.id
-            JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'qa_status'
+            JOIN issue_reporter_qa_status irqs ON irqs.issue_id = i.id
+            JOIN users u ON u.id = irqs.reporter_user_id
             JOIN qa_status_master qsm
-                ON (
-                    LOWER(TRIM(qsm.status_key)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
-                    OR LOWER(TRIM(qsm.status_label)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
-                )
+                ON FIND_IN_SET(
+                    LOWER(TRIM(qsm.status_key)),
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(
+                                REPLACE(LOWER(TRIM(irqs.qa_status_key)), ' ', ''),
+                                '[', ''
+                            ),
+                            ']', ''
+                        ),
+                        CHAR(34), ''
+                    )
+                ) > 0
                AND qsm.is_active = 1
             WHERE $whereSql
             AND u.role NOT IN ('admin', 'super_admin')
             GROUP BY u.id, u.full_name, u.username, u.role
             ORDER BY total_error_points DESC, total_comments DESC";
     
-    $stmt = $db->prepare($sql);
-    $stmt->execute($params);
-    $performanceData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if ($hasReporterQaStatusTable) {
+        try {
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            $performanceData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log('admin/performance reporter-level query failed: ' . $e->getMessage());
+            $performanceData = [];
+            $messages['info'] = 'Reporter-level QA data query failed, showing fallback data if available.';
+        }
+    }
+
+    // Fallback for legacy issue metadata (single QA status shared across reporters).
+    if (empty($performanceData)) {
+        $legacySql = "SELECT 
+                        u.id as user_id,
+                        u.full_name,
+                        u.username,
+                        u.role,
+                        COUNT(im.id) as total_comments,
+                        COUNT(DISTINCT i.id) as total_issues,
+                        COUNT(DISTINCT i.project_id) as total_projects,
+                        SUM(COALESCE(qsm.error_points, 0)) as total_error_points,
+                        AVG(COALESCE(qsm.error_points, 0)) as avg_error_points,
+                        SUM(CASE WHEN qsm.severity_level = '1' THEN 1 ELSE 0 END) as minor_issues,
+                        SUM(CASE WHEN qsm.severity_level = '2' THEN 1 ELSE 0 END) as moderate_issues,
+                        SUM(CASE WHEN qsm.severity_level = '3' THEN 1 ELSE 0 END) as major_issues,
+                        MAX(i.updated_at) as last_activity_date
+                    FROM issues i
+                    JOIN users u ON i.reporter_id = u.id
+                    JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'qa_status'
+                    JOIN qa_status_master qsm
+                        ON (
+                            LOWER(TRIM(qsm.status_key)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                            OR LOWER(TRIM(qsm.status_label)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                        )
+                       AND qsm.is_active = 1
+                    WHERE $whereLegacySql
+                    AND u.role NOT IN ('admin', 'super_admin')
+                    GROUP BY u.id, u.full_name, u.username, u.role
+                    ORDER BY total_error_points DESC, total_comments DESC";
+        try {
+            $legacyStmt = $db->prepare($legacySql);
+            $legacyStmt->execute($params);
+            $performanceData = $legacyStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log('admin/performance legacy query failed: ' . $e->getMessage());
+            $performanceData = [];
+        }
+    }
     
     // Calculate error rate and performance score for each user
     foreach ($performanceData as &$data) {
@@ -136,7 +207,7 @@ if (!$hasQaStatusMaster) {
     }
     unset($data);
     
-    // Get recent activities (last 50) from issue metadata QA statuses
+    // Get recent activities (last 50) from reporter-level QA statuses
     $recentSql = "SELECT 
                     i.id as issue_id,
                     i.project_id,
@@ -147,27 +218,81 @@ if (!$hasQaStatusMaster) {
                     qsm.severity_level,
                     qsm.badge_color,
                     qsm.error_points,
-                    DATE(i.updated_at) as comment_date,
-                    i.updated_at as created_at,
+                    DATE(irqs.updated_at) as comment_date,
+                    irqs.updated_at as created_at,
                     p.title as project_title
                 FROM issues i
-                JOIN users u ON i.reporter_id = u.id
-                JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'qa_status'
+                JOIN issue_reporter_qa_status irqs ON irqs.issue_id = i.id
+                JOIN users u ON u.id = irqs.reporter_user_id
                 JOIN qa_status_master qsm
-                    ON (
-                        LOWER(TRIM(qsm.status_key)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
-                        OR LOWER(TRIM(qsm.status_label)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
-                    )
+                    ON FIND_IN_SET(
+                        LOWER(TRIM(qsm.status_key)),
+                        REPLACE(
+                            REPLACE(
+                                REPLACE(
+                                    REPLACE(LOWER(TRIM(irqs.qa_status_key)), ' ', ''),
+                                    '[', ''
+                                ),
+                                ']', ''
+                            ),
+                            CHAR(34), ''
+                        )
+                    ) > 0
                    AND qsm.is_active = 1
                 LEFT JOIN projects p ON i.project_id = p.id
                 WHERE $whereSql
                 AND u.role NOT IN ('admin', 'super_admin')
-                ORDER BY i.updated_at DESC
+                ORDER BY irqs.updated_at DESC
                 LIMIT 50";
     
-    $recentStmt = $db->prepare($recentSql);
-    $recentStmt->execute($params);
-    $recentActivities = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
+    if ($hasReporterQaStatusTable) {
+        try {
+            $recentStmt = $db->prepare($recentSql);
+            $recentStmt->execute($params);
+            $recentActivities = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log('admin/performance recent reporter query failed: ' . $e->getMessage());
+            $recentActivities = [];
+        }
+    }
+
+    if (empty($recentActivities)) {
+        $recentLegacySql = "SELECT 
+                            i.id as issue_id,
+                            i.project_id,
+                            u.full_name,
+                            u.username,
+                            qsm.status_label,
+                            qsm.status_key,
+                            qsm.severity_level,
+                            qsm.badge_color,
+                            qsm.error_points,
+                            DATE(i.updated_at) as comment_date,
+                            i.updated_at as created_at,
+                            p.title as project_title
+                        FROM issues i
+                        JOIN users u ON i.reporter_id = u.id
+                        JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'qa_status'
+                        JOIN qa_status_master qsm
+                            ON (
+                                LOWER(TRIM(qsm.status_key)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                                OR LOWER(TRIM(qsm.status_label)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                            )
+                           AND qsm.is_active = 1
+                        LEFT JOIN projects p ON i.project_id = p.id
+                        WHERE $whereLegacySql
+                        AND u.role NOT IN ('admin', 'super_admin')
+                        ORDER BY i.updated_at DESC
+                        LIMIT 50";
+        try {
+            $recentLegacyStmt = $db->prepare($recentLegacySql);
+            $recentLegacyStmt->execute($params);
+            $recentActivities = $recentLegacyStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log('admin/performance recent legacy query failed: ' . $e->getMessage());
+            $recentActivities = [];
+        }
+    }
     
     // Calculate overall statistics
     $overallStats = [

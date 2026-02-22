@@ -186,17 +186,13 @@ var ProjectConfig = window.ProjectConfig || {};
         (function () {
             var container = document.getElementById('projectTabsContent');
             if (!container) return;
-            var topTabs = [
-                'phases',
-                'pages',
-                'team',
-                'assets',
-                'activity',
-                'issues',
-                'regression',
-                'feedback',
-                'production-hours'
-            ];
+            // Keep tab panes in sync with the actual main tab buttons to avoid missing panes.
+            var topTabs = Array.from(document.querySelectorAll('#projectTabs button[data-bs-target^="#"]'))
+                .map(function (btn) {
+                    var target = String(btn.getAttribute('data-bs-target') || '').trim();
+                    return target.charAt(0) === '#' ? target.slice(1) : '';
+                })
+                .filter(function (id) { return id !== ''; });
             topTabs.forEach(function (id) {
                 var pane = document.getElementById(id);
                 if (pane && pane.parentElement !== container) {

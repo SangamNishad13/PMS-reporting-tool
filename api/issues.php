@@ -82,6 +82,194 @@ function replaceMeta($db, $issueId, $key, $values) {
     }
 }
 
+function ensureIssueReporterQaStatusTable($db) {
+    static $isReady = null;
+    if ($isReady !== null) return $isReady;
+    try {
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS issue_reporter_qa_status (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                issue_id INT NOT NULL,
+                reporter_user_id INT NOT NULL,
+                qa_status_key VARCHAR(100) NOT NULL,
+                set_by_user_id INT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                UNIQUE KEY uq_issue_reporter (issue_id, reporter_user_id),
+                KEY idx_issue_id (issue_id),
+                KEY idx_reporter_user_id (reporter_user_id),
+                KEY idx_qa_status_key (qa_status_key),
+                CONSTRAINT fk_irqs_issue FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE,
+                CONSTRAINT fk_irqs_reporter FOREIGN KEY (reporter_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                CONSTRAINT fk_irqs_set_by FOREIGN KEY (set_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+        $isReady = true;
+    } catch (Exception $e) {
+        error_log('ensureIssueReporterQaStatusTable error: ' . $e->getMessage());
+        $isReady = false;
+    }
+    return $isReady;
+}
+
+function parseReporterQaStatusMapInput($value) {
+    $map = [];
+    if ($value === null) return $map;
+    if (is_string($value)) {
+        $raw = trim($value);
+        if ($raw === '') return $map;
+        $decoded = json_decode($raw, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $value = $decoded;
+        } else {
+            return $map;
+        }
+    }
+    if (!is_array($value)) return $map;
+    foreach ($value as $reporterId => $statusValue) {
+        $rid = (int)$reporterId;
+        if ($rid <= 0) continue;
+        $statusKeys = [];
+        if (is_array($statusValue)) {
+            $statusKeys = $statusValue;
+        } elseif (is_string($statusValue)) {
+            $raw = trim($statusValue);
+            if ($raw !== '' && $raw[0] === '[') {
+                $decoded = json_decode($raw, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                    $statusKeys = $decoded;
+                } else {
+                    $statusKeys = [$statusValue];
+                }
+            } elseif (strpos($raw, ',') !== false) {
+                $statusKeys = array_map('trim', explode(',', $raw));
+            } else {
+                $statusKeys = [$statusValue];
+            }
+        } elseif ($statusValue !== null) {
+            $statusKeys = [(string)$statusValue];
+        }
+        $statusKeys = array_values(array_unique(array_filter(array_map(static function($v){
+            return strtolower(trim((string)$v));
+        }, $statusKeys), static function($v){
+            return $v !== '';
+        })));
+        if (empty($statusKeys)) continue;
+        $map[$rid] = $statusKeys;
+    }
+    return $map;
+}
+
+function parseReporterQaStatusMapFromMetaValues($metaValues) {
+    if (!is_array($metaValues) || empty($metaValues)) return [];
+    foreach ($metaValues as $value) {
+        $map = parseReporterQaStatusMapInput($value);
+        if (!empty($map)) return $map;
+    }
+    return [];
+}
+
+function normalizeReporterQaStatusMap(array $map, array $reporterIds, array $validStatusKeys = []) {
+    $allowedReporterIds = [];
+    foreach ($reporterIds as $rid) {
+        $rid = (int)$rid;
+        if ($rid > 0) $allowedReporterIds[$rid] = true;
+    }
+    $validStatusLookup = [];
+    foreach ($validStatusKeys as $key) {
+        $k = strtolower(trim((string)$key));
+        if ($k !== '') $validStatusLookup[$k] = true;
+    }
+
+    $normalized = [];
+    foreach ($map as $rid => $statusValues) {
+        $rid = (int)$rid;
+        if ($rid <= 0) continue;
+        if (!isset($allowedReporterIds[$rid])) continue;
+        $keys = is_array($statusValues) ? $statusValues : [$statusValues];
+        $keys = array_values(array_unique(array_filter(array_map(static function($v){
+            return strtolower(trim((string)$v));
+        }, $keys), static function($v){
+            return $v !== '';
+        })));
+        if (!empty($validStatusLookup)) {
+            $keys = array_values(array_filter($keys, static function($key) use ($validStatusLookup){
+                return isset($validStatusLookup[$key]);
+            }));
+        }
+        if (empty($keys)) continue;
+        $normalized[$rid] = $keys;
+    }
+    return $normalized;
+}
+
+function loadReporterQaStatusMapByIssueIds($db, array $issueIds) {
+    $result = [];
+    if (empty($issueIds)) return $result;
+    if (!ensureIssueReporterQaStatusTable($db)) return $result;
+
+    $issueIds = array_values(array_filter(array_map('intval', $issueIds), function($v){ return $v > 0; }));
+    if (empty($issueIds)) return $result;
+    $ph = implode(',', array_fill(0, count($issueIds), '?'));
+    $stmt = $db->prepare("SELECT issue_id, reporter_user_id, qa_status_key FROM issue_reporter_qa_status WHERE issue_id IN ($ph)");
+    $stmt->execute($issueIds);
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $iid = (int)$row['issue_id'];
+        $rid = (int)$row['reporter_user_id'];
+        $raw = trim((string)$row['qa_status_key']);
+        if ($iid <= 0 || $rid <= 0 || $raw === '') continue;
+        $statusKeys = [];
+        if ($raw[0] === '[') {
+            $decoded = json_decode($raw, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $statusKeys = $decoded;
+            }
+        }
+        if (empty($statusKeys)) {
+            $statusKeys = strpos($raw, ',') !== false ? explode(',', $raw) : [$raw];
+        }
+        $statusKeys = array_values(array_unique(array_filter(array_map(static function($v){
+            return strtolower(trim((string)$v));
+        }, $statusKeys), static function($v){
+            return $v !== '';
+        })));
+        if (empty($statusKeys)) continue;
+        if (!isset($result[$iid])) $result[$iid] = [];
+        $result[$iid][$rid] = $statusKeys;
+    }
+    return $result;
+}
+
+function persistIssueReporterQaStatuses($db, $issueId, array $map, $actorUserId) {
+    if (!ensureIssueReporterQaStatusTable($db)) return false;
+    $issueId = (int)$issueId;
+    $actorUserId = (int)$actorUserId;
+    if ($issueId <= 0) return false;
+
+    $db->prepare("DELETE FROM issue_reporter_qa_status WHERE issue_id = ?")->execute([$issueId]);
+    if (empty($map)) return true;
+
+    $ins = $db->prepare("
+        INSERT INTO issue_reporter_qa_status (issue_id, reporter_user_id, qa_status_key, set_by_user_id)
+        VALUES (?, ?, ?, ?)
+    ");
+    foreach ($map as $rid => $statusValues) {
+        $rid = (int)$rid;
+        if ($rid <= 0) continue;
+        $statusKeys = is_array($statusValues) ? $statusValues : [$statusValues];
+        $statusKeys = array_values(array_unique(array_filter(array_map(static function($v){
+            return strtolower(trim((string)$v));
+        }, $statusKeys), static function($v){
+            return $v !== '';
+        })));
+        if (empty($statusKeys)) continue;
+        $statusKeyCsv = implode(',', $statusKeys);
+        $ins->execute([$issueId, $rid, $statusKeyCsv, $actorUserId > 0 ? $actorUserId : $rid]);
+    }
+    return true;
+}
+
 function getDefaultTypeId($db, $projectId) {
     $stmt = $db->prepare("SELECT MIN(type_id) FROM issues WHERE project_id = ?");
     $stmt->execute([$projectId]);
@@ -475,6 +663,7 @@ try {
         $issueIds = array_map(function($r){ return (int)$r['id']; }, $issues);
         $metaMap = [];
         $commentCountMap = [];
+        $reporterQaStatusByIssue = [];
         if (!empty($issueIds)) {
             $placeholders = implode(',', array_fill(0, count($issueIds), '?'));
             $metaStmt = $db->prepare("SELECT issue_id, meta_key, meta_value FROM issue_metadata WHERE issue_id IN ($placeholders)");
@@ -491,6 +680,7 @@ try {
             while ($c = $commentStmt->fetch(PDO::FETCH_ASSOC)) {
                 $commentCountMap[(int)$c['issue_id']] = (int)$c['c'];
             }
+            $reporterQaStatusByIssue = loadReporterQaStatusMapByIssueIds($db, $issueIds);
         }
 
         $out = [];
@@ -501,9 +691,13 @@ try {
             if (empty($pages) && !empty($i['page_id'])) $pages = [(string)$i['page_id']];
             $statusValue = ($meta['issue_status'][0] ?? strtolower(str_replace(' ', '_', $i['status_name'] ?? '')));
             $qaStatusValues = ($meta['qa_status'] ?? []);
+            $reporterQaStatusMap = $reporterQaStatusByIssue[$iid] ?? [];
+            if (empty($reporterQaStatusMap) && isset($meta['reporter_qa_status_map'])) {
+                $reporterQaStatusMap = parseReporterQaStatusMapFromMetaValues($meta['reporter_qa_status_map']);
+            }
             $hasComments = (($commentCountMap[$iid] ?? 0) > 0);
             $isOpen = isIssueOpenStatusValue($statusValue);
-            $hasQaStatus = isQaStatusMetaFilled($qaStatusValues);
+            $hasQaStatus = !empty($reporterQaStatusMap) || isQaStatusMetaFilled($qaStatusValues);
             $canTesterDelete = (!$hasComments && !($isOpen && $hasQaStatus));
             
             // Extract severity and priority as simple strings (not arrays or JSON)
@@ -559,6 +753,7 @@ try {
                 'status' => $statusValue,
                 'status_id' => (int)$i['status_id'],
                 'qa_status' => $qaStatusValues, // Return as array for multi-select
+                'reporter_qa_status_map' => $reporterQaStatusMap,
                 'has_comments' => $hasComments,
                 'can_tester_delete' => $canTesterDelete,
                 'severity' => $severity,
@@ -606,6 +801,7 @@ try {
         $metaMap = [];
         $pageMap = [];
         $qaStatusMap = [];
+        $reporterQaStatusByIssue = [];
         
         if (!empty($issueIds)) {
             // Fetch metadata
@@ -639,6 +835,7 @@ try {
                     'number' => $p['page_number']
                 ];
             }
+            $reporterQaStatusByIssue = loadReporterQaStatusMapByIssueIds($db, $issueIds);
         }
         
         // Fetch QA status master for labels
@@ -655,6 +852,10 @@ try {
         foreach ($issues as $i) {
             $iid = (int)$i['id'];
             $meta = $metaMap[$iid] ?? [];
+            $reporterQaStatusMap = $reporterQaStatusByIssue[$iid] ?? [];
+            if (empty($reporterQaStatusMap) && isset($meta['reporter_qa_status_map'])) {
+                $reporterQaStatusMap = parseReporterQaStatusMapFromMetaValues($meta['reporter_qa_status_map']);
+            }
             
             // Get page info
             $pages = $pageMap[$iid] ?? [];
@@ -693,7 +894,17 @@ try {
             // Get QA statuses with labels
             $qaStatuses = [];
             $qaStatusKeys = [];
-            if (isset($meta['qa_status'])) {
+            if (!empty($reporterQaStatusMap)) {
+                foreach ($reporterQaStatusMap as $statusValues) {
+                    $vals = is_array($statusValues) ? $statusValues : [$statusValues];
+                    foreach ($vals as $statusKey) {
+                        $key = strtolower(trim((string)$statusKey));
+                        if ($key !== '') $qaStatusKeys[] = $key;
+                    }
+                }
+                $qaStatusKeys = array_values(array_unique($qaStatusKeys));
+            }
+            if (empty($qaStatusKeys) && isset($meta['qa_status'])) {
                 $qaStatusData = $meta['qa_status'];
                 // Handle both array and string formats
                 if (is_array($qaStatusData)) {
@@ -714,14 +925,14 @@ try {
                     }
                 }
                 
-                foreach ($qaStatusKeys as $key) {
-                    if (isset($qaStatusMaster[$key])) {
-                        $qaStatuses[] = [
-                            'key' => $key,
-                            'label' => $qaStatusMaster[$key]['label'],
-                            'color' => $qaStatusMaster[$key]['color']
-                        ];
-                    }
+            }
+            foreach ($qaStatusKeys as $key) {
+                if (isset($qaStatusMaster[$key])) {
+                    $qaStatuses[] = [
+                        'key' => $key,
+                        'label' => $qaStatusMaster[$key]['label'],
+                        'color' => $qaStatusMaster[$key]['color']
+                    ];
                 }
             }
             
@@ -773,6 +984,7 @@ try {
                 'page_ids' => $pageIds,
                 'qa_statuses' => $qaStatuses,
                 'qa_status_keys' => $qaStatusKeys,
+                'reporter_qa_status_map' => $reporterQaStatusMap,
                 'reporters' => implode(', ', $reporters),
                 'reporter_ids' => $reporterIds,
                 'severity' => isset($meta['severity']) ? (is_array($meta['severity']) ? $meta['severity'][0] : $meta['severity']) : 'medium',
@@ -938,7 +1150,17 @@ try {
         }
         if (!$statusId) $statusId = getStatusId($db, 'Open');
         $reporters = parseArrayInput($_POST['reporters'] ?? []);
+        $reporters = array_values(array_filter(array_map('intval', $reporters), function($v){ return $v > 0; }));
         $reporterId = !empty($reporters) ? (int)$reporters[0] : (int)$userId;
+        $qaStatusMasterRows = [];
+        try {
+            $qaStatusMasterRows = $db->query("SELECT status_key FROM qa_status_master WHERE is_active = 1")->fetchAll(PDO::FETCH_COLUMN);
+        } catch (Exception $e) {
+            $qaStatusMasterRows = [];
+        }
+        $validQaStatusKeys = array_values(array_filter(array_map(static function($v) {
+            return strtolower(trim((string)$v));
+        }, (array)$qaStatusMasterRows)));
         $priorityId = getPriorityId($db, $_POST['priority'] ?? 'medium');
         if (!$priorityId) $priorityId = getPriorityId($db, 'Medium');
         $typeId = getDefaultTypeId($db, $projectId);
@@ -1047,7 +1269,7 @@ try {
         }
 
         function handleMetaHistory($db, $issueId, $userId, $key, $newValues, $oldMeta) {
-            $multiKeys = ['qa_status', 'page_ids', 'reporter_ids', 'grouped_urls'];
+            $multiKeys = ['qa_status', 'page_ids', 'reporter_ids', 'grouped_urls', 'reporter_qa_status_map'];
             $allowCsv = in_array($key, $multiKeys, true);
             $oldVals = normalizeHistoryMetaValues($oldMeta[$key] ?? [], $allowCsv);
             $newVals = normalizeHistoryMetaValues($newValues, $allowCsv);
@@ -1064,6 +1286,7 @@ try {
             handleMetaHistory($db, $id, $userId, 'issue_status', $_POST['issue_status'] ?? '', $oldMeta);
             if ($canUpdateQaStatus) {
                 handleMetaHistory($db, $id, $userId, 'qa_status', $_POST['qa_status'] ?? '', $oldMeta);
+                handleMetaHistory($db, $id, $userId, 'reporter_qa_status_map', $_POST['reporter_qa_status_map'] ?? '', $oldMeta);
             }
             handleMetaHistory($db, $id, $userId, 'page_ids', $pageIds, $oldMeta);
             handleMetaHistory($db, $id, $userId, 'reporter_ids', $reporters, $oldMeta);
@@ -1089,11 +1312,44 @@ try {
         } elseif (!is_array($qaStatusInput)) {
             $qaStatusInput = [];
         }
-        if (!$canUpdateQaStatus && !empty($qaStatusInput)) {
+        $qaStatusInput = array_values(array_filter(array_map(static function($v) {
+            return strtolower(trim((string)$v));
+        }, $qaStatusInput), static function($v) {
+            return $v !== '';
+        }));
+
+        $reporterQaStatusMapInput = parseReporterQaStatusMapInput($_POST['reporter_qa_status_map'] ?? null);
+        $reporterQaStatusMap = normalizeReporterQaStatusMap($reporterQaStatusMapInput, $reporters, $validQaStatusKeys);
+
+        if (!$canUpdateQaStatus && (!empty($qaStatusInput) || !empty($reporterQaStatusMap))) {
             jsonError('You do not have permission to update QA status for this project.', 403);
         }
         if ($canUpdateQaStatus) {
+            if (empty($reporterQaStatusMap) && !empty($qaStatusInput) && !empty($reporters)) {
+                // Backward-compatible behavior: if only global QA status is sent, apply selected statuses to all selected reporters.
+                $defaultStatuses = array_values(array_unique(array_filter(array_map(static function($v){
+                    return strtolower(trim((string)$v));
+                }, $qaStatusInput), static function($v){
+                    return $v !== '';
+                })));
+                foreach ($reporters as $rid) {
+                    $reporterQaStatusMap[(int)$rid] = $defaultStatuses;
+                }
+            }
+            if (!empty($reporterQaStatusMap)) {
+                $flatQaStatuses = [];
+                foreach ($reporterQaStatusMap as $statusValues) {
+                    $vals = is_array($statusValues) ? $statusValues : [$statusValues];
+                    foreach ($vals as $sv) {
+                        $key = strtolower(trim((string)$sv));
+                        if ($key !== '') $flatQaStatuses[] = $key;
+                    }
+                }
+                $qaStatusInput = array_values(array_unique($flatQaStatuses));
+            }
             replaceMeta($db, $id, 'qa_status', $qaStatusInput);
+            replaceMeta($db, $id, 'reporter_qa_status_map', [json_encode($reporterQaStatusMap, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+            persistIssueReporterQaStatuses($db, $id, $reporterQaStatusMap, $userId);
         }
         
         replaceMeta($db, $id, 'page_ids', $pageIds);

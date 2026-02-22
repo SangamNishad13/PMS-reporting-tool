@@ -177,12 +177,17 @@
 
     function applyIssueQaPermissionState() {
         var $qa = jQuery('#finalIssueQaStatus');
-        if (!$qa.length) return;
-        $qa.prop('disabled', !canUpdateIssueQaStatus).trigger('change.select2');
+        if ($qa.length) {
+            $qa.prop('disabled', !canUpdateIssueQaStatus).trigger('change.select2');
+        }
+        var reporterSelects = document.querySelectorAll('#reporterQaStatusRows .reporter-qa-status-select');
+        reporterSelects.forEach(function (sel) {
+            sel.disabled = !canUpdateIssueQaStatus;
+        });
         if (!canUpdateIssueQaStatus) {
-            $qa.attr('title', 'Only authorized users can update QA status.');
+            if ($qa.length) $qa.attr('title', 'Only authorized users can update QA status.');
         } else {
-            $qa.removeAttr('title');
+            if ($qa.length) $qa.removeAttr('title');
         }
     }
 
@@ -639,6 +644,7 @@
                     is17802: it.is17802 || [],
                     common_title: it.common_title || '',
                     reporters: it.reporters || [],
+                    reporter_qa_status_map: it.reporter_qa_status_map || {},
                     has_comments: !!it.has_comments,
                     can_tester_delete: (it.can_tester_delete !== false),
                     // Add created_at and updated_at timestamps
@@ -732,6 +738,10 @@
         jQuery('#finalIssueGroupedUrls').off('change.issueSummary').on('change.issueSummary', function () {
             updateUrlSelectionSummary();
             updateGroupedUrlsPreview();
+        });
+
+        jQuery('#finalIssueReporters').off('change.issueReporterQa').on('change.issueReporterQa', function () {
+            refreshReporterQaStatusEditor();
         });
 
     }
@@ -1750,15 +1760,229 @@
         if (backBtn) backBtn.classList.add('d-none');
     }
 
+    function getProjectUserNameById(userId) {
+        var uid = String(userId || '');
+        if (uid && !/^\d+$/.test(uid)) return uid;
+        if (!uid || !window.ProjectConfig || !Array.isArray(ProjectConfig.projectUsers)) return 'User ' + uid;
+        var found = ProjectConfig.projectUsers.find(function (u) { return String(u.id) === uid; });
+        return found ? String(found.full_name || ('User ' + uid)) : ('User ' + uid);
+    }
+
+    function getReporterQaStatusMapFromUi() {
+        var out = {};
+        var rows = document.querySelectorAll('#reporterQaStatusRows .reporter-qa-status-select');
+        rows.forEach(function (el) {
+            var rid = String(el.getAttribute('data-reporter-id') || '').trim();
+            if (!rid) return;
+            var selected = [];
+            if (window.jQuery) {
+                selected = jQuery(el).val() || [];
+            } else if (el.multiple && el.selectedOptions) {
+                selected = Array.from(el.selectedOptions).map(function (opt) { return opt.value; });
+            } else {
+                selected = [el.value || ''];
+            }
+            var statusKeys = selected.map(function (v) {
+                return String(v || '').trim();
+            }).filter(function (v) { return v !== ''; });
+            if (statusKeys.length) out[rid] = statusKeys;
+        });
+        return out;
+    }
+
+    function normalizeReporterQaStatusMapForReporters(mapObj, reportersVal) {
+        var out = {};
+        var allowed = {};
+        (Array.isArray(reportersVal) ? reportersVal : []).forEach(function (rid) {
+            var key = String(rid || '').trim();
+            if (key) allowed[key] = true;
+        });
+        if (!mapObj || typeof mapObj !== 'object') return out;
+        Object.keys(mapObj).forEach(function (rid) {
+            var key = String(rid || '').trim();
+            var statusKeys = [];
+            if (Array.isArray(mapObj[rid])) {
+                statusKeys = mapObj[rid];
+            } else if (typeof mapObj[rid] === 'string') {
+                statusKeys = [mapObj[rid]];
+            } else if (mapObj[rid] != null) {
+                statusKeys = [String(mapObj[rid])];
+            }
+            statusKeys = statusKeys.map(function (v) { return String(v || '').trim(); }).filter(Boolean);
+            if (!key || !statusKeys.length) return;
+            if (!allowed[key]) return;
+            out[key] = statusKeys;
+        });
+        return out;
+    }
+
+    function renderReporterQaStatusEditor(reportersVal, seedMap) {
+        var container = document.getElementById('reporterQaStatusContainer');
+        var rowsHost = document.getElementById('reporterQaStatusRows');
+        if (!container || !rowsHost) return;
+
+        var reporterIds = (Array.isArray(reportersVal) ? reportersVal : []).map(function (v) { return String(v || '').trim(); }).filter(Boolean);
+        var map = normalizeReporterQaStatusMapForReporters(seedMap || {}, reporterIds);
+
+        if (!reporterIds.length) {
+            container.classList.add('d-none');
+            rowsHost.innerHTML = '';
+            return;
+        }
+
+        var qaStatuses = (window.ProjectConfig && Array.isArray(ProjectConfig.qaStatuses)) ? ProjectConfig.qaStatuses : [];
+        var optionsHtml = qaStatuses.map(function (qs) {
+            return '<option value="' + escapeAttr(qs.status_key || '') + '">' + escapeHtml(qs.status_label || qs.status_key || '') + '</option>';
+        }).join('');
+
+        rowsHost.innerHTML = reporterIds.map(function (rid) {
+            var reporterName = getProjectUserNameById(rid);
+            var selectedVals = Array.isArray(map[rid]) ? map[rid] : [];
+            return '<div class="row g-2 align-items-center mb-2">' +
+                '<div class="col-5"><span class="fw-semibold">' + escapeHtml(reporterName) + '</span></div>' +
+                '<div class="col-7">' +
+                '<select class="form-select form-select-sm issue-select2 reporter-qa-status-select" data-reporter-id="' + escapeAttr(rid) + '" multiple>' + optionsHtml + '</select>' +
+                '</div>' +
+                '</div>';
+        }).join('');
+
+        rowsHost.querySelectorAll('.reporter-qa-status-select').forEach(function (sel) {
+            var rid = String(sel.getAttribute('data-reporter-id') || '').trim();
+            var selectedVals = Array.isArray(map[rid]) ? map[rid] : [];
+            if (window.jQuery) {
+                jQuery(sel).val(selectedVals);
+            } else {
+                Array.from(sel.options).forEach(function (opt) {
+                    opt.selected = selectedVals.indexOf(String(opt.value || '')) !== -1;
+                });
+            }
+            sel.disabled = !canUpdateIssueQaStatus;
+        });
+        if (window.jQuery && jQuery.fn.select2) {
+            var $modal = jQuery('#finalIssueModal');
+            jQuery(rowsHost).find('.reporter-qa-status-select').each(function () {
+                var $el = jQuery(this);
+                try { if ($el.data('select2')) $el.select2('destroy'); } catch (e) { }
+                $el.select2({
+                    width: '100%',
+                    closeOnSelect: false,
+                    dropdownParent: $modal.length ? $modal : null
+                });
+            });
+        }
+        container.classList.remove('d-none');
+    }
+
+    function refreshReporterQaStatusEditor(seedMap) {
+        var reportersVal = jQuery('#finalIssueReporters').val() || [];
+        var currentMap = getReporterQaStatusMapFromUi();
+        var baseMap = (seedMap && typeof seedMap === 'object') ? seedMap : currentMap;
+        renderReporterQaStatusEditor(reportersVal, baseMap);
+    }
+
+    function getQaBadgeInfo(statusKey) {
+        var key = String(statusKey || '').toLowerCase().trim();
+        if (!key) return null;
+        var label = key;
+        var badgeColor = 'secondary';
+        if (ProjectConfig.qaStatuses) {
+            var found = ProjectConfig.qaStatuses.find(function (s) {
+                return String(s.status_key || '').toLowerCase() === key;
+            });
+            if (found) {
+                label = found.status_label || found.status_key || key;
+                badgeColor = found.badge_color || 'secondary';
+            } else {
+                label = key.split('_').map(function (word) {
+                    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                }).join(' ');
+            }
+        }
+
+        var colorMap = {
+            'primary': '#0d6efd',
+            'secondary': '#6c757d',
+            'success': '#198754',
+            'danger': '#dc3545',
+            'warning': '#ffc107',
+            'info': '#0dcaf0',
+            'light': '#f8f9fa',
+            'dark': '#212529'
+        };
+        var bgColor = (badgeColor && String(badgeColor).startsWith('#')) ? badgeColor : (colorMap[badgeColor] || colorMap.secondary);
+        var hex = bgColor.replace('#', '');
+        var r = parseInt(hex.substr(0, 2), 16);
+        var g = parseInt(hex.substr(2, 2), 16);
+        var b = parseInt(hex.substr(4, 2), 16);
+        var luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        var textColor = luminance > 0.5 ? '#000000' : '#ffffff';
+        return { key: key, label: label, bgColor: bgColor, textColor: textColor };
+    }
+
+    function getIssueReporterIds(issue) {
+        var ids = [];
+        if (issue && Array.isArray(issue.reporters) && issue.reporters.length > 0) {
+            ids = issue.reporters.map(function (rid) { return String(rid || '').trim(); }).filter(Boolean);
+        }
+        if (!ids.length && issue && issue.reporter_name) {
+            ids = [String(issue.reporter_name)];
+        }
+        return ids;
+    }
+
+    function getReporterQaStatusHtml(issue) {
+        var reporterQaMap = (issue && issue.reporter_qa_status_map && typeof issue.reporter_qa_status_map === 'object')
+            ? issue.reporter_qa_status_map
+            : {};
+        var reporterIds = getIssueReporterIds(issue);
+        if (!reporterIds.length) return '<span class="text-muted">N/A</span>';
+
+        var rows = [];
+        reporterIds.forEach(function (rid) {
+            var reporterName = getProjectUserNameById(rid);
+            var statusKeys = [];
+            if (reporterQaMap && Object.prototype.hasOwnProperty.call(reporterQaMap, rid)) {
+                statusKeys = reporterQaMap[rid];
+            } else if (reporterQaMap && Object.prototype.hasOwnProperty.call(reporterQaMap, parseInt(rid, 10))) {
+                statusKeys = reporterQaMap[parseInt(rid, 10)];
+            }
+            if (!Array.isArray(statusKeys)) {
+                statusKeys = statusKeys ? [statusKeys] : [];
+            }
+            statusKeys = statusKeys.map(function (v) { return String(v || '').trim(); }).filter(Boolean);
+            if (!statusKeys.length) {
+                rows.push('<div class="mb-1"><span class="badge bg-info me-1">' + escapeHtml(reporterName) + '</span><span class="text-muted">N/A</span></div>');
+                return;
+            }
+            var qaBadges = statusKeys.map(function (statusKey) {
+                var badgeInfo = getQaBadgeInfo(statusKey);
+                if (!badgeInfo) return '';
+                return '<span class="qa-status-badge me-1" style="background-color: ' + badgeInfo.bgColor + ' !important; color: ' + badgeInfo.textColor + ' !important;">' + escapeHtml(badgeInfo.label) + '</span>';
+            }).filter(Boolean).join('');
+            if (!qaBadges) {
+                rows.push('<div class="mb-1"><span class="badge bg-info me-1">' + escapeHtml(reporterName) + '</span><span class="text-muted">N/A</span></div>');
+                return;
+            }
+            rows.push(
+                '<div class="mb-1">' +
+                '<span class="badge bg-info me-1">' + escapeHtml(reporterName) + '</span>' +
+                qaBadges +
+                '</div>'
+            );
+        });
+        return rows.length ? rows.join('') : '<span class="text-muted">N/A</span>';
+    }
+
     function captureFormState() {
         var titleInput = document.getElementById('customIssueTitle');
         var titleVal = titleInput ? titleInput.value.trim() : '';
         var detailsVal = jQuery('#finalIssueDetails').summernote('code') || '';
         var statusVal = document.getElementById('finalIssueStatus').value;
-        var qaStatusVal = canUpdateIssueQaStatus ? (jQuery('#finalIssueQaStatus').val() || []) : [];
+        var qaStatusVal = [];
         var pagesVal = jQuery('#finalIssuePages').val() || [];
         var groupedUrlsVal = normalizeGroupedUrlsSelection(jQuery('#finalIssueGroupedUrls').val() || []);
         var reportersVal = jQuery('#finalIssueReporters').val() || [];
+        var reporterQaStatusMapVal = getReporterQaStatusMapFromUi();
         var commonTitleVal = document.getElementById('finalIssueCommonTitle').value;
         var dynamicFields = {};
         if (typeof issueMetadataFields !== 'undefined') {
@@ -1770,6 +1994,7 @@
         return {
             title: titleVal, details: detailsVal, status: statusVal, qa_status: qaStatusVal,
             pages: pagesVal, grouped_urls: groupedUrlsVal, reporters: reportersVal,
+            reporter_qa_status_map: reporterQaStatusMapVal,
             common_title: commonTitleVal, dynamic_fields: dynamicFields
         };
     }
@@ -1919,7 +2144,6 @@
         }
 
         document.getElementById('finalIssueStatus').value = issue.status || 'Open';
-        jQuery('#finalIssueQaStatus').val(canUpdateIssueQaStatus ? (issue.qa_status || []) : []).trigger('change');
         jQuery('#finalIssuePages').val(issue.pages || [issueData.selectedPageId]).trigger('change');
         jQuery('#finalIssueGroupedUrls').val(issue.grouped_urls || []).trigger('change');
         if (window.jQuery && jQuery.fn.summernote) jQuery('#finalIssueDetails').summernote('code', issue.description || '');
@@ -1937,6 +2161,7 @@
                 }
             } else if (k === 'reporters') { jQuery('#finalIssueReporters').val(issue.reporters || []).trigger('change'); }
         });
+        refreshReporterQaStatusEditor(issue.reporter_qa_status_map || {});
 
         renderIssueComments(issue.id);
         loadIssueComments(issue.id);
@@ -2046,8 +2271,10 @@
         document.getElementById('finalIssueStatus').value = statusValue;
 
         // Store values to set after modal is shown
-        var qaStatusValue = canUpdateIssueQaStatus ? (issue ? (issue.qa_status || []) : (draftData ? draftData.qa_status : [])) : [];
         var reportersValue = issue ? (issue.reporters || []) : (draftData ? draftData.reporters : []);
+        var reporterQaStatusMapValue = issue
+            ? (issue.reporter_qa_status_map || {})
+            : (draftData ? (draftData.reporter_qa_status_map || {}) : {});
         var pageIds = (issue && issue.pages) ? issue.pages : ((draftData && draftData.pages) ? draftData.pages : [issueData.selectedPageId]);
 
         // Set pages immediately (this usually works)
@@ -2062,12 +2289,10 @@
         }
 
         function applySelectValuesNow() {
-            setTimeout(function () {
-                jQuery('#finalIssueQaStatus').val(qaStatusValue).trigger('change');
-                applyIssueQaPermissionState();
-            }, 50);
+            setTimeout(function () { applyIssueQaPermissionState(); }, 50);
             setTimeout(function () {
                 jQuery('#finalIssueReporters').val(reportersValue).trigger('change');
+                refreshReporterQaStatusEditor(reporterQaStatusMapValue);
             }, 60);
         }
 
@@ -2492,8 +2717,8 @@
             });
         }
 
-        jQuery('#finalIssueQaStatus').val([]).trigger('change');
         jQuery('#finalIssueReporters').val([]).trigger('change');
+        refreshReporterQaStatusEditor({});
         document.getElementById('finalIssueCommonTitle').value = '';
 
         // Recalculate grouped URLs from selected page(s), with fallback to page URL if no grouped URL exists.
@@ -2623,66 +2848,7 @@
 
             var status = issue.status || 'open';
             var statusId = issue.status_id || null;
-            // QA Status is now an array - display as badges with proper labels and colors
-            var qaStatusArray = Array.isArray(issue.qa_status) ? issue.qa_status : (issue.qa_status ? [issue.qa_status] : []);
-            var qaStatusHtml = '';
-            if (qaStatusArray.length > 0) {
-                qaStatusHtml = qaStatusArray.map(function (qs) {
-                    // Get label from qaStatuses mapping or format the key
-                    var label = qs;
-                    var badgeColor = 'secondary';
-                    if (ProjectConfig.qaStatuses) {
-                        var found = ProjectConfig.qaStatuses.find(function (s) {
-                            return s.status_key === qs;
-                        });
-                        if (found) {
-                            label = found.status_label;
-                            badgeColor = found.badge_color || 'secondary';
-                        } else {
-                            // Format key: TYPO_GRAMMAR → Typo Grammar
-                            label = qs.split('_').map(function (word) {
-                                return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-                            }).join(' ');
-                        }
-                    }
-
-                    // Convert Bootstrap color names to hex - same as issues_all.php
-                    var getBootstrapColor = function (colorName) {
-                        var colorMap = {
-                            'primary': '#0d6efd',
-                            'secondary': '#6c757d',
-                            'success': '#198754',
-                            'danger': '#dc3545',
-                            'warning': '#ffc107',
-                            'info': '#0dcaf0',
-                            'light': '#f8f9fa',
-                            'dark': '#212529'
-                        };
-                        if (colorName && colorName.startsWith('#')) {
-                            return colorName;
-                        }
-                        return colorMap[colorName] || colorMap['secondary'];
-                    };
-
-                    // Calculate contrast color - same as issues_all.php
-                    var getContrastColor = function (hexColor) {
-                        var hex = hexColor.replace('#', '');
-                        var r = parseInt(hex.substr(0, 2), 16);
-                        var g = parseInt(hex.substr(2, 2), 16);
-                        var b = parseInt(hex.substr(4, 2), 16);
-                        var luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-                        return luminance > 0.5 ? '#000000' : '#ffffff';
-                    };
-
-                    var bgColor = getBootstrapColor(badgeColor);
-                    var textColor = getContrastColor(bgColor);
-
-                    // Use qa-status-badge class to match issues_all.php
-                    return '<span class="qa-status-badge" style="background-color: ' + bgColor + ' !important; color: ' + textColor + ' !important;">' + escapeHtml(label) + '</span>';
-                }).join(' ');
-            } else {
-                qaStatusHtml = '<span class="text-muted">N/A</span>';
-            }
+            var qaStatusHtml = getReporterQaStatusHtml(issue);
 
             // Handle multiple reporters
             var reportersArray = Array.isArray(issue.reporters) && issue.reporters.length > 0
@@ -3368,63 +3534,7 @@
                 var priority = actualIssue.priority || 'N/A';
                 var status = actualIssue.status || 'open';
                 var statusId = actualIssue.status_id || null;
-
-                // QA Status - match issues_all.php styling exactly
-                var qaStatusArray = Array.isArray(actualIssue.qa_status) ? actualIssue.qa_status : (actualIssue.qa_status ? [actualIssue.qa_status] : []);
-                var qaStatusHtml = '';
-                if (qaStatusArray.length > 0) {
-                    qaStatusHtml = qaStatusArray.map(function (qs) {
-                        var label = qs;
-                        var badgeColor = 'secondary';
-                        if (ProjectConfig.qaStatuses) {
-                            var found = ProjectConfig.qaStatuses.find(function (s) { return s.status_key === qs; });
-                            if (found) {
-                                label = found.status_label;
-                                badgeColor = found.badge_color || 'secondary';
-                            } else {
-                                label = qs.split('_').map(function (word) {
-                                    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-                                }).join(' ');
-                            }
-                        }
-
-                        // Convert Bootstrap color names to hex - same as issues_all.php
-                        var getBootstrapColor = function (colorName) {
-                            var colorMap = {
-                                'primary': '#0d6efd',
-                                'secondary': '#6c757d',
-                                'success': '#198754',
-                                'danger': '#dc3545',
-                                'warning': '#ffc107',
-                                'info': '#0dcaf0',
-                                'light': '#f8f9fa',
-                                'dark': '#212529'
-                            };
-                            if (colorName && colorName.startsWith('#')) {
-                                return colorName;
-                            }
-                            return colorMap[colorName] || colorMap['secondary'];
-                        };
-
-                        // Calculate contrast color - same as issues_all.php
-                        var getContrastColor = function (hexColor) {
-                            var hex = hexColor.replace('#', '');
-                            var r = parseInt(hex.substr(0, 2), 16);
-                            var g = parseInt(hex.substr(2, 2), 16);
-                            var b = parseInt(hex.substr(4, 2), 16);
-                            var luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-                            return luminance > 0.5 ? '#000000' : '#ffffff';
-                        };
-
-                        var bgColor = getBootstrapColor(badgeColor);
-                        var textColor = getContrastColor(bgColor);
-
-                        // Use qa-status-badge class to match issues_all.php
-                        return '<span class="qa-status-badge" style="background-color: ' + bgColor + ' !important; color: ' + textColor + ' !important;">' + escapeHtml(label) + '</span>';
-                    }).join(' ');
-                } else {
-                    qaStatusHtml = '<span class="text-muted">N/A</span>';
-                }
+                var qaStatusHtml = getReporterQaStatusHtml(actualIssue);
 
                 // Reporters - handle both IDs and names
                 var reportersArray = [];
@@ -4640,11 +4750,12 @@
             title: titleVal,
             details: jQuery('#finalIssueDetails').summernote('code'),
             status: document.getElementById('finalIssueStatus').value,
-            qa_status: canUpdateIssueQaStatus ? (jQuery('#finalIssueQaStatus').val() || []) : [],
+            qa_status: [],
             priority: document.getElementById('finalIssueField_priority') ? document.getElementById('finalIssueField_priority').value : 'medium',
             pages: jQuery('#finalIssuePages').val() || [],
             grouped_urls: normalizeGroupedUrlsSelection(jQuery('#finalIssueGroupedUrls').val() || []),
             reporters: jQuery('#finalIssueReporters').val() || [],
+            reporter_qa_status_map: getReporterQaStatusMapFromUi(),
             common_title: document.getElementById('finalIssueCommonTitle').value.trim()
         };
 
@@ -4694,6 +4805,7 @@
                 else {
                     if (k === 'status') fd.append('issue_status', v);
                     else if (k === 'details') fd.append('description', v);
+                    else if (v && typeof v === 'object') fd.append(k, JSON.stringify(v));
                     else fd.append(k, v);
                 }
             });
@@ -5851,6 +5963,7 @@
     window.loadCommonIssues = loadCommonIssues;
     window.openFinalEditor = openFinalEditor;
 })(); // IIFE invocation - this actually executes the function
+
 
 
 
