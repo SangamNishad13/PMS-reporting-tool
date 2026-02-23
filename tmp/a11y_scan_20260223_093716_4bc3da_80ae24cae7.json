@@ -1,0 +1,52 @@
+{
+  "success": true,
+  "url": "https://uatyp2.advancesuite.in:3043/merchant_details?utf8= E2 9C 93&application_id=1279297&g-recaptcha-response=0cAFcWeA7aZThbEP7vIRmoXWgLXqu_tFxLFj3wXgOHv4EfrCa410DzK4PMu3apEGZfBwILoy8Aw42-lFdGvYG6TewMpkoGoAr2OE7WVohPqj-CDsVj-3XWAv32R922FOFXWtNGan9tJ_v7rg-IOxC9JLwuyEQnE-ZkQlMvwRWXB4ocv3GcSUQVTnOVvXidU9Cb49aV466mGLhF-kqMzF8s2yc1syx1huy0mEBq89WKhYYiixEsJADej8fhmJROLBDrdd-hF_SC0O62q_rOffUkqH01ZMG39WcOsKCC3_ZxO9r8to_p7o-icxOWaELLs-n6zq9q06grZqRgyZEMAdcgeHtRumjllOeHsGIMV55BHZIV9SItfOavk1SCviEUlhvt6WqgHzwvCIxqAGr9VxYLRgtKiK8McdZmvYPrOD4qFLbgbH-3ghDjOKJvcTIMwIF0H96wunFI4sZ8CZ1ST9LQYlRUBKkDBC4MbMc8XDnjkIXO2eZpSiyRe5ImHV3pfbFJvTNl2KkuKwhruA9Q5XkpMWaHRFohTpwYvNxwXOYk_ds98iA5Q3VywBa_ccMJmdMo6kxirFoVrPI4-pQWuE3gE5TW7hB580OqGWzTcm1uLTqdsWJd1Fp02RLEAzs5hZppQ9s8Ku_tNwo2bde8tuCyViKxUQhRTqH2MkDtqaWieM7_TuDObDohfzCYkJ137QUg4_VtdzSxUkMh0bFUoWSZDzpdJ5UHm_v0IikqqvJkxXJv90rRdDATUsaHuYlAbPMOwpi8NiSkDM2Xtx7PADxAQwBry5xuPmAfmyVGxlqHN8C9JuJ71rV1bPtOroEZWSHRVMOl4FHGUQr-zdPLPCH-NfXz7Jybt8j3Gtn_3PpX3GJyJPaDac_Spo3S17FOxgKvXzWbBulkSS4V-spUHpC0m9OhWV09wXbfNvDb6cMfOTyhRilGL4__C2CkKFlY1dEwZCMBoo3dx4cF4lUhxKxIx6tim7zojlHIoXKjB_ZGZLrnY96g7fiaAxD_maPW7-SssM-Ix5Ql9ROWZARgQz9KifOHNLeO18IjiC47Z5hBOtit3FeaEvrkmsI83xgbtt4MdHtnVbs5qVAvSflZ4wvLCr-GWJNPMriPnDjdMt4qNNpXF_zoAxp1TESEg8llAWyAnP7KvbaPNK5XsfqyMvAnwZyEl8oDt6p5Cv3dCssBplnvCAZE5WHhK4dRP6VD9IEBPnye-Z3z3GqWjEcYAcGAJCKRCdQXh5-ssObJcrLwURI1zpsVQuzSOmLELi6aA7lmvdEfVWZO_7tP16NXAPlhNW4mCV0-GLRy1NbdieRoHAK1LGBo5udJxmWCIWRyfGdPxBMm-Y96wNZHnkZ8ZEcQiDmxDAPMJ5yq0Xt5L8R6gax_10uSkqQZQw_qsBCb6F_n6tRhmLLcUe0T8FDFBSkXC3aQ5cue7q1NaXPh878Cdnkf3_M1n3EzWUCgMts0zSW4f8FO_Ynfxscjd5V9bLkyyWv_s5YvVBxAzqkk_Ia55vLCkn8ryzKHw8T50ZERHAltgYBSzGKgLs2V8t8cygwp78eCwYXuHUfOYc9Z9nG_psaOaJUB40XNYrvSU5i5ihtgH6SoAIxzXv3N6uQEoFAV0KV9sKfBifj6_tiKDenvy7M7hXOiiCsPqTJMOQ3LS5tewC3j__6O0GGPExhQUy9OwDjr2Vys14k7Qguq2VPV10V-UYTrIjlBG85JIiU3M8vzn4KloPn1YHtqbxARsu6BbpVZvvK-D5fI80ihOClByndgavALVkZq-kBX5H1fPYSTuONuTPGZqgK5D5INBt3EDqIDvfvXPfTtqANbCz5EMm9kg4s6o52vqcTnoo-HLdSOUQUTB7sBwSoc2GvxBh6KJywuu0e0hXjONiXr64NpbXW98VZXcVxmKpZI3XVuZLvGpD21YJcLX1G_IZ9ma0krs_5Nf3O4ZrmvnFHhzPFVZ-LFnPPY8Gfca8eTvpOZtyWzs-UWlQvhnAC3ioMilbzuIqwW6F-E3Tm6KG4-XV6q0ardyVh_V7EYRF5c2whY7i5-wj7Atzt3-xtkcO43Sgbwv2kLRinGlzvMXau3M6kahGdQe9aDlFYJNiE",
+  "summary": {
+    "issues": 1,
+    "critical": 0,
+    "serious": 0,
+    "moderate": 1,
+    "minor": 0
+  },
+  "findings": [
+    {
+      "rule_id": "heading-order",
+      "title": "Heading levels should only increase by one",
+      "severity": "moderate",
+      "needs_review_severity": "Major",
+      "wcag_sc": [],
+      "wcag_name": "Headings and Labels",
+      "wcag_level": "",
+      "actual_results": "Ensure the order of headings is semantically correct\n\nURL: https://uatyp2.advancesuite.in:3043/merchant_details?utf8= E2 9C 93&application_id=1279297&g-recaptcha-response=0cAFcWeA7aZThbEP7vIRmoXWgLXqu_tFxLFj3wXgOHv4EfrCa410DzK4PMu3apEGZfBwILoy8Aw42-lFdGvYG6TewMpkoGoAr2OE7WVohPqj-CDsVj-3XWAv32R922FOFXWtNGan9tJ_v7rg-IOxC9JLwuyEQnE-ZkQlMvwRWXB4ocv3GcSUQVTnOVvXidU9Cb49aV466mGLhF-kqMzF8s2yc1syx1huy0mEBq89WKhYYiixEsJADej8fhmJROLBDrdd-hF_SC0O62q_rOffUkqH01ZMG39WcOsKCC3_ZxO9r8to_p7o-icxOWaELLs-n6zq9q06grZqRgyZEMAdcgeHtRumjllOeHsGIMV55BHZIV9SItfOavk1SCviEUlhvt6WqgHzwvCIxqAGr9VxYLRgtKiK8McdZmvYPrOD4qFLbgbH-3ghDjOKJvcTIMwIF0H96wunFI4sZ8CZ1ST9LQYlRUBKkDBC4MbMc8XDnjkIXO2eZpSiyRe5ImHV3pfbFJvTNl2KkuKwhruA9Q5XkpMWaHRFohTpwYvNxwXOYk_ds98iA5Q3VywBa_ccMJmdMo6kxirFoVrPI4-pQWuE3gE5TW7hB580OqGWzTcm1uLTqdsWJd1Fp02RLEAzs5hZppQ9s8Ku_tNwo2bde8tuCyViKxUQhRTqH2MkDtqaWieM7_TuDObDohfzCYkJ137QUg4_VtdzSxUkMh0bFUoWSZDzpdJ5UHm_v0IikqqvJkxXJv90rRdDATUsaHuYlAbPMOwpi8NiSkDM2Xtx7PADxAQwBry5xuPmAfmyVGxlqHN8C9JuJ71rV1bPtOroEZWSHRVMOl4FHGUQr-zdPLPCH-NfXz7Jybt8j3Gtn_3PpX3GJyJPaDac_Spo3S17FOxgKvXzWbBulkSS4V-spUHpC0m9OhWV09wXbfNvDb6cMfOTyhRilGL4__C2CkKFlY1dEwZCMBoo3dx4cF4lUhxKxIx6tim7zojlHIoXKjB_ZGZLrnY96g7fiaAxD_maPW7-SssM-Ix5Ql9ROWZARgQz9KifOHNLeO18IjiC47Z5hBOtit3FeaEvrkmsI83xgbtt4MdHtnVbs5qVAvSflZ4wvLCr-GWJNPMriPnDjdMt4qNNpXF_zoAxp1TESEg8llAWyAnP7KvbaPNK5XsfqyMvAnwZyEl8oDt6p5Cv3dCssBplnvCAZE5WHhK4dRP6VD9IEBPnye-Z3z3GqWjEcYAcGAJCKRCdQXh5-ssObJcrLwURI1zpsVQuzSOmLELi6aA7lmvdEfVWZO_7tP16NXAPlhNW4mCV0-GLRy1NbdieRoHAK1LGBo5udJxmWCIWRyfGdPxBMm-Y96wNZHnkZ8ZEcQiDmxDAPMJ5yq0Xt5L8R6gax_10uSkqQZQw_qsBCb6F_n6tRhmLLcUe0T8FDFBSkXC3aQ5cue7q1NaXPh878Cdnkf3_M1n3EzWUCgMts0zSW4f8FO_Ynfxscjd5V9bLkyyWv_s5YvVBxAzqkk_Ia55vLCkn8ryzKHw8T50ZERHAltgYBSzGKgLs2V8t8cygwp78eCwYXuHUfOYc9Z9nG_psaOaJUB40XNYrvSU5i5ihtgH6SoAIxzXv3N6uQEoFAV0KV9sKfBifj6_tiKDenvy7M7hXOiiCsPqTJMOQ3LS5tewC3j__6O0GGPExhQUy9OwDjr2Vys14k7Qguq2VPV10V-UYTrIjlBG85JIiU3M8vzn4KloPn1YHtqbxARsu6BbpVZvvK-D5fI80ihOClByndgavALVkZq-kBX5H1fPYSTuONuTPGZqgK5D5INBt3EDqIDvfvXPfTtqANbCz5EMm9kg4s6o52vqcTnoo-HLdSOUQUTB7sBwSoc2GvxBh6KJywuu0e0hXjONiXr64NpbXW98VZXcVxmKpZI3XVuZLvGpD21YJcLX1G_IZ9ma0krs_5Nf3O4ZrmvnFHhzPFVZ-LFnPPY8Gfca8eTvpOZtyWzs-UWlQvhnAC3ioMilbzuIqwW6F-E3Tm6KG4-XV6q0ardyVh_V7EYRF5c2whY7i5-wj7Atzt3-xtkcO43Sgbwv2kLRinGlzvMXau3M6kahGdQe9aDlFYJNiE\n\nHeading order invalid\n- \"Note*\" in \"NeoGrowth Payments\"",
+      "incorrect_code": "<h4 class=\"note note-alert\"> Note* </h4>",
+      "screenshots": [
+        "1771819643719_heading-order_1.png"
+      ],
+      "recommendation": "Heading levels should only increase by one",
+      "correct_code": "",
+      "help_url": "",
+      "occurrence_count": 1,
+      "raw_nodes": [
+        {
+          "any": [
+            {
+              "id": "heading-order",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "moderate",
+              "message": "Heading order invalid"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "moderate",
+          "html": "<h4 class=\"note note-alert\"> Note* </h4>",
+          "target": [
+            ".note-alert"
+          ],
+          "failureSummary": "Fix any of the following:\n  Heading order invalid"
+        }
+      ]
+    }
+  ]
+}

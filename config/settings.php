@@ -61,5 +61,11 @@ return [
     'notify_assignment' => true,
     'notify_mention' => true,
     'notify_status_change' => true,
+    // Trial mode: keep email notifications off by default.
+    'email_notifications_enabled' => (function () {
+        $v = getenv('EMAIL_NOTIFICATIONS_ENABLED');
+        if ($v === false || $v === '') return false;
+        return !in_array(strtolower(trim((string)$v)), ['0', 'false', 'no', 'off'], true);
+    })(),
 ];
 ?>

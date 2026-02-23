@@ -1,0 +1,697 @@
+{
+  "success": true,
+  "url": "https://www.samcomf.com/",
+  "summary": {
+    "issues": 4,
+    "critical": 1,
+    "serious": 3,
+    "moderate": 0,
+    "minor": 0
+  },
+  "findings": [
+    {
+      "rule_id": "aria-input-field-name",
+      "title": "ARIA input fields must have an accessible name",
+      "severity": "serious",
+      "needs_review_severity": "Critical",
+      "wcag_sc": [
+        "4.1.2"
+      ],
+      "wcag_name": "ARIA input fields must have an accessible name",
+      "wcag_level": "A",
+      "actual_results": "Ensure every ARIA input field has an accessible name\n\nURL: https://www.samcomf.com/\n\naria-label attribute does not exist or is empty aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty Element has no title attribute\n- \"Invest Now Invest Now Invest Now Invest Now\" in \"section\"",
+      "incorrect_code": "<div class=\"slick-track\" role=\"listbox\" style=\"opacity: 1; width: 10980px; transform: translate3d(-2440px, 0px, 0px); transition: transform 500ms;\">",
+      "screenshots": [
+        "1771781984542_aria-input-field-name_1.png"
+      ],
+      "recommendation": "ARIA input fields must have an accessible name",
+      "correct_code": "",
+      "help_url": "",
+      "occurrence_count": 1,
+      "raw_nodes": [
+        {
+          "any": [
+            {
+              "id": "aria-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-label attribute does not exist or is empty"
+            },
+            {
+              "id": "aria-labelledby",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty"
+            },
+            {
+              "id": "non-empty-title",
+              "data": {
+                "messageKey": "noAttr"
+              },
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element has no title attribute"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<div class=\"slick-track\" role=\"listbox\" style=\"opacity: 1; width: 10980px; transform: translate3d(-2440px, 0px, 0px); transition: transform 500ms;\">",
+          "target": [
+            ".slick-track"
+          ],
+          "failureSummary": "Fix any of the following:\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute"
+        }
+      ]
+    },
+    {
+      "rule_id": "color-contrast",
+      "title": "Elements must meet minimum color contrast ratio thresholds",
+      "severity": "serious",
+      "needs_review_severity": "Critical",
+      "wcag_sc": [
+        "1.4.3"
+      ],
+      "wcag_name": "Contrast (Minimum)",
+      "wcag_level": "AA",
+      "actual_results": "\nURL: https://www.samcomf.com/\n\nElement has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1\nElement has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1\nElement has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1\n- \"Distributor corner\" in \"header\"\n- \"Contact us\" in \"header\"\n- \"+91 63572 22000\" in \"header\"\n- \"Copyright © 2024 Samco Asset Management Private Ltd. | All Rights Reserved\" in \"page section\"\n- \"Statutory Details\" in \"page section\"\n- \"Terms & Conditions\" in \"page section\"\n- \"Privacy Policy\" in \"page section\"\n- \"Disclaimer\" in \"page section\"",
+      "incorrect_code": "<a class=\"drop-head-item\" href=\"javascript:void(0)\">Distributor corner<img class=\"ml-10\" src=\"https://www.samcomf.com/images/drop.png\" alt=\"Down Arrow\" width=\"10\" height=\"6\"></a>\n\n<a href=\"https://www.samcomf.com/contact-us\">Contact us</a>\n\n<a href=\"tel:+91 63572 22000\"><img class=\"mr-10\" src=\"https://www.samcomf.com/images/new-img/ringing-call.svg\" alt=\"Call\" width=\"20\" height=\"19\"> +91 63572 22000</a>\n\n<div class=\"col-lg-6\">\n          Copyright © 2024 Samco Asset Management Private Ltd. | All Rights Reserved \n        </div>\n\n<a href=\"https://www.samcomf.com/statutory-details-and-risk-factors\">Statutory Details </a>\n\n<a href=\"https://www.samcomf.com/terms-and-conditions\">Terms &amp; Conditions</a>\n\n<a href=\"https://www.samcomf.com/privacy-policy\">Privacy Policy</a>\n\n<a href=\"https://www.samcomf.com/disclaimer\">Disclaimer</a>",
+      "screenshots": [
+        "1771781985220_color-contrast_2.png",
+        "1771781985870_color-contrast_3.png"
+      ],
+      "recommendation": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+      "correct_code": "",
+      "help_url": "",
+      "occurrence_count": 8,
+      "raw_nodes": [
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#4788c8",
+                "contrastRatio": 3.73,
+                "fontSize": "10.5pt (14px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"top-bar\">",
+                  "target": [
+                    ".top-bar"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a class=\"drop-head-item\" href=\"javascript:void(0)\">Distributor corner<img class=\"ml-10\" src=\"https://www.samcomf.com/images/drop.png\" alt=\"Down Arrow\" width=\"10\" height=\"6\"></a>",
+          "target": [
+            ".drop-head-item"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#4788c8",
+                "contrastRatio": 3.73,
+                "fontSize": "10.5pt (14px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"top-bar\">",
+                  "target": [
+                    ".top-bar"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/contact-us\">Contact us</a>",
+          "target": [
+            ".top-items > li:nth-child(2) > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#4788c8",
+                "contrastRatio": 3.73,
+                "fontSize": "10.5pt (14px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"top-bar\">",
+                  "target": [
+                    ".top-bar"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"tel:+91 63572 22000\"><img class=\"mr-10\" src=\"https://www.samcomf.com/images/new-img/ringing-call.svg\" alt=\"Call\" width=\"20\" height=\"19\"> +91 63572 22000</a>",
+          "target": [
+            "li > a[href=\"tel:+91 63572 22000\"]"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#3f86cc",
+                "contrastRatio": 3.82,
+                "fontSize": "9.8pt (13px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"copy-right\">",
+                  "target": [
+                    ".copy-right"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<div class=\"col-lg-6\">\n          Copyright © 2024 Samco Asset Management Private Ltd. | All Rights Reserved \n        </div>",
+          "target": [
+            ".copy-right > .container > .row > .col-lg-6:nth-child(1)"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#3f86cc",
+                "contrastRatio": 3.82,
+                "fontSize": "9.0pt (12px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"copy-right\">",
+                  "target": [
+                    ".copy-right"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/statutory-details-and-risk-factors\">Statutory Details </a>",
+          "target": [
+            ".text-right.col-lg-6 > .head-action > ul > li:nth-child(1) > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#3f86cc",
+                "contrastRatio": 3.82,
+                "fontSize": "9.0pt (12px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"copy-right\">",
+                  "target": [
+                    ".copy-right"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/terms-and-conditions\">Terms &amp; Conditions</a>",
+          "target": [
+            ".head-action > ul > li:nth-child(2) > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#3f86cc",
+                "contrastRatio": 3.82,
+                "fontSize": "9.0pt (12px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"copy-right\">",
+                  "target": [
+                    ".copy-right"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/privacy-policy\">Privacy Policy</a>",
+          "target": [
+            ".text-right.col-lg-6 > .head-action > ul > li:nth-child(3) > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#3f86cc",
+                "contrastRatio": 3.82,
+                "fontSize": "9.0pt (12px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"copy-right\">",
+                  "target": [
+                    ".copy-right"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/disclaimer\">Disclaimer</a>",
+          "target": [
+            ".head-action > ul > li:nth-child(4) > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        }
+      ]
+    },
+    {
+      "rule_id": "label",
+      "title": "Form elements must have labels",
+      "severity": "critical",
+      "needs_review_severity": "Blocker",
+      "wcag_sc": [
+        "4.1.2"
+      ],
+      "wcag_name": "Labels or Instructions",
+      "wcag_level": "A",
+      "actual_results": "Ensure every form element has a label\n\nURL: https://www.samcomf.com/\n\nElement does not have an implicit (wrapped) <label> Element does not have an explicit <label> aria-label attribute does not exist or is empty aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty Element has no title attribute Element has an empty placeholder attribute Element's default semantics were not overridden with role=\"none\" or role=\"presentation\"\n- \"name\" in \"Samco Flexi Cap Fund\"\n- \"subcribe\" in \"Samco Flexi Cap Fund\"\n- \"mobile\" in \"Samco Flexi Cap Fund\"\n- \"city\" in \"Samco Flexi Cap Fund\"",
+      "incorrect_code": "<input type=\"text\" name=\"name\" id=\"name\" class=\"form-input\" placeholder=\"\" required=\"\">\n\n<input type=\"email\" name=\"subcribe\" id=\"subcribe\" class=\"form-input\" placeholder=\"\" required=\"\">\n\n<input maxlength=\"10\" pattern=\"[0-9]{10}\" type=\"tel\" name=\"mobile\" id=\"mobile\" class=\"form-input\" placeholder=\"\" required=\"\">\n\n<input type=\"text\" name=\"city\" id=\"city\" class=\"form-input\" placeholder=\"\" required=\"\">",
+      "screenshots": [
+        "1771781986219_label_4.png"
+      ],
+      "recommendation": "Form elements must have labels",
+      "correct_code": "",
+      "help_url": "",
+      "occurrence_count": 4,
+      "raw_nodes": [
+        {
+          "any": [
+            {
+              "id": "implicit-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element does not have an implicit (wrapped) <label>"
+            },
+            {
+              "id": "explicit-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element does not have an explicit <label>"
+            },
+            {
+              "id": "aria-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "aria-label attribute does not exist or is empty"
+            },
+            {
+              "id": "aria-labelledby",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty"
+            },
+            {
+              "id": "non-empty-title",
+              "data": {
+                "messageKey": "noAttr"
+              },
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has no title attribute"
+            },
+            {
+              "id": "non-empty-placeholder",
+              "data": {
+                "messageKey": "emptyAttr"
+              },
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has an empty placeholder attribute"
+            },
+            {
+              "id": "presentational-role",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "critical",
+          "html": "<input type=\"text\" name=\"name\" id=\"name\" class=\"form-input\" placeholder=\"\" required=\"\">",
+          "target": [
+            "#name"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element has an empty placeholder attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+        },
+        {
+          "any": [
+            {
+              "id": "implicit-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element does not have an implicit (wrapped) <label>"
+            },
+            {
+              "id": "explicit-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element does not have an explicit <label>"
+            },
+            {
+              "id": "aria-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "aria-label attribute does not exist or is empty"
+            },
+            {
+              "id": "aria-labelledby",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty"
+            },
+            {
+              "id": "non-empty-title",
+              "data": {
+                "messageKey": "noAttr"
+              },
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has no title attribute"
+            },
+            {
+              "id": "non-empty-placeholder",
+              "data": {
+                "messageKey": "emptyAttr"
+              },
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has an empty placeholder attribute"
+            },
+            {
+              "id": "presentational-role",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "critical",
+          "html": "<input type=\"email\" name=\"subcribe\" id=\"subcribe\" class=\"form-input\" placeholder=\"\" required=\"\">",
+          "target": [
+            "#subcribe"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element has an empty placeholder attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+        },
+        {
+          "any": [
+            {
+              "id": "implicit-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element does not have an implicit (wrapped) <label>"
+            },
+            {
+              "id": "explicit-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element does not have an explicit <label>"
+            },
+            {
+              "id": "aria-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "aria-label attribute does not exist or is empty"
+            },
+            {
+              "id": "aria-labelledby",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty"
+            },
+            {
+              "id": "non-empty-title",
+              "data": {
+                "messageKey": "noAttr"
+              },
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has no title attribute"
+            },
+            {
+              "id": "non-empty-placeholder",
+              "data": {
+                "messageKey": "emptyAttr"
+              },
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has an empty placeholder attribute"
+            },
+            {
+              "id": "presentational-role",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "critical",
+          "html": "<input maxlength=\"10\" pattern=\"[0-9]{10}\" type=\"tel\" name=\"mobile\" id=\"mobile\" class=\"form-input\" placeholder=\"\" required=\"\">",
+          "target": [
+            "#mobile"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element has an empty placeholder attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+        },
+        {
+          "any": [
+            {
+              "id": "implicit-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element does not have an implicit (wrapped) <label>"
+            },
+            {
+              "id": "explicit-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element does not have an explicit <label>"
+            },
+            {
+              "id": "aria-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "aria-label attribute does not exist or is empty"
+            },
+            {
+              "id": "aria-labelledby",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty"
+            },
+            {
+              "id": "non-empty-title",
+              "data": {
+                "messageKey": "noAttr"
+              },
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has no title attribute"
+            },
+            {
+              "id": "non-empty-placeholder",
+              "data": {
+                "messageKey": "emptyAttr"
+              },
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has an empty placeholder attribute"
+            },
+            {
+              "id": "presentational-role",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "critical",
+          "html": "<input type=\"text\" name=\"city\" id=\"city\" class=\"form-input\" placeholder=\"\" required=\"\">",
+          "target": [
+            "#city"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element has an empty placeholder attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
+        }
+      ]
+    },
+    {
+      "rule_id": "nested-interactive",
+      "title": "Interactive controls must not be nested",
+      "severity": "serious",
+      "needs_review_severity": "Critical",
+      "wcag_sc": [
+        "4.1.2"
+      ],
+      "wcag_name": "Interactive controls must not be nested",
+      "wcag_level": "A",
+      "actual_results": "Ensure interactive controls are not nested as they are not always announced by screen readers or can cause focus problems for assistive technologies\n\nURL: https://www.samcomf.com/\n\nUsing a negative tabindex on an element inside an interactive control does not prevent assistive technologies from focusing the element (even with aria-hidden=\"true\")\n- \"Invest Now\" in \"section\"",
+      "incorrect_code": "<div class=\"p-relative slick-slide slick-current slick-active\" data-slick-index=\"1\" aria-hidden=\"false\" tabindex=\"-1\" role=\"option\" aria-describedby=\"slick-slide01\" style=\"width: 1220px;\">",
+      "screenshots": [
+        "1771781986520_nested-interactive_5.png"
+      ],
+      "recommendation": "Interactive controls must not be nested",
+      "correct_code": "",
+      "help_url": "",
+      "occurrence_count": 1,
+      "raw_nodes": [
+        {
+          "any": [
+            {
+              "id": "no-focusable-content",
+              "data": {
+                "messageKey": "notHidden"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<a class=\"gradient btn invest-btn\" href=\"https://www.samcomf.com/mutual-funds/samco-large-cap-fund-direct-growth/lcdgg\" tabindex=\"-1\">Invest Now <img class=\"ml-10\" src=\"https://cdn.samcomf.com/images/new-img/right-arrow-white.svg\" alt=\"Right Arrow\" width=\"19\" height=\"12\"></a>",
+                  "target": [
+                    ".slick-current > .mb-40.mt-30.text-center > .nfo-slide-btn > .invest-btn.btn.gradient"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Using a negative tabindex on an element inside an interactive control does not prevent assistive technologies from focusing the element (even with aria-hidden=\"true\")"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<div class=\"p-relative slick-slide slick-current slick-active\" data-slick-index=\"1\" aria-hidden=\"false\" tabindex=\"-1\" role=\"option\" aria-describedby=\"slick-slide01\" style=\"width: 1220px;\">",
+          "target": [
+            ".slick-current"
+          ],
+          "failureSummary": "Fix any of the following:\n  Using a negative tabindex on an element inside an interactive control does not prevent assistive technologies from focusing the element (even with aria-hidden=\"true\")"
+        }
+      ]
+    }
+  ]
+}

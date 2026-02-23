@@ -227,6 +227,136 @@ include __DIR__ . '/../../includes/header.php';
     margin: 0 !important;
     line-height: 1.5 !important;
 }
+.needs-review-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+.needs-review-table {
+    table-layout: fixed;
+}
+.needs-review-table th,
+.needs-review-table td {
+    vertical-align: top;
+    padding: 0.4rem 0.45rem;
+    font-size: 12px;
+}
+.needs-review-table tbody tr {
+    height: 96px;
+}
+.needs-review-table tbody td {
+    height: 96px;
+    max-height: 96px;
+    overflow: hidden;
+}
+.resizable-table { table-layout: fixed; width: 100%; min-width: 1600px; }
+.resizable-table th { position: relative; overflow: visible; text-overflow: ellipsis; white-space: nowrap; }
+.col-resizer { position: absolute; right: 0; top: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 999; background: transparent; border-right: 1px solid rgba(0, 0, 0, 0.2); }
+.col-resizer:hover { border-right-color: #007bff; border-right-width: 2px; background: rgba(0, 123, 255, 0.1); }
+.needs-review-row {
+    cursor: pointer;
+}
+.needs-review-row:hover {
+    background: #f8fbff;
+}
+.needs-review-cell-scroll {
+    max-height: 72px;
+    overflow: hidden;
+    line-height: 1.25;
+}
+.needs-review-code-wrap {
+    height: 72px;
+    max-height: 72px;
+    overflow: hidden;
+}
+.needs-review-truncate {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    overflow: hidden;
+    max-height: 5em;
+    white-space: pre-line;
+    line-height: 1.25;
+}
+.needs-review-rich-text ul {
+    margin: 4px 0 0 16px;
+    padding-left: 12px;
+}
+.needs-review-rich-text li {
+    margin: 0;
+}
+.needs-review-cell-scroll pre,
+.needs-review-cell-scroll code {
+    font-size: 11px;
+    line-height: 1.25;
+}
+.needs-review-inline-code {
+    display: block;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #f8f9fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+}
+.needs-review-code-wrap .needs-review-inline-code {
+    margin-bottom: 4px;
+}
+.needs-review-cell-scroll pre {
+    max-height: 62px;
+    overflow: hidden;
+    white-space: pre-wrap;
+}
+.needs-review-shot-stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-height: 78px;
+    overflow: auto;
+}
+.needs-review-shot {
+    width: 62px;
+    height: 42px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid #dbe2ea;
+    cursor: zoom-in;
+}
+.needs-review-extra-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #eef2f7;
+    color: #4a5568;
+    font-size: 11px;
+    font-weight: 600;
+}
+.needs-review-actions {
+    white-space: nowrap;
+}
+.needs-review-issue-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+}
+.needs-review-issue-meta {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    overflow: hidden;
+}
+.needs-review-preview-image {
+    cursor: zoom-in;
+}
 </style>
 
 <div class="container-fluid mt-4">
@@ -521,6 +651,9 @@ include __DIR__ . '/../../includes/header.php';
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active py-2" id="final-issues-tab" data-bs-toggle="tab" data-bs-target="#final_issues_tab" type="button">Final Issues <span class="badge bg-secondary ms-1" id="finalIssuesCountBadge">0</span></button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link py-2" id="needs-review-tab" data-bs-toggle="tab" data-bs-target="#needs_review_tab" type="button">Needs Review <span class="badge bg-secondary ms-1" id="needsReviewCountBadge">0</span></button>
+                </li>
             </ul>
 
             <div class="tab-content">
@@ -556,6 +689,114 @@ include __DIR__ . '/../../includes/header.php';
                         </table>
                     </div>
                 </div>
+                <div class="tab-pane fade" id="needs_review_tab" role="tabpanel">
+                    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
+                        <div class="small text-muted">Automated tool findings for manual verification</div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-danger" id="needsReviewDeleteSelectedBtn" type="button" disabled>
+                                <i class="fas fa-trash me-1"></i> Delete Selected
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" id="needsReviewRefreshBtn" type="button">
+                                <i class="fas fa-rotate me-1"></i> Refresh
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary" id="needsReviewRunScanBtn" type="button">
+                                <i class="fas fa-universal-access me-1"></i> Run Scan
+                            </button>
+                        </div>
+                    </div>
+                    <div class="px-3 py-2 border-bottom bg-white d-none" id="needsReviewScanProgressWrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small text-muted" id="needsReviewScanProgressText">Scanning...</span>
+                            <span class="small fw-semibold" id="needsReviewScanProgressPercent">0%</span>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" id="needsReviewScanProgressBar" role="progressbar" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0 needs-review-table resizable-table" id="needsReviewResizableTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:36px;"><input type="checkbox" id="needsReviewSelectAll"><div class="col-resizer"></div></th>
+                                    <th style="width:40px;">#<div class="col-resizer"></div></th>
+                                    <th style="width:190px;">Issue<div class="col-resizer"></div></th>
+                                    <th style="width:240px;">URLs<div class="col-resizer"></div></th>
+                                    <th style="width:90px;">Severity<div class="col-resizer"></div></th>
+                                    <th style="width:110px;">WCAG SC<div class="col-resizer"></div></th>
+                                    <th style="width:170px;">WCAG Name<div class="col-resizer"></div></th>
+                                    <th style="width:90px;">WCAG Level<div class="col-resizer"></div></th>
+                                    <th style="width:320px;">Actual Results<div class="col-resizer"></div></th>
+                                    <th style="width:260px;">Incorrect Code<div class="col-resizer"></div></th>
+                                    <th style="width:150px;">Screenshots<div class="col-resizer"></div></th>
+                                    <th style="width:260px;">Recommendation<div class="col-resizer"></div></th>
+                                    <th style="width:260px;">Correct Code<div class="col-resizer"></div></th>
+                                    <th style="width:150px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="needsReviewBody">
+                                <tr><td colspan="14" class="text-muted text-center py-4">No automated findings yet. Run scan first.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="needsReviewPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Needs Review Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="needsReviewPreviewBody"></div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="needsReviewConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="needsReviewConfirmTitle">Confirm Action</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="needsReviewConfirmMessage">Are you sure?</div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" id="needsReviewConfirmCancelBtn" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="needsReviewConfirmBtn">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="needsReviewScanUrlModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Select URLs For Auto Scan</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="needsReviewScanSelectAll" checked>
+                    <label class="form-check-label fw-semibold" for="needsReviewScanSelectAll">Select all URLs</label>
+                </div>
+                <div id="needsReviewScanUrlList" class="border rounded p-2" style="max-height: 360px; overflow:auto;"></div>
+                <hr>
+                <div class="small fw-semibold mb-2">Post-login URL Helper</div>
+                <div class="input-group input-group-sm mb-2">
+                    <input type="url" class="form-control" id="needsReviewCustomScanUrlInput" placeholder="https://example.com/protected/page">
+                    <button type="button" class="btn btn-outline-secondary" id="needsReviewOpenCustomUrlBtn">Open</button>
+                    <button type="button" class="btn btn-outline-primary" id="needsReviewAddCustomUrlBtn">Add For Scan</button>
+                </div>
+                <div id="needsReviewCustomUrlList" class="small text-muted"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="needsReviewRunSelectedScanBtn">Run Selected Scan</button>
             </div>
         </div>
     </div>
@@ -576,9 +817,11 @@ include __DIR__ . '/../../includes/header.php';
         canUpdateIssueQaStatus: <?php echo $canUpdateIssueQaStatus ? 'true' : 'false'; ?>,
         baseDir: '<?php echo $baseDir; ?>',
         projectType: '<?php echo $project['type'] ?? 'web'; ?>',
+        currentPageUrl: <?php echo json_encode($page['url'] ?? ''); ?>,
         projectPages: <?php echo json_encode($projectPages ?? []); ?>,
         groupedUrls: <?php echo json_encode($groupedUrls ?? []); ?>,
         projectUsers: <?php echo json_encode($projectUsers ?? []); ?>,
+        pageEnvironments: <?php echo json_encode($pageEnvironments ?? []); ?>,
         qaStatuses: <?php echo json_encode($qaStatuses ?? []); ?>,
         issueStatuses: <?php echo json_encode($issueStatuses ?? []); ?>
     };
@@ -597,7 +840,895 @@ document.addEventListener('pms:issues-changed', function () {
     if (typeof window.loadCommonIssues === 'function') {
         window.loadCommonIssues();
     }
+    if (typeof window.loadNeedsReviewFindings === 'function') {
+        window.loadNeedsReviewFindings();
+    }
 });
+</script>
+
+<script>
+// Automated findings -> Needs Review tab
+(function () {
+    var baseDir = <?php echo json_encode($baseDir); ?>;
+    var projectId = <?php echo (int)$projectId; ?>;
+    var pageId = <?php echo (int)$pageId; ?>;
+    var reopenNeedsReviewPreviewOnImageClose = false;
+    var scanProgressTimer = null;
+
+    function esc(v) {
+        return String(v == null ? '' : v)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function toArray(v) {
+        if (Array.isArray(v)) return v;
+        if (!v) return [];
+        return [v];
+    }
+
+    function getScreenshotUrls(finding) {
+        return toArray(finding.screenshots).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+    }
+
+    function getFindingUrls(finding) {
+        var out = [];
+        if (Array.isArray(finding.scan_urls)) {
+            out = out.concat(finding.scan_urls);
+        } else if (finding.scan_url) {
+            out.push(finding.scan_url);
+        }
+        var actual = String((finding && finding.actual_results) || '');
+        var matches = actual.match(/(?:^|\n)\s*URL:\s*([^\s]+)\s*/gi) || [];
+        matches.forEach(function (m) {
+            var mm = String(m).match(/URL:\s*([^\s]+)/i);
+            if (mm && mm[1]) out.push(mm[1]);
+        });
+        out = out.map(function (u) { return String(u || '').trim(); }).filter(Boolean);
+        var seen = {};
+        return out.filter(function (u) {
+            var k = u.toLowerCase();
+            if (seen[k]) return false;
+            seen[k] = true;
+            return true;
+        });
+    }
+
+    function getIncorrectCodeSnippets(finding) {
+        var raw = String((finding && finding.incorrect_code) || '').trim();
+        if (!raw) return [];
+        return raw
+            .split(/\n\s*\n+/)
+            .map(function (s) { return String(s || '').trim(); })
+            .filter(Boolean);
+    }
+
+    function renderIncorrectCodeBlocks(finding, extraClass) {
+        var cls = String(extraClass || '').trim();
+        var fullClass = ('needs-review-inline-code ' + cls).trim();
+        var snippets = getIncorrectCodeSnippets(finding);
+        if (!snippets.length) return '<code class="' + esc(fullClass) + '">-</code>';
+        return '<code class="' + esc(fullClass) + '">' + esc(snippets.join('\n\n')) + '</code>';
+    }
+
+    function renderRecommendationHtml(text, emptyFallback) {
+        var raw = String(text || '').trim();
+        if (!raw) return esc(String(emptyFallback || '-'));
+        var lines = raw.split(/\r?\n/).map(function (l) { return String(l || '').trim(); }).filter(Boolean);
+        if (!lines.length) return esc(String(emptyFallback || '-'));
+
+        function renderTextWithCodeTags(inputText) {
+            var txt = String(inputText || '');
+            var tokens = txt.split(/(<\/?[a-z][^>]*>)/gi);
+            return tokens.map(function (t) {
+                if (/^<\/?[a-z][^>]*>$/i.test(t)) {
+                    return '<code>' + esc(t) + '</code>';
+                }
+                return esc(t);
+            }).join('');
+        }
+
+        var heading = '';
+        var bullets = [];
+        lines.forEach(function (line) {
+            if (/^\-\s+/.test(line)) {
+                bullets.push(line.replace(/^\-\s+/, '').trim());
+            } else if (!heading) {
+                heading = line;
+            } else {
+                bullets.push(line);
+            }
+        });
+
+        if (!bullets.length) {
+            return renderTextWithCodeTags(raw).replace(/\n/g, '<br>');
+        }
+
+        var html = '';
+        if (heading) {
+            html += '<div class="mb-1">' + renderTextWithCodeTags(heading) + '</div>';
+        }
+        html += '<ul class="mb-0 ps-3">' + bullets.map(function (b) {
+            return '<li>' + renderTextWithCodeTags(b) + '</li>';
+        }).join('') + '</ul>';
+        return html;
+    }
+
+    function renderActualResultsHtml(text, emptyFallback) {
+        var raw = String(text || '').trim();
+        if (!raw) return esc(String(emptyFallback || '-'));
+        var lines = raw.split(/\r?\n/);
+        var parts = [];
+        var pendingBullets = [];
+
+        function renderTextWithCodeTags(inputText) {
+            var txt = String(inputText || '');
+            var tokens = txt.split(/(<\/?[a-z][^>]*>)/gi);
+            return tokens.map(function (t) {
+                if (/^<\/?[a-z][^>]*>$/i.test(t)) {
+                    return '<code>' + esc(t) + '</code>';
+                }
+                return esc(t);
+            }).join('');
+        }
+
+        function flushBullets() {
+            if (!pendingBullets.length) return;
+            parts.push('<ul class="mb-1 ps-3">' + pendingBullets.map(function (b) {
+                return '<li>' + renderTextWithCodeTags(b) + '</li>';
+            }).join('') + '</ul>');
+            pendingBullets = [];
+        }
+
+        lines.forEach(function (line) {
+            var t = String(line || '').trim();
+            if (!t) {
+                flushBullets();
+                parts.push('<div class="mb-1"></div>');
+                return;
+            }
+            if (/^\-\s+/.test(t)) {
+                pendingBullets.push(t.replace(/^\-\s+/, '').trim());
+                return;
+            }
+            flushBullets();
+            parts.push('<div>' + renderTextWithCodeTags(t) + '</div>');
+        });
+        flushBullets();
+        return parts.join('');
+    }
+
+    function confirmNeedsReviewAction(opts) {
+        var cfg = opts || {};
+        var title = String(cfg.title || 'Confirm Action');
+        var message = String(cfg.message || 'Are you sure?');
+        var confirmText = String(cfg.confirmText || 'Confirm');
+        var confirmClass = String(cfg.confirmClass || 'btn-danger');
+        var modalEl = document.getElementById('needsReviewConfirmModal');
+        var titleEl = document.getElementById('needsReviewConfirmTitle');
+        var messageEl = document.getElementById('needsReviewConfirmMessage');
+        var confirmBtn = document.getElementById('needsReviewConfirmBtn');
+
+        if (!(modalEl && titleEl && messageEl && confirmBtn && window.bootstrap && bootstrap.Modal)) {
+            return Promise.resolve(window.confirm(message));
+        }
+
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        confirmBtn.textContent = confirmText;
+        confirmBtn.className = 'btn ' + confirmClass;
+
+        return new Promise(function (resolve) {
+            var done = false;
+            var bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+            function cleanup() {
+                confirmBtn.removeEventListener('click', onConfirm);
+                modalEl.removeEventListener('hidden.bs.modal', onHidden);
+            }
+
+            function finish(value) {
+                if (done) return;
+                done = true;
+                cleanup();
+                resolve(value);
+            }
+
+            function onConfirm() {
+                finish(true);
+                bsModal.hide();
+            }
+
+            function onHidden() {
+                finish(false);
+            }
+
+            confirmBtn.addEventListener('click', onConfirm);
+            modalEl.addEventListener('hidden.bs.modal', onHidden);
+            bsModal.show();
+        });
+    }
+
+    function extractIncorrectCode(finding) {
+        return '<div class="needs-review-code-wrap">' + renderIncorrectCodeBlocks(finding, 'mb-1') + '</div>';
+    }
+
+    function openNeedsReviewPreviewImage(imageSrc, imageAlt) {
+        var src = String(imageSrc || '').trim();
+        if (!src) return;
+        var alt = String(imageAlt || 'Screenshot');
+        var previewModalEl = document.getElementById('needsReviewPreviewModal');
+        var imageModalEl = document.getElementById('issueImageModal');
+        var canUseBootstrap = !!(window.bootstrap && bootstrap.Modal);
+
+        var showImageModal = function () {
+            if (typeof window.openImagePopup === 'function') {
+                window.openImagePopup(src, alt);
+            }
+        };
+
+        if (!(previewModalEl && imageModalEl && canUseBootstrap)) {
+            showImageModal();
+            return;
+        }
+
+        reopenNeedsReviewPreviewOnImageClose = true;
+        if (previewModalEl.classList.contains('show')) {
+            previewModalEl.addEventListener('hidden.bs.modal', function onPreviewHidden() {
+                showImageModal();
+            }, { once: true });
+            bootstrap.Modal.getOrCreateInstance(previewModalEl).hide();
+            return;
+        }
+        showImageModal();
+    }
+
+    function initNeedsReviewTableResizable() {
+        var resizableTable = document.getElementById('needsReviewResizableTable');
+        if (!resizableTable) return;
+        if (resizableTable.getAttribute('data-resize-init') === '1') return;
+        resizableTable.setAttribute('data-resize-init', '1');
+
+        var resizers = resizableTable.querySelectorAll('.col-resizer');
+        var currentTh = null;
+        var startX = 0;
+        var startWidth = 0;
+
+        resizers.forEach(function (resizer) {
+            resizer.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                currentTh = this.parentElement;
+                startX = e.pageX;
+                startWidth = currentTh.offsetWidth;
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            });
+        });
+
+        function onMouseMove(e) {
+            if (!currentTh) return;
+            var diff = e.pageX - startX;
+            var newWidth = startWidth + diff;
+            if (newWidth > 50) {
+                currentTh.style.width = newWidth + 'px';
+            }
+        }
+
+        function onMouseUp() {
+            currentTh = null;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    }
+
+    function getAutoScanUrlOptions() {
+        var urls = [];
+        var currentPageUrl = String((window.ProjectConfig && window.ProjectConfig.currentPageUrl) || '').trim();
+        if (currentPageUrl) urls.push(currentPageUrl);
+        var grouped = (window.ProjectConfig && Array.isArray(window.ProjectConfig.groupedUrls)) ? window.ProjectConfig.groupedUrls : [];
+        grouped.forEach(function (g) {
+            var u = String((g && (g.url || g.normalized_url)) || '').trim();
+            if (u) urls.push(u);
+        });
+        var seen = {};
+        return urls.filter(function (u) {
+            var key = u.toLowerCase();
+            if (seen[key]) return false;
+            seen[key] = true;
+            return true;
+        });
+    }
+
+    function getCustomScanStorageKey() {
+        return 'pms_custom_scan_urls_' + String(projectId) + '_' + String(pageId);
+    }
+
+    function loadCustomScanUrls() {
+        try {
+            var raw = localStorage.getItem(getCustomScanStorageKey()) || '[]';
+            var parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.map(function (u) { return String(u || '').trim(); }).filter(Boolean);
+        } catch (_) {
+            return [];
+        }
+    }
+
+    function saveCustomScanUrls(urls) {
+        try {
+            var clean = (urls || []).map(function (u) { return String(u || '').trim(); }).filter(Boolean);
+            localStorage.setItem(getCustomScanStorageKey(), JSON.stringify(clean));
+        } catch (_) { }
+    }
+
+    function normalizeHttpUrl(inputUrl) {
+        var url = String(inputUrl || '').trim();
+        if (!url) return '';
+        if (!/^https?:\/\//i.test(url)) {
+            url = 'https://' + url;
+        }
+        return url;
+    }
+
+    function renderCustomScanUrlChips(urls) {
+        var host = document.getElementById('needsReviewCustomUrlList');
+        if (!host) return;
+        if (!urls || !urls.length) {
+            host.innerHTML = '<span class="text-muted">No custom URLs added yet.</span>';
+            return;
+        }
+        host.innerHTML = urls.map(function (u, idx) {
+            return ''
+                + '<span class="badge bg-light text-dark border me-1 mb-1">' + esc(u)
+                + ' <button type="button" class="btn btn-link btn-sm text-danger p-0 ms-1 needs-review-remove-custom-url" data-index="' + idx + '" style="text-decoration:none;">&times;</button>'
+                + '</span>';
+        }).join('');
+
+        host.querySelectorAll('.needs-review-remove-custom-url').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var i = parseInt(this.getAttribute('data-index') || '-1', 10);
+                var current = loadCustomScanUrls();
+                if (i >= 0 && i < current.length) {
+                    current.splice(i, 1);
+                    saveCustomScanUrls(current);
+                    renderCustomScanUrlChips(current);
+                    openScanUrlSelectionModal(true);
+                }
+            });
+        });
+    }
+
+    function openScanUrlSelectionModal(keepOpen) {
+        var modalEl = document.getElementById('needsReviewScanUrlModal');
+        var listEl = document.getElementById('needsReviewScanUrlList');
+        var selectAllEl = document.getElementById('needsReviewScanSelectAll');
+        var customInput = document.getElementById('needsReviewCustomScanUrlInput');
+        var customOpenBtn = document.getElementById('needsReviewOpenCustomUrlBtn');
+        var customAddBtn = document.getElementById('needsReviewAddCustomUrlBtn');
+        if (!(modalEl && listEl)) {
+            runAutomatedScanForCurrentPage([]);
+            return;
+        }
+
+        var customUrls = loadCustomScanUrls();
+        renderCustomScanUrlChips(customUrls);
+        var urls = getAutoScanUrlOptions().concat(customUrls);
+        var seen = {};
+        urls = urls.filter(function (u) {
+            var key = String(u || '').toLowerCase();
+            if (!key || seen[key]) return false;
+            seen[key] = true;
+            return true;
+        });
+        if (!urls.length) {
+            if (typeof window.showToast === 'function') window.showToast('No URL available for scanning', 'warning');
+            return;
+        }
+
+        listEl.innerHTML = urls.map(function (u, idx) {
+            var id = 'scanUrlOption_' + idx;
+            return ''
+                + '<div class="form-check mb-1">'
+                + '<input class="form-check-input needs-review-scan-url" type="checkbox" id="' + esc(id) + '" value="' + esc(u) + '" checked>'
+                + '<label class="form-check-label small" for="' + esc(id) + '">' + esc(u) + '</label>'
+                + '</div>';
+        }).join('');
+
+        if (selectAllEl) {
+            selectAllEl.checked = true;
+            selectAllEl.onchange = function () {
+                var checked = !!this.checked;
+                listEl.querySelectorAll('.needs-review-scan-url').forEach(function (cb) { cb.checked = checked; });
+            };
+        }
+
+        if (customOpenBtn) {
+            customOpenBtn.onclick = function () {
+                var u = normalizeHttpUrl(customInput ? customInput.value : '');
+                if (!u) return;
+                window.open(u, '_blank', 'noopener');
+            };
+        }
+        if (customAddBtn) {
+            customAddBtn.onclick = function () {
+                var u = normalizeHttpUrl(customInput ? customInput.value : '');
+                if (!u) {
+                    if (typeof window.showToast === 'function') window.showToast('Enter a valid URL first', 'warning');
+                    return;
+                }
+                var current = loadCustomScanUrls();
+                if (!current.some(function (x) { return x.toLowerCase() === u.toLowerCase(); })) {
+                    current.push(u);
+                    saveCustomScanUrls(current);
+                }
+                if (customInput) customInput.value = u;
+                openScanUrlSelectionModal(true);
+            };
+        }
+
+        if (window.bootstrap && bootstrap.Modal) {
+            var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            if (!keepOpen || !modalEl.classList.contains('show')) {
+                modal.show();
+            }
+        }
+    }
+
+    function buildDetailsHtml(finding) {
+        var actual = String(finding.actual_results || '').trim();
+        var incorrectCodeHtml = renderIncorrectCodeBlocks(finding, '');
+        var screenshots = getScreenshotUrls(finding);
+        var rec = String(finding.recommendation || '').trim();
+        var correct = String(finding.correct_code || '').trim();
+
+        // Keep final issue formatting stable: swap issue headline with recommendation text
+        // (as requested) and preserve line breaks after moving to Final Issues.
+        var actualLines = actual.split(/\r?\n/);
+        var firstActualLine = '';
+        for (var i = 0; i < actualLines.length; i++) {
+            var ln = String(actualLines[i] || '').trim();
+            if (ln !== '') { firstActualLine = ln; break; }
+        }
+        if (rec && firstActualLine && rec.toLowerCase() !== firstActualLine.toLowerCase()) {
+            actual = actual.replace(firstActualLine, rec);
+            rec = firstActualLine;
+        }
+
+        return [
+            '<p><strong>[Actual Results]</strong></p>',
+            '<pre class="mb-0" style="white-space: pre-wrap;"><code>' + esc(actual) + '</code></pre>',
+            '<p><strong>[Incorrect Code]</strong></p>',
+            incorrectCodeHtml,
+            '<p><strong>[Screenshots]</strong></p>',
+            screenshots.length
+                ? ('<div class="issue-image-grid">' + screenshots.map(function (u, idx) {
+                    return '<img src="' + esc(u) + '" alt="Screenshot ' + (idx + 1) + '" class="issue-image-thumb">';
+                }).join('') + '</div>')
+                : '<p></p>',
+            '<p><strong>[Recommendation]</strong></p>',
+            '<p>' + esc(rec) + '</p>',
+            '<p><strong>[Correct Code]</strong></p>',
+            '<code class="needs-review-inline-code">' + esc(correct || '-') + '</code>'
+        ].join('\n');
+    }
+
+    function toIssueSeverity(findingSeverity) {
+        var s = String(findingSeverity || '').toLowerCase();
+        if (s === 'blocker' || s === 'critical' || s === 'high' || s === 'serious') return 'high';
+        if (s === 'minor' || s === 'low') return 'low';
+        return 'medium';
+    }
+
+    function toMetadataSeverity(findingSeverity) {
+        var s = String(findingSeverity || '').toLowerCase().trim();
+        if (s === 'blocker' || s === 'critical' || s === 'major' || s === 'minor') return s;
+        if (s === 'serious' || s === 'high') return 'critical';
+        if (s === 'moderate' || s === 'medium') return 'major';
+        if (s === 'low') return 'minor';
+        return 'major';
+    }
+
+    async function moveFindingToFinal(finding) {
+        var fd = new FormData();
+        fd.append('action', 'create');
+        fd.append('project_id', String(projectId));
+        fd.append('page_id', String(pageId));
+        fd.append('title', String(finding.title || 'Automated accessibility issue'));
+        fd.append('description', buildDetailsHtml(finding));
+        fd.append('severity', toIssueSeverity(finding.severity));
+        fd.append('priority', 'medium');
+        fd.append('issue_status', 'Open');
+        fd.append('pages[]', String(pageId));
+        var findingUrls = getFindingUrls(finding);
+        if (findingUrls.length) {
+            fd.append('grouped_urls', JSON.stringify(findingUrls));
+        }
+        if (window.ProjectConfig && window.ProjectConfig.userId) {
+            fd.append('reporters[]', String(window.ProjectConfig.userId));
+        }
+        var wcagScList = [];
+        var wcagScRaw = String(finding.wcag_sc || '').trim();
+        if (wcagScRaw) {
+            wcagScList = wcagScRaw.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+        }
+        var metadataSeverity = toMetadataSeverity(finding.severity);
+        var metadata = {
+            severity: [metadataSeverity],
+            priority: ['medium'],
+            grouped_urls: findingUrls,
+            wcagsuccesscriteria: wcagScList,
+            wcagsuccesscriterianame: (finding.wcag_name ? [String(finding.wcag_name)] : []),
+            wcagsuccesscriterialevel: (finding.wcag_level ? [String(finding.wcag_level)] : [])
+        };
+        fd.append('metadata', JSON.stringify(metadata));
+
+        var createRes = await fetch(baseDir + '/api/issues.php', {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin'
+        });
+        var createJson = await createRes.json();
+        if (!createJson || !createJson.success || !createJson.id) {
+            throw new Error((createJson && createJson.error) ? createJson.error : 'Unable to create final issue');
+        }
+
+        var markFd = new FormData();
+        markFd.append('action', 'mark_moved');
+        markFd.append('project_id', String(projectId));
+        markFd.append('finding_id', String(finding.id));
+        markFd.append('issue_id', String(createJson.id));
+        var markRes = await fetch(baseDir + '/api/accessibility_scan.php', {
+            method: 'POST',
+            body: markFd,
+            credentials: 'same-origin'
+        });
+        var markJson = await markRes.json();
+        if (!markJson || !markJson.success) {
+            throw new Error((markJson && markJson.message) ? markJson.message : 'Unable to mark finding as moved');
+        }
+    }
+
+    async function loadNeedsReviewFindings() {
+        var tbody = document.getElementById('needsReviewBody');
+        var badge = document.getElementById('needsReviewCountBadge');
+        var selectAll = document.getElementById('needsReviewSelectAll');
+        var deleteSelectedBtn = document.getElementById('needsReviewDeleteSelectedBtn');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="14" class="text-muted text-center py-3">Loading automated findings...</td></tr>';
+        if (selectAll) selectAll.checked = false;
+        if (deleteSelectedBtn) deleteSelectedBtn.disabled = true;
+        try {
+            var url = baseDir + '/api/accessibility_scan.php?action=list&project_id=' + encodeURIComponent(projectId) + '&page_id=' + encodeURIComponent(pageId);
+            var res = await fetch(url, { credentials: 'same-origin' });
+            var json = await res.json();
+            var rows = (json && json.success && Array.isArray(json.findings)) ? json.findings : [];
+            if (badge) badge.textContent = String(rows.length);
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="14" class="text-muted text-center py-4">No automated findings in needs review.</td></tr>';
+                return;
+            }
+            function openFindingPreviewById(findingId) {
+                var finding = rows.find(function (x) { return String(x.id) === String(findingId); });
+                if (!finding) return;
+                var body = document.getElementById('needsReviewPreviewBody');
+                if (!body) return;
+                var shots = getScreenshotUrls(finding);
+                var findingUrls = getFindingUrls(finding);
+                body.innerHTML = ''
+                    + '<div class="mb-2"><strong>' + esc(finding.title || '-') + '</strong></div>'
+                    + '<div class="small text-muted mb-2">Rule: ' + esc(finding.rule_id || '-') + ' | Severity: ' + esc(finding.severity || '-') + '</div>'
+                    + '<div class="mb-2"><strong>URLs</strong><div class="p-2 bg-light border rounded" style="white-space: pre-wrap;">' + esc(findingUrls.join('\n') || '-') + '</div></div>'
+                    + '<div class="mb-2"><strong>Actual Results</strong><div class="p-2 bg-light border rounded needs-review-rich-text">' + renderActualResultsHtml(finding.actual_results, '-') + '</div></div>'
+                    + '<div class="mb-2"><strong>Incorrect Code</strong><div class="p-2 bg-light border rounded">' + renderIncorrectCodeBlocks(finding, 'mb-2') + '</div></div>'
+                    + '<div class="mb-2"><strong>Recommendation</strong><div class="p-2 bg-light border rounded">' + renderRecommendationHtml(finding.recommendation, '-') + '</div></div>'
+                    + '<div class="mb-2"><strong>Correct Code</strong><div class="p-2 bg-light border rounded"><code class="needs-review-inline-code mb-0">' + esc(String(finding.correct_code || '-')) + '</code></div></div>'
+                    + '<div><strong>Screenshots</strong><div class="mt-2 d-flex flex-wrap gap-2">' + (shots.length ? shots.map(function (u) { return '<img src="' + esc(u) + '" class="img-thumbnail needs-review-preview-image" style="max-height:180px;" data-src="' + esc(u) + '">'; }).join('') : '<span class="text-muted">No screenshots</span>') + '</div></div>';
+                body.querySelectorAll('.needs-review-preview-image').forEach(function (img) {
+                    img.addEventListener('click', function (ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        openNeedsReviewPreviewImage(this.getAttribute('data-src') || this.src || '', this.alt || 'Screenshot');
+                    });
+                });
+                var modalEl = document.getElementById('needsReviewPreviewModal');
+                if (modalEl && window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+            }
+            tbody.innerHTML = rows.map(function (f, idx) {
+                var shots = getScreenshotUrls(f);
+                var findingUrls = getFindingUrls(f);
+                var visibleShots = shots.slice(0, 2);
+                var extraShots = shots.length - visibleShots.length;
+                var shotHtml = shots.length
+                    ? ('<div class="needs-review-shot-stack">'
+                        + visibleShots.map(function (u) {
+                            return '<img src="' + esc(u) + '" alt="Finding screenshot" class="needs-review-shot" onclick="event.stopPropagation(); if (typeof openImagePopup === \'function\') openImagePopup(this.src, this.alt);">';
+                        }).join('')
+                        + (extraShots > 0 ? '<span class="needs-review-extra-badge">+' + extraShots + '</span>' : '')
+                        + '</div>')
+                    : '<span class="text-muted">-</span>';
+                var recommendation = 'Verify and fix this rule: ' + String(f.rule_id || '-');
+                var urlsPreview = findingUrls.slice(0, 2);
+                var urlsExtra = Math.max(0, findingUrls.length - urlsPreview.length);
+                var urlsCellHtml = findingUrls.length
+                    ? (esc(urlsPreview.join('\n')) + (urlsExtra > 0 ? ('\n+' + urlsExtra + ' more') : ''))
+                    : esc((f.scan_url || '-'));
+                return '<tr class="needs-review-row" data-finding-id="' + esc(f.id) + '">' +
+                    '<td class="text-center"><input type="checkbox" class="form-check-input needs-review-select" value="' + esc(f.id) + '"></td>' +
+                    '<td>' + (idx + 1) + '</td>' +
+                    '<td><div class="fw-semibold needs-review-issue-title">' + esc(f.title || '-') + '</div><div class="small text-muted needs-review-issue-meta">' + esc(f.rule_id || '-') + ' | ' + esc(f.severity || '-') + ' | ' + esc(f.occurrence_count || 0) + ' hit(s)</div></td>' +
+                    '<td class="small needs-review-cell-scroll"><div class="needs-review-truncate" title="' + esc(findingUrls.join('\n')) + '">' + urlsCellHtml + '</div></td>' +
+                    '<td><span class="badge bg-light text-dark border">' + esc(f.severity || '-') + '</span></td>' +
+                    '<td class="small">' + esc(f.wcag_sc || '-') + '</td>' +
+                    '<td class="small">' + esc(f.wcag_name || '-') + '</td>' +
+                    '<td class="small">' + esc(f.wcag_level || '-') + '</td>' +
+                    '<td class="small needs-review-cell-scroll"><div class="needs-review-truncate needs-review-rich-text">' + renderActualResultsHtml(f.actual_results, '-') + '</div></td>' +
+                    '<td class="small needs-review-cell-scroll">' + extractIncorrectCode(f) + '</td>' +
+                    '<td class="small">' + shotHtml + '</td>' +
+                    '<td class="small needs-review-cell-scroll"><div class="needs-review-truncate">' + renderRecommendationHtml(String(f.recommendation || recommendation || '-'), '-') + '</div></td>' +
+                    '<td class="small needs-review-cell-scroll"><div class="needs-review-code-wrap"><code class="needs-review-inline-code mb-0">' + esc(String(f.correct_code || '-')) + '</code></div></td>' +
+                    '<td class="needs-review-actions"><button type="button" class="btn btn-sm btn-outline-secondary needs-review-preview" data-finding-id="' + esc(f.id) + '"><i class="fas fa-eye"></i></button> <button type="button" class="btn btn-sm btn-success needs-review-move" data-finding-id="' + esc(f.id) + '"><i class="fas fa-arrow-right"></i></button> <button type="button" class="btn btn-sm btn-outline-danger needs-review-delete" data-finding-id="' + esc(f.id) + '"><i class="fas fa-trash"></i></button></td>' +
+                '</tr>';
+            }).join('');
+
+            function updateDeleteBtnState() {
+                if (!deleteSelectedBtn) return;
+                var selected = tbody.querySelectorAll('.needs-review-select:checked').length;
+                deleteSelectedBtn.disabled = selected < 1;
+            }
+
+            tbody.querySelectorAll('.needs-review-select').forEach(function (cb) {
+                cb.addEventListener('change', updateDeleteBtnState);
+            });
+            if (selectAll) {
+                selectAll.checked = false;
+                selectAll.onchange = function () {
+                    var checked = !!this.checked;
+                    tbody.querySelectorAll('.needs-review-select').forEach(function (cb) { cb.checked = checked; });
+                    updateDeleteBtnState();
+                };
+            }
+            updateDeleteBtnState();
+
+            tbody.querySelectorAll('.needs-review-move').forEach(function (btn) {
+                btn.addEventListener('click', async function () {
+                    var findingId = String(this.getAttribute('data-finding-id') || '');
+                    var finding = rows.find(function (x) { return String(x.id) === findingId; });
+                    if (!finding) return;
+                    var ok = await confirmNeedsReviewAction({
+                        title: 'Move Finding',
+                        message: 'Move this finding to Final Issues?',
+                        confirmText: 'Move',
+                        confirmClass: 'btn-success'
+                    });
+                    if (!ok) return;
+                    this.disabled = true;
+                    try {
+                        await moveFindingToFinal(finding);
+                        if (typeof window.showToast === 'function') window.showToast('Moved to Final Issues', 'success');
+                        if (typeof window.loadFinalIssues === 'function') window.loadFinalIssues(pageId);
+                        await loadNeedsReviewFindings();
+                    } catch (err) {
+                        if (typeof window.showToast === 'function') window.showToast(String(err.message || 'Move failed'), 'danger');
+                        this.disabled = false;
+                    }
+                });
+            });
+
+            tbody.querySelectorAll('.needs-review-delete').forEach(function (btn) {
+                btn.addEventListener('click', async function () {
+                    var findingId = String(this.getAttribute('data-finding-id') || '');
+                    if (!findingId) return;
+                    var ok = await confirmNeedsReviewAction({
+                        title: 'Delete Finding',
+                        message: 'Delete this finding permanently?',
+                        confirmText: 'Delete',
+                        confirmClass: 'btn-danger'
+                    });
+                    if (!ok) return;
+                    this.disabled = true;
+                    try {
+                        await deleteNeedsReviewFindings([findingId]);
+                        if (typeof window.showToast === 'function') window.showToast('Finding deleted', 'success');
+                        await loadNeedsReviewFindings();
+                    } catch (err) {
+                        if (typeof window.showToast === 'function') window.showToast(String(err.message || 'Delete failed'), 'danger');
+                        this.disabled = false;
+                    }
+                });
+            });
+
+            tbody.querySelectorAll('.needs-review-preview').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var findingId = String(this.getAttribute('data-finding-id') || '');
+                    openFindingPreviewById(findingId);
+                });
+            });
+
+            tbody.querySelectorAll('.needs-review-row').forEach(function (rowEl) {
+                rowEl.addEventListener('click', function (e) {
+                    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('img')) return;
+                    var fid = String(this.getAttribute('data-finding-id') || '');
+                    if (!fid) return;
+                    openFindingPreviewById(fid);
+                });
+            });
+        } catch (e) {
+            if (badge) badge.textContent = '0';
+            tbody.innerHTML = '<tr><td colspan="14" class="text-danger text-center py-4">Unable to load automated findings.</td></tr>';
+        }
+    }
+
+    async function deleteNeedsReviewFindings(ids) {
+        var cleanIds = (ids || []).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+        if (!cleanIds.length) return;
+        var fd = new FormData();
+        fd.append('action', 'delete');
+        fd.append('project_id', String(projectId));
+        fd.append('page_id', String(pageId));
+        fd.append('ids', cleanIds.join(','));
+        var res = await fetch(baseDir + '/api/accessibility_scan.php', {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin'
+        });
+        var json = await res.json();
+        if (!json || !json.success) {
+            throw new Error((json && json.message) ? json.message : 'Delete failed');
+        }
+    }
+
+    async function runAutomatedScanForCurrentPage(scanUrls) {
+        var btn = document.getElementById('needsReviewRunScanBtn');
+        var runSelectedBtn = document.getElementById('needsReviewRunSelectedScanBtn');
+        var progressWrap = document.getElementById('needsReviewScanProgressWrap');
+        var progressText = document.getElementById('needsReviewScanProgressText');
+        var progressPercent = document.getElementById('needsReviewScanProgressPercent');
+        var progressBar = document.getElementById('needsReviewScanProgressBar');
+        if (btn) btn.disabled = true;
+        if (runSelectedBtn) runSelectedBtn.disabled = true;
+        var token = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        var totalUrls = (Array.isArray(scanUrls) && scanUrls.length) ? scanUrls.length : 1;
+
+        function setProgress(completed, total, percent, statusText) {
+            var c = Math.max(0, parseInt(completed || 0, 10));
+            var t = Math.max(1, parseInt(total || 1, 10));
+            var p = Math.max(0, Math.min(100, parseInt(percent || 0, 10)));
+            if (progressWrap) progressWrap.classList.remove('d-none');
+            if (progressText) progressText.textContent = (statusText || 'Scanning...') + ' (' + c + '/' + t + ' URLs)';
+            if (progressPercent) progressPercent.textContent = p + '%';
+            if (progressBar) progressBar.style.width = p + '%';
+        }
+
+        if (scanProgressTimer) {
+            clearInterval(scanProgressTimer);
+            scanProgressTimer = null;
+        }
+        setProgress(0, totalUrls, 0, 'Starting scan');
+        scanProgressTimer = setInterval(async function () {
+            try {
+                var pRes = await fetch(baseDir + '/api/accessibility_scan.php?action=progress&project_id=' + encodeURIComponent(projectId) + '&token=' + encodeURIComponent(token), { credentials: 'same-origin' });
+                var pJson = await pRes.json();
+                if (!pJson || !pJson.success) return;
+                setProgress(pJson.completed || 0, pJson.total || totalUrls, pJson.percent || 0, 'Scanning');
+                if (pJson.status === 'completed' || pJson.status === 'failed') {
+                    clearInterval(scanProgressTimer);
+                    scanProgressTimer = null;
+                }
+            } catch (_) { }
+        }, 900);
+        try {
+            var fd = new FormData();
+            fd.append('project_id', String(projectId));
+            fd.append('page_id', String(pageId));
+            fd.append('progress_token', token);
+            if (Array.isArray(scanUrls) && scanUrls.length) {
+                fd.append('scan_urls', JSON.stringify(scanUrls));
+            }
+            var res = await fetch(baseDir + '/api/accessibility_scan.php', {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin'
+            });
+            var json = await res.json();
+            if (!json || !json.success) {
+                throw new Error((json && json.message) ? json.message : 'Scan failed');
+            }
+            setProgress(totalUrls, totalUrls, 100, 'Scan completed');
+            if (typeof window.showToast === 'function') {
+                var countUrls = Array.isArray(json.scan_urls) ? json.scan_urls.length : ((Array.isArray(scanUrls) && scanUrls.length) ? scanUrls.length : 1);
+                window.showToast('Automated scan completed for ' + countUrls + ' URL(s)', 'success');
+            }
+            await loadNeedsReviewFindings();
+        } catch (e) {
+            if (progressText) progressText.textContent = 'Scan failed';
+            if (typeof window.showToast === 'function') window.showToast(String(e.message || 'Scan failed'), 'danger');
+        } finally {
+            if (scanProgressTimer) {
+                clearInterval(scanProgressTimer);
+                scanProgressTimer = null;
+            }
+            if (btn) btn.disabled = false;
+            if (runSelectedBtn) runSelectedBtn.disabled = false;
+            setTimeout(function () {
+                if (progressWrap) progressWrap.classList.add('d-none');
+            }, 2500);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var refreshBtn = document.getElementById('needsReviewRefreshBtn');
+        var runBtn = document.getElementById('needsReviewRunScanBtn');
+        var deleteSelectedBtn = document.getElementById('needsReviewDeleteSelectedBtn');
+        var runSelectedBtn = document.getElementById('needsReviewRunSelectedScanBtn');
+        var scanModalEl = document.getElementById('needsReviewScanUrlModal');
+        var issueImageModalEl = document.getElementById('issueImageModal');
+        if (issueImageModalEl) {
+            issueImageModalEl.addEventListener('hidden.bs.modal', function () {
+                if (!reopenNeedsReviewPreviewOnImageClose) return;
+                reopenNeedsReviewPreviewOnImageClose = false;
+                var previewModalEl = document.getElementById('needsReviewPreviewModal');
+                if (previewModalEl && window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(previewModalEl).show();
+                }
+            });
+        }
+        if (refreshBtn) refreshBtn.addEventListener('click', loadNeedsReviewFindings);
+        if (runBtn) runBtn.addEventListener('click', openScanUrlSelectionModal);
+        if (runSelectedBtn) {
+            runSelectedBtn.addEventListener('click', async function () {
+                var selectedUrls = Array.from(document.querySelectorAll('#needsReviewScanUrlList .needs-review-scan-url:checked'))
+                    .map(function (cb) { return String(cb.value || '').trim(); })
+                    .filter(Boolean);
+                if (!selectedUrls.length) {
+                    if (typeof window.showToast === 'function') window.showToast('Select at least one URL', 'warning');
+                    return;
+                }
+                if (scanModalEl && window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(scanModalEl).hide();
+                }
+                await runAutomatedScanForCurrentPage(selectedUrls);
+            });
+        }
+        if (deleteSelectedBtn) {
+            deleteSelectedBtn.addEventListener('click', async function () {
+                var selected = Array.from(document.querySelectorAll('#needsReviewBody .needs-review-select:checked'))
+                    .map(function (cb) { return String(cb.value || '').trim(); })
+                    .filter(Boolean);
+                if (!selected.length) return;
+                var ok = await confirmNeedsReviewAction({
+                    title: 'Delete Selected Findings',
+                    message: 'Delete ' + selected.length + ' selected finding(s) permanently?',
+                    confirmText: 'Delete Selected',
+                    confirmClass: 'btn-danger'
+                });
+                if (!ok) return;
+                this.disabled = true;
+                try {
+                    await deleteNeedsReviewFindings(selected);
+                    if (typeof window.showToast === 'function') window.showToast('Selected findings deleted', 'success');
+                    await loadNeedsReviewFindings();
+                } catch (e) {
+                    if (typeof window.showToast === 'function') window.showToast(String(e.message || 'Delete failed'), 'danger');
+                    this.disabled = false;
+                }
+            });
+        }
+        initNeedsReviewTableResizable();
+        loadNeedsReviewFindings();
+    });
+
+    window.loadNeedsReviewFindings = loadNeedsReviewFindings;
+})();
 </script>
 
 <script>

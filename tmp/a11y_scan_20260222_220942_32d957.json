@@ -1,0 +1,320 @@
+{
+  "success": true,
+  "url": "https://www.samcomf.com/knowledge-center/food-for-thought-may-2022-9-lessons-from-nifty50-journey/",
+  "summary": {
+    "issues": 2,
+    "critical": 0,
+    "serious": 2,
+    "moderate": 0,
+    "minor": 0
+  },
+  "findings": [
+    {
+      "rule_id": "color-contrast",
+      "title": "Elements must meet minimum color contrast ratio thresholds",
+      "severity": "serious",
+      "actual_results": "Rule: color-contrast\nImpact: serious\nOccurrences: 28\nEnsure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+      "incorrect_code": "<a href=\"https://www.samcomf.com/knowledge-center/tag/hexashield-tested-investing/\">HexaShield Tested Investments</a>\n\n<a href=\"https://www.samcomf.com/knowledge-center/tag/samco-flexi-cap-fund/\">Samco Flexi Cap Fund</a>\n\n<a href=\"https://www.samcomf.com/help-support/\">Help and Support</a>\n\n<a href=\"https://www.samcomf.com/knowledge-center/tag/food-for-thought/\">Food for Thought</a>\n\n<a href=\"https://www.samcomf.com/\">Go to SamcoMF</a>",
+      "screenshots": [
+        "1771778395389_color-contrast_1.png",
+        "1771778400807_color-contrast_2.png",
+        "1771778406419_color-contrast_3.png",
+        "1771778412499_color-contrast_4.png",
+        "1771778417998_color-contrast_5.png"
+      ],
+      "recommendation": "Elements must meet minimum color contrast ratio thresholds | https://dequeuniversity.com/rules/axe/4.11/color-contrast?application=axeAPI",
+      "correct_code": "",
+      "help_url": "https://dequeuniversity.com/rules/axe/4.11/color-contrast?application=axeAPI",
+      "occurrence_count": 28,
+      "raw_nodes": [
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#dae7f4",
+                "bgColor": "#4788c8",
+                "contrastRatio": 2.97,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<header id=\"gh-head\" class=\"gh-head has-cover\">",
+                  "target": [
+                    "#gh-head"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.97 (foreground color: #dae7f4, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/knowledge-center/tag/hexashield-tested-investing/\">HexaShield Tested Investments</a>",
+          "target": [
+            ".nav-hexashield-tested-investments > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.97 (foreground color: #dae7f4, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#dae7f4",
+                "bgColor": "#4788c8",
+                "contrastRatio": 2.97,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<header id=\"gh-head\" class=\"gh-head has-cover\">",
+                  "target": [
+                    "#gh-head"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.97 (foreground color: #dae7f4, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/knowledge-center/tag/samco-flexi-cap-fund/\">Samco Flexi Cap Fund</a>",
+          "target": [
+            ".nav-samco-flexi-cap-fund > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.97 (foreground color: #dae7f4, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#dae7f4",
+                "bgColor": "#4788c8",
+                "contrastRatio": 2.97,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<header id=\"gh-head\" class=\"gh-head has-cover\">",
+                  "target": [
+                    "#gh-head"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.97 (foreground color: #dae7f4, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/help-support/\">Help and Support</a>",
+          "target": [
+            ".nav-help-and-support > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.97 (foreground color: #dae7f4, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#dae7f4",
+                "bgColor": "#4788c8",
+                "contrastRatio": 2.97,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<header id=\"gh-head\" class=\"gh-head has-cover\">",
+                  "target": [
+                    "#gh-head"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.97 (foreground color: #dae7f4, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/knowledge-center/tag/food-for-thought/\">Food for Thought</a>",
+          "target": [
+            ".nav-food-for-thought > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.97 (foreground color: #dae7f4, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#dae7f4",
+                "bgColor": "#4788c8",
+                "contrastRatio": 2.97,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<header id=\"gh-head\" class=\"gh-head has-cover\">",
+                  "target": [
+                    "#gh-head"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.97 (foreground color: #dae7f4, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/\">Go to SamcoMF</a>",
+          "target": [
+            "a[href$=\"samcomf.com/\"]"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.97 (foreground color: #dae7f4, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        }
+      ]
+    },
+    {
+      "rule_id": "link-name",
+      "title": "Links must have discernible text",
+      "severity": "serious",
+      "actual_results": "Rule: link-name\nImpact: serious\nOccurrences: 2\nEnsure links have discernible text",
+      "incorrect_code": "<a href=\"/knowledge-center/author/paras/\" class=\"static-avatar author-profile-image\">\n\n<a href=\"/knowledge-center/author/anushree/\" class=\"static-avatar author-profile-image\">",
+      "screenshots": [
+        "1771778423249_link-name_6.png",
+        "1771778428376_link-name_7.png"
+      ],
+      "recommendation": "Links must have discernible text | https://dequeuniversity.com/rules/axe/4.11/link-name?application=axeAPI",
+      "correct_code": "",
+      "help_url": "https://dequeuniversity.com/rules/axe/4.11/link-name?application=axeAPI",
+      "occurrence_count": 2,
+      "raw_nodes": [
+        {
+          "any": [
+            {
+              "id": "has-visible-text",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element does not have text that is visible to screen readers"
+            },
+            {
+              "id": "aria-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-label attribute does not exist or is empty"
+            },
+            {
+              "id": "aria-labelledby",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty"
+            },
+            {
+              "id": "non-empty-title",
+              "data": {
+                "messageKey": "noAttr"
+              },
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element has no title attribute"
+            }
+          ],
+          "all": [],
+          "none": [
+            {
+              "id": "focusable-no-name",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element is in tab order and does not have accessible text"
+            }
+          ],
+          "impact": "serious",
+          "html": "<a href=\"/knowledge-center/author/paras/\" class=\"static-avatar author-profile-image\">",
+          "target": [
+            ".featured > .post-card-content > .post-card-meta > .author-list > .author-list-item > .static-avatar.author-profile-image"
+          ],
+          "failureSummary": "Fix all of the following:\n  Element is in tab order and does not have accessible text\n\nFix any of the following:\n  Element does not have text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute"
+        },
+        {
+          "any": [
+            {
+              "id": "has-visible-text",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element does not have text that is visible to screen readers"
+            },
+            {
+              "id": "aria-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-label attribute does not exist or is empty"
+            },
+            {
+              "id": "aria-labelledby",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty"
+            },
+            {
+              "id": "non-empty-title",
+              "data": {
+                "messageKey": "noAttr"
+              },
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element has no title attribute"
+            }
+          ],
+          "all": [],
+          "none": [
+            {
+              "id": "focusable-no-name",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element is in tab order and does not have accessible text"
+            }
+          ],
+          "impact": "serious",
+          "html": "<a href=\"/knowledge-center/author/anushree/\" class=\"static-avatar author-profile-image\">",
+          "target": [
+            ".post-card:nth-child(2) > .post-card-content > .post-card-meta > .author-list > .author-list-item > .static-avatar.author-profile-image"
+          ],
+          "failureSummary": "Fix all of the following:\n  Element is in tab order and does not have accessible text\n\nFix any of the following:\n  Element does not have text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute"
+        }
+      ]
+    }
+  ]
+}

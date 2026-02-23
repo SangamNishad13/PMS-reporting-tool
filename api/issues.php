@@ -743,7 +743,7 @@ try {
             // Ensure it's a clean string
             $priority = is_string($priority) ? trim($priority) : 'medium';
             
-            $out[] = [
+            $rowOut = [
                 'id' => $iid,
                 'issue_key' => $i['issue_key'] ?? '',
                 'project_id' => (int)$i['project_id'],
@@ -775,6 +775,12 @@ try {
                 'updated_at' => $i['updated_at'],
                 'latest_history_id' => (int)($i['latest_history_id'] ?? 0)
             ];
+            foreach ($meta as $metaKey => $metaVals) {
+                if (!array_key_exists($metaKey, $rowOut)) {
+                    $rowOut[$metaKey] = $metaVals;
+                }
+            }
+            $out[] = $rowOut;
         }
 
         jsonResponse(['success' => true, 'issues' => $out]);

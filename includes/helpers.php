@@ -211,6 +211,11 @@ function createNotification($db, $userId, $type, $message, $link = null) {
             if ($emailMirrorTemporarilyDisabled) {
                 return true;
             }
+            $settings = @include(__DIR__ . '/../config/settings.php');
+            $emailNotificationsEnabled = is_array($settings) ? (bool)($settings['email_notifications_enabled'] ?? false) : false;
+            if (!$emailNotificationsEnabled) {
+                return true;
+            }
             $userStmt = $db->prepare("SELECT full_name, email FROM users WHERE id = ? AND is_active = 1 LIMIT 1");
             $userStmt->execute([$userId]);
             $recipient = $userStmt->fetch(PDO::FETCH_ASSOC);
@@ -226,7 +231,6 @@ function createNotification($db, $userId, $type, $message, $link = null) {
                     $subjectType = ucfirst(str_replace('_', ' ', $type));
                     $subject = 'PMS Notification: ' . $subjectType;
 
-                    $settings = @include(__DIR__ . '/../config/settings.php');
                     $appUrl = is_array($settings) ? trim((string)($settings['app_url'] ?? '')) : '';
                     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
                     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
