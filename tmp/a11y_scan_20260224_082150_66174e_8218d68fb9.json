@@ -1,0 +1,508 @@
+{
+  "success": true,
+  "url": "https://www.samcomf.com/disclaimer",
+  "summary": {
+    "issues": 3,
+    "critical": 0,
+    "serious": 1,
+    "moderate": 1,
+    "minor": 1
+  },
+  "findings": [
+    {
+      "rule_id": "color-contrast",
+      "title": "Elements must meet minimum color contrast ratio thresholds",
+      "severity": "serious",
+      "needs_review_severity": "Critical",
+      "wcag_sc": [
+        "1.4.3"
+      ],
+      "wcag_name": "Contrast (Minimum)",
+      "wcag_level": "AA",
+      "actual_results": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds\n\nURL: https://www.samcomf.com/disclaimer\n\nElement has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1\n- \"Distributor corner\" in Header section\n- \"Contact us\" in Header section\n- \"+91 63572 22000\" in Header section\n\n\nElement has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1\n- \"New Investor\" in Header section\n\n\nElement has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1\n- \"Copyright © 2024 Samco Asset Management Private Ltd. | All Rights Reserved\" in Footer section\n\n\nElement has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1\n- \"Statutory Details\" in Footer section\n- \"Terms & Conditions\" in Footer section\n- \"Privacy Policy\" in Footer section\n- \"Disclaimer\" in Footer section\n",
+      "incorrect_code": "<a class=\"drop-head-item\" href=\"javascript:void(0)\">Distributor corner<img class=\"ml-10\" src=\"https://www.samcomf.com/images/drop.png\" alt=\"Down Arrow\" width=\"10\" height=\"6\"></a>\n\n<a href=\"https://www.samcomf.com/contact-us\">Contact us</a>\n\n<a href=\"tel:+91 63572 22000\"><img class=\"mr-10\" src=\"https://www.samcomf.com/images/new-img/ringing-call.svg\" alt=\"Call\" width=\"20\" height=\"19\"> +91 63572 22000</a>\n\n<a href=\"https://www.samcomf.com/investor/register\" class=\"btn btn-primary gradient\">New Investor</a>\n\n<div class=\"col-lg-6\">\n          Copyright © 2024 Samco Asset Management Private Ltd. | All Rights Reserved \n        </div>\n\n<a href=\"https://www.samcomf.com/statutory-details-and-risk-factors\">Statutory Details </a>\n\n<a href=\"https://www.samcomf.com/terms-and-conditions\">Terms &amp; Conditions</a>\n\n<a href=\"https://www.samcomf.com/privacy-policy\">Privacy Policy</a>\n\n<a href=\"https://www.samcomf.com/disclaimer\">Disclaimer</a>",
+      "screenshots": [
+        "1771901547419_color-contrast_1.png",
+        "1771901547780_color-contrast_2.png"
+      ],
+      "recommendation": "Adjust foreground/background colors so text and interactive controls meet WCAG 2 AA contrast thresholds (minimum 4.5:1 for normal text, 3:1 for large text).\n- Adjust text/background colors until contrast reaches at least 4.5:1 for normal text and 3:1 for large text.\n- Re-check hover/focus/visited states of links and buttons to keep contrast compliant in all states.",
+      "correct_code": "/* Adjust colors so text contrast meets WCAG AA */\n.text-on-bg {\n  color: #1a1a1a;\n  background-color: #ffffff;\n}\n\n/* Reference failing detail: Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1 */",
+      "help_url": "",
+      "occurrence_count": 9,
+      "raw_nodes": [
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#4788c8",
+                "contrastRatio": 3.73,
+                "fontSize": "10.5pt (14px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"top-bar\">",
+                  "target": [
+                    ".top-bar"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a class=\"drop-head-item\" href=\"javascript:void(0)\">Distributor corner<img class=\"ml-10\" src=\"https://www.samcomf.com/images/drop.png\" alt=\"Down Arrow\" width=\"10\" height=\"6\"></a>",
+          "target": [
+            ".drop-head-item"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#4788c8",
+                "contrastRatio": 3.73,
+                "fontSize": "10.5pt (14px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"top-bar\">",
+                  "target": [
+                    ".top-bar"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/contact-us\">Contact us</a>",
+          "target": [
+            ".top-items > li:nth-child(2) > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#4788c8",
+                "contrastRatio": 3.73,
+                "fontSize": "10.5pt (14px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"top-bar\">",
+                  "target": [
+                    ".top-bar"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"tel:+91 63572 22000\"><img class=\"mr-10\" src=\"https://www.samcomf.com/images/new-img/ringing-call.svg\" alt=\"Call\" width=\"20\" height=\"19\"> +91 63572 22000</a>",
+          "target": [
+            "li > a[href=\"tel:+91 63572 22000\"]"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#4788c8",
+                "contrastRatio": 3.73,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<a href=\"https://www.samcomf.com/investor/register\" class=\"btn btn-primary gradient\">New Investor</a>",
+                  "target": [
+                    ".btn"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/investor/register\" class=\"btn btn-primary gradient\">New Investor</a>",
+          "target": [
+            ".btn"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.73 (foreground color: #ffffff, background color: #4788c8, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#3f86cc",
+                "contrastRatio": 3.82,
+                "fontSize": "9.8pt (13px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"copy-right\">",
+                  "target": [
+                    ".copy-right"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<div class=\"col-lg-6\">\n          Copyright © 2024 Samco Asset Management Private Ltd. | All Rights Reserved \n        </div>",
+          "target": [
+            ".copy-right > .container > .row > .col-lg-6:nth-child(1)"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#3f86cc",
+                "contrastRatio": 3.82,
+                "fontSize": "9.0pt (12px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"copy-right\">",
+                  "target": [
+                    ".copy-right"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/statutory-details-and-risk-factors\">Statutory Details </a>",
+          "target": [
+            ".text-right.col-lg-6 > .head-action > ul > li:nth-child(1) > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#3f86cc",
+                "contrastRatio": 3.82,
+                "fontSize": "9.0pt (12px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"copy-right\">",
+                  "target": [
+                    ".copy-right"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/terms-and-conditions\">Terms &amp; Conditions</a>",
+          "target": [
+            ".head-action > ul > li:nth-child(2) > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#3f86cc",
+                "contrastRatio": 3.82,
+                "fontSize": "9.0pt (12px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"copy-right\">",
+                  "target": [
+                    ".copy-right"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/privacy-policy\">Privacy Policy</a>",
+          "target": [
+            ".text-right.col-lg-6 > .head-action > ul > li:nth-child(3) > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#ffffff",
+                "bgColor": "#3f86cc",
+                "contrastRatio": 3.82,
+                "fontSize": "9.0pt (12px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<div class=\"copy-right\">",
+                  "target": [
+                    ".copy-right"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/disclaimer\">Disclaimer</a>",
+          "target": [
+            ".head-action > ul > li:nth-child(4) > a"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.82 (foreground color: #ffffff, background color: #3f86cc, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+        }
+      ]
+    },
+    {
+      "rule_id": "image-redundant-alt",
+      "title": "Alternative text of images should not be repeated as text",
+      "severity": "minor",
+      "needs_review_severity": "Minor",
+      "wcag_sc": [],
+      "wcag_name": "Alternative text of images should not be repeated as text",
+      "wcag_level": "",
+      "actual_results": "Ensure image alternative is not repeated as text\n\nURL: https://www.samcomf.com/disclaimer\n\nElement contains <img> element with alt text that duplicates existing text\n- \"Easy & quick\" in \"Filing Complaints on SCORES\"\n",
+      "incorrect_code": "<img src=\"https://www.samcomf.com/images/quick-response.png\" alt=\"Easy &amp; quick\" width=\"32\" height=\"32\">",
+      "screenshots": [
+        "1771901548097_image-redundant-alt_3.png"
+      ],
+      "recommendation": "Avoid repeating surrounding visible text in image alternative text.\n- If adjacent text already conveys the same meaning, set image alt to empty (alt=\"\").\n- Keep one clear text label instead of duplicated text + identical alt.",
+      "correct_code": "<img src=\"https://www.samcomf.com/images/quick-response.png\" alt=\"\" width=\"32\" height=\"32\">",
+      "help_url": "",
+      "occurrence_count": 1,
+      "raw_nodes": [
+        {
+          "any": [],
+          "all": [],
+          "none": [
+            {
+              "id": "duplicate-img-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "minor",
+              "message": "Element contains <img> element with alt text that duplicates existing text"
+            }
+          ],
+          "impact": "minor",
+          "html": "<img src=\"https://www.samcomf.com/images/quick-response.png\" alt=\"Easy &amp; quick\" width=\"32\" height=\"32\">",
+          "target": [
+            "img[alt=\"Easy & quick\"]"
+          ],
+          "failureSummary": "Fix all of the following:\n  Element contains <img> element with alt text that duplicates existing text"
+        }
+      ]
+    },
+    {
+      "rule_id": "region",
+      "title": "All page content should be contained by landmarks",
+      "severity": "moderate",
+      "needs_review_severity": "Major",
+      "wcag_sc": [],
+      "wcag_name": "All page content should be contained by landmarks",
+      "wcag_level": "",
+      "actual_results": "Ensure all page content is contained by landmarks\n\nURL: https://www.samcomf.com/disclaimer\n\nSome page content is not contained by landmarks\n- \"Disclaimer Welcome to www.samcomf.com, the website of Samco Asset Management Pri\" in \"Disclaimer\"\n- \"RTA Branches | Unitholders' Meet-up\" in Footer section\n- \"Mutual fund investments are subject to market risks, read all scheme related doc\" in Footer section\n- \"Copyright © 2024 Samco Asset Management Private Ltd. | All Rights Reserved Statu\" in Footer section\n- \"Filing Complaints on SCORES Easy & quick 1. Register on SCORES portal 2. Mandato\" in \"Filing Complaints on SCORES\"\n",
+      "incorrect_code": "<section class=\"disclaimer banner-section animate-css\">\n\n<div class=\"invest-risk\">\n\n<div class=\"copy-right\">\n\n<div class=\"st-modal\" data-modal=\"scoresModal\">",
+      "screenshots": [
+        "1771901548462_region_4.png",
+        "1771901548840_region_5.png",
+        "1771901549143_region_6.png"
+      ],
+      "recommendation": "Ensure all significant page content is inside semantic landmarks.\n- Wrap major content in semantic landmarks such as <main>, <header>, and <footer>.\n- Ensure only one primary <main> landmark is present.",
+      "correct_code": "<header>...</header>\n<main id=\"main-content\">...</main>\n<footer>...</footer>",
+      "help_url": "",
+      "occurrence_count": 5,
+      "raw_nodes": [
+        {
+          "any": [
+            {
+              "id": "region",
+              "data": {
+                "isIframe": false
+              },
+              "relatedNodes": [],
+              "impact": "moderate",
+              "message": "Some page content is not contained by landmarks"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "moderate",
+          "html": "<section class=\"disclaimer banner-section animate-css\">",
+          "target": [
+            "section"
+          ],
+          "failureSummary": "Fix any of the following:\n  Some page content is not contained by landmarks"
+        },
+        {
+          "any": [
+            {
+              "id": "region",
+              "data": {
+                "isIframe": false
+              },
+              "relatedNodes": [],
+              "impact": "moderate",
+              "message": "Some page content is not contained by landmarks"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "moderate",
+          "html": "<div class=\"invest-risk\">",
+          "target": [
+            ".invest-risk:nth-child(5)"
+          ],
+          "failureSummary": "Fix any of the following:\n  Some page content is not contained by landmarks"
+        },
+        {
+          "any": [
+            {
+              "id": "region",
+              "data": {
+                "isIframe": false
+              },
+              "relatedNodes": [],
+              "impact": "moderate",
+              "message": "Some page content is not contained by landmarks"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "moderate",
+          "html": "<div class=\"invest-risk\">",
+          "target": [
+            ".invest-risk:nth-child(6)"
+          ],
+          "failureSummary": "Fix any of the following:\n  Some page content is not contained by landmarks"
+        },
+        {
+          "any": [
+            {
+              "id": "region",
+              "data": {
+                "isIframe": false
+              },
+              "relatedNodes": [],
+              "impact": "moderate",
+              "message": "Some page content is not contained by landmarks"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "moderate",
+          "html": "<div class=\"copy-right\">",
+          "target": [
+            ".copy-right"
+          ],
+          "failureSummary": "Fix any of the following:\n  Some page content is not contained by landmarks"
+        },
+        {
+          "any": [
+            {
+              "id": "region",
+              "data": {
+                "isIframe": false
+              },
+              "relatedNodes": [],
+              "impact": "moderate",
+              "message": "Some page content is not contained by landmarks"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "moderate",
+          "html": "<div class=\"st-modal\" data-modal=\"scoresModal\">",
+          "target": [
+            ".st-modal"
+          ],
+          "failureSummary": "Fix any of the following:\n  Some page content is not contained by landmarks"
+        }
+      ]
+    }
+  ]
+}

@@ -19,7 +19,6 @@
   },
   "homepage": "https://github.com/SangamNishad13/PMS-reporting-tool#readme",
   "dependencies": {
-    "axe-core": "^4.11.1",
     "puppeteer-core": "^24.37.5"
   }
 }

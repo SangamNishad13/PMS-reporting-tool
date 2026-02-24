@@ -927,23 +927,51 @@ document.addEventListener('pms:issues-changed', function () {
                 if (/^<\/?[a-z][^>]*>$/i.test(t)) {
                     return '<code>' + esc(t) + '</code>';
                 }
-                return esc(t);
+                var s = esc(t);
+                // Wrap complete attribute assignments first, then standalone aria/role tokens.
+                s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&quot;[^&]+&quot;/g, function (m) { return '<code>' + m + '</code>'; });
+                s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&#39;[^&]+&#39;/g, function (m) { return '<code>' + m + '</code>'; });
+                var parts = s.split(/(<code>[\s\S]*?<\/code>)/i);
+                s = parts.map(function (part) {
+                    if (/^<code>[\s\S]*<\/code>$/i.test(part)) return part;
+                    var out = part;
+                    out = out.replace(/\baria-[a-z-]+\b/gi, function (m) { return '<code>' + m + '</code>'; });
+                    out = out.replace(/\brole\b/gi, function (m) { return '<code>' + m + '</code>'; });
+                    return out;
+                }).join('');
+                return s;
             }).join('');
         }
 
         var heading = '';
+        var subHeading = '';
+        var paragraphs = [];
         var bullets = [];
+        var seenRecLine = {};
+        function pushUnique(target, line) {
+            var t = String(line || '').trim();
+            if (!t) return;
+            var key = t.toLowerCase();
+            if (seenRecLine[key]) return;
+            seenRecLine[key] = true;
+            target.push(t);
+        }
         lines.forEach(function (line) {
-            if (/^\-\s+/.test(line)) {
-                bullets.push(line.replace(/^\-\s+/, '').trim());
+            var cleaned = String(line || '').trim();
+            var isBullet = /^\-\s+/.test(cleaned);
+            if (isBullet) cleaned = cleaned.replace(/^\-\s+/, '').trim();
+            if (/^apply the following changes:?$/i.test(cleaned)) {
+                subHeading = line;
             } else if (!heading) {
-                heading = line;
+                heading = cleaned;
+            } else if (isBullet) {
+                pushUnique(bullets, cleaned);
             } else {
-                bullets.push(line);
+                pushUnique(paragraphs, cleaned);
             }
         });
 
-        if (!bullets.length) {
+        if (!bullets.length && !paragraphs.length && !subHeading) {
             return renderTextWithCodeTags(raw).replace(/\n/g, '<br>');
         }
 
@@ -951,9 +979,20 @@ document.addEventListener('pms:issues-changed', function () {
         if (heading) {
             html += '<div class="mb-1">' + renderTextWithCodeTags(heading) + '</div>';
         }
-        html += '<ul class="mb-0 ps-3">' + bullets.map(function (b) {
-            return '<li>' + renderTextWithCodeTags(b) + '</li>';
-        }).join('') + '</ul>';
+        if (subHeading) {
+            html += '<div class="mt-2 mb-1"><strong>' + renderTextWithCodeTags(subHeading.replace(/^\-\s+/, '').trim()) + '</strong></div>';
+        }
+        if (paragraphs.length) {
+            html += paragraphs.map(function (p) {
+                return '<div class="mb-2">' + renderTextWithCodeTags(p) + '</div>';
+            }).join('');
+        }
+        if (bullets.length) {
+            // Keep recommendation readable as paragraph blocks instead of dense bullets.
+            html += bullets.map(function (b) {
+                return '<div class="mb-2">' + renderTextWithCodeTags(b) + '</div>';
+            }).join('');
+        }
         return html;
     }
 
@@ -971,7 +1010,18 @@ document.addEventListener('pms:issues-changed', function () {
                 if (/^<\/?[a-z][^>]*>$/i.test(t)) {
                     return '<code>' + esc(t) + '</code>';
                 }
-                return esc(t);
+                var s = esc(t);
+                s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&quot;[^&]+&quot;/g, function (m) { return '<code>' + m + '</code>'; });
+                s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&#39;[^&]+&#39;/g, function (m) { return '<code>' + m + '</code>'; });
+                var parts = s.split(/(<code>[\s\S]*?<\/code>)/i);
+                s = parts.map(function (part) {
+                    if (/^<code>[\s\S]*<\/code>$/i.test(part)) return part;
+                    var out = part;
+                    out = out.replace(/\baria-[a-z-]+\b/gi, function (m) { return '<code>' + m + '</code>'; });
+                    out = out.replace(/\brole\b/gi, function (m) { return '<code>' + m + '</code>'; });
+                    return out;
+                }).join('');
+                return s;
             }).join('');
         }
 
@@ -987,12 +1037,17 @@ document.addEventListener('pms:issues-changed', function () {
             var t = String(line || '').trim();
             if (!t) {
                 flushBullets();
-                parts.push('<div class="mb-1"></div>');
+                parts.push('<div style="height:8px;"></div>');
                 return;
             }
             if (/^\-\s+/.test(t)) {
                 pendingBullets.push(t.replace(/^\-\s+/, '').trim());
                 return;
+            }
+            // Keep URL sections visually separated for easier scanning.
+            if (/^URL:\s+/i.test(t) && parts.length > 0) {
+                flushBullets();
+                parts.push('<div style="height:10px;"></div>');
             }
             flushBullets();
             parts.push('<div>' + renderTextWithCodeTags(t) + '</div>');
@@ -1396,6 +1451,21 @@ document.addEventListener('pms:issues-changed', function () {
         }
     }
 
+    function syncFinalIssuesCountBadgeFallback() {
+        var badge = document.getElementById('finalIssuesCountBadge');
+        var body = document.getElementById('finalIssuesBody');
+        if (!badge || !body) return;
+        var rows = Array.from(body.querySelectorAll('tr.issue-expandable-row'));
+        if (!rows.length) {
+            var emptyState = body.querySelector('td');
+            if (emptyState && /No final issues recorded yet|No issues found/i.test(String(emptyState.textContent || ''))) {
+                badge.textContent = '0';
+            }
+            return;
+        }
+        badge.textContent = String(rows.length);
+    }
+
     async function loadNeedsReviewFindings() {
         var tbody = document.getElementById('needsReviewBody');
         var badge = document.getElementById('needsReviewCountBadge');
@@ -1515,7 +1585,13 @@ document.addEventListener('pms:issues-changed', function () {
                     try {
                         await moveFindingToFinal(finding);
                         if (typeof window.showToast === 'function') window.showToast('Moved to Final Issues', 'success');
-                        if (typeof window.loadFinalIssues === 'function') window.loadFinalIssues(pageId);
+                        if (window.issueData) {
+                            window.issueData.selectedPageId = String(pageId);
+                        }
+                        if (typeof window.loadFinalIssues === 'function') {
+                            await window.loadFinalIssues(String(pageId));
+                        }
+                        syncFinalIssuesCountBadgeFallback();
                         await loadNeedsReviewFindings();
                     } catch (err) {
                         if (typeof window.showToast === 'function') window.showToast(String(err.message || 'Move failed'), 'danger');

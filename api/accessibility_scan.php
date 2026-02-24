@@ -175,6 +175,140 @@ function splitActualResultsBlock(string $actual): array {
     return ['headline' => $text, 'body' => ''];
 }
 
+function parseActualResultsUrlBlocks(string $actual): array {
+    $parts = splitActualResultsBlock($actual);
+    $headline = trim((string)($parts['headline'] ?? ''));
+    $body = (string)($parts['body'] ?? '');
+    $blocksByUrl = [];
+    $order = [];
+    if (trim($body) === '') {
+        return ['headline' => $headline, 'blocks_by_url' => [], 'order' => []];
+    }
+
+    $lines = preg_split('/\r?\n/', $body);
+    $currentUrl = '';
+    $currentLines = [];
+    $flush = static function () use (&$currentUrl, &$currentLines, &$blocksByUrl, &$order): void {
+        if ($currentUrl === '' || empty($currentLines)) {
+            $currentUrl = '';
+            $currentLines = [];
+            return;
+        }
+        $text = trim(implode("\n", $currentLines));
+        if ($text !== '') {
+            $blocksByUrl[$currentUrl] = $text;
+            $order[] = $currentUrl;
+        }
+        $currentUrl = '';
+        $currentLines = [];
+    };
+
+    foreach ($lines as $lineRaw) {
+        $line = rtrim((string)$lineRaw);
+        if (preg_match('/^\s*URL:\s*(.+)\s*$/i', $line, $m)) {
+            $flush();
+            $url = trim((string)$m[1]);
+            if ($url !== '') {
+                $currentUrl = $url;
+                $currentLines[] = 'URL: ' . $url;
+            }
+            continue;
+        }
+        if ($currentUrl !== '') {
+            $currentLines[] = $line;
+        }
+    }
+    $flush();
+
+    return ['headline' => $headline, 'blocks_by_url' => $blocksByUrl, 'order' => $order];
+}
+
+function loadNeedsReviewFindings(PDO $db, int $projectId, int $pageId): array {
+    $stmt = $db->prepare("\n        SELECT id, rule_id, title, severity, wcag_sc, wcag_name, wcag_level,\n               actual_results, incorrect_code, screenshots_json, recommendation, correct_code,\n               help_url, occurrence_count, scan_url, scan_urls_json, raw_payload\n        FROM automated_a11y_findings\n        WHERE project_id = ? AND page_id = ? AND status = 'needs_review'\n    ");
+    $stmt->execute([$projectId, $pageId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $out = [];
+    foreach ($rows as $row) {
+        $scanUrls = json_decode((string)($row['scan_urls_json'] ?? '[]'), true);
+        if (!is_array($scanUrls)) $scanUrls = [];
+        $scanUrls = uniqueStrings(array_map(static function ($u) {
+            return trim((string)$u);
+        }, $scanUrls));
+        if (empty($scanUrls) && !empty($row['scan_url'])) {
+            $scanUrls = [trim((string)$row['scan_url'])];
+        }
+        $out[] = [
+            'id' => (int)($row['id'] ?? 0),
+            'rule_id' => trim((string)($row['rule_id'] ?? '')),
+            'title' => trim((string)($row['title'] ?? 'Automated accessibility issue')),
+            'severity' => trim((string)($row['severity'] ?? 'Major')),
+            'needs_review_severity' => trim((string)($row['severity'] ?? 'Major')),
+            'wcag_sc' => trim((string)($row['wcag_sc'] ?? '')),
+            'wcag_name' => trim((string)($row['wcag_name'] ?? '')),
+            'wcag_level' => trim((string)($row['wcag_level'] ?? '')),
+            'actual_results' => trim((string)($row['actual_results'] ?? '')),
+            'incorrect_code' => trim((string)($row['incorrect_code'] ?? '')),
+            'screenshots' => decodeScreenshotList($row['screenshots_json'] ?? '[]'),
+            'recommendation' => trim((string)($row['recommendation'] ?? '')),
+            'correct_code' => trim((string)($row['correct_code'] ?? '')),
+            'help_url' => trim((string)($row['help_url'] ?? '')),
+            'occurrence_count' => max(1, (int)($row['occurrence_count'] ?? 1)),
+            'scan_url' => (string)($scanUrls[0] ?? ''),
+            'scan_urls' => $scanUrls,
+            'raw_nodes' => [],
+            'raw_payload' => (string)($row['raw_payload'] ?? ''),
+        ];
+    }
+    return $out;
+}
+
+function trimExistingFindingForRescan(array $finding, array $scannedUrlMap): ?array {
+    $existingUrls = uniqueStrings(array_map(static function ($u) {
+        return trim((string)$u);
+    }, is_array($finding['scan_urls'] ?? null) ? $finding['scan_urls'] : []));
+    if (empty($existingUrls) && !empty($finding['scan_url'])) {
+        $existingUrls = [trim((string)$finding['scan_url'])];
+    }
+    if (empty($existingUrls)) {
+        return $finding;
+    }
+
+    $remainingUrls = [];
+    $hasOverlap = false;
+    foreach ($existingUrls as $u) {
+        $k = function_exists('mb_strtolower') ? mb_strtolower($u, 'UTF-8') : strtolower($u);
+        if (isset($scannedUrlMap[$k])) {
+            $hasOverlap = true;
+            continue;
+        }
+        $remainingUrls[] = $u;
+    }
+    if (!$hasOverlap) return $finding;
+    if (empty($remainingUrls)) return null;
+
+    $finding['scan_urls'] = $remainingUrls;
+    $finding['scan_url'] = (string)($remainingUrls[0] ?? '');
+
+    $parsed = parseActualResultsUrlBlocks((string)($finding['actual_results'] ?? ''));
+    $headline = trim((string)($parsed['headline'] ?? ''));
+    $blocksByUrl = is_array($parsed['blocks_by_url'] ?? null) ? $parsed['blocks_by_url'] : [];
+    if (!empty($blocksByUrl)) {
+        $keptBlocks = [];
+        foreach ($remainingUrls as $u) {
+            if (isset($blocksByUrl[$u])) {
+                $keptBlocks[] = trim((string)$blocksByUrl[$u]);
+            }
+        }
+        if (!empty($keptBlocks)) {
+            $rebuilt = ($headline !== '' ? ($headline . "\n\n") : '') . implode("\n\n", $keptBlocks);
+            $finding['actual_results'] = trim($rebuilt);
+        }
+    }
+
+    return $finding;
+}
+
 function aggregateFindingsByRule(array $findings): array {
     $groups = [];
     foreach ($findings as $f) {
@@ -253,9 +387,79 @@ function aggregateFindingsByRule(array $findings): array {
         $recommendationList = uniqueStrings($g['recommendation_list'] ?? []);
         $recommendation = '';
         if (!empty($recommendationList)) {
-            $recommendation = count($recommendationList) === 1
-                ? $recommendationList[0]
-                : ("Apply the following changes:\n" . implode("\n", array_map(static function ($r) { return '- ' . $r; }, $recommendationList)));
+            $headline = '';
+            $bulletItems = [];
+            foreach ($recommendationList as $recText) {
+                $lines = preg_split('/\r?\n/', (string)$recText);
+                foreach ($lines as $lineRaw) {
+                    $line = trim((string)$lineRaw);
+                    if ($line === '') continue;
+                    if (preg_match('/^\-?\s*apply the following changes:?$/i', $line)) continue;
+                    if (preg_match('/^\-\s+(.+)$/', $line, $m)) {
+                        $item = trim((string)$m[1]);
+                        if (preg_match('/^apply the following changes:?$/i', $item)) continue;
+                        if ($item !== '') $bulletItems[] = $item;
+                        continue;
+                    }
+                    if ($headline === '') {
+                        $headline = $line;
+                    } else {
+                        if (strcasecmp($line, $headline) === 0) continue;
+                        $bulletItems[] = $line;
+                    }
+                }
+            }
+            $bulletItems = uniqueStrings($bulletItems);
+
+            // Merge duplicate "controls: ..." bullets from same rule into one consolidated line.
+            $mergedBuckets = [];
+            $mergedOrder = [];
+            $remaining = [];
+            foreach ($bulletItems as $item) {
+                $line = trim((string)$item);
+                $matched = false;
+                if (preg_match('/^(.*?\bfor these controls:)\s*(.+)$/i', $line, $m)) {
+                    $prefix = trim((string)$m[1]);
+                    $rest = trim((string)$m[2]);
+                    if (!isset($mergedBuckets[$prefix])) {
+                        $mergedBuckets[$prefix] = [];
+                        $mergedOrder[] = $prefix;
+                    }
+                    if (preg_match_all('/"([^"]+)"/', $rest, $mm)) {
+                        foreach ($mm[1] as $idv) {
+                            $idv = trim((string)$idv);
+                            if ($idv !== '') $mergedBuckets[$prefix][] = $idv;
+                        }
+                    }
+                    $matched = true;
+                }
+                if (!$matched) {
+                    $remaining[] = $line;
+                }
+            }
+
+            $mergedLines = [];
+            foreach ($mergedOrder as $prefix) {
+                $ids = uniqueStrings($mergedBuckets[$prefix] ?? []);
+                if (empty($ids)) continue;
+                $quoted = implode(', ', array_map(static function ($idv) {
+                    return '"' . $idv . '"';
+                }, $ids));
+                $mergedLines[] = $prefix . ' ' . $quoted . '.';
+            }
+            $bulletItems = array_values(array_merge($mergedLines, uniqueStrings($remaining)));
+
+            if ($headline !== '' && !empty($bulletItems)) {
+                $recommendation = $headline . "\n" . implode("\n", array_map(static function ($item) {
+                    return '- ' . $item;
+                }, $bulletItems));
+            } elseif ($headline !== '') {
+                $recommendation = $headline;
+            } else {
+                $recommendation = implode("\n", array_map(static function ($item) {
+                    return '- ' . $item;
+                }, $bulletItems));
+            }
         }
         $out[] = [
             'rule_id' => $g['rule_id'],
@@ -315,17 +519,40 @@ function runDeepScan(string $url, string $outputJsonPath, string $screenshotDir)
     return $json;
 }
 
-function saveFindings(PDO $db, int $projectId, int $pageId, int $userId, string $scanUrl, array $scanJson, string $scanRelDir, string $baseDir): int {
+function saveFindings(PDO $db, int $projectId, int $pageId, int $userId, string $scanUrl, array $scanJson, string $scanRelDir, string $baseDir, array $scannedUrls = []): int {
     ensureA11yFindingsTable($db);
-    $findings = is_array($scanJson['findings'] ?? null) ? $scanJson['findings'] : [];
+    $newFindings = is_array($scanJson['findings'] ?? null) ? $scanJson['findings'] : [];
     $projectRoot = realpath(__DIR__ . '/..');
     if (!$projectRoot) {
         throw new RuntimeException('Project root not found');
     }
+    $scannedUrls = uniqueStrings(array_map(static function ($u) {
+        return trim((string)$u);
+    }, $scannedUrls));
+    if (empty($scannedUrls) && trim($scanUrl) !== '') {
+        $scannedUrls = [trim($scanUrl)];
+    }
+    $scannedUrlMap = [];
+    foreach ($scannedUrls as $u) {
+        $k = function_exists('mb_strtolower') ? mb_strtolower($u, 'UTF-8') : strtolower($u);
+        $scannedUrlMap[$k] = true;
+    }
 
     $db->beginTransaction();
     try {
+        $existingFindings = loadNeedsReviewFindings($db, $projectId, $pageId);
         $oldShots = loadNeedsReviewScreenshotPaths($db, $projectId, $pageId);
+
+        $preservedFindings = [];
+        foreach ($existingFindings as $oldFinding) {
+            $trimmed = trimExistingFindingForRescan($oldFinding, $scannedUrlMap);
+            if ($trimmed === null) continue;
+            $preservedFindings[] = $trimmed;
+        }
+
+        $allFindings = array_merge($preservedFindings, $newFindings);
+        $findings = aggregateFindingsByRule($allFindings);
+
         $del = $db->prepare("DELETE FROM automated_a11y_findings WHERE project_id = ? AND page_id = ? AND status = 'needs_review'");
         $del->execute([$projectId, $pageId]);
 
@@ -346,8 +573,12 @@ function saveFindings(PDO $db, int $projectId, int $pageId, int $userId, string 
                 foreach ($f['screenshots'] as $fileName) {
                     $name = trim((string)$fileName);
                     if ($name === '') continue;
-                    $prefix = rtrim($baseDir, '/');
-                    $shots[] = $prefix . '/' . trim($scanRelDir, '/\\') . '/' . ltrim($name, '/\\');
+                    if (preg_match('#^https?://#i', $name) || strpos($name, '/') !== false || strpos($name, '\\') !== false) {
+                        $shots[] = $name;
+                    } else {
+                        $prefix = rtrim($baseDir, '/');
+                        $shots[] = $prefix . '/' . trim($scanRelDir, '/\\') . '/' . ltrim($name, '/\\');
+                    }
                 }
             }
 
@@ -388,7 +619,30 @@ function saveFindings(PDO $db, int $projectId, int $pageId, int $userId, string 
 
         $db->commit();
         if (!empty($oldShots)) {
-            deleteScreenshotFiles($oldShots, $baseDir, $projectRoot);
+            $keepShots = [];
+            foreach ($findings as $f) {
+                if (is_array($f['screenshots'] ?? null)) {
+                    foreach ($f['screenshots'] as $s) {
+                        $sv = trim((string)$s);
+                        if ($sv !== '') $keepShots[] = $sv;
+                    }
+                }
+            }
+            $keepMap = [];
+            foreach (uniqueStrings($keepShots) as $kp) {
+                $abs = normalizeScreenshotPathToAbs($kp, $baseDir, $projectRoot);
+                if ($abs) $keepMap[$abs] = true;
+            }
+
+            $toDelete = [];
+            foreach ($oldShots as $oldShot) {
+                $absOld = normalizeScreenshotPathToAbs((string)$oldShot, $baseDir, $projectRoot);
+                if (!$absOld) continue;
+                if (!isset($keepMap[$absOld])) $toDelete[] = $oldShot;
+            }
+            if (!empty($toDelete)) {
+                deleteScreenshotFiles($toDelete, $baseDir, $projectRoot);
+            }
         }
         return $saved;
     } catch (Throwable $e) {
@@ -631,7 +885,7 @@ try {
         'summary' => $summary,
         'findings' => $aggregatedFindings
     ];
-    $saved = saveFindings($db, $projectId, (int)$page['id'], $userId, $scanUrl, $scanJson, $scanRelDir, getBaseDir());
+    $saved = saveFindings($db, $projectId, (int)$page['id'], $userId, $scanUrl, $scanJson, $scanRelDir, getBaseDir(), $scanUrls);
     if ($progressToken !== '') {
         writeScanProgress($progressToken, [
             'status' => 'completed',

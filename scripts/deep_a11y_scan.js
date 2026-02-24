@@ -1,7 +1,14 @@
 ﻿const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
-const axeSource = require('axe-core').source;
+function loadLocalEngineSource() {
+  const localEnginePath = path.join(__dirname, 'vendor', 'axe-core', 'axe.min.js');
+  if (!fs.existsSync(localEnginePath)) {
+    throw new Error(`Local accessibility engine not found at ${localEnginePath}`);
+  }
+  return fs.readFileSync(localEnginePath, 'utf8');
+}
+const axeSource = loadLocalEngineSource();
 
 function parseArgs(argv) {
   const out = {};
@@ -44,6 +51,14 @@ function sanitizeName(v) {
 
 function uniq(arr) {
   return Array.from(new Set((arr || []).filter(Boolean)));
+}
+
+function neutralizeToolBranding(text) {
+  let s = String(text || "");
+  s = s.replace(/\baxe-core\b/gi, "automated accessibility checks");
+  s = s.replace(/\baxe\b/gi, "accessibility checks");
+  s = s.replace(/\bdeque\b/gi, "accessibility guidance");
+  return s;
 }
 
 function normalizeSectionLabel(sectionRaw) {
@@ -118,6 +133,29 @@ function simplifyFailureSummary(summary, ruleId) {
   if (r === "label") {
     return "The form control element is missing an accessible label (visible label or ARIA label association).";
   }
+  if (r === "button-name") {
+    return "The <button> element is missing an accessible name (visible text, aria-label, aria-labelledby, or title).";
+  }
+  if (r === "image-alt") {
+    return "The <img> element has no accessible text alternative. Provide one method: <code>alt</code>, <code>aria-label</code>, <code>aria-labelledby</code>, <code>title</code>, or mark decorative with <code>role=\"presentation\"</code>/<code>role=\"none\"</code>.";
+  }
+  if (r === "input-image-alt") {
+    return "The <input type=\"image\"> element has no accessible text alternative. Add descriptive <code>alt</code> text.";
+  }
+
+  // Convert dense automated checks into a clear, human-readable sentence.
+  if (
+    /aria-label attribute does not exist or is empty/i.test(s) ||
+    /aria-labelledby attribute does not exist/i.test(s) ||
+    /has no title attribute/i.test(s) ||
+    /does not have an alt attribute/i.test(s)
+  ) {
+    const isImg = /\bimg\b|image/i.test(s) || r === "image-alt" || r === "input-image-alt";
+    if (isImg) {
+      return "Accessible name is missing. Use <code>alt</code> (preferred for images), or <code>aria-label</code>, <code>aria-labelledby</code>, or <code>title</code>. For decorative images, use <code>alt=\"\"</code>.";
+    }
+    return "Accessible name is missing. Add a visible label/text, or provide <code>aria-label</code>, <code>aria-labelledby</code>, or <code>title</code> as appropriate.";
+  }
   return normalizeElementPhrase(s);
 }
 
@@ -162,6 +200,8 @@ function formatActualResults(url, description, groupedFailures, recommendation, 
     } else {
       lines.push('- "No instance details available" in Page section');
     }
+    // Leave one blank line after each issue summary block for readability.
+    lines.push("");
   }
   return lines.join("\n");
 }
@@ -201,7 +241,7 @@ function extractWcagMeta(violation) {
     "heading-order": "Headings and Labels",
     "landmark-one-main": "Bypass Blocks",
   };
-  const wcagName = nameMap[String(violation.id || "").toLowerCase()] || String(violation.help || "").trim() || "WCAG criterion";
+  const wcagName = nameMap[String(violation.id || "").toLowerCase()] || neutralizeToolBranding(String(violation.help || "")).trim() || "WCAG criterion";
   return { scList, wcagName, level };
 }
 
@@ -210,7 +250,7 @@ function getRecommendation(violation) {
   if (id.includes("color-contrast") || id.includes("contrast")) {
     return "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds";
   }
-  const help = String(violation.help || "").trim();
+  const help = neutralizeToolBranding(String(violation.help || "")).trim();
   if (help) return help;
   return "Fix this accessibility issue according to WCAG 2 AA requirements.";
 }
@@ -237,10 +277,401 @@ function extractControlHintsFromSnippets(snippets, tagName) {
   return hints;
 }
 
+function extractTagHintsFromSnippets(snippets, tagNames) {
+  const allowed = new Set((tagNames || []).map((t) => String(t || "").toLowerCase().trim()).filter(Boolean));
+  const out = [];
+  const seen = new Set();
+  (snippets || []).forEach((raw) => {
+    const html = String(raw || "");
+    if (!html) return;
+    const m = html.match(/<\s*([a-z0-9-]+)\b([^>]*)>/i);
+    if (!m) return;
+    const tag = String(m[1] || "").toLowerCase().trim();
+    if (!tag || (allowed.size > 0 && !allowed.has(tag))) return;
+    const attrs = {};
+    const attrPart = String(m[2] || "");
+    let am;
+    const rx = /([a-zA-Z_:.-]+)\s*=\s*["']([^"']*)["']/g;
+    while ((am = rx.exec(attrPart)) !== null) {
+      attrs[String(am[1] || "").toLowerCase()] = String(am[2] || "").trim();
+    }
+    const key = `${tag}||${attrs.id || ""}||${attrs.name || ""}||${attrs.href || ""}||${attrs.src || ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ tag, attrs });
+  });
+  return out;
+}
+
+function toLabelText(idOrName, fallback) {
+  const raw = String(idOrName || fallback || "Field").trim();
+  if (!raw) return "Field";
+  return raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function detectFieldLabelFromAttrs(attrs, fallback) {
+  const base = attrs.id || attrs.name || attrs['aria-label'] || fallback || "Field";
+  return toLabelText(base, fallback || "Field");
+}
+
+function stripAttribute(openingTag, attrName) {
+  const n = String(attrName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(openingTag || "").replace(new RegExp(`\\s+${n}\\s*=\\s*["'][^"']*["']`, "ig"), "");
+}
+
+function upsertAttribute(openingTag, attrName, attrValue) {
+  let tag = String(openingTag || "");
+  const n = String(attrName || "");
+  if (!tag) return tag;
+  if (new RegExp(`\\s+${n}\\s*=\\s*["'][^"']*["']`, "i").test(tag)) {
+    return tag.replace(new RegExp(`(${n}\\s*=\\s*["'])[^"']*(["'])`, "i"), `$1${String(attrValue)}$2`);
+  }
+  return tag.replace(/>$/, ` ${n}="${String(attrValue)}">`);
+}
+
+function extractOpeningTag(html) {
+  const m = String(html || "").match(/<\s*([a-z0-9-]+)\b[^>]*>/i);
+  return m ? m[0] : "";
+}
+
+function extractClosingTag(html) {
+  const m = String(html || "").match(/<\/\s*([a-z0-9-]+)\s*>/i);
+  return m ? m[0] : "";
+}
+
+function inferControlTextFromSnippet(raw, fallback) {
+  const html = String(raw || "");
+  const alt = (html.match(/\balt\s*=\s*["']([^"']+)["']/i) || [])[1] || "";
+  const title = (html.match(/\btitle\s*=\s*["']([^"']+)["']/i) || [])[1] || "";
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  let out = alt || title || text || fallback || "Action";
+  if (!out || out.toLowerCase() === "button") {
+    if (/prev|left/i.test(html)) out = "Previous";
+    else if (/next|right/i.test(html)) out = "Next";
+  }
+  return out.trim() || "Action";
+}
+
+function inferDirectionalLabel(raw, fallback) {
+  const html = String(raw || "");
+  const existingAria = (html.match(/\baria-label\s*=\s*["']([^"']+)["']/i) || [])[1] || "";
+  if (existingAria.trim()) return existingAria.trim();
+  const existingTitle = (html.match(/\btitle\s*=\s*["']([^"']+)["']/i) || [])[1] || "";
+  if (existingTitle.trim()) return existingTitle.trim();
+  const existingAlt = (html.match(/\balt\s*=\s*["']([^"']+)["']/i) || [])[1] || "";
+  if (existingAlt.trim()) return existingAlt.trim();
+  if (/next|right/i.test(html)) return "Next";
+  if (/prev|previous|left/i.test(html)) return "Previous";
+  if (/close|dismiss/i.test(html)) return "Close";
+  return String(fallback || "Action").trim() || "Action";
+}
+
+function extractPlainText(html, fallback) {
+  const txt = String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return txt || String(fallback || "").trim();
+}
+
+function buildIssueSpecificCorrectCode(ruleId, snippets, failureSummaries) {
+  const id = String(ruleId || "").toLowerCase().trim();
+  const codeSnippets = (snippets || []).map((s) => String(s || "").trim()).filter(Boolean).slice(0, 8);
+  if (!codeSnippets.length) return "";
+
+  const tagHints = extractTagHintsFromSnippets(codeSnippets, ["input", "select", "textarea", "button", "a", "img"]);
+  const out = [];
+
+  if (id === "select-name") {
+    tagHints.filter((x) => x.tag === "select").forEach((item) => {
+      const attrs = item.attrs || {};
+      const idAttr = attrs.id || attrs.name || "select_field";
+      const labelText = detectFieldLabelFromAttrs(attrs, "Select option");
+      const clsAttr = attrs.class ? ` class="${attrs.class}"` : "";
+      const nameAttr = attrs.name || idAttr;
+      out.push(`<label for="${idAttr}">${labelText}</label>
+<select id="${idAttr}" name="${nameAttr}"${clsAttr}>
+  <option value="">Select ${labelText}</option>
+</select>`);
+    });
+    return out.join("\n\n");
+  }
+
+  if (id === "label" || id === "aria-input-field-name") {
+    tagHints.filter((x) => ["input", "select", "textarea"].includes(x.tag)).forEach((item) => {
+      const attrs = item.attrs || {};
+      const tag = item.tag;
+      const idAttr = attrs.id || attrs.name || `${tag}_field`;
+      const nameAttr = attrs.name || idAttr;
+      const labelText = detectFieldLabelFromAttrs(attrs, tag);
+      const clsAttr = attrs.class ? ` class="${attrs.class}"` : "";
+      if (tag === "select") {
+        out.push(`<label for="${idAttr}">${labelText}</label>
+<select id="${idAttr}" name="${nameAttr}"${clsAttr}>
+  <option value="">Select ${labelText}</option>
+</select>`);
+      } else if (tag === "textarea") {
+        out.push(`<label for="${idAttr}">${labelText}</label>
+<textarea id="${idAttr}" name="${nameAttr}"${clsAttr}></textarea>`);
+      } else {
+        const typeAttr = attrs.type ? ` type="${attrs.type}"` : ` type="text"`;
+        out.push(`<label for="${idAttr}">${labelText}</label>
+<input id="${idAttr}" name="${nameAttr}"${typeAttr}${clsAttr}>`);
+      }
+    });
+    return out.join("\n\n");
+  }
+
+  if (id === "button-name") {
+    codeSnippets.forEach((raw) => {
+      if (/<\s*button\b/i.test(raw)) {
+        const open = extractOpeningTag(raw);
+        const close = extractClosingTag(raw) || "</button>";
+        const txt = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        const fallbackText = txt || "Submit";
+        out.push(`${open}${fallbackText}${close}`);
+      } else if (/<\s*input\b/i.test(raw)) {
+        let open = extractOpeningTag(raw);
+        open = upsertAttribute(open, "type", /type\s*=\s*["'](submit|reset|button)["']/i.test(open) ? RegExp.$1 : "button");
+        open = upsertAttribute(open, "value", "Submit");
+        out.push(open);
+      }
+    });
+    return out.join("\n\n");
+  }
+
+  if (id === "link-name") {
+    codeSnippets.forEach((raw) => {
+      if (!/<\s*a\b/i.test(raw)) return;
+      const open = extractOpeningTag(raw) || `<a href="#">`;
+      const hrefMatch = open.match(/\bhref\s*=\s*["']([^"']+)["']/i);
+      const href = hrefMatch ? hrefMatch[1] : "#";
+      out.push(`<a href="${href}">Descriptive link text</a>`);
+    });
+    return out.join("\n\n");
+  }
+
+  if (id === "image-alt" || id === "image-redundant-alt") {
+    codeSnippets.forEach((raw) => {
+      if (!/<\s*img\b/i.test(raw)) return;
+      let open = extractOpeningTag(raw);
+      open = upsertAttribute(open, "alt", id === "image-redundant-alt" ? "" : "Meaningful description");
+      out.push(open);
+    });
+    return out.join("\n\n");
+  }
+
+  if (id === "presentation-role-conflict" || id === "aria-allowed-role") {
+    codeSnippets.forEach((raw) => {
+      let open = extractOpeningTag(raw);
+      open = stripAttribute(open, "role");
+      if (!open) return;
+      if (/<\s*button\b/i.test(open)) {
+        const label = inferDirectionalLabel(raw, inferControlTextFromSnippet(raw, "Action"));
+        const imgMatch = String(raw).match(/<\s*img\b[^>]*>/i);
+        if (imgMatch && imgMatch[0]) {
+          let imgOpen = String(imgMatch[0]);
+          // Native-first naming: keep one source of accessible name (button text), make icon decorative.
+          imgOpen = upsertAttribute(imgOpen, "alt", "");
+          out.push(`${open}${imgOpen}<span class="visually-hidden">${label}</span>${extractClosingTag(raw) || "</button>"}`);
+        } else {
+          out.push(`${open}${label}${extractClosingTag(raw) || "</button>"}`);
+        }
+      } else {
+        out.push(open + (extractClosingTag(raw) || ""));
+      }
+    });
+    return out.join("\n\n");
+  }
+
+  if (id === "autocomplete-valid") {
+    tagHints.filter((x) => x.tag === "input").forEach((item) => {
+      const attrs = item.attrs || {};
+      const idAttr = attrs.id || attrs.name || "field";
+      const nameAttr = attrs.name || idAttr;
+      const type = (attrs.type || "").toLowerCase();
+      const token = /email/.test(nameAttr) || type === "email" ? "email"
+        : /phone|mobile|tel/.test(nameAttr) ? "tel"
+        : /name/.test(nameAttr) ? "name"
+        : "on";
+      out.push(`<label for="${idAttr}">${detectFieldLabelFromAttrs(attrs, "Field")}</label>
+<input id="${idAttr}" name="${nameAttr}" type="${type || "text"}" autocomplete="${token}">`);
+    });
+    return out.join("\n\n");
+  }
+
+  if (id === "nested-interactive") {
+    codeSnippets.forEach((raw) => {
+      if (/<\s*a\b[\s\S]*<\s*button\b/i.test(raw) || /<\s*button\b[\s\S]*<\s*a\b/i.test(raw)) {
+        const hrefMatch = raw.match(/\bhref\s*=\s*["']([^"']+)["']/i);
+        const href = hrefMatch ? hrefMatch[1] : "#";
+        const text = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || "Open";
+        out.push(`<a href="${href}" class="btn">${text}</a>`);
+      }
+    });
+    return out.join("\n\n");
+  }
+
+  if (id === "color-contrast") {
+    const contrast = (failureSummaries || []).find((s) => /contrast/i.test(String(s || ""))) || "";
+    out.push(`/* Adjust colors so text contrast meets WCAG AA */\n.text-on-bg {\n  color: #1a1a1a;\n  background-color: #ffffff;\n}`);
+    if (contrast) out.push(`/* Reference failing detail: ${normalizeFailureSummary(contrast)} */`);
+    return out.join("\n\n");
+  }
+
+  if (id === "heading-order" || id.includes("heading")) {
+    // Build corrected heading examples from the exact failing heading snippets.
+    codeSnippets.forEach((raw) => {
+      const m = String(raw).match(/<\s*h([1-6])\b([^>]*)>([\s\S]*?)<\/\s*h[1-6]\s*>/i);
+      if (!m) return;
+      const currentLevel = Math.max(1, Math.min(6, parseInt(String(m[1] || "1"), 10) || 1));
+      const attrsPart = String(m[2] || "");
+      const headingText = extractPlainText(m[3] || "", "Section heading");
+      // If an <h4> caused skip, suggest the nearest non-skipping level (<h3>).
+      const suggestedLevel = currentLevel > 1 ? currentLevel - 1 : 1;
+      out.push(`<h${suggestedLevel}${attrsPart}>${headingText}</h${suggestedLevel}>`);
+    });
+    if (out.length) return out.join("\n\n");
+    return `<h1>Page title</h1>
+<h2>Section heading</h2>
+<h3>Sub section heading</h3>`;
+  }
+
+  return "";
+}
+
+function buildDetailedRecommendation(baseLine, steps) {
+  const head = String(baseLine || "").trim();
+  const items = uniq((steps || []).map((s) => String(s || "").trim()).filter(Boolean));
+  if (!items.length) return head || "Apply accessibility fixes for this rule.";
+  if (!head) {
+    return items.map((s) => `- ${s}`).join("\n");
+  }
+  return `${head}\n${items.map((s) => `- ${s}`).join("\n")}`;
+}
+
+function extractRoleHintsFromSnippets(snippets) {
+  const roles = new Set();
+  const tags = new Set();
+  (snippets || []).forEach((raw) => {
+    const html = String(raw || "");
+    if (!html) return;
+    const roleMatches = html.match(/\brole\s*=\s*["']([^"']+)["']/gi) || [];
+    roleMatches.forEach((m) => {
+      const mm = m.match(/["']([^"']+)["']/);
+      if (mm && mm[1]) roles.add(String(mm[1]).toLowerCase().trim());
+    });
+    const tagMatch = html.match(/<\s*([a-z0-9-]+)/i);
+    if (tagMatch && tagMatch[1]) tags.add(String(tagMatch[1]).toLowerCase().trim());
+  });
+  return { roles: Array.from(roles), tags: Array.from(tags) };
+}
+
+function getApgReferences(ruleId, snippets) {
+  const id = String(ruleId || "").toLowerCase().trim();
+  const { roles, tags } = extractRoleHintsFromSnippets(snippets || []);
+  const links = new Set();
+  const add = (u) => { if (u) links.add(u); };
+  const base = "https://www.w3.org/WAI/ARIA/apg/patterns";
+
+  if (id.includes("button")) add(`${base}/button/`);
+  if (id.includes("link")) add(`${base}/link/`);
+  if (id.includes("select") || roles.includes("listbox")) add(`${base}/listbox/`);
+  if (roles.includes("combobox")) add(`${base}/combobox/`);
+  if (roles.includes("menu") || roles.includes("menubar")) add(`${base}/menubar/`);
+  if (roles.includes("dialog") || roles.includes("alertdialog")) add(`${base}/dialog-modal/`);
+  if (roles.includes("tablist") || roles.includes("tab")) add(`${base}/tabs/`);
+  if (roles.includes("radiogroup") || roles.includes("radio")) add(`${base}/radio/`);
+  if (roles.includes("grid") || roles.includes("row")) add(`${base}/grid/`);
+  if (roles.includes("tree") || roles.includes("treeitem")) add(`${base}/treeview/`);
+  if (roles.includes("accordion") || id.includes("accordion")) add(`${base}/accordion/`);
+  if (id === "aria-required-children" || id === "aria-allowed-role" || id === "presentation-role-conflict") {
+    add("https://www.w3.org/WAI/ARIA/apg/");
+  }
+  if (tags.includes("button")) add(`${base}/button/`);
+
+  return Array.from(links);
+}
+
+function appendReferenceLinks(recommendation, links) {
+  const rec = String(recommendation || "").trim();
+  const refs = (links || []).map((u) => String(u || "").trim()).filter(Boolean);
+  if (!refs.length) return rec;
+  return `${rec}\n- Reference: ${refs.join(" | ")}`;
+}
+
+function buildGenericCorrectCode(ruleId) {
+  const id = String(ruleId || "").toLowerCase().trim();
+  if (id.includes("color-contrast") || id.includes("contrast")) {
+    return `<style>
+.text-on-brand {
+  color: #ffffff;
+  background-color: #005fcc; /* keep text contrast >= 4.5:1 */
+}
+</style>`;
+  }
+  if (id.includes("autocomplete")) {
+    return `<label for="email">Email</label>
+<input id="email" name="email" type="email" autocomplete="email">`;
+  }
+  if (id.includes("button")) {
+    return `<button type="button">Submit</button>`;
+  }
+  if (id.includes("link")) {
+    return `<a href="/details">View details</a>`;
+  }
+  if (id.includes("image")) {
+    return `<img src="/images/product.png" alt="Product image">`;
+  }
+  if (id.includes("select")) {
+    return `<label for="department">Department</label>
+<select id="department" name="department">
+  <option value="">Select Department</option>
+</select>`;
+  }
+  if (id.includes("label") || id.includes("input-field-name")) {
+    return `<label for="full_name">Full name</label>
+<input id="full_name" name="full_name" type="text">`;
+  }
+  if (id.includes("region") || id.includes("landmark")) {
+    return `<header>...</header>
+<main id="main-content">...</main>
+<footer>...</footer>`;
+  }
+  if (id.includes("heading")) {
+    return `<h1>Page title</h1>
+<h2>Section title</h2>
+<h3>Sub section</h3>`;
+  }
+  if (id.includes("lang")) {
+    return `<html lang="en">`;
+  }
+  if (id.includes("nested-interactive")) {
+    return `<a class="btn btn-primary" href="/apply">Apply Now</a>`;
+  }
+  if (id.includes("presentation-role-conflict")) {
+    return `<a href="/docs">Download document</a>`;
+  }
+  if (id.includes("aria-hidden-focus")) {
+    return `<div aria-hidden="true">
+  <button tabindex="-1" aria-hidden="true">Hidden action</button>
+</div>`;
+  }
+  if (id.includes("target-size")) {
+    return `<button class="touch-target">Apply</button>
+<style>
+.touch-target { min-width: 24px; min-height: 24px; padding: 8px 12px; }
+</style>`;
+  }
+  return `<!-- Update markup for rule: ${id || "accessibility-rule"} -->
+<div>Accessible, semantic markup</div>`;
+}
+
 function getRuleSpecificGuidance(violation, context) {
   const id = String(violation && violation.id || "").toLowerCase().trim();
   const defaultRec = getRecommendation(violation);
   const snippets = (context && Array.isArray(context.snippets)) ? context.snippets : [];
+  const failureSummaries = uniq(((context && Array.isArray(context.failureSummaries)) ? context.failureSummaries : [])
+    .map((s) => normalizeFailureSummary(s))
+    .filter(Boolean));
+  const aiSpecificCode = buildIssueSpecificCorrectCode(id, snippets, failureSummaries);
 
   const guidanceMap = {
     "color-contrast": {
@@ -253,12 +684,13 @@ function getRuleSpecificGuidance(violation, context) {
 </style>`
     },
     "label": {
-      recommendation: "Associate every form control with a visible or programmatic label using <label for>, aria-label, or aria-labelledby.",
-      correctCode: `<label for="email">Email address</label>
+      recommendation: "Ensure each form control has a clear, programmatically associated accessible name.",
+      correctCode: `<!-- Add visible label associated via for/id -->
+<label for="email">Email address</label>
 <input id="email" name="email" type="email" required>`
     },
     "select-name": {
-      recommendation: "Each <select> must have an accessible name. Add a visible <label for=\"...\"> linked to the select id, or use aria-label/aria-labelledby when a visible label is not possible.",
+      recommendation: "Each <select> must have an accessible name using a visible associated <label>.",
       correctCode: ""
     },
     "image-alt": {
@@ -267,13 +699,26 @@ function getRuleSpecificGuidance(violation, context) {
 <!-- decorative image -->
 <img src="/images/divider.svg" alt="">`
     },
+    "image-redundant-alt": {
+      recommendation: "Avoid repeating surrounding visible text in image alternative text.",
+      correctCode: `<!-- If adjacent text already says "Investor Login", keep image decorative -->
+<a href="/investor-login">
+  <img src="/icons/login.svg" alt="">
+  <span>Investor Login</span>
+</a>`
+    },
     "link-name": {
       recommendation: "Give every link an accessible name that clearly describes its destination or action.",
-      correctCode: `<a href="/investor-login" aria-label="Investor Login">Investor Login</a>`
+      correctCode: `<a href="/investor-login">Investor Login</a>`
     },
     "button-name": {
-      recommendation: "Ensure each button has an accessible name via visible text, aria-label, or aria-labelledby.",
-      correctCode: `<button type="button" aria-label="Close dialog">
+      recommendation: "Ensure each <button> exposes a clear accessible name for assistive technologies.",
+      correctCode: `<!-- Use visible button text -->
+<button type="button">Close dialog</button>
+
+<!-- For icon button: include hidden text node -->
+<button type="button" class="icon-btn">
+  <span class="visually-hidden">Close dialog</span>
   <i class="icon-close" aria-hidden="true"></i>
 </button>`
     },
@@ -302,40 +747,299 @@ function getRuleSpecificGuidance(violation, context) {
       correctCode: `<header>...</header>
 <main id="main-content">...</main>
 <footer>...</footer>`
+    },
+    "aria-input-field-name": {
+      recommendation: "Ensure each form input has a clear accessible name.",
+      correctCode: `<label for="full_name">Full name</label>
+<input id="full_name" name="full_name" type="text" required>`
+    },
+    "nested-interactive": {
+      recommendation: "Do not place interactive elements inside other interactive elements.",
+      correctCode: `<!-- Good: single interactive control -->
+<a class="btn btn-primary" href="/apply">Apply Now</a>
+
+<!-- Instead of this invalid pattern -->
+<!-- <button><a href="/apply">Apply</a></button> -->`
+    },
+    "region": {
+      recommendation: "Ensure all significant page content is inside semantic landmarks.",
+      correctCode: `<header>...</header>
+<main id="main-content">...</main>
+<footer>...</footer>`
+    },
+    "presentation-role-conflict": {
+      recommendation: "Remove presentational role from focusable/interactive elements and keep native semantics.",
+      correctCode: `<!-- Bad: focusable element with role="presentation" -->
+<!-- <button type="button" role="presentation" class="owl-prev"><img src="/images/left.png" alt=""></button> -->
+
+<!-- Good: remove presentational role and keep accessible name -->
+<button type="button" class="owl-prev">Previous</button>`
+    },
+    "aria-allowed-role": {
+      recommendation: "Use only valid ARIA role values supported for that element.",
+      correctCode: `<!-- Bad: unsupported role on input -->
+<!-- <input type="text" role="button"> -->
+
+<!-- Good: keep native semantics -->
+<input type="text" id="city" name="city">`
+    },
+    "aria-required-children": {
+      recommendation: "When using ARIA composite roles, include all required child roles.",
+      correctCode: `<ul role="listbox" aria-label="Department">
+  <li role="option" aria-selected="false">Sales</li>
+  <li role="option" aria-selected="true">Engineering</li>
+</ul>`
+    },
+    "autocomplete-valid": {
+      recommendation: "Use valid autocomplete tokens for input purpose.",
+      correctCode: `<label for="email">Email</label>
+<input id="email" name="email" type="email" autocomplete="email">`
+    },
+    "aria-hidden-focus": {
+      recommendation: "Do not keep focusable elements inside containers hidden from assistive technologies.",
+      correctCode: `<!-- Hidden container should not contain focusable controls -->
+<div aria-hidden="true">
+  <button tabindex="-1" aria-hidden="true">Hidden action</button>
+</div>`
+    },
+    "target-size": {
+      recommendation: "Increase pointer target dimensions for interactive controls.",
+      correctCode: `<button class="touch-target">Apply</button>
+
+<style>
+.touch-target {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 8px 12px;
+}
+</style>`
     }
   };
 
   if (guidanceMap[id]) {
     const out = Object.assign({}, guidanceMap[id]);
+    if (id === "label" || id === "aria-input-field-name") {
+      const controls = extractTagHintsFromSnippets(snippets, ["input", "select", "textarea"]);
+      if (controls.length) {
+        out.correctCode = controls.map((c) => {
+          const tag = c.tag;
+          const idAttr = c.attrs.id || c.attrs.name || `${tag}_field`;
+          const nameAttr = c.attrs.name || idAttr;
+          const clsAttr = c.attrs.class ? ` class="${c.attrs.class}"` : "";
+          const labelText = toLabelText(idAttr, tag);
+          if (tag === "select") {
+            return `<label for="${idAttr}">${labelText}</label>
+<select id="${idAttr}" name="${nameAttr}"${clsAttr}>
+  <option value="">Select ${labelText}</option>
+</select>`;
+          }
+          if (tag === "textarea") {
+            return `<label for="${idAttr}">${labelText}</label>
+<textarea id="${idAttr}" name="${nameAttr}"${clsAttr}></textarea>`;
+          }
+          const typeAttr = c.attrs.type ? ` type="${c.attrs.type}"` : ` type="text"`;
+          return `<label for="${idAttr}">${labelText}</label>
+<input id="${idAttr}" name="${nameAttr}"${typeAttr}${clsAttr}>`;
+        }).join("\n\n");
+      }
+    }
+
     if (id === "select-name") {
       const controls = extractControlHintsFromSnippets(snippets, "select");
       if (controls.length) {
-        out.recommendation = "Each affected <select> needs a programmatically associated label. Add explicit <label for=\"...\"> for these controls: " +
-          controls.map((c) => `"${c.id || c.name || "unnamed-select"}"`).join(", ") + ".";
+        const controlList = controls.map((c) => `"${c.id || c.name || "unnamed-select"}"`).join(", ");
+        const stepList = [
+          `Add explicit <label for="..."> linked to the <select> id for these controls: ${controlList}.`,
+          "Keep label text descriptive, visible, and placed close to the field.",
+          "Ensure each <select> has a unique id and each <label for=\"...\"> points to that exact id."
+        ];
+        out.recommendation = buildDetailedRecommendation(
+          "Ensure every <select> element has an accessible name.",
+          stepList
+        );
         out.correctCode = controls.map((c) => {
           const idAttr = c.id || c.name || "select_field";
           const nameAttr = c.name || idAttr;
           const labelText = idAttr.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
-          return `<label for="${idAttr}">${labelText}</label>
+          return `<!-- Add visible associated label -->
+<label for="${idAttr}">${labelText}</label>
 <select id="${idAttr}" name="${nameAttr}" class="${c.cls || "form-input"}">
   <option value="">Select ${labelText}</option>
 </select>`;
         }).join("\n\n");
       } else {
-        out.correctCode = `<label for="department_name">Department</label>
+        out.recommendation = buildDetailedRecommendation(
+          "Ensure every <select> element has an accessible name.",
+          [
+            "Add a visible <label for=\"...\"> linked to each affected <select> id.",
+            "Keep label text meaningful and visible near the field.",
+            "Ensure every <select> id is unique and matches its corresponding <label for=\"...\">."
+          ]
+        );
+        out.correctCode = `<!-- Add visible associated label -->
+<label for="department_name">Department</label>
 <select id="department_name" name="department_name">
   <option value="">Select Department</option>
 </select>`;
       }
     }
+    if (id === "button-name") {
+      const buttons = extractTagHintsFromSnippets(snippets, ["button", "input"]);
+      if (buttons.length) {
+        out.correctCode = buttons.map((b) => {
+          if (b.tag === "input") {
+            const type = (b.attrs.type || "button").toLowerCase();
+            if (["button", "submit", "reset"].includes(type)) {
+              const value = b.attrs.value || "Submit";
+              const idAttr = b.attrs.id ? ` id="${b.attrs.id}"` : "";
+              const clsAttr = b.attrs.class ? ` class="${b.attrs.class}"` : "";
+              return `<input type="${type}"${idAttr}${clsAttr} value="${value}">`;
+            }
+          }
+          const idAttr = b.attrs.id ? ` id="${b.attrs.id}"` : "";
+          const clsAttr = b.attrs.class ? ` class="${b.attrs.class}"` : "";
+          const text = toLabelText(b.attrs.id || b.attrs.name || "Button", "Button");
+          return `<button type="button"${idAttr}${clsAttr}>${text}</button>`;
+        }).join("\n\n");
+      }
+    }
+
+    if (id === "link-name") {
+      const links = extractTagHintsFromSnippets(snippets, ["a"]);
+      if (links.length) {
+        out.correctCode = links.map((l) => {
+          const href = l.attrs.href || "#";
+          const clsAttr = l.attrs.class ? ` class="${l.attrs.class}"` : "";
+          return `<a href="${href}"${clsAttr}>Descriptive link text</a>`;
+        }).join("\n\n");
+      }
+    }
+
+    if (id === "image-alt" || id === "image-redundant-alt") {
+      const imgs = extractTagHintsFromSnippets(snippets, ["img"]);
+      if (imgs.length) {
+        out.correctCode = imgs.map((img) => {
+          const src = img.attrs.src || "/images/example.png";
+          const clsAttr = img.attrs.class ? ` class="${img.attrs.class}"` : "";
+          return `<img src="${src}" alt="Meaningful description"${clsAttr}>`;
+        }).join("\n\n");
+      }
+    }
+
+    if (id !== "select-name") {
+      const commonSteps = [];
+      if (id === "color-contrast") {
+        commonSteps.push("Adjust text/background colors until contrast reaches at least 4.5:1 for normal text and 3:1 for large text.");
+        commonSteps.push("Re-check hover/focus/visited states of links and buttons to keep contrast compliant in all states.");
+      } else if (id === "label") {
+        commonSteps.push("Add explicit <label for=\"...\"> for each affected form control with unique id/for mapping.");
+        commonSteps.push("Do not rely on placeholder as label; keep a persistent visible label for all users.");
+        commonSteps.push("Verify clicking/tapping the label focuses the correct field.");
+      } else if (id === "image-alt") {
+        commonSteps.push("Write meaningful alt text for informative images and use alt=\"\" for decorative images.");
+        commonSteps.push("Avoid repeating adjacent text in alt value.");
+      } else if (id === "image-redundant-alt") {
+        commonSteps.push("If adjacent text already conveys the same meaning, set image alt to empty (alt=\"\").");
+        commonSteps.push("Keep one clear text label instead of duplicated text + identical alt.");
+      } else if (id === "link-name") {
+        commonSteps.push("Ensure each link has clear, unique visible text describing destination/action.");
+        commonSteps.push("Avoid generic labels like \"click here\" or \"read more\" without context.");
+      } else if (id === "button-name") {
+        commonSteps.push("Provide clear visible text for each <button> whenever possible.");
+        commonSteps.push("For icon-only buttons, include an in-button hidden text label (e.g., visually-hidden text).");
+        commonSteps.push("Ensure button name describes the action (e.g., \"Close dialog\", \"Open menu\").");
+      } else if (id === "aria-input-field-name") {
+        commonSteps.push("Add a visible label associated with each input control.");
+        commonSteps.push("Ensure label and field mapping is unique via for/id.");
+      } else if (id === "nested-interactive") {
+        commonSteps.push("Keep only one interactive root per control.");
+        commonSteps.push("Remove nested links/buttons and keep a single clickable element.");
+      } else if (id === "region") {
+        commonSteps.push("Wrap major content in semantic landmarks such as <main>, <header>, and <footer>.");
+        commonSteps.push("Ensure only one primary <main> landmark is present.");
+      } else if (id === "presentation-role-conflict") {
+        commonSteps.push("Remove role=\"presentation\"/role=\"none\" from interactive or focusable elements.");
+        commonSteps.push("Keep native semantics on links, buttons, and form controls.");
+      } else if (id === "aria-allowed-role") {
+        commonSteps.push("Use only valid ARIA roles for the given element type.");
+        commonSteps.push("Prefer native semantic elements instead of forcing custom roles.");
+      } else if (id === "aria-required-children") {
+        commonSteps.push("When parent ARIA role is used, include all required child roles.");
+        commonSteps.push("Validate role hierarchy and ownership attributes.");
+      } else if (id === "autocomplete-valid") {
+        commonSteps.push("Use valid autocomplete attribute values (e.g., email, name, tel).");
+        commonSteps.push("Match autocomplete token to the actual field purpose.");
+      } else if (id === "aria-hidden-focus") {
+        commonSteps.push("Do not leave focusable elements inside aria-hidden containers.");
+        commonSteps.push("Remove focusability or move control outside hidden container.");
+      } else if (id === "target-size") {
+        commonSteps.push("Increase size/padding of small controls to minimum touch target.");
+        commonSteps.push("Maintain target size across default and responsive breakpoints.");
+      } else {
+        commonSteps.push("Review affected elements and apply semantic HTML updates required by this rule.");
+        commonSteps.push("Retest after fixes and verify no violations remain.");
+      }
+      out.recommendation = buildDetailedRecommendation(
+        String(out.recommendation || defaultRec || "").trim(),
+        commonSteps
+      );
+    }
+    out.correctCode = String(aiSpecificCode || out.correctCode || "").trim() || buildGenericCorrectCode(id);
+    out.recommendation = appendReferenceLinks(out.recommendation, getApgReferences(id, snippets));
     return out;
   }
 
-  const help = String(violation && violation.help || "").trim();
+  const help = neutralizeToolBranding(String(violation && violation.help || "")).trim();
+  const fallbackSteps = [
+    "Inspect all flagged elements and apply semantic HTML fix required by this rule.",
+    "Validate the fix in keyboard and screen-reader flow.",
+    "Run scan again to confirm violation is resolved."
+  ];
   return {
-    recommendation: help || defaultRec,
-    correctCode: `<!-- Example remediation pattern -->
-<!-- Update markup/styles as needed for rule: ${id || "accessibility-rule"} -->`
+    recommendation: appendReferenceLinks(
+      buildDetailedRecommendation(help || defaultRec, fallbackSteps),
+      getApgReferences(id, snippets)
+    ),
+    correctCode: String(aiSpecificCode || "").trim() || (function () {
+      const generic = buildGenericCorrectCode(id);
+      const controls = extractTagHintsFromSnippets(snippets, ["input", "select", "textarea", "button", "a", "img"]);
+      if (!controls.length) return generic;
+      const first = controls[0];
+      if (first.tag === "input") {
+        const idAttr = first.attrs.id || first.attrs.name || "field_name";
+        const nameAttr = first.attrs.name || idAttr;
+        const typeAttr = first.attrs.type || "text";
+        const labelText = toLabelText(idAttr, "Field");
+        return `<label for="${idAttr}">${labelText}</label>
+<input id="${idAttr}" name="${nameAttr}" type="${typeAttr}">`;
+      }
+      if (first.tag === "select") {
+        const idAttr = first.attrs.id || first.attrs.name || "select_field";
+        const nameAttr = first.attrs.name || idAttr;
+        const labelText = toLabelText(idAttr, "Option");
+        return `<label for="${idAttr}">${labelText}</label>
+<select id="${idAttr}" name="${nameAttr}">
+  <option value="">Select ${labelText}</option>
+</select>`;
+      }
+      if (first.tag === "textarea") {
+        const idAttr = first.attrs.id || first.attrs.name || "message";
+        const nameAttr = first.attrs.name || idAttr;
+        const labelText = toLabelText(idAttr, "Message");
+        return `<label for="${idAttr}">${labelText}</label>
+<textarea id="${idAttr}" name="${nameAttr}"></textarea>`;
+      }
+      if (first.tag === "button") {
+        return `<button type="button">Descriptive action</button>`;
+      }
+      if (first.tag === "a") {
+        return `<a href="${first.attrs.href || "#"}">Descriptive link text</a>`;
+      }
+      if (first.tag === "img") {
+        return `<img src="${first.attrs.src || "/images/example.png"}" alt="Meaningful description">`;
+      }
+      return generic;
+    })()
   };
 }
 
@@ -376,7 +1080,7 @@ function getRuleSpecificGuidance(violation, context) {
     eval(source);
   }, axeSource);
 
-  const axe = await page.evaluate(async () => {
+  const scanResult = await page.evaluate(async () => {
     return await axe.run(document, {
       runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa', 'best-practice'] },
       resultTypes: ['violations']
@@ -386,11 +1090,12 @@ function getRuleSpecificGuidance(violation, context) {
   const findings = [];
   let screenshotSeq = 1;
 
-  for (const violation of (axe.violations || [])) {
+  for (const violation of (scanResult.violations || [])) {
     const allNodes = violation.nodes || [];
     const nodes = maxNodesArg > 0 ? allNodes.slice(0, maxNodesArg) : allNodes;
     const snippets = uniq(nodes.map((n) => String(n.html || '').trim()).filter(Boolean));
-    const guidance = getRuleSpecificGuidance(violation, { snippets });
+    const failureSummaries = uniq(nodes.map((n) => String(n.failureSummary || "").replace(/\s+/g, " ").trim()).filter(Boolean));
+    const guidance = getRuleSpecificGuidance(violation, { snippets, failureSummaries });
     const recommendation = guidance.recommendation;
     const nodeInputs = nodes
       .map((n) => ({
@@ -534,6 +1239,7 @@ function getRuleSpecificGuidance(violation, context) {
             el.style.outlineOffset = "2px";
             el.style.boxShadow = "0 0 0 3px rgba(217,4,41,0.25)";
           });
+
           if (firstEl && firstEl.scrollIntoView) {
             firstEl.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
           }
