@@ -593,32 +593,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_user_details' && isset($_
     }
 }
 
-// Get all users
-$users = $db->query("
-    SELECT u.*, 
-           COUNT(DISTINCT p.id) as project_count,
-           COUNT(DISTINCT pp.id) as page_count
-    FROM users u
-    LEFT JOIN projects p ON u.id = p.project_lead_id
-    LEFT JOIN project_pages pp ON (
-        u.id = pp.at_tester_id OR u.id = pp.ft_tester_id OR u.id = pp.qa_id
-        OR (pp.at_tester_ids IS NOT NULL AND JSON_CONTAINS(pp.at_tester_ids, JSON_ARRAY(u.id)))
-        OR (pp.ft_tester_ids IS NOT NULL AND JSON_CONTAINS(pp.ft_tester_ids, JSON_ARRAY(u.id)))
-    )
-    GROUP BY u.id
-    ORDER BY u.role, u.full_name
-")->fetchAll();
-
-include __DIR__ . '/../../includes/header.php';
-?>
-<style>
-#usersTable_wrapper .dataTables_length select {
-    min-width: 86px;
-    padding-right: 2rem !important;
-    background-position: right 0.6rem center;
-    text-overflow: clip;
-}
-
 if (isset($_GET['action']) && $_GET['action'] === 'verify_credentials_mail') {
     header('Content-Type: application/json');
     $uid = (int)($_GET['user_id'] ?? 0);
@@ -652,6 +626,32 @@ if (isset($_GET['action']) && $_GET['action'] === 'verify_credentials_mail') {
         echo json_encode(['success' => false, 'error' => 'Verification error: ' . $e->getMessage()]);
     }
     exit;
+}
+
+// Get all users
+$users = $db->query("
+    SELECT u.*, 
+           COUNT(DISTINCT p.id) as project_count,
+           COUNT(DISTINCT pp.id) as page_count
+    FROM users u
+    LEFT JOIN projects p ON u.id = p.project_lead_id
+    LEFT JOIN project_pages pp ON (
+        u.id = pp.at_tester_id OR u.id = pp.ft_tester_id OR u.id = pp.qa_id
+        OR (pp.at_tester_ids IS NOT NULL AND JSON_CONTAINS(pp.at_tester_ids, JSON_ARRAY(u.id)))
+        OR (pp.ft_tester_ids IS NOT NULL AND JSON_CONTAINS(pp.ft_tester_ids, JSON_ARRAY(u.id)))
+    )
+    GROUP BY u.id
+    ORDER BY u.role, u.full_name
+")->fetchAll();
+
+include __DIR__ . '/../../includes/header.php';
+?>
+<style>
+#usersTable_wrapper .dataTables_length select {
+    min-width: 86px;
+    padding-right: 2rem !important;
+    background-position: right 0.6rem center;
+    text-overflow: clip;
 }
 </style>
 <?php
