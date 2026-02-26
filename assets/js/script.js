@@ -18,15 +18,23 @@ function confirmDelete(message = "Are you sure you want to delete this? This act
 
 // Confirm form submission
 function confirmForm(formId, message = "Are you sure?") {
-    confirmDelete(message, function () {
+    const submitForm = function () {
         const form = document.getElementById(formId);
-        if (form) {
-            // Use a temporary hidden input to ensure the button name/value is sent if needed
-            // But usually, we can just call submit(). 
-            // If the button was used for a specific action, we might need to handle it.
-            form.submit();
-        }
-    });
+        if (form) form.submit();
+    };
+
+    if (typeof confirmModal === 'function') {
+        confirmModal(message, function (ok) {
+            if (ok) submitForm();
+        }, {
+            title: 'Confirm Action',
+            icon: '<i class="fas fa-question-circle text-primary me-2"></i>',
+            confirmText: 'Confirm',
+            confirmClass: 'btn-primary'
+        });
+    } else if (confirm(message)) {
+        submitForm();
+    }
     return false;
 }
 

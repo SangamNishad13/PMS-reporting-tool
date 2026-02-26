@@ -1,14 +1,231 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
 $auth->requireRole('admin');
 
 $db = Database::getInstance();
 
+function isSafeSqlIdentifier($name) {
+    return is_string($name) && preg_match('/^[A-Za-z0-9_]+$/', $name);
+}
+
+function getUserFkReferences(PDO $db) {
+    $sql = "
+        SELECT
+            kcu.TABLE_NAME,
+            kcu.COLUMN_NAME,
+            rc.DELETE_RULE,
+            c.IS_NULLABLE
+        FROM information_schema.KEY_COLUMN_USAGE kcu
+        JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+            ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+           AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+        JOIN information_schema.COLUMNS c
+            ON c.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+           AND c.TABLE_NAME = kcu.TABLE_NAME
+           AND c.COLUMN_NAME = kcu.COLUMN_NAME
+        WHERE kcu.CONSTRAINT_SCHEMA = DATABASE()
+          AND kcu.REFERENCED_TABLE_NAME = 'users'
+          AND kcu.REFERENCED_COLUMN_NAME = 'id'
+        ORDER BY kcu.TABLE_NAME, kcu.COLUMN_NAME
+    ";
+    return $db->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
+function countUserRefRows(PDO $db, $table, $column, $userId) {
+    if (!isSafeSqlIdentifier($table) || !isSafeSqlIdentifier($column)) return 0;
+    $sql = "SELECT COUNT(*) FROM `{$table}` WHERE `{$column}` = ?";
+    $stmt = $db->prepare($sql);
+    $stmt->execute([$userId]);
+    return (int)$stmt->fetchColumn();
+}
+
+function generateTemporaryPassword($length = 12) {
+    $length = max(10, (int)$length);
+    $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#$%';
+    $max = strlen($alphabet) - 1;
+    $out = '';
+    try {
+        for ($i = 0; $i < $length; $i++) {
+            $out .= $alphabet[random_int(0, $max)];
+        }
+    } catch (Exception $e) {
+        for ($i = 0; $i < $length; $i++) {
+            $out .= $alphabet[mt_rand(0, $max)];
+        }
+    }
+    return $out;
+}
+
+function buildAccountMailBody($fullName, $username, $email, $tempPassword, $loginUrl, $mode) {
+    $safeName = htmlspecialchars((string)$fullName, ENT_QUOTES, 'UTF-8');
+    $safeUsername = htmlspecialchars((string)$username, ENT_QUOTES, 'UTF-8');
+    $safeEmail = htmlspecialchars((string)$email, ENT_QUOTES, 'UTF-8');
+    $safePassword = htmlspecialchars((string)$tempPassword, ENT_QUOTES, 'UTF-8');
+    $safeLoginUrl = htmlspecialchars((string)$loginUrl, ENT_QUOTES, 'UTF-8');
+    $modeText = $mode === 'reset' ? 'password reset' : 'account setup';
+
+    return "
+        <div style='font-family:Arial,sans-serif;line-height:1.6;color:#111827'>
+            <h2 style='margin:0 0 12px'>PMS " . ucfirst($modeText) . "</h2>
+            <p>Hello {$safeName},</p>
+            <p>Your PMS {$modeText} details are ready:</p>
+            <table cellpadding='8' cellspacing='0' border='1' style='border-collapse:collapse;border-color:#d1d5db'>
+                <tr><td><strong>Username</strong></td><td>{$safeUsername}</td></tr>
+                <tr><td><strong>Email</strong></td><td>{$safeEmail}</td></tr>
+                <tr><td><strong>Temporary Password</strong></td><td>{$safePassword}</td></tr>
+            </table>
+            <p style='margin-top:14px'>
+                Login link: <a href='{$safeLoginUrl}'>{$safeLoginUrl}</a>
+            </p>
+            <p><strong>Important:</strong> You will be required to change this password after login.</p>
+            <p>Regards,<br>PMS Admin</p>
+        </div>
+    ";
+}
+
+function ensureCredentialsMailLogTable(PDO $db) {
+    static $checked = false;
+    if ($checked) return;
+    $checked = true;
+    try {
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS credentials_mail_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                request_id VARCHAR(80) NOT NULL,
+                target_user_id INT NOT NULL,
+                requested_by INT NULL,
+                mail_mode ENUM('setup','reset') NOT NULL DEFAULT 'setup',
+                status ENUM('success','fail') NOT NULL DEFAULT 'fail',
+                detail VARCHAR(255) NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_credentials_mail_log_req_user (request_id, target_user_id),
+                INDEX idx_credentials_mail_log_created (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+    } catch (Exception $e) {
+        // non-fatal; verification fallback won't work without table
+    }
+}
+
+function logCredentialsMailAttempt(PDO $db, $requestId, $uid, $mailMode, $status, $detail = '') {
+    $requestId = trim((string)$requestId);
+    if ($requestId === '') return;
+    ensureCredentialsMailLogTable($db);
+    try {
+        $stmt = $db->prepare("
+            INSERT INTO credentials_mail_log (request_id, target_user_id, requested_by, mail_mode, status, detail)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $requestId,
+            (int)$uid,
+            (int)($_SESSION['user_id'] ?? 0) ?: null,
+            in_array($mailMode, ['setup', 'reset'], true) ? $mailMode : 'setup',
+            $status === 'success' ? 'success' : 'fail',
+            substr((string)$detail, 0, 255)
+        ]);
+    } catch (Exception $e) {
+        // non-fatal
+    }
+}
+
+function sendCredentialsMailForUser(PDO $db, $uid, $mailMode, $requestId = '') {
+    require_once __DIR__ . '/../../includes/email.php';
+    $mailer = class_exists('EmailSender') ? new EmailSender() : null;
+    if (!$mailer) {
+        logCredentialsMailAttempt($db, $requestId, $uid, $mailMode, 'fail', 'Email service is not available.');
+        return ['success' => false, 'error' => 'Email service is not available.'];
+    }
+
+    $uid = (int)$uid;
+    if ($uid <= 0) {
+        logCredentialsMailAttempt($db, $requestId, $uid, $mailMode, 'fail', 'Invalid user id.');
+        return ['success' => false, 'error' => 'Invalid user id.'];
+    }
+
+    $mailMode = in_array($mailMode, ['setup', 'reset'], true) ? $mailMode : 'setup';
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $baseDir = rtrim((string)getBaseDir(), '/');
+    $loginUrl = $scheme . '://' . $host . $baseDir . '/modules/auth/login.php';
+
+    try {
+        $db->beginTransaction();
+
+        $userStmt = $db->prepare("SELECT id, full_name, username, email, is_active FROM users WHERE id = ? LIMIT 1");
+        $userStmt->execute([$uid]);
+        $user = $userStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$user) {
+            $db->rollBack();
+            logCredentialsMailAttempt($db, $requestId, $uid, $mailMode, 'fail', "User#{$uid} not found.");
+            return ['success' => false, 'error' => "User#{$uid} not found."];
+        }
+
+        $recipientEmail = trim((string)($user['email'] ?? ''));
+        if (!filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            $db->rollBack();
+            logCredentialsMailAttempt($db, $requestId, $uid, $mailMode, 'fail', (string)($user['username'] ?? "User#{$uid}") . ' invalid email.');
+            return ['success' => false, 'error' => (string)($user['username'] ?? "User#{$uid}") . ' has invalid email.'];
+        }
+
+        $tempPassword = generateTemporaryPassword(12);
+        $newHash = password_hash($tempPassword, PASSWORD_DEFAULT);
+        $upd = $db->prepare("UPDATE users SET password = ?, force_password_reset = 1 WHERE id = ?");
+        $upd->execute([$newHash, $uid]);
+
+        $subject = ($mailMode === 'reset')
+            ? "PMS Password Reset - Login Details"
+            : "PMS Account Setup - Login Details";
+        $body = buildAccountMailBody(
+            $user['full_name'] ?? 'User',
+            $user['username'] ?? '',
+            $recipientEmail,
+            $tempPassword,
+            $loginUrl,
+            $mailMode
+        );
+
+        $sent = $mailer->send($recipientEmail, $subject, $body, true);
+        if ($sent) {
+            $db->commit();
+            logCredentialsMailAttempt($db, $requestId, $uid, $mailMode, 'success', (string)($user['username'] ?? "User#{$uid}") . ' sent.');
+            return ['success' => true, 'username' => (string)($user['username'] ?? "User#{$uid}")];
+        }
+
+        $db->rollBack();
+        logCredentialsMailAttempt($db, $requestId, $uid, $mailMode, 'fail', (string)($user['username'] ?? "User#{$uid}") . ' mail send failed.');
+        return ['success' => false, 'error' => (string)($user['username'] ?? "User#{$uid}") . ' mail send failed.'];
+    } catch (Exception $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        error_log('Send setup/reset mail failed for user_id=' . $uid . ': ' . $e->getMessage());
+        logCredentialsMailAttempt($db, $requestId, $uid, $mailMode, 'fail', "User#{$uid} exception: " . $e->getMessage());
+        return ['success' => false, 'error' => "User#{$uid} failed: " . $e->getMessage()];
+    }
+}
+
 // Handle user actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['send_credentials_email_single'])) {
+        @set_time_limit(180);
+        @ignore_user_abort(true);
+        header('Content-Type: application/json');
+        $uid = (int)($_POST['user_id'] ?? 0);
+        $mailMode = trim((string)($_POST['mail_mode'] ?? 'setup'));
+        $requestId = trim((string)($_POST['request_id'] ?? ''));
+        if (!preg_match('/^[A-Za-z0-9_\-:.]{6,80}$/', $requestId)) {
+            $requestId = '';
+        }
+        $result = sendCredentialsMailForUser($db, $uid, $mailMode, $requestId);
+        echo json_encode($result);
+        exit;
+    }
+
     if (isset($_POST['add_user'])) {
         $username = sanitizeInput($_POST['username']);
         $email = sanitizeInput($_POST['email']);
@@ -45,7 +262,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 try {
                     if ($stmt->execute([$username, $email, $password, $fullName, $role, $canManageConfig, $canManageDevices])) {
-                        $_SESSION['success'] = "User added successfully! They will be asked to reset their password on first login.";
+                        $mailNote = '';
+                        if (!empty($_POST['send_setup_email'])) {
+                            try {
+                                require_once __DIR__ . '/../../includes/email.php';
+                                $mailer = class_exists('EmailSender') ? new EmailSender() : null;
+                                if ($mailer && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                                    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                                    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                                    $baseDir = rtrim((string)getBaseDir(), '/');
+                                    $loginUrl = $scheme . '://' . $host . $baseDir . '/modules/auth/login.php';
+                                    $subject = "PMS Account Setup - Login Details";
+                                    $body = buildAccountMailBody($fullName, $username, $email, $rawPassword, $loginUrl, 'setup');
+                                    $sent = $mailer->send($email, $subject, $body, true);
+                                    $mailNote = $sent ? " Setup email sent." : " User created, but setup email failed.";
+                                } else {
+                                    $mailNote = " User created, but setup email could not be sent (invalid mail settings/email).";
+                                }
+                            } catch (Exception $mailEx) {
+                                error_log('Add user setup mail error: ' . $mailEx->getMessage());
+                                $mailNote = " User created, but setup email failed.";
+                            }
+                        }
+                        $_SESSION['success'] = "User added successfully! They will be asked to reset their password on first login." . $mailNote;
                     } else {
                         $_SESSION['error'] = "Failed to add user. Please try again.";
                     }
@@ -103,74 +342,188 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['success'] = "Password reset successfully! The user will be required to change their password on next login.";
     } elseif (isset($_POST['delete_user'])) {
         $userId = $_POST['user_id'];
-        
+        $userId = intval($userId);
+
         // Check if user is the current user
-        if ($userId == $_SESSION['user_id']) {
+        if ($userId == intval($_SESSION['user_id'] ?? 0)) {
             $_SESSION['error'] = "You cannot delete your own account!";
         } else {
-            // Check for dependencies (Projects, Assignments, etc.)
-            $hasData = false;
-            
-            // Check Projects
-            $stmt = $db->prepare("SELECT COUNT(*) FROM projects WHERE created_by = ? OR project_lead_id = ?");
-            $stmt->execute([$userId, $userId]);
-            if ($stmt->fetchColumn() > 0) $hasData = true;
-            
-            if (!$hasData) {
-                // Check Assignments
-                $stmt = $db->prepare("SELECT COUNT(*) FROM user_assignments WHERE user_id = ? OR assigned_by = ?");
+            try {
+                // Check for dependencies (Projects, Assignments, etc.)
+                $hasData = false;
+
+                // Check Projects
+                $stmt = $db->prepare("SELECT COUNT(*) FROM projects WHERE created_by = ? OR project_lead_id = ?");
                 $stmt->execute([$userId, $userId]);
-                if ($stmt->fetchColumn() > 0) $hasData = true;
-            }
-            
-            if (!$hasData) {
-                // Check Testing/QA Results
-                $stmt = $db->prepare("SELECT COUNT(*) FROM testing_results WHERE tester_id = ?");
-                $stmt->execute([$userId]);
-                if ($stmt->fetchColumn() > 0) $hasData = true;
-                
-                $stmt = $db->prepare("SELECT COUNT(*) FROM qa_results WHERE qa_id = ?");
-                $stmt->execute([$userId]);
-                if ($stmt->fetchColumn() > 0) $hasData = true;
-            }
+                if ((int)$stmt->fetchColumn() > 0) $hasData = true;
 
-            if ($hasData) {
-                $_SESSION['error'] = "Cannot delete user with existing data (projects/tasks). Please deactivate them instead.";
+                if (!$hasData) {
+                    // Check Assignments
+                    $stmt = $db->prepare("SELECT COUNT(*) FROM user_assignments WHERE user_id = ? OR assigned_by = ?");
+                    $stmt->execute([$userId, $userId]);
+                    if ((int)$stmt->fetchColumn() > 0) $hasData = true;
+                }
+
+                if (!$hasData) {
+                    // Check Testing/QA Results
+                    $stmt = $db->prepare("SELECT COUNT(*) FROM testing_results WHERE tester_id = ?");
+                    $stmt->execute([$userId]);
+                    if ((int)$stmt->fetchColumn() > 0) $hasData = true;
+
+                    $stmt = $db->prepare("SELECT COUNT(*) FROM qa_results WHERE qa_id = ?");
+                    $stmt->execute([$userId]);
+                    if ((int)$stmt->fetchColumn() > 0) $hasData = true;
+                }
+
+                if ($hasData) {
+                    $_SESSION['error'] = "Cannot delete user with existing data (projects/tasks). Please deactivate them instead.";
+                } else {
+                    $fkRefs = getUserFkReferences($db);
+                    $blockingRefs = [];
+                    $nullableRestrictRefs = [];
+
+                    foreach ($fkRefs as $ref) {
+                        $table = $ref['TABLE_NAME'] ?? '';
+                        $column = $ref['COLUMN_NAME'] ?? '';
+                        $rule = strtoupper((string)($ref['DELETE_RULE'] ?? ''));
+                        $isNullable = strtoupper((string)($ref['IS_NULLABLE'] ?? '')) === 'YES';
+
+                        if (!isSafeSqlIdentifier($table) || !isSafeSqlIdentifier($column)) {
+                            continue;
+                        }
+
+                        $rowCount = countUserRefRows($db, $table, $column, $userId);
+                        if ($rowCount <= 0) continue;
+
+                        // CASCADE / SET NULL are handled by DB automatically on delete.
+                        if ($rule === 'CASCADE' || $rule === 'SET NULL') {
+                            continue;
+                        }
+
+                        // RESTRICT/NO ACTION on nullable columns can be cleaned manually.
+                        if ($isNullable) {
+                            $nullableRestrictRefs[] = ['table' => $table, 'column' => $column, 'count' => $rowCount];
+                        } else {
+                            $blockingRefs[] = ['table' => $table, 'column' => $column, 'count' => $rowCount];
+                        }
+                    }
+
+                    if (!empty($blockingRefs)) {
+                        $preview = array_slice($blockingRefs, 0, 3);
+                        $detailParts = [];
+                        foreach ($preview as $b) {
+                            $detailParts[] = $b['table'] . '.' . $b['column'] . ' (' . $b['count'] . ')';
+                        }
+                        $_SESSION['error'] = "Cannot delete user with existing data references. Please deactivate user instead. Blocking: " . implode(', ', $detailParts);
+                    } else {
+                        $db->beginTransaction();
+                        try {
+                            foreach ($nullableRestrictRefs as $n) {
+                                $sql = "UPDATE `{$n['table']}` SET `{$n['column']}` = NULL WHERE `{$n['column']}` = ?";
+                                $db->prepare($sql)->execute([$userId]);
+                            }
+
+                            // Extra cleanup for optional links not always declared as FKs across installations.
+                            $cleanupQueries = [
+                                "UPDATE project_pages SET created_by = NULL WHERE created_by = ?",
+                                "UPDATE project_pages SET at_tester_id = NULL WHERE at_tester_id = ?",
+                                "UPDATE project_pages SET ft_tester_id = NULL WHERE ft_tester_id = ?",
+                                "UPDATE project_pages SET qa_id = NULL WHERE qa_id = ?",
+                                "UPDATE projects SET created_by = NULL WHERE created_by = ?",
+                                "UPDATE projects SET project_lead_id = NULL WHERE project_lead_id = ?",
+                                "UPDATE user_assignments SET user_id = NULL WHERE user_id = ?",
+                                "UPDATE user_assignments SET assigned_by = NULL WHERE assigned_by = ?"
+                            ];
+                            foreach ($cleanupQueries as $q) {
+                                try {
+                                    $db->prepare($q)->execute([$userId]);
+                                } catch (PDOException $inner) {
+                                    // ignore optional schema differences
+                                }
+                            }
+
+                            $stmt = $db->prepare("DELETE FROM users WHERE id = ?");
+                            if ($stmt->execute([$userId])) {
+                                $db->commit();
+                                $_SESSION['success'] = "User deleted successfully!";
+                            } else {
+                                $db->rollBack();
+                                $_SESSION['error'] = "Failed to delete user due to database constraints.";
+                            }
+                        } catch (Exception $innerDelete) {
+                            if ($db->inTransaction()) $db->rollBack();
+                            throw $innerDelete;
+                        }
+                    }
+                }
+            } catch (PDOException $e) {
+                error_log('Delete user error: ' . $e->getMessage());
+                $_SESSION['error'] = "Unable to delete user right now due to database constraints. Please deactivate the user instead.";
+            } catch (Exception $e) {
+                error_log('Delete user unexpected error: ' . $e->getMessage());
+                $_SESSION['error'] = "Unexpected error while deleting user. Please try again.";
+            }
+        }
+    } elseif (isset($_POST['send_credentials_email'])) {
+        @set_time_limit(300);
+        @ignore_user_abort(true);
+        $selectedCsv = trim((string)($_POST['selected_user_ids'] ?? ''));
+        $mailMode = trim((string)($_POST['mail_mode'] ?? 'setup'));
+        if (!in_array($mailMode, ['setup', 'reset'], true)) {
+            $mailMode = 'setup';
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', explode(',', $selectedCsv)), function($v) {
+            return $v > 0;
+        })));
+
+        if (empty($ids)) {
+            $_SESSION['error'] = "Please select at least one user.";
+        } else {
+            require_once __DIR__ . '/../../includes/email.php';
+            $mailer = class_exists('EmailSender') ? new EmailSender() : null;
+
+            if (!$mailer) {
+                $_SESSION['error'] = "Email service is not available.";
             } else {
-                // Nullify references to this user in tables that should not block deletion
-                // Use try/catch around each in case the table/column doesn't exist in some installs
-                $nullifyQueries = [
-                    "UPDATE activity_log SET user_id = NULL WHERE user_id = ?",
-                    "UPDATE chat_messages SET user_id = NULL WHERE user_id = ?",
-                    "UPDATE project_assets SET created_by = NULL WHERE created_by = ?",
-                    "UPDATE project_pages SET created_by = NULL WHERE created_by = ?",
-                    "UPDATE project_pages SET at_tester_id = NULL WHERE at_tester_id = ?",
-                    "UPDATE project_pages SET ft_tester_id = NULL WHERE ft_tester_id = ?",
-                    "UPDATE project_pages SET qa_id = NULL WHERE qa_id = ?",
-                    "UPDATE projects SET created_by = NULL WHERE created_by = ?",
-                    "UPDATE projects SET project_lead_id = NULL WHERE project_lead_id = ?",
-                    "UPDATE testing_results SET tester_id = NULL WHERE tester_id = ?",
-                    "UPDATE qa_results SET qa_id = NULL WHERE qa_id = ?",
-                    "UPDATE user_assignments SET user_id = NULL WHERE user_id = ?",
-                    "UPDATE user_assignments SET assigned_by = NULL WHERE assigned_by = ?",
-                    "UPDATE notifications SET user_id = NULL WHERE user_id = ?",
-                    "UPDATE generic_tasks SET user_id = NULL WHERE user_id = ?"
-                ];
+                $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                $baseDir = rtrim((string)getBaseDir(), '/');
+                $loginUrl = $scheme . '://' . $host . $baseDir . '/modules/auth/login.php';
 
-                foreach ($nullifyQueries as $q) {
-                    try {
-                        $db->prepare($q)->execute([$userId]);
-                    } catch (PDOException $e) {
-                        // ignore errors for missing tables/columns or other non-fatal issues
+                $ok = 0;
+                $failed = 0;
+                $failedUsers = [];
+                $attempted = 0;
+                $consecutiveFail = 0;
+                $stoppedEarly = false;
+
+                foreach ($ids as $uid) {
+                    $attempted++;
+                    $result = sendCredentialsMailForUser($db, $uid, $mailMode);
+                    if (!empty($result['success'])) {
+                        $ok++;
+                        $consecutiveFail = 0;
+                    } else {
+                        $failed++;
+                        $consecutiveFail++;
+                        $failedUsers[] = (string)($result['error'] ?? "User#{$uid}");
+                        if ($ok === 0 && $consecutiveFail >= 3) {
+                            $stoppedEarly = true;
+                            break;
+                        }
                     }
                 }
 
-                // Finally delete the user
-                $stmt = $db->prepare("DELETE FROM users WHERE id = ?");
-                if ($stmt->execute([$userId])) {
-                    $_SESSION['success'] = "User deleted successfully!";
+                if ($ok > 0 && $failed === 0) {
+                    $_SESSION['success'] = "Credentials email sent successfully to {$ok} user(s).";
+                } elseif ($ok > 0 && $failed > 0) {
+                    $preview = implode(', ', array_slice($failedUsers, 0, 5));
+                    $extra = $stoppedEarly ? " Sending stopped early due to repeated mail transport failures." : "";
+                    $_SESSION['error'] = "Email sent to {$ok} user(s), failed for {$failed} user(s)." . $extra . " Failed: {$preview}";
                 } else {
-                    $_SESSION['error'] = "Failed to delete user due to database constraints.";
+                    $extra = $stoppedEarly ? " Sending stopped early due to repeated mail transport failures." : "";
+                    $_SESSION['error'] = "Could not send credentials email to selected users. Please verify SMTP settings/network." . $extra;
                 }
             }
         }
@@ -265,6 +618,41 @@ include __DIR__ . '/../../includes/header.php';
     background-position: right 0.6rem center;
     text-overflow: clip;
 }
+
+if (isset($_GET['action']) && $_GET['action'] === 'verify_credentials_mail') {
+    header('Content-Type: application/json');
+    $uid = (int)($_GET['user_id'] ?? 0);
+    $requestId = trim((string)($_GET['request_id'] ?? ''));
+    if ($uid <= 0 || !preg_match('/^[A-Za-z0-9_\-:.]{6,80}$/', $requestId)) {
+        echo json_encode(['success' => false, 'error' => 'Invalid verification request']);
+        exit;
+    }
+    try {
+        ensureCredentialsMailLogTable($db);
+        $stmt = $db->prepare("
+            SELECT l.status, l.detail, u.username
+            FROM credentials_mail_log l
+            LEFT JOIN users u ON u.id = l.target_user_id
+            WHERE l.request_id = ? AND l.target_user_id = ?
+            ORDER BY l.id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([$requestId, $uid]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            echo json_encode(['success' => false, 'error' => 'No delivery log found yet']);
+            exit;
+        }
+        if (($row['status'] ?? '') === 'success') {
+            echo json_encode(['success' => true, 'username' => (string)($row['username'] ?? "User#{$uid}")]);
+            exit;
+        }
+        echo json_encode(['success' => false, 'error' => (string)($row['detail'] ?? 'Delivery failed')]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => 'Verification error: ' . $e->getMessage()]);
+    }
+    exit;
+}
 </style>
 <?php
 // Render compact fixed-position flash messages (top-right) so they don't push content
@@ -292,10 +680,15 @@ if (!empty($_SESSION['success'])) {
 <div class="container-fluid">
     <h2>User Management</h2>
     
-    <!-- Add User Button -->
-    <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addUserModal">
-        <i class="fas fa-user-plus"></i> Add New User
-    </button>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+            <i class="fas fa-user-plus"></i> Add New User
+        </button>
+        <button type="button" class="btn btn-outline-success" id="bulkMailBtn" data-bs-toggle="modal" data-bs-target="#bulkMailModal" disabled>
+            <i class="fas fa-paper-plane"></i> Send Setup/Reset Mail
+        </button>
+        <span class="align-self-center text-muted small" id="selectedUsersHint">0 users selected</span>
+    </div>
     
     <!-- Users Table -->
 
@@ -309,6 +702,9 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                 <table id="usersTable" class="table table-striped dataTable">
                     <thead>
                         <tr>
+                            <th style="width:36px;">
+                                <input type="checkbox" id="selectAllUsers" aria-label="Select all users">
+                            </th>
                             <th>Username</th>
                             <th>Full Name</th>
                             <th>Email</th>
@@ -322,6 +718,9 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                     <tbody>
                         <?php foreach ($users as $user): ?>
                         <tr>
+                            <td>
+                                <input type="checkbox" class="user-select" value="<?php echo (int)$user['id']; ?>" aria-label="Select <?php echo htmlspecialchars($user['username']); ?>">
+                            </td>
                             <td><?php echo $user['username']; ?></td>
                             <td><?php echo renderUserNameLink(['id'=>$user['id'],'full_name'=>$user['full_name'],'role'=>$user['role']]); ?></td>
                             <td><?php echo $user['email']; ?></td>
@@ -485,6 +884,44 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
     </div>
 </div>
 
+<!-- Bulk setup/reset mail modal -->
+<div class="modal fade" id="bulkMailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="bulkMailForm">
+                <input type="hidden" name="send_credentials_email" value="1">
+                <input type="hidden" name="selected_user_ids" id="selectedUserIdsInput" value="">
+                <div class="modal-header">
+                    <h5 class="modal-title">Send Setup/Reset Mail</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">Selected users: <strong id="selectedUsersCount">0</strong></p>
+                    <div class="mb-3">
+                        <label class="form-label d-block mb-2">Mail Type</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="mail_mode" id="mailModeSetup" value="setup" checked>
+                            <label class="form-check-label" for="mailModeSetup">Account setup email</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="mail_mode" id="mailModeReset" value="reset">
+                            <label class="form-check-label" for="mailModeReset">Password reset email</label>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning mb-0 py-2">
+                        Each selected user will receive an individual email with:
+                        username, email, temporary password, and login link.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Send Individual Emails</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Add User Modal -->
 <div class="modal fade" id="addUserModal" tabindex="-1">
     <div class="modal-dialog">
@@ -538,6 +975,12 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                         <label>Confirm Password *</label>
                         <input type="password" name="confirm_password" class="form-control" required>
                     </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" name="send_setup_email" class="form-check-input" id="sendSetupEmailNow" value="1">
+                        <label class="form-check-label" for="sendSetupEmailNow">
+                            Send setup email now (username, email, password, login link)
+                        </label>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -561,6 +1004,146 @@ $(document).ready(function() {
         }
         return true;
     });
+
+    function getSelectedUserIds() {
+        return $('.user-select:checked').map(function() { return String($(this).val()); }).get();
+    }
+
+    function refreshBulkMailUi() {
+        const selected = getSelectedUserIds();
+        const count = selected.length;
+        $('#bulkMailBtn').prop('disabled', count === 0);
+        $('#selectedUsersHint').text(count + ' users selected');
+        $('#selectedUsersCount').text(count);
+        $('#selectedUserIdsInput').val(selected.join(','));
+        if (count === 0) {
+            $('#selectAllUsers').prop('checked', false);
+        }
+    }
+
+    $('#selectAllUsers').on('change', function() {
+        $('.user-select').prop('checked', $(this).is(':checked'));
+        refreshBulkMailUi();
+    });
+
+    $(document).on('change', '.user-select', function() {
+        const total = $('.user-select').length;
+        const checked = $('.user-select:checked').length;
+        $('#selectAllUsers').prop('checked', total > 0 && total === checked);
+        refreshBulkMailUi();
+    });
+
+    $('#bulkMailForm').on('submit', async function(e) {
+        const selected = getSelectedUserIds();
+        if (!selected.length) {
+            e.preventDefault();
+            showToast('Please select at least one user.', 'warning');
+            return false;
+        }
+        e.preventDefault();
+        $('#selectedUserIdsInput').val(selected.join(','));
+
+        const mode = $('input[name="mail_mode"]:checked').val() || 'setup';
+        const $form = $(this);
+        const endpointUrl = $form.attr('action') || window.location.pathname;
+        const $submitBtn = $form.find('button[type="submit"]');
+        const oldBtnHtml = $submitBtn.html();
+        $submitBtn.prop('disabled', true).html('Sending...');
+
+        let ok = 0;
+        let failed = 0;
+        const sentUsers = [];
+        const failedUsers = [];
+
+        for (let i = 0; i < selected.length; i++) {
+            const uid = selected[i];
+            const requestId = 'mail_' + uid + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
+            try {
+                const resp = await $.ajax({
+                    url: endpointUrl,
+                    method: 'POST',
+                    dataType: 'json',
+                    timeout: 180000,
+                    data: {
+                        send_credentials_email_single: 1,
+                        user_id: uid,
+                        mail_mode: mode,
+                        request_id: requestId
+                    }
+                });
+                if (resp && resp.success) {
+                    ok++;
+                    sentUsers.push((resp && resp.username) ? resp.username : ('User#' + uid));
+                } else {
+                    failed++;
+                    failedUsers.push((resp && resp.error) ? resp.error : ('User#' + uid));
+                }
+            } catch (err) {
+                try {
+                    const verify = await $.ajax({
+                        url: endpointUrl,
+                        method: 'GET',
+                        dataType: 'json',
+                        timeout: 25000,
+                        data: {
+                            action: 'verify_credentials_mail',
+                            user_id: uid,
+                            request_id: requestId
+                        }
+                    });
+                    if (verify && verify.success) {
+                        ok++;
+                        sentUsers.push((verify && verify.username) ? (verify.username + ' (verified)') : ('User#' + uid + ' (verified)'));
+                    } else {
+                        failed++;
+                        failedUsers.push((verify && verify.error) ? verify.error : ('User#' + uid + ' request timeout/connection closed'));
+                    }
+                } catch (verifyErr) {
+                    failed++;
+                    failedUsers.push('User#' + uid + ' request timeout/connection closed');
+                }
+            }
+            $('#selectedUsersCount').text((selected.length - (i + 1)) + ' pending');
+        }
+
+        $submitBtn.prop('disabled', false).html(oldBtnHtml);
+        const modalEl = document.getElementById('bulkMailModal');
+        if (modalEl) {
+            const modalInstance = bootstrap.Modal.getInstance(modalEl);
+            if (modalInstance) modalInstance.hide();
+        }
+
+        function listText(arr, maxItems) {
+            const lim = Math.max(1, maxItems || 10);
+            if (!arr || !arr.length) return '';
+            const shown = arr.slice(0, lim).join(', ');
+            const more = arr.length > lim ? (' +' + (arr.length - lim) + ' more') : '';
+            return shown + more;
+        }
+
+        if (ok > 0 && failed === 0) {
+            showToast(
+                'Sent to ' + ok + ' user(s): ' + listText(sentUsers, 12),
+                'success'
+            );
+        } else if (ok > 0 && failed > 0) {
+            showToast(
+                'Sent: ' + ok + ' [' + listText(sentUsers, 8) + '] | Failed: ' + failed + ' [' + listText(failedUsers, 6) + ']',
+                'warning'
+            );
+            console.warn('Failed users:', failedUsers);
+        } else {
+            showToast(
+                'Could not send credentials email. Failed users: ' + listText(failedUsers, 10),
+                'danger'
+            );
+            console.warn('Failed users:', failedUsers);
+        }
+        $('#selectedUsersCount').text(selected.length);
+        return false;
+    });
+
+    refreshBulkMailUi();
 });
 </script>
 <!-- User Details Modal -->

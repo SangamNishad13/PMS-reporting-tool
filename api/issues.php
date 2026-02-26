@@ -15,6 +15,29 @@ if (!$auth->isLoggedIn()) {
     exit;
 }
 
+// Dedicated error log for issues API.
+$issuesApiLogDir = __DIR__ . '/../tmp/logs';
+$issuesApiLogFile = $issuesApiLogDir . '/issues_api.log';
+$issuesApiLogConfigured = false;
+if (is_dir($issuesApiLogDir) || @mkdir($issuesApiLogDir, 0775, true)) {
+    $issuesApiLogConfigured = @ini_set('log_errors', '1') !== false;
+    $issuesApiLogConfigured = (@ini_set('error_log', $issuesApiLogFile) !== false) || $issuesApiLogConfigured;
+}
+if (!$issuesApiLogConfigured) {
+    // Fallback when host blocks ini_set or tmp/logs is not writable.
+    $issuesApiLogFile = __DIR__ . '/issues_api.log';
+    @ini_set('log_errors', '1');
+    @ini_set('error_log', $issuesApiLogFile);
+}
+register_shutdown_function(function () {
+    $fatal = error_get_last();
+    if (!$fatal) return;
+    $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
+    if (in_array((int)$fatal['type'], $fatalTypes, true)) {
+        error_log('issues api fatal: ' . ($fatal['message'] ?? '') . ' in ' . ($fatal['file'] ?? '') . ':' . ($fatal['line'] ?? '0'));
+    }
+});
+
 function jsonResponse($data, $statusCode = 200) {
     http_response_code($statusCode);
     header('Content-Type: application/json; charset=utf-8');
@@ -170,7 +193,7 @@ function parseReporterQaStatusMapFromMetaValues($metaValues) {
     return [];
 }
 
-function normalizeReporterQaStatusMap(array $map, array $reporterIds, array $validStatusKeys = []) {
+function normalizeReporterQaStatusMap($map, $reporterIds, $validStatusKeys = []) {
     $allowedReporterIds = [];
     foreach ($reporterIds as $rid) {
         $rid = (int)$rid;
@@ -204,7 +227,7 @@ function normalizeReporterQaStatusMap(array $map, array $reporterIds, array $val
     return $normalized;
 }
 
-function loadReporterQaStatusMapByIssueIds($db, array $issueIds) {
+function loadReporterQaStatusMapByIssueIds($db, $issueIds) {
     $result = [];
     if (empty($issueIds)) return $result;
     if (!ensureIssueReporterQaStatusTable($db)) return $result;
@@ -241,7 +264,7 @@ function loadReporterQaStatusMapByIssueIds($db, array $issueIds) {
     return $result;
 }
 
-function persistIssueReporterQaStatuses($db, $issueId, array $map, $actorUserId) {
+function persistIssueReporterQaStatuses($db, $issueId, $map, $actorUserId) {
     if (!ensureIssueReporterQaStatusTable($db)) return false;
     $issueId = (int)$issueId;
     $actorUserId = (int)$actorUserId;
@@ -277,7 +300,10 @@ function getDefaultTypeId($db, $projectId) {
     if ($id) return (int)$id;
     $stmt = $db->query("SELECT MIN(type_id) FROM issues");
     $id = $stmt->fetchColumn();
-    return $id ? (int)$id : 1;
+    if ($id) return (int)$id;
+    $stmt = $db->query("SELECT MIN(id) FROM issue_types");
+    $id = $stmt->fetchColumn();
+    return $id ? (int)$id : 0;
 }
 
 function getIssueKey($db, $projectId) {
@@ -285,8 +311,9 @@ function getIssueKey($db, $projectId) {
     $proj->execute([$projectId]);
     $row = $proj->fetch(PDO::FETCH_ASSOC);
     $prefix = $row['project_code'] ?: ($row['po_number'] ?: 'PRJ');
-    $stmt = $db->prepare("SELECT issue_key FROM issues WHERE project_id = ? AND issue_key LIKE ? ORDER BY id DESC LIMIT 1");
-    $stmt->execute([$projectId, $prefix . '-%']);
+    // `issue_key` is globally unique, so sequence lookup must be global by prefix.
+    $stmt = $db->prepare("SELECT issue_key FROM issues WHERE issue_key LIKE ? ORDER BY id DESC LIMIT 1");
+    $stmt->execute([$prefix . '-%']);
     $last = $stmt->fetchColumn();
     $next = 1;
     if ($last && strpos($last, '-') !== false) {
@@ -295,6 +322,18 @@ function getIssueKey($db, $projectId) {
         if ($num > 0) $next = $num + 1;
     }
     return $prefix . '-' . (string)$next;
+}
+
+function getAnyStatusId($db) {
+    $stmt = $db->query("SELECT id FROM issue_statuses ORDER BY id ASC LIMIT 1");
+    $id = $stmt->fetchColumn();
+    return $id ? (int)$id : null;
+}
+
+function getAnyPriorityId($db) {
+    $stmt = $db->query("SELECT id FROM issue_priorities ORDER BY id ASC LIMIT 1");
+    $id = $stmt->fetchColumn();
+    return $id ? (int)$id : null;
 }
 
 function ensureIssuePresenceTable($db) {
@@ -390,7 +429,7 @@ function isQaStatusMetaFilled($qaValues) {
     return false;
 }
 
-function getTesterBlockedIssueIdsForDelete(PDO $db, int $projectId, array $issueIds): array {
+function getTesterBlockedIssueIdsForDelete($db, $projectId, $issueIds) {
     if (empty($issueIds)) return [];
     $issueIds = array_values(array_unique(array_map('intval', $issueIds)));
     $issueIds = array_values(array_filter($issueIds, function($id){ return $id > 0; }));
@@ -448,7 +487,7 @@ function getTesterBlockedIssueIdsForDelete(PDO $db, int $projectId, array $issue
     return $blocked;
 }
 
-function collectIssueDeleteHtmlBlocks(PDO $db, int $projectId, array $issueIds): array {
+function collectIssueDeleteHtmlBlocks($db, $projectId, $issueIds) {
     $issueIds = array_values(array_unique(array_map('intval', $issueIds)));
     $issueIds = array_values(array_filter($issueIds, function ($id) { return $id > 0; }));
     if (empty($issueIds)) return [];
@@ -479,7 +518,7 @@ function collectIssueDeleteHtmlBlocks(PDO $db, int $projectId, array $issueIds):
     return $blocks;
 }
 
-function cleanupIssueUploadsFromHtmlBlocks(array $htmlBlocks): void {
+function cleanupIssueUploadsFromHtmlBlocks($htmlBlocks) {
     if (!function_exists('delete_local_upload_files_from_html')) return;
     foreach ($htmlBlocks as $html) {
         delete_local_upload_files_from_html((string)$html, ['uploads/issues/', 'uploads/chat/']);
@@ -552,11 +591,14 @@ function ensureIssuePresenceSessionsTable($db) {
 }
 
 function generatePresenceSessionToken() {
-    try {
-        return bin2hex(random_bytes(16));
-    } catch (Throwable $e) {
-        return uniqid('iss_', true);
+    if (function_exists('random_bytes')) {
+        try {
+            return bin2hex(random_bytes(16));
+        } catch (Exception $e) {
+            // Fallback below.
+        }
     }
+    return md5(uniqid('iss_', true) . mt_rand());
 }
 
 function issueBelongsToProject($db, $issueId, $projectId) {
@@ -1145,16 +1187,9 @@ try {
             // Name provided, convert to ID
             $statusId = getStatusId($db, $statusInput);
         }
-        $statusId = null;
-        $statusInput = $_POST['issue_status'] ?? '';
-        if (is_numeric($statusInput)) {
-            // Direct ID provided
-            $statusId = (int)$statusInput;
-        } else {
-            // Name provided, convert to ID
-            $statusId = getStatusId($db, $statusInput);
-        }
         if (!$statusId) $statusId = getStatusId($db, 'Open');
+        if (!$statusId) $statusId = getAnyStatusId($db);
+        if (!$statusId) jsonError('Issue statuses are not configured.', 500);
         $reporters = parseArrayInput($_POST['reporters'] ?? []);
         $reporters = array_values(array_filter(array_map('intval', $reporters), function($v){ return $v > 0; }));
         $reporterId = !empty($reporters) ? (int)$reporters[0] : (int)$userId;
@@ -1169,15 +1204,36 @@ try {
         }, (array)$qaStatusMasterRows)));
         $priorityId = getPriorityId($db, $_POST['priority'] ?? 'medium');
         if (!$priorityId) $priorityId = getPriorityId($db, 'Medium');
+        if (!$priorityId) $priorityId = getAnyPriorityId($db);
+        if (!$priorityId) jsonError('Issue priorities are not configured.', 500);
         $typeId = getDefaultTypeId($db, $projectId);
-        $issueKey = getIssueKey($db, $projectId);
+        if (!$typeId) jsonError('Issue types are not configured.', 500);
+        $issueKey = '';
         $severity = $_POST['severity'] ?? 'major';
         $commonTitle = trim($_POST['common_title'] ?? '');
 
         if ($action === 'create') {
             $stmt = $db->prepare("INSERT INTO issues (project_id, issue_key, title, description, type_id, priority_id, status_id, reporter_id, page_id, severity, is_final, common_issue_title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)");
-            $stmt->execute([$projectId, $issueKey, $title, $description, $typeId, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null]);
-            $id = (int)$db->lastInsertId();
+            $created = false;
+            for ($attempt = 0; $attempt < 5; $attempt++) {
+                $issueKey = getIssueKey($db, $projectId);
+                try {
+                    $stmt->execute([$projectId, $issueKey, $title, $description, $typeId, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null]);
+                    $id = (int)$db->lastInsertId();
+                    $created = true;
+                    break;
+                } catch (PDOException $pe) {
+                    // Retry only on unique issue_key race/collision.
+                    $isDuplicate = ((int)($pe->errorInfo[1] ?? 0) === 1062);
+                    $isIssueKeyDup = stripos((string)$pe->getMessage(), 'issue_key') !== false;
+                    if (!($isDuplicate && $isIssueKeyDup)) {
+                        throw $pe;
+                    }
+                }
+            }
+            if (!$created) {
+                throw new RuntimeException('Unable to generate a unique issue key. Please retry.');
+            }
         } else {
             if (!$id) jsonError('id is required', 400);
             
@@ -1581,5 +1637,6 @@ try {
 
     jsonError('Invalid action', 400);
 } catch (Exception $e) {
+    error_log('issues api error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
     jsonError('Server error', 500);
 }

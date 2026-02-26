@@ -3,7 +3,8 @@ require_once __DIR__ . '/../config/settings.php';
 
 class EmailSender {
     private $settings;
-    private $smtpTimeout = 3;
+    private $smtpTimeout = 8;
+    private $lastSmtpResponse = '';
     
     public function __construct() {
         $this->settings = include(__DIR__ . '/../config/settings.php');
@@ -110,19 +111,57 @@ class EmailSender {
 
         if ($auth) {
             $authed = false;
+            $lastAuthError = null;
+
             try {
-                $this->sendCommand($fp, 'AUTH LOGIN', [334]);
-                $this->sendCommand($fp, base64_encode($username), [334]);
-                $this->sendCommand($fp, base64_encode($password), [235]);
-                $authed = true;
+                $code = $this->sendCommand($fp, 'AUTH LOGIN', [235, 334, 503]);
+                if ($code === 235 || $code === 503) {
+                    $authed = true;
+                } else {
+                    $code = $this->sendCommand($fp, base64_encode($username), [334, 235, 535]);
+                    if ($code === 334) {
+                        $code = $this->sendCommand($fp, base64_encode($password), [235, 334, 535]);
+                    }
+                    if ($code === 235) {
+                        $authed = true;
+                    } else {
+                        throw new Exception('AUTH LOGIN rejected by server');
+                    }
+                }
             } catch (Exception $loginEx) {
+                $lastAuthError = $loginEx;
+            }
+
+            if (!$authed) {
                 // Some servers prefer AUTH PLAIN over LOGIN.
-                $authPlain = base64_encode("\0" . $username . "\0" . $password);
-                $this->sendCommand($fp, 'AUTH PLAIN ' . $authPlain, [235]);
-                $authed = true;
+                // Cancel any half-open AUTH exchange before trying another mechanism.
+                try { $this->sendCommand($fp, '*', [501, 503, 504, 535]); } catch (Exception $ignore) {}
+
+                try {
+                    $authPlain = base64_encode("\0" . $username . "\0" . $password);
+                    $plainCode = $this->sendCommand($fp, 'AUTH PLAIN ' . $authPlain, [235, 334, 503]);
+                    if ((int)$plainCode === 334) {
+                        // Some SMTP servers return challenge 334 and expect payload in next frame.
+                        $plainCode = $this->sendCommand($fp, $authPlain, [235, 334, 535]);
+                    }
+                    if ((int)$plainCode === 235 || (int)$plainCode === 503) {
+                        $authed = true;
+                    }
+                } catch (Exception $plainEx) {
+                    $msg = 'SMTP authentication failed';
+                    if ($lastAuthError) {
+                        $msg .= ' (LOGIN: ' . $lastAuthError->getMessage() . ')';
+                    }
+                    $msg .= ' (PLAIN: ' . $plainEx->getMessage() . ')';
+                    throw new Exception($msg);
+                }
             }
             if (!$authed) {
-                throw new Exception('SMTP authentication failed');
+                $msg = 'SMTP authentication failed';
+                if ($lastAuthError) {
+                    $msg .= ': ' . $lastAuthError->getMessage();
+                }
+                throw new Exception($msg);
             }
         }
 
@@ -154,7 +193,7 @@ class EmailSender {
 
     private function sendCommand($fp, $command, $expectedCodes) {
         fwrite($fp, $command . "\r\n");
-        $this->expectCode($fp, $expectedCodes);
+        return $this->expectCode($fp, $expectedCodes);
     }
 
     private function expectCode($fp, $expectedCodes) {
@@ -165,8 +204,13 @@ class EmailSender {
                 break;
             }
         }
+        $this->lastSmtpResponse = $response;
 
         if ($response === '') {
+            $meta = @stream_get_meta_data($fp);
+            if (is_array($meta) && !empty($meta['timed_out'])) {
+                throw new Exception('SMTP read timed out');
+            }
             throw new Exception('Empty SMTP response');
         }
 
@@ -174,6 +218,7 @@ class EmailSender {
         if (!in_array($code, $expectedCodes, true)) {
             throw new Exception('SMTP error ' . $code . ': ' . trim($response));
         }
+        return $code;
     }
     
     public function sendWelcomeEmail($userEmail, $userName) {

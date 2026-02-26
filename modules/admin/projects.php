@@ -470,8 +470,8 @@ include __DIR__ . '/../../includes/header.php';
         subList.appendChild(row);
     }
 
-    if (hasSubs) {
-        hasSubs.addEventListener('change', toggleMode);
+    if (modeRadios.length) {
+        modeRadios.forEach(radio => radio.addEventListener('change', toggleMode));
         toggleMode();
     }
     if (addBtn) addBtn.addEventListener('click', addSubRow);

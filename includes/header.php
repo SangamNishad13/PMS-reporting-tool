@@ -9,13 +9,49 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
         exit;
     }
 }
+
+if (!function_exists('pmsHumanizeTitlePart')) {
+    function pmsHumanizeTitlePart($value) {
+        $value = (string)$value;
+        $value = str_replace(['_', '-'], ' ', $value);
+        $value = preg_replace('/\s+/', ' ', trim($value));
+        if ($value === '') return '';
+        return ucwords(strtolower($value));
+    }
+}
+
+if (!isset($pageTitle) || trim((string)$pageTitle) === '') {
+    $scriptPath = (string)($_SERVER['PHP_SELF'] ?? '');
+    $segments = array_values(array_filter(explode('/', trim($scriptPath, '/'))));
+    $moduleIdx = array_search('modules', $segments, true);
+    $titleParts = [];
+
+    if ($moduleIdx !== false) {
+        $section = $segments[$moduleIdx + 1] ?? '';
+        $filePart = isset($segments[$moduleIdx + 2]) ? pathinfo($segments[$moduleIdx + 2], PATHINFO_FILENAME) : '';
+        if ($section !== '') $titleParts[] = pmsHumanizeTitlePart($section);
+        if ($filePart !== '') $titleParts[] = pmsHumanizeTitlePart($filePart);
+    } else {
+        $filePart = pathinfo($scriptPath, PATHINFO_FILENAME);
+        if ($filePart !== '') $titleParts[] = pmsHumanizeTitlePart($filePart);
+    }
+
+    $computed = trim(implode(' - ', array_filter($titleParts)));
+    $pageTitle = $computed !== '' ? $computed : 'Dashboard';
+}
+
+$pageTitle = trim((string)$pageTitle);
+if ($pageTitle === '') $pageTitle = 'Dashboard';
+if (stripos($pageTitle, 'PMS') === false) {
+    $pageTitle .= ' - PMS';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo isset($pageTitle) ? htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') : 'PMS'; ?></title>
+    <title><?php echo htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8'); ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -28,7 +64,8 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
         $baseDir = getBaseDir();
     }
     ?>
-    <?php $assetVersion = '20260202v3'; ?>
+    <link rel="icon" type="image/png" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/storage/favicon.png?v=20260225v1">
+    <?php $assetVersion = '20260225v3'; ?>
     <link href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/css/style.css?v=<?php echo $assetVersion; ?>" rel="stylesheet">
     <style>
     .alert-dismissible .btn-close {
@@ -73,15 +110,16 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
 
             // Allow Bootstrap modals to function (previously blocked; re-enabled to fix calendar dialogs)
 
-            // Hide success alerts and toasts immediately and when added
+            // Hide only success alerts immediately and when added.
+            // Do not hide `.toast`, otherwise global showToast() messages become invisible.
             function hideSuccessElements(node){
                 if (!node) return;
                 try {
                     if (node.nodeType === 1) {
-                        if (node.matches('.alert-success, .toast, .alert-success *')) {
+                        if (node.matches('.alert-success, .alert-success *')) {
                             node.style.display = 'none';
                         }
-                        var els = node.querySelectorAll && node.querySelectorAll('.alert-success, .toast');
+                        var els = node.querySelectorAll && node.querySelectorAll('.alert-success');
                         if (els && els.length) {
                             els.forEach(function(el){ el.style.display = 'none'; });
                         }
@@ -188,13 +226,11 @@ if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
     <a href="#main-content" class="sr-only skip">Skip to main content</a>
     <!-- Compact Navbar -->
     <header>
-        <nav class="navbar navbar-expand-lg navbar-dark sticky-top" style="background-color: #0f6cbf !important; background-color: var(--primary) !important;">
+        <nav class="navbar navbar-expand-lg navbar-dark sticky-top" style="background-color: #0755C6 !important; background-color: var(--primary) !important;">
             <div class="container-fluid">
                 <!-- Brand -->
                 <a class="navbar-brand d-flex align-items-center gap-2 me-4" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/" aria-label="PMS Home">
-                    <div class="d-flex align-items-center justify-content-center bg-primary rounded fs-6" style="width: 28px; height: 28px;">
-                        <i class="fas fa-layer-group text-white"></i>
-                    </div>
+                    <img src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/storage/SIS-Logo-3.png" alt="SIS Logo" class="brand-logo">
                     <span class="tracking-tight">PMS</span>
                 </a>
 

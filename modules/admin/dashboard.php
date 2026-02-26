@@ -11,115 +11,138 @@ $projectManager = new ProjectManager();
 $baseDir = getBaseDir();
 $devicesApiUrl = $baseDir . '/api/devices.php';
 
-// Consolidated pending requests for admin dashboard
-$pendingBuckets = [];
-$pendingFeed = [];
-$pendingTotalCount = 0;
+function loadPendingDashboardData(PDO $db, $baseDir) {
+    $pendingBuckets = [];
+    $pendingFeed = [];
+    $pendingTotalCount = 0;
 
-try {
-    $devicePendingCount = (int)$db->query("SELECT COUNT(*) FROM device_switch_requests WHERE status = 'Pending'")->fetchColumn();
-    $devicePendingRows = $db->query("
-        SELECT dsr.id, dsr.requested_at, d.device_name, d.device_type, u.full_name AS requester_name
-        FROM device_switch_requests dsr
-        JOIN devices d ON d.id = dsr.device_id
-        JOIN users u ON u.id = dsr.requested_by
-        WHERE dsr.status = 'Pending'
-        ORDER BY dsr.requested_at DESC
-        LIMIT 5
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    try {
+        $devicePendingCount = (int)$db->query("SELECT COUNT(*) FROM device_switch_requests WHERE status = 'Pending'")->fetchColumn();
+        $devicePendingRows = $db->query("
+            SELECT dsr.id, dsr.requested_at, d.device_name, d.device_type, u.full_name AS requester_name
+            FROM device_switch_requests dsr
+            JOIN devices d ON d.id = dsr.device_id
+            JOIN users u ON u.id = dsr.requested_by
+            WHERE dsr.status = 'Pending'
+            ORDER BY dsr.requested_at DESC
+            LIMIT 5
+        ")->fetchAll(PDO::FETCH_ASSOC);
 
-    $pendingBuckets[] = [
-        'key' => 'device',
-        'label' => 'Device Requests',
-        'count' => $devicePendingCount,
-        'link' => $baseDir . '/modules/admin/devices.php',
-        'items' => $devicePendingRows
-    ];
-    foreach ($devicePendingRows as $row) {
-        $pendingFeed[] = [
-            'type' => 'Device',
-            'title' => trim((string)$row['device_name']) . ' (' . trim((string)$row['device_type']) . ')',
-            'user' => (string)($row['requester_name'] ?? 'Unknown'),
-            'requested_at' => (string)($row['requested_at'] ?? ''),
+        $pendingBuckets[] = [
+            'key' => 'device',
+            'label' => 'Device Requests',
+            'count' => $devicePendingCount,
             'link' => $baseDir . '/modules/admin/devices.php',
-            'action_kind' => 'device',
-            'request_id' => (int)($row['id'] ?? 0)
+            'items' => $devicePendingRows
         ];
+        foreach ($devicePendingRows as $row) {
+            $pendingFeed[] = [
+                'type' => 'Device',
+                'title' => trim((string)$row['device_name']) . ' (' . trim((string)$row['device_type']) . ')',
+                'user' => (string)($row['requester_name'] ?? 'Unknown'),
+                'requested_at' => (string)($row['requested_at'] ?? ''),
+                'link' => $baseDir . '/modules/admin/devices.php',
+                'action_kind' => 'device',
+                'request_id' => (int)($row['id'] ?? 0)
+            ];
+        }
+        $pendingTotalCount += $devicePendingCount;
+    } catch (Exception $e) {
+        error_log('dashboard pending device requests load failed: ' . $e->getMessage());
     }
-    $pendingTotalCount += $devicePendingCount;
-} catch (Exception $e) {
-    error_log('dashboard pending device requests load failed: ' . $e->getMessage());
-}
 
-try {
-    $hoursPendingCount = (int)$db->query("SELECT COUNT(*) FROM user_edit_requests WHERE status = 'pending'")->fetchColumn();
-    $hoursPendingRows = $db->query("
-        SELECT uer.id, uer.user_id, uer.req_date, uer.request_type, uer.created_at, u.full_name AS requester_name
-        FROM user_edit_requests uer
-        JOIN users u ON u.id = uer.user_id
-        WHERE uer.status = 'pending'
-        ORDER BY uer.created_at DESC
-        LIMIT 5
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    try {
+        $hoursPendingCount = (int)$db->query("SELECT COUNT(*) FROM user_edit_requests WHERE status = 'pending'")->fetchColumn();
+        $hoursPendingRows = $db->query("
+            SELECT uer.id, uer.user_id, uer.req_date, uer.request_type, uer.created_at, u.full_name AS requester_name
+            FROM user_edit_requests uer
+            JOIN users u ON u.id = uer.user_id
+            WHERE uer.status = 'pending'
+            ORDER BY uer.created_at DESC
+            LIMIT 5
+        ")->fetchAll(PDO::FETCH_ASSOC);
 
-    $pendingBuckets[] = [
-        'key' => 'hours',
-        'label' => 'Hours Log Requests',
-        'count' => $hoursPendingCount,
-        'link' => $baseDir . '/modules/admin/edit_requests.php',
-        'items' => $hoursPendingRows
-    ];
-    foreach ($hoursPendingRows as $row) {
-        $requestType = strtolower(trim((string)($row['request_type'] ?? 'edit'))) === 'delete' ? 'Delete' : 'Edit';
-        $pendingFeed[] = [
-            'type' => 'Hours',
-            'title' => $requestType . ' request for ' . (string)($row['req_date'] ?? '-'),
-            'user' => (string)($row['requester_name'] ?? 'Unknown'),
-            'requested_at' => (string)($row['created_at'] ?? ''),
+        $pendingBuckets[] = [
+            'key' => 'hours',
+            'label' => 'Hours Log Requests',
+            'count' => $hoursPendingCount,
             'link' => $baseDir . '/modules/admin/edit_requests.php',
-            'action_kind' => 'hours',
-            'request_id' => (int)($row['id'] ?? 0),
-            'user_id' => (int)($row['user_id'] ?? 0),
-            'req_date' => (string)($row['req_date'] ?? '')
+            'items' => $hoursPendingRows
         ];
+        foreach ($hoursPendingRows as $row) {
+            $requestType = strtolower(trim((string)($row['request_type'] ?? 'edit'))) === 'delete' ? 'Delete' : 'Edit';
+            $pendingFeed[] = [
+                'type' => 'Hours',
+                'title' => $requestType . ' request for ' . (string)($row['req_date'] ?? '-'),
+                'user' => (string)($row['requester_name'] ?? 'Unknown'),
+                'requested_at' => (string)($row['created_at'] ?? ''),
+                'link' => $baseDir . '/modules/admin/edit_requests.php',
+                'action_kind' => 'hours',
+                'request_id' => (int)($row['id'] ?? 0),
+                'user_id' => (int)($row['user_id'] ?? 0),
+                'req_date' => (string)($row['req_date'] ?? '')
+            ];
+        }
+        $pendingTotalCount += $hoursPendingCount;
+    } catch (Exception $e) {
+        error_log('dashboard pending hours requests load failed: ' . $e->getMessage());
     }
-    $pendingTotalCount += $hoursPendingCount;
-} catch (Exception $e) {
-    error_log('dashboard pending hours requests load failed: ' . $e->getMessage());
-}
 
-try {
-    $pendingEditsCount = (int)$db->query("SELECT COUNT(*) FROM user_pending_log_edits WHERE status = 'pending'")->fetchColumn();
-    $pendingBuckets[] = [
-        'key' => 'log_edits',
-        'label' => 'Pending Log Edit Items',
-        'count' => $pendingEditsCount,
-        'link' => $baseDir . '/modules/admin/edit_requests.php',
-        'items' => []
+    try {
+        $pendingEditsCount = (int)$db->query("SELECT COUNT(*) FROM user_pending_log_edits WHERE status = 'pending'")->fetchColumn();
+        $pendingBuckets[] = [
+            'key' => 'log_edits',
+            'label' => 'Pending Log Edit Items',
+            'count' => $pendingEditsCount,
+            'link' => $baseDir . '/modules/admin/edit_requests.php',
+            'items' => []
+        ];
+        $pendingTotalCount += $pendingEditsCount;
+    } catch (Exception $e) {
+        error_log('dashboard pending log edits load failed: ' . $e->getMessage());
+    }
+
+    try {
+        $pendingDeletesCount = (int)$db->query("SELECT COUNT(*) FROM user_pending_log_deletions WHERE status = 'pending'")->fetchColumn();
+        $pendingBuckets[] = [
+            'key' => 'log_deletes',
+            'label' => 'Pending Log Delete Items',
+            'count' => $pendingDeletesCount,
+            'link' => $baseDir . '/modules/admin/edit_requests.php',
+            'items' => []
+        ];
+        $pendingTotalCount += $pendingDeletesCount;
+    } catch (Exception $e) {
+        error_log('dashboard pending log deletions load failed: ' . $e->getMessage());
+    }
+
+    usort($pendingFeed, static function (array $a, array $b): int {
+        return strtotime((string)($b['requested_at'] ?? '')) <=> strtotime((string)($a['requested_at'] ?? ''));
+    });
+    $pendingFeed = array_slice($pendingFeed, 0, 8);
+
+    return [
+        'pendingBuckets' => $pendingBuckets,
+        'pendingFeed' => $pendingFeed,
+        'pendingTotalCount' => $pendingTotalCount
     ];
-    $pendingTotalCount += $pendingEditsCount;
-} catch (Exception $e) {
-    error_log('dashboard pending log edits load failed: ' . $e->getMessage());
 }
 
-try {
-    $pendingDeletesCount = (int)$db->query("SELECT COUNT(*) FROM user_pending_log_deletions WHERE status = 'pending'")->fetchColumn();
-    $pendingBuckets[] = [
-        'key' => 'log_deletes',
-        'label' => 'Pending Log Delete Items',
-        'count' => $pendingDeletesCount,
-        'link' => $baseDir . '/modules/admin/edit_requests.php',
-        'items' => []
-    ];
-    $pendingTotalCount += $pendingDeletesCount;
-} catch (Exception $e) {
-    error_log('dashboard pending log deletions load failed: ' . $e->getMessage());
-}
+$pendingData = loadPendingDashboardData($db, $baseDir);
+$pendingBuckets = $pendingData['pendingBuckets'];
+$pendingFeed = $pendingData['pendingFeed'];
+$pendingTotalCount = (int)$pendingData['pendingTotalCount'];
 
-usort($pendingFeed, static function (array $a, array $b): int {
-    return strtotime((string)($b['requested_at'] ?? '')) <=> strtotime((string)($a['requested_at'] ?? ''));
-});
-$pendingFeed = array_slice($pendingFeed, 0, 8);
+if (isset($_GET['action']) && $_GET['action'] === 'pending_requests_summary') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'pendingBuckets' => $pendingBuckets,
+        'pendingFeed' => $pendingFeed,
+        'pendingTotalCount' => $pendingTotalCount
+    ]);
+    exit;
+}
 $myDevicesStmt = $db->prepare("
     SELECT d.device_name, d.device_type, d.model, d.version, da.assigned_at
     FROM device_assignments da
@@ -325,7 +348,7 @@ include __DIR__ . '/../../includes/header.php';
             <h6 class="mb-0"><i class="fas fa-inbox"></i> Pending Requests (All Modules)</h6>
             <span class="badge bg-warning text-dark" id="pendingTotalBadge"><?php echo (int)$pendingTotalCount; ?> pending</span>
         </div>
-        <div class="card-body">
+        <div class="card-body" id="pendingRequestsContent">
             <?php if ((int)$pendingTotalCount === 0): ?>
                 <span class="text-muted">No pending requests right now.</span>
             <?php else: ?>
@@ -856,6 +879,122 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 <script>
+const pendingSummaryUrl = '<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/dashboard.php?action=pending_requests_summary';
+
+function escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function formatPendingTime(v) {
+    if (!v) return '-';
+    const d = new Date(v.replace(' ', 'T'));
+    if (Number.isNaN(d.getTime())) return '-';
+    return d.toLocaleString(undefined, { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function renderPendingRequests(data) {
+    const badge = document.getElementById('pendingTotalBadge');
+    if (badge) badge.textContent = (Number(data.pendingTotalCount || 0)) + ' pending';
+
+    const host = document.getElementById('pendingRequestsContent');
+    if (!host) return;
+
+    const total = Number(data.pendingTotalCount || 0);
+    const buckets = Array.isArray(data.pendingBuckets) ? data.pendingBuckets : [];
+    const feed = Array.isArray(data.pendingFeed) ? data.pendingFeed : [];
+
+    if (total === 0) {
+        host.innerHTML = '<span class="text-muted">No pending requests right now.</span>';
+        return;
+    }
+
+    let bucketsHtml = '';
+    buckets.forEach(function(bucket) {
+        const c = Number(bucket && bucket.count ? bucket.count : 0);
+        if (c <= 0) return;
+        const link = escapeHtml(bucket.link || '#');
+        const label = escapeHtml(bucket.label || 'Requests');
+        bucketsHtml += `
+            <div class="col-sm-6 col-xl-3">
+                <a href="${link}" class="text-decoration-none">
+                    <div class="border rounded p-2 h-100">
+                        <div class="small text-muted">${label}</div>
+                        <div class="h5 mb-0 text-dark">${c}</div>
+                    </div>
+                </a>
+            </div>
+        `;
+    });
+
+    let feedHtml = '';
+    feed.forEach(function(item) {
+        const actionKind = String(item.action_kind || '');
+        const requestId = Number(item.request_id || 0);
+        const userId = Number(item.user_id || 0);
+        const reqDate = escapeHtml(item.req_date || '');
+        const link = escapeHtml(item.link || '#');
+
+        let actionButtons = `<a href="${link}" class="btn btn-sm btn-outline-secondary">Open</a>`;
+        if (actionKind === 'device' && requestId > 0) {
+            actionButtons = `
+                <button type="button" class="btn btn-sm btn-success" onclick="respondDeviceRequestFromDashboard(${requestId}, 'approve')">Accept</button>
+                <button type="button" class="btn btn-sm btn-danger" onclick="respondDeviceRequestFromDashboard(${requestId}, 'reject')">Reject</button>
+                <a href="${link}" class="btn btn-sm btn-outline-secondary">Open</a>
+            `;
+        } else if (actionKind === 'hours' && requestId > 0) {
+            actionButtons = `
+                <button type="button" class="btn btn-sm btn-success" onclick="respondHoursRequestFromDashboard(${requestId}, ${userId}, '${reqDate}', 'approved')">Accept</button>
+                <button type="button" class="btn btn-sm btn-danger" onclick="respondHoursRequestFromDashboard(${requestId}, ${userId}, '${reqDate}', 'rejected')">Reject</button>
+                <a href="${link}" class="btn btn-sm btn-outline-secondary">Open</a>
+            `;
+        }
+
+        feedHtml += `
+            <div class="list-group-item"
+                 data-pending-item="1"
+                 data-action-kind="${escapeHtml(actionKind)}"
+                 data-request-id="${requestId}">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <span class="badge bg-secondary me-2">${escapeHtml(item.type || '')}</span>
+                        <strong>${escapeHtml(item.title || '')}</strong>
+                        <div class="small text-muted">Requested by ${escapeHtml(item.user || 'Unknown')}</div>
+                    </div>
+                    <small class="text-muted">${formatPendingTime(item.requested_at || '')}</small>
+                </div>
+                <div class="d-flex gap-2">${actionButtons}</div>
+            </div>
+        `;
+    });
+
+    host.innerHTML = `
+        <div class="row g-2 mb-3">${bucketsHtml || ''}</div>
+        ${feedHtml ? `<h6 class="mb-2">Latest Pending Requests</h6><div class="list-group">${feedHtml}</div>` : ''}
+    `;
+}
+
+function refreshPendingRequests() {
+    fetch(pendingSummaryUrl, {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' }
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+        if (data && data.success) {
+            renderPendingRequests(data);
+        }
+    })
+    .catch(function() {
+        // keep silent on dashboard polling failures
+    });
+}
+
 function removePendingFeedItem(actionKind, requestId) {
     var sel = '.list-group-item[data-pending-item="1"][data-action-kind="' + actionKind + '"][data-request-id="' + String(requestId) + '"]';
     var item = document.querySelector(sel);
@@ -914,6 +1053,7 @@ function respondDeviceRequestFromDashboard(requestId, action) {
         }, function(response) {
             if (response && response.success) {
                 showToast('Device request ' + (action === 'approve' ? 'accepted' : 'rejected') + '.', 'success');
+                refreshPendingRequests();
             } else {
                 if (typeof restoreItem === 'function') restoreItem();
                 showToast((response && response.message) ? response.message : 'Failed to process request', 'danger');
@@ -962,6 +1102,7 @@ function respondHoursRequestFromDashboard(requestId, userId, reqDate, action) {
                 throw new Error((payload && payload.message) ? payload.message : 'Request failed');
             }
             showToast('Hours request ' + (action === 'approved' ? 'accepted' : 'rejected') + '.', 'success');
+            refreshPendingRequests();
         })
         .catch(function(err) {
             if (typeof restoreItem === 'function') restoreItem();
@@ -973,5 +1114,9 @@ function respondHoursRequestFromDashboard(requestId, userId, reqDate, action) {
         confirmClass: action === 'approved' ? 'btn-success' : 'btn-danger'
     });
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    setInterval(refreshPendingRequests, 30000);
+});
 </script>
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

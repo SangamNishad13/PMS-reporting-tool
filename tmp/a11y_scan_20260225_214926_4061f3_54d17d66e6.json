@@ -1,0 +1,726 @@
+{
+  "success": true,
+  "url": "https://www.samcomf.com/help-support/about-samco-flexi-cap-fund/",
+  "summary": {
+    "issues": 3,
+    "critical": 0,
+    "serious": 2,
+    "moderate": 1,
+    "minor": 0
+  },
+  "findings": [
+    {
+      "rule_id": "color-contrast",
+      "title": "Elements must meet minimum color contrast ratio thresholds",
+      "severity": "serious",
+      "needs_review_severity": "Critical",
+      "wcag_sc": [
+        "1.4.3"
+      ],
+      "wcag_name": "Contrast (Minimum)",
+      "wcag_level": "AA",
+      "actual_results": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds\n\nURL: https://www.samcomf.com/help-support/about-samco-flexi-cap-fund/\n\nElement has insufficient color contrast of 2.84 (foreground color: #999999, background color: #ffffff, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1\n- \"Jan 24, 2022\" in \"About Samco Flexi Cap Fund\"\n- \"2 min read\" in \"About Samco Flexi Cap Fund\"\n\n\nElement has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1\n- \"NFO period\" in \"About Samco Flexi Cap Fund\"\n- \"Type of scheme\" in \"About Samco Flexi Cap Fund\"\n- \"Plans\" in \"About Samco Flexi Cap Fund\"\n- \"Minimum Application Amount of scheme\" in \"About Samco Flexi Cap Fund\"\n- \"Minimum Additional Application Amount\" in \"About Samco Flexi Cap Fund\"\n- \"Minimum SIP Amount\" in \"About Samco Flexi Cap Fund\"\n- \"Entry Load\" in \"About Samco Flexi Cap Fund\"\n- \"Exit Load\" in \"About Samco Flexi Cap Fund\"\n- \"Fund Manager\" in \"About Samco Flexi Cap Fund\"\n- \"Benchmark Index\" in \"About Samco Flexi Cap Fund\"\n\n\nElement has insufficient color contrast of 3.25 (foreground color: #1a91f8, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1\n- \"Help and Support\" in \"About Samco Flexi Cap Fund\"\n\n\nElement has insufficient color contrast of 2.84 (foreground color: #999999, background color: #ffffff, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1\n- \"Copyright © 2021 Samco Asset Management Private Ltd. | All Rights Reserved\" in Footer section\n",
+      "incorrect_code": "<time datetime=\"2022-01-24\">\n                        Jan 24, 2022\n                    </time>\n\n<div class=\"post-length\">2 min read</div>\n\n<span style=\"box-sizing: border-box;\">NFO period</span>\n\n<span style=\"box-sizing: border-box;\">Type of scheme</span>\n\n<span style=\"box-sizing: border-box;\">Plans</span>\n\n<span style=\"box-sizing: border-box;\">Minimum Application Amount of scheme</span>\n\n<span style=\"box-sizing: border-box;\">Minimum Additional Application Amount</span>\n\n<span style=\"box-sizing: border-box;\">Minimum SIP Amount</span>\n\n<span style=\"box-sizing: border-box;\">Entry Load</span>\n\n<span style=\"box-sizing: border-box;\">Exit Load</span>\n\n<span style=\"box-sizing: border-box;\">Fund Manager</span>\n\n<span style=\"box-sizing: border-box;\">Benchmark Index</span>\n\n<a href=\"https://www.samcomf.com/help-support/\" target=\"_blank\">Help and Support</a>\n\n<div class=\"copyright\">\n        Copyright © 2021 Samco Asset Management Private Ltd. | All Rights Reserved\n    </div>",
+      "screenshots": [
+        "1772036372706_color-contrast_1.png",
+        "1772036373023_color-contrast_2.png",
+        "1772036373306_color-contrast_3.png",
+        "1772036373618_color-contrast_4.png"
+      ],
+      "recommendation": "Adjust foreground/background colors so text and interactive controls meet WCAG 2 AA contrast thresholds (minimum 4.5:1 for normal text, 3:1 for large text).\n- Adjust text/background colors until contrast reaches at least 4.5:1 for normal text and 3:1 for large text.\n- Re-check hover/focus/visited states of links and buttons to keep contrast compliant in all states.",
+      "correct_code": "/* Adjust colors so text contrast meets WCAG AA */\n.text-on-bg {\n  color: #1a1a1a;\n  background-color: #ffffff;\n}\n\n/* Reference failing detail: Element has insufficient color contrast of 2.84 (foreground color: #999999, background color: #ffffff, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1 */",
+      "help_url": "",
+      "occurrence_count": 14,
+      "raw_nodes": [
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#999999",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.84,
+                "fontSize": "9.8pt (13px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<body class=\"post-template tag-about-samco-flexi-cap-fund\" data-aos-easing=\"ease\" data-aos-duration=\"400\" data-aos-delay=\"0\">",
+                  "target": [
+                    "body"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.84 (foreground color: #999999, background color: #ffffff, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<time datetime=\"2022-01-24\">\n                        Jan 24, 2022\n                    </time>",
+          "target": [
+            "time[datetime=\"2022-01-24\"]"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.84 (foreground color: #999999, background color: #ffffff, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#999999",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.84,
+                "fontSize": "9.8pt (13px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<body class=\"post-template tag-about-samco-flexi-cap-fund\" data-aos-easing=\"ease\" data-aos-duration=\"400\" data-aos-delay=\"0\">",
+                  "target": [
+                    "body"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.84 (foreground color: #999999, background color: #ffffff, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<div class=\"post-length\">2 min read</div>",
+          "target": [
+            ".post-header.medium > .post-meta > .post-meta-right > .post-meta-bottom > .post-length"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.84 (foreground color: #999999, background color: #ffffff, font size: 9.8pt (13px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#979797",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.92,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<table class=\"quick-table scheme-b...\" style=\"box-sizing: border-b...\">",
+                  "target": [
+                    "table"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<span style=\"box-sizing: border-box;\">NFO period</span>",
+          "target": [
+            "tr:nth-child(1) > td:nth-child(1) > .scheme-td > span"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#979797",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.92,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<table class=\"quick-table scheme-b...\" style=\"box-sizing: border-b...\">",
+                  "target": [
+                    "table"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<span style=\"box-sizing: border-box;\">Type of scheme</span>",
+          "target": [
+            "tr:nth-child(2) > td:nth-child(1) > .scheme-td > span"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#979797",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.92,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<table class=\"quick-table scheme-b...\" style=\"box-sizing: border-b...\">",
+                  "target": [
+                    "table"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<span style=\"box-sizing: border-box;\">Plans</span>",
+          "target": [
+            "tr:nth-child(3) > td:nth-child(1) > .scheme-td > span"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#979797",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.92,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<table class=\"quick-table scheme-b...\" style=\"box-sizing: border-b...\">",
+                  "target": [
+                    "table"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<span style=\"box-sizing: border-box;\">Minimum Application Amount of scheme</span>",
+          "target": [
+            "tr:nth-child(4) > td:nth-child(1) > .scheme-td > span"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#979797",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.92,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<table class=\"quick-table scheme-b...\" style=\"box-sizing: border-b...\">",
+                  "target": [
+                    "table"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<span style=\"box-sizing: border-box;\">Minimum Additional Application Amount</span>",
+          "target": [
+            "tr:nth-child(5) > td:nth-child(1) > .scheme-td > span"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#979797",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.92,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<table class=\"quick-table scheme-b...\" style=\"box-sizing: border-b...\">",
+                  "target": [
+                    "table"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<span style=\"box-sizing: border-box;\">Minimum SIP Amount</span>",
+          "target": [
+            "tr:nth-child(6) > td:nth-child(1) > .scheme-td > span"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#979797",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.92,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<table class=\"quick-table scheme-b...\" style=\"box-sizing: border-b...\">",
+                  "target": [
+                    "table"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<span style=\"box-sizing: border-box;\">Entry Load</span>",
+          "target": [
+            "tr:nth-child(7) > td:nth-child(1) > .scheme-td > span"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#979797",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.92,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<table class=\"quick-table scheme-b...\" style=\"box-sizing: border-b...\">",
+                  "target": [
+                    "table"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<span style=\"box-sizing: border-box;\">Exit Load</span>",
+          "target": [
+            "tr:nth-child(8) > td:nth-child(1) > .scheme-td > span"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#979797",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.92,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<table class=\"quick-table scheme-b...\" style=\"box-sizing: border-b...\">",
+                  "target": [
+                    "table"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<span style=\"box-sizing: border-box;\">Fund Manager</span>",
+          "target": [
+            "tr:nth-child(9) > td:nth-child(1) > .scheme-td > span"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#979797",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.92,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<table class=\"quick-table scheme-b...\" style=\"box-sizing: border-b...\">",
+                  "target": [
+                    "table"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<span style=\"box-sizing: border-box;\">Benchmark Index</span>",
+          "target": [
+            "tr:nth-child(10) > td:nth-child(1) > .scheme-td > span"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.92 (foreground color: #979797, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#1a91f8",
+                "bgColor": "#ffffff",
+                "contrastRatio": 3.25,
+                "fontSize": "12.0pt (16px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<body class=\"post-template tag-about-samco-flexi-cap-fund\" data-aos-easing=\"ease\" data-aos-duration=\"400\" data-aos-delay=\"0\">",
+                  "target": [
+                    "body"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 3.25 (foreground color: #1a91f8, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<a href=\"https://www.samcomf.com/help-support/\" target=\"_blank\">Help and Support</a>",
+          "target": [
+            "p:nth-child(10) > a[target=\"_blank\"]"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.25 (foreground color: #1a91f8, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1"
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#999999",
+                "bgColor": "#ffffff",
+                "contrastRatio": 2.84,
+                "fontSize": "10.5pt (14px)",
+                "fontWeight": "normal",
+                "messageKey": null,
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [
+                {
+                  "html": "<body class=\"post-template tag-about-samco-flexi-cap-fund\" data-aos-easing=\"ease\" data-aos-duration=\"400\" data-aos-delay=\"0\">",
+                  "target": [
+                    "body"
+                  ]
+                }
+              ],
+              "impact": "serious",
+              "message": "Element has insufficient color contrast of 2.84 (foreground color: #999999, background color: #ffffff, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<div class=\"copyright\">\n        Copyright © 2021 Samco Asset Management Private Ltd. | All Rights Reserved\n    </div>",
+          "target": [
+            ".copyright"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.84 (foreground color: #999999, background color: #ffffff, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+        }
+      ]
+    },
+    {
+      "rule_id": "heading-order",
+      "title": "Heading levels should only increase by one",
+      "severity": "moderate",
+      "needs_review_severity": "Major",
+      "wcag_sc": [],
+      "wcag_name": "Headings and Labels",
+      "wcag_level": "",
+      "actual_results": "Ensure the order of headings is semantically correct\n\nURL: https://www.samcomf.com/help-support/about-samco-flexi-cap-fund/\n\nHeading order invalid\n- \"#about-samco-flexi-cap-fund\" in \"About Samco Flexi Cap Fund\"\n",
+      "incorrect_code": "<h3 id=\"about-samco-flexi-cap-fund\">About Samco Flexi Cap Fund:</h3>",
+      "screenshots": [
+        "1772036374012_heading-order_5.png"
+      ],
+      "recommendation": "Use a logical heading hierarchy (h1 to h6) without skipping levels.\n- Review affected elements and apply semantic HTML updates required by this rule.\n- Retest after fixes and verify no violations remain.",
+      "correct_code": "<h2 id=\"about-samco-flexi-cap-fund\">About Samco Flexi Cap Fund:</h2>",
+      "help_url": "",
+      "occurrence_count": 1,
+      "raw_nodes": [
+        {
+          "any": [
+            {
+              "id": "heading-order",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "moderate",
+              "message": "Heading order invalid"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "moderate",
+          "html": "<h3 id=\"about-samco-flexi-cap-fund\">About Samco Flexi Cap Fund:</h3>",
+          "target": [
+            "#about-samco-flexi-cap-fund"
+          ],
+          "failureSummary": "Fix any of the following:\n  Heading order invalid"
+        }
+      ]
+    },
+    {
+      "rule_id": "link-name",
+      "title": "Links must have discernible text",
+      "severity": "serious",
+      "needs_review_severity": "Critical",
+      "wcag_sc": [
+        "2.4.4",
+        "4.1.2"
+      ],
+      "wcag_name": "Link Purpose (In Context)",
+      "wcag_level": "A",
+      "actual_results": "Ensure links have discernible text\n\nURL: https://www.samcomf.com/help-support/about-samco-flexi-cap-fund/\n\nAccessible name is missing. Add a visible label/text, or provide <code>aria-label</code>, <code>aria-labelledby</code>, or <code>title</code> as appropriate.\n- \"a\" in \"About Samco Flexi Cap Fund\"\n- \"a\" in \"What is the minimum Lock-in Samco Flexi Cap Fund?\"\n- \"a\" in \"What is the minimum SIP amount I can invest in Samco Flexi Cap Fund?\"\n",
+      "incorrect_code": "<a href=\"https://support.samcomf.com/\">\n                        <img src=\"/help-support/assets/images/raise-a-ticket.gif?v=e6586acf4e\" alt=\"\">    \n                    </a>\n\n<a class=\"post-link u-permalink\" href=\"/help-support/what-is-the-minimum-lock-in-samco-flexi-cap-fund/\"></a>\n\n<a class=\"post-link u-permalink\" href=\"/help-support/how-much-sip-can-i-start-in-samco-flexi-cap-fund/\"></a>",
+      "screenshots": [
+        "1772036374328_link-name_6.png"
+      ],
+      "recommendation": "Give every link an accessible name that clearly describes its destination or action.\n- Ensure each link has clear, unique visible text describing destination/action.\n- Avoid generic labels like \"click here\" or \"read more\" without context.\n- Reference: https://www.w3.org/WAI/ARIA/apg/patterns/link/",
+      "correct_code": "<a href=\"https://support.samcomf.com/\">Descriptive link text</a>\n\n<a href=\"/help-support/what-is-the-minimum-lock-in-samco-flexi-cap-fund/\">Descriptive link text</a>\n\n<a href=\"/help-support/how-much-sip-can-i-start-in-samco-flexi-cap-fund/\">Descriptive link text</a>",
+      "help_url": "",
+      "occurrence_count": 3,
+      "raw_nodes": [
+        {
+          "any": [
+            {
+              "id": "has-visible-text",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element does not have text that is visible to screen readers"
+            },
+            {
+              "id": "aria-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-label attribute does not exist or is empty"
+            },
+            {
+              "id": "aria-labelledby",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty"
+            },
+            {
+              "id": "non-empty-title",
+              "data": {
+                "messageKey": "noAttr"
+              },
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element has no title attribute"
+            }
+          ],
+          "all": [],
+          "none": [
+            {
+              "id": "focusable-no-name",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element is in tab order and does not have accessible text"
+            }
+          ],
+          "impact": "serious",
+          "html": "<a href=\"https://support.samcomf.com/\">\n                        <img src=\"/help-support/assets/images/raise-a-ticket.gif?v=e6586acf4e\" alt=\"\">    \n                    </a>",
+          "target": [
+            "a[href$=\"support.samcomf.com/\"]"
+          ],
+          "failureSummary": "Fix all of the following:\n  Element is in tab order and does not have accessible text\n\nFix any of the following:\n  Element does not have text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute"
+        },
+        {
+          "any": [
+            {
+              "id": "has-visible-text",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element does not have text that is visible to screen readers"
+            },
+            {
+              "id": "aria-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-label attribute does not exist or is empty"
+            },
+            {
+              "id": "aria-labelledby",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty"
+            },
+            {
+              "id": "non-empty-title",
+              "data": {
+                "messageKey": "noAttr"
+              },
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element has no title attribute"
+            }
+          ],
+          "all": [],
+          "none": [
+            {
+              "id": "focusable-no-name",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element is in tab order and does not have accessible text"
+            }
+          ],
+          "impact": "serious",
+          "html": "<a class=\"post-link u-permalink\" href=\"/help-support/what-is-the-minimum-lock-in-samco-flexi-cap-fund/\"></a>",
+          "target": [
+            ".u-hover-item:nth-child(1) > .post-link.u-permalink"
+          ],
+          "failureSummary": "Fix all of the following:\n  Element is in tab order and does not have accessible text\n\nFix any of the following:\n  Element does not have text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute"
+        },
+        {
+          "any": [
+            {
+              "id": "has-visible-text",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element does not have text that is visible to screen readers"
+            },
+            {
+              "id": "aria-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-label attribute does not exist or is empty"
+            },
+            {
+              "id": "aria-labelledby",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty"
+            },
+            {
+              "id": "non-empty-title",
+              "data": {
+                "messageKey": "noAttr"
+              },
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element has no title attribute"
+            }
+          ],
+          "all": [],
+          "none": [
+            {
+              "id": "focusable-no-name",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element is in tab order and does not have accessible text"
+            }
+          ],
+          "impact": "serious",
+          "html": "<a class=\"post-link u-permalink\" href=\"/help-support/how-much-sip-can-i-start-in-samco-flexi-cap-fund/\"></a>",
+          "target": [
+            ".u-hover-item:nth-child(2) > .post-link.u-permalink"
+          ],
+          "failureSummary": "Fix all of the following:\n  Element is in tab order and does not have accessible text\n\nFix any of the following:\n  Element does not have text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute"
+        }
+      ]
+    }
+  ]
+}

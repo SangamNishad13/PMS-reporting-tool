@@ -6,10 +6,10 @@
 
 :root {
     /* --- Palette: Slate & Blue Professional --- */
-    --primary: #0f6cbf;
+    --primary: #0755C6;
     /* Strong professional blue */
-    --primary-hover: #0a559b;
-    --primary-subtle: #e0f0ff;
+    --primary-hover: #0647a7;
+    --primary-subtle: #dceafe;
 
     --secondary: #475569;
     /* Slate 600 */
@@ -71,6 +71,10 @@ body,
     /* 14px base for compactness */
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+}
+
+body.app-shell {
+    padding-top: 72px;
 }
 
 /* --- Accessibility: Global High Contrast Focus --- */
@@ -189,21 +193,42 @@ main,
     background: #1e293b !important;
     /* Slate 800 */
     border-bottom: 2px solid var(--primary);
-    padding-top: var(--space-xs);
-    padding-bottom: var(--space-xs);
-    /* Reduce vertical height */
+    height: 75px;
+    padding-top: 2px;
+    padding-bottom: 2px;
     box-shadow: var(--shadow-md);
+}
+
+.navbar.sticky-top {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    z-index: 1050 !important;
 }
 
 .navbar-brand {
     font-size: 1.1rem;
     font-weight: 700;
+    padding-top: 0;
+    padding-bottom: 0;
+    line-height: 1;
+    margin-bottom: 0;
+}
+
+.brand-logo {
+    height: 65px;
+    min-height: 65px;
+    width: auto;
+    object-fit: contain;
+    display: block;
 }
 
 .nav-link {
     font-size: 0.85rem;
     font-weight: 500;
-    padding: var(--space-xs) var(--space-sm) !important;
+    padding: 0.2rem var(--space-sm) !important;
     border-radius: var(--radius-sm) !important;
     transition: background 0.15s;
 }

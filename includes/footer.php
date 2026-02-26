@@ -1,6 +1,6 @@
     </main>
     </div>
-    <div class="mt-auto py-3 border-top text-center text-white small" style="background-color: #0f6cbf !important; background-color: var(--primary) !important;">
+    <div class="mt-auto py-3 border-top text-center text-white small" style="background-color: #0755C6 !important; background-color: var(--primary) !important;">
         <div class="container-fluid">
             &copy; <?php echo date('Y'); ?> PMS. All rights reserved.
         </div>
@@ -14,7 +14,7 @@
     ?>
     <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
-    <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/script.js"></script>
+    <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/script.js?v=20260225v2"></script>
     <script>
     $(document).ready(function() {
         $(document).on('click', '.status-update-link', function(e) {
