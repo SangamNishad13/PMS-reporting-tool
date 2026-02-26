@@ -80,6 +80,30 @@ if (stripos($pageTitle, 'PMS') === false) {
         right: auto !important;
         padding: 0 !important;
     }
+    .notification-dropdown-menu {
+        width: min(92vw, 380px) !important;
+        max-height: 70vh !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        padding-bottom: 0;
+    }
+    .notification-dropdown-menu .dropdown-header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }
+    .notification-dropdown-menu .dropdown-item {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        line-height: 1.35;
+    }
+    .notification-dropdown-menu #notificationsContent li + li .dropdown-item {
+        border-top: 1px solid #eef2f7;
+    }
+    .notification-item .notification-time {
+        font-size: 0.72rem;
+    }
     </style>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -524,16 +548,16 @@ if (stripos($pageTitle, 'PMS') === false) {
                                     <i class="far fa-bell fa-lg"></i>
                                     <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none" style="font-size: 0.6rem; padding: 0.25em 0.4em;" id="notificationCount">0</span>
                                 </a>
-                                <ul class="dropdown-menu dropdown-menu-end shadow border-0" aria-labelledby="notificationDropdown" style="width: 320px; max-height: 480px; overflow-y: auto;">
+                                <ul class="dropdown-menu dropdown-menu-end shadow border-0 notification-dropdown-menu" aria-labelledby="notificationDropdown">
                                     <li class="dropdown-header py-2 d-flex justify-content-between align-items-center bg-light">
                                         <span class="fw-bold text-dark">Notifications</span>
                                         <a href="#" id="markAllRead" class="text-decoration-none small">Mark all read</a>
                                     </li>
-                                    <div id="notificationsContent">
+                                    <div id="notificationsContent" class="mb-0">
                                         <li><span class="dropdown-item text-muted small py-3 text-center">No new notifications</span></li>
                                     </div>
                                     <li><hr class="dropdown-divider m-0"></li>
-                                    <li><a class="dropdown-item text-center small text-primary py-2" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/notifications.php">View History</a></li>
+                                    <li><a class="dropdown-item text-center small text-primary py-2 fw-semibold" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/notifications.php">View History</a></li>
                                 </ul>
                             </li>
 
@@ -610,8 +634,8 @@ if (stripos($pageTitle, 'PMS') === false) {
                                         <div class="d-flex align-items-start">
                                             <i class="fas ${icon} text-primary me-2 mt-1"></i>
                                             <div class="flex-grow-1">
-                                                <div class="small">${escapeHtml(notif.message)}</div>
-                                                <div class="text-muted" style="font-size: 0.7rem;">${notif.time_ago}</div>
+                                                <div class="notification-message small mb-1">${escapeHtml(notif.message)}</div>
+                                                <div class="notification-time text-muted">${notif.time_ago}</div>
                                             </div>
                                         </div>
                                     </a>
