@@ -18,7 +18,22 @@ $userId = $_SESSION['user_id'];
 $isAdmin = hasAdminPrivileges();
 $db = Database::getInstance();
 $baseDir = getBaseDir();
+if (!function_exists('setMyDailyStatusToast')) {
+    function setMyDailyStatusToast($type, $message) {
+        $_SESSION['my_daily_status_toast'] = [
+            'type' => ($type === 'success') ? 'success' : 'danger',
+            'message' => (string)$message
+        ];
+    }
+}
 $date = $_POST['date'] ?? $_GET['date'] ?? date('Y-m-d');
+try {
+    $productionLogRequestToken = bin2hex(random_bytes(16));
+    $benchLogRequestToken = bin2hex(random_bytes(16));
+} catch (Exception $e) {
+    $productionLogRequestToken = md5(uniqid('prod_log_', true));
+    $benchLogRequestToken = md5(uniqid('bench_log_', true));
+}
 $availabilityStatuses = getAvailabilityStatusOptions(false);
 $availabilityStatusKeys = array_values(array_unique(array_map(static function ($row) {
     return strtolower((string)($row['status_key'] ?? ''));
@@ -174,6 +189,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'request_edit') {
         foreach ($admins as $admin) {
             createNotification($db, (int)$admin['id'], 'edit_request', $msg, $link);
         }
+        createNotification($db, (int)$userId, 'edit_request', "Your edit request for {$reqDate} was submitted to admin.", "/modules/notifications.php?filter=edit_request");
         
         header('Content-Type: application/json');
         echo json_encode(['success' => true, 'message' => 'Edit request sent to ' . count($admins) . ' admin(s)']);
@@ -471,6 +487,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
         }
 
         $_SESSION['success'] = "Status updated successfully.";
+        setMyDailyStatusToast('success', 'Status updated successfully.');
         header("Location: " . getBaseDir() . "/modules/admin/calendar.php");
         exit;
     }
@@ -498,6 +515,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
                 exit;
             }
             $_SESSION['error'] = 'Cannot update past dates without admin approval.';
+            setMyDailyStatusToast('danger', 'Cannot update past dates without admin approval.');
             header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
             exit;
         }
@@ -546,6 +564,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     }
 
     $_SESSION['success'] = "Status updated successfully.";
+    setMyDailyStatusToast('success', 'Status updated successfully.');
     header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
     exit;
 }
@@ -569,6 +588,25 @@ if ($isTimeLogPost) {
     $projectId = isset($_POST['project_id']) ? intval($_POST['project_id']) : 0;
     $hours = floatval($_POST['hours_spent']);
     $desc = $_POST['description'];
+    $logRequestToken = trim((string)($_POST['log_request_token'] ?? ''));
+    if (!isset($_SESSION['my_daily_status_log_tokens']) || !is_array($_SESSION['my_daily_status_log_tokens'])) {
+        $_SESSION['my_daily_status_log_tokens'] = [];
+    }
+    $logTokenStore = $_SESSION['my_daily_status_log_tokens'];
+    $tokenTtlSeconds = 20 * 60;
+    $nowTs = time();
+    foreach ($logTokenStore as $tokenKey => $tokenTs) {
+        if (!is_string($tokenKey) || !is_numeric($tokenTs) || ((int)$tokenTs + $tokenTtlSeconds) < $nowTs) {
+            unset($logTokenStore[$tokenKey]);
+        }
+    }
+    if ($logRequestToken !== '' && isset($logTokenStore[$logRequestToken])) {
+        $_SESSION['success'] = "Hours already logged. Duplicate request ignored.";
+        setMyDailyStatusToast('success', 'Hours already logged. Duplicate request ignored.');
+        $_SESSION['my_daily_status_log_tokens'] = $logTokenStore;
+        header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+        exit;
+    }
     $isBenchRequest = (isset($_POST['bench_activity']) && trim((string)$_POST['bench_activity']) !== '');
     $taskTypeInput = trim((string)($_POST['task_type'] ?? ''));
     $taskTypeMap = [
@@ -653,9 +691,11 @@ if ($isTimeLogPost) {
     $issueId = isset($_POST['issue_id']) && $_POST['issue_id'] !== '' ? intval($_POST['issue_id']) : null;
     
     if ($projectId <= 0) {
-        $_SESSION['error'] = $isBenchRequest
+        $projectErr = $isBenchRequest
             ? "Unable to log off-production hours: OFF-PROD project was not found. Create or activate an OFF-PROD project first."
             : "Unable to log hours: project is not selected.";
+        $_SESSION['error'] = $projectErr;
+        setMyDailyStatusToast('danger', $projectErr);
         header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
         exit;
     }
@@ -760,8 +800,10 @@ if ($isTimeLogPost) {
                 foreach ($admins as $admin) {
                     createNotification($db, (int)$admin['id'], 'edit_request', $msg, $link);
                 }
+                createNotification($db, (int)$userId, 'edit_request', "Your time log edit request for {$date} was submitted to admin.", "/modules/notifications.php?filter=edit_request");
 
                 $_SESSION['success'] = "Edit request sent to admin for approval. Your log will be applied after approval.";
+                setMyDailyStatusToast('success', 'Edit request sent to admin for approval. Your log will be applied after approval.');
                 header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
                 exit;
             }
@@ -939,7 +981,12 @@ if ($isTimeLogPost) {
         }
         
         $db->commit();
+        if ($logRequestToken !== '') {
+            $logTokenStore[$logRequestToken] = $nowTs;
+            $_SESSION['my_daily_status_log_tokens'] = $logTokenStore;
+        }
         $_SESSION['success'] = "Time logged successfully and project hours updated.";
+        setMyDailyStatusToast('success', 'Time logged successfully and project hours updated.');
         
     } catch (Exception $e) {
         try {
@@ -949,7 +996,9 @@ if ($isTimeLogPost) {
         } catch (Exception $rollbackError) {
             // Ignore rollback errors and keep original exception message for user feedback.
         }
-        $_SESSION['error'] = "Error logging time: " . $e->getMessage();
+        $timeLogErr = "Error logging time: " . $e->getMessage();
+        $_SESSION['error'] = $timeLogErr;
+        setMyDailyStatusToast('danger', $timeLogErr);
     }
     
     header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
@@ -964,12 +1013,18 @@ if (isset($_GET['delete_log_request'])) {
             header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date&delete_log=$logId");
             exit;
         }
+        $today = date('Y-m-d');
+        if ($date === $today) {
+            header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date&delete_log=$logId");
+            exit;
+        }
         try {
             $logStmt = $db->prepare("SELECT id FROM project_time_logs WHERE id = ? AND user_id = ? AND log_date = ? LIMIT 1");
             $logStmt->execute([$logId, $userId, $date]);
             $existing = $logStmt->fetch(PDO::FETCH_ASSOC);
             if (!$existing) {
                 $_SESSION['error'] = "Log not found for selected date.";
+                setMyDailyStatusToast('danger', 'Log not found for selected date.');
                 header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
                 exit;
             }
@@ -998,10 +1053,13 @@ if (isset($_GET['delete_log_request'])) {
             foreach ($admins as $admin) {
                 createNotification($db, (int)$admin['id'], 'edit_request', $msg, $link);
             }
+            createNotification($db, (int)$userId, 'edit_request', "Your deletion request for {$date} (Log ID: {$logId}) was submitted to admin.", "/modules/notifications.php?filter=edit_request");
 
             $_SESSION['success'] = "Deletion request sent to admin for approval.";
+            setMyDailyStatusToast('success', 'Deletion request sent to admin for approval.');
         } catch (Exception $e) {
             $_SESSION['error'] = "Failed to send deletion request: " . $e->getMessage();
+            setMyDailyStatusToast('danger', "Failed to send deletion request: " . $e->getMessage());
         }
     }
     header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
@@ -1141,6 +1199,7 @@ if (isset($_GET['edit_log_request'])) {
             foreach ($admins as $admin) {
                 createNotification($db, (int)$admin['id'], 'edit_request', $msg, $link);
             }
+            createNotification($db, (int)$userId, 'edit_request', "Your log edit request for {$date} (Log ID: {$logId}) was submitted to admin.", "/modules/notifications.php?filter=edit_request");
 
             $_SESSION['success'] = "Edit request sent to admin for approval.";
         } catch (Exception $e) {
@@ -1152,35 +1211,21 @@ if (isset($_GET['edit_log_request'])) {
 }
 
 if (isset($_GET['delete_log'])) {
-    $logId = $_GET['delete_log'];
-    if (!$isAdmin) {
-        $_SESSION['error'] = 'Delete request must be approved by admin.';
+    $logId = (int)$_GET['delete_log'];
+    if ($logId <= 0) {
+        $_SESSION['error'] = 'Invalid log selected for deletion.';
+        setMyDailyStatusToast('danger', 'Invalid log selected for deletion.');
         header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
         exit;
     }
-    // Prevent deletion for any past date unless admin or approved request
-    $canDelete = true;
     if (!$isAdmin) {
         $today = date('Y-m-d');
-        // Any date before today requires approved edit request
-        if ($date < $today) {
-            $reqCheck = $db->prepare("
-                SELECT status
-                FROM user_edit_requests
-                WHERE user_id = ?
-                  AND req_date = ?
-                  AND status = 'approved'
-                  AND (reason IS NULL OR reason NOT LIKE 'Deletion request for time log ID %')
-            ");
-            $reqCheck->execute([$userId, $date]);
-            $approved = $reqCheck->fetch(PDO::FETCH_ASSOC);
-            if (!$approved) $canDelete = false;
+        if ($date !== $today) {
+            $_SESSION['error'] = 'Only today\'s logs can be deleted directly. Please send a deletion request for past dates.';
+            setMyDailyStatusToast('danger', 'Only today\'s logs can be deleted directly. Please send a deletion request for past dates.');
+            header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+            exit;
         }
-    }
-    if (!$canDelete) {
-        $_SESSION['error'] = 'Cannot delete logs for past dates without admin approval request.';
-        header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
-        exit;
     }
 
     try {
@@ -1208,8 +1253,10 @@ if (isset($_GET['delete_log'])) {
                 ], JSON_UNESCAPED_UNICODE)
             ]);
             $_SESSION['success'] = "Log deleted.";
+            setMyDailyStatusToast('success', 'Log deleted.');
         } else {
             $_SESSION['error'] = "Log not found.";
+            setMyDailyStatusToast('danger', 'Log not found.');
         }
 
         $db->commit();
@@ -1218,6 +1265,7 @@ if (isset($_GET['delete_log'])) {
             $db->rollBack();
         }
         $_SESSION['error'] = "Error deleting log: " . $e->getMessage();
+        setMyDailyStatusToast('danger', "Error deleting log: " . $e->getMessage());
     }
     header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
     exit;
@@ -1508,23 +1556,29 @@ if ($offProdProjectId <= 0) {
 // If OFF-PROD is not showing up for some reason (e.g. status), check the DB. 
 // We inserted OFF-PROD with 'in_progress'.
 
+$myDailyToast = $_SESSION['my_daily_status_toast'] ?? null;
+if (isset($_SESSION['my_daily_status_toast'])) {
+    unset($_SESSION['my_daily_status_toast']);
+}
+
 include __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="container-fluid">
-    <?php if (!empty($_SESSION['success'])): ?>
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    <?php endif; ?>
-    <?php if (!empty($_SESSION['error'])): ?>
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    <?php endif; ?>
-
+    <script>
+    (function () {
+        var toastData = <?php echo json_encode($myDailyToast, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+        if (!toastData || !toastData.message) return;
+        function fireToast() {
+            if (typeof window.showToast !== 'function') return false;
+            window.showToast(toastData.message, toastData.type || 'info');
+            return true;
+        }
+        if (!fireToast()) {
+            setTimeout(fireToast, 120);
+        }
+    })();
+    </script>
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2>Daily Status & Time Log</h2>
         <div>
@@ -1630,6 +1684,7 @@ include __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="card-body">
                     <form method="POST" class="row align-items-end mb-4" id="logProductionHoursForm">
+                        <input type="hidden" name="log_request_token" value="<?php echo htmlspecialchars($productionLogRequestToken, ENT_QUOTES, 'UTF-8'); ?>">
                         <div class="col-md-3">
                             <label>Project</label>
                             <select name="project_id" class="form-select" required>
@@ -1902,6 +1957,7 @@ include __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="card-body">
                     <form method="POST" class="row align-items-end mb-4" id="logBenchHoursForm">
+                        <input type="hidden" name="log_request_token" value="<?php echo htmlspecialchars($benchLogRequestToken, ENT_QUOTES, 'UTF-8'); ?>">
                         <input type="hidden" name="project_id" value="<?php echo (int)$offProdProjectId; ?>">
                         <div class="col-md-4">
                             <label>Activity Type</label>
@@ -2700,7 +2756,9 @@ document.addEventListener('DOMContentLoaded', function(){
                 return;
             }
             bodyEl.innerHTML = mode === 'bench' ? buildBenchPreview(form) : buildProductionPreview(form);
+            confirmBtn.disabled = false;
             confirmBtn.onclick = function () {
+                confirmBtn.disabled = true;
                 form.dataset.previewApproved = '1';
                 try {
                     var inst = bootstrap.Modal.getOrCreateInstance(modalEl);
@@ -2739,16 +2797,19 @@ echo json_encode(
 
 function handleDeleteLog(logId, dateStr) {
     var isAdmin = <?php echo $isAdmin ? 'true' : 'false'; ?>;
-    var msg = isAdmin
+    var todayStr = '<?php echo date('Y-m-d'); ?>';
+    var isToday = String(dateStr || '') === todayStr;
+    var directDelete = isAdmin || isToday;
+    var msg = directDelete
         ? 'Delete this log?'
         : 'Log deletion requires admin approval. A request will be sent to admin. Do you still want to delete?';
     confirmModal(msg, function() {
-        var key = isAdmin ? 'delete_log' : 'delete_log_request';
+        var key = directDelete ? 'delete_log' : 'delete_log_request';
         window.location.href = '?date=' + encodeURIComponent(dateStr) + '&' + key + '=' + encodeURIComponent(logId);
     }, {
-        title: isAdmin ? 'Delete Log' : 'Request Deletion Approval',
-        confirmText: isAdmin ? 'Delete' : 'Send Request',
-        confirmClass: isAdmin ? 'btn-danger' : 'btn-primary'
+        title: directDelete ? 'Delete Log' : 'Request Deletion Approval',
+        confirmText: directDelete ? 'Delete' : 'Send Request',
+        confirmClass: directDelete ? 'btn-danger' : 'btn-primary'
     });
     return false;
 }

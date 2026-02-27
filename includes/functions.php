@@ -198,24 +198,38 @@ if (!function_exists('ensureAvailabilityStatusMaster')) {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ");
 
-            $seedRows = [
-                ['not_updated', 'Not Updated', 'secondary', 'No status update submitted yet', 0],
-                ['available', 'Available', 'success', 'Available for work', 10],
-                ['working', 'Working', 'primary', 'Actively working', 20],
-                ['busy', 'Busy / In Meeting', 'warning', 'Busy or in a meeting', 30],
-                ['on_leave', 'On Leave', 'danger', 'On planned leave', 40],
-                ['sick_leave', 'Sick Leave', 'danger', 'Out due to sickness', 50]
-            ];
+            $existingCount = (int)$db->query("SELECT COUNT(*) FROM availability_status_master")->fetchColumn();
 
-            $seedStmt = $db->prepare("
-                INSERT INTO availability_status_master
-                    (status_key, status_label, badge_color, description, display_order, is_active)
-                VALUES (?, ?, ?, ?, ?, 1)
-                ON DUPLICATE KEY UPDATE
-                    status_key = status_key
-            ");
-            foreach ($seedRows as $row) {
-                $seedStmt->execute($row);
+            if ($existingCount === 0) {
+                $seedRows = [
+                    ['not_updated', 'Not Updated', 'secondary', 'No status update submitted yet', 0],
+                    ['available', 'Available', 'success', 'Available for work', 10],
+                    ['working', 'Working', 'primary', 'Actively working', 20],
+                    ['busy', 'Busy / In Meeting', 'warning', 'Busy or in a meeting', 30],
+                    ['on_leave', 'On Leave', 'danger', 'On planned leave', 40],
+                    ['sick_leave', 'Sick Leave', 'danger', 'Out due to sickness', 50]
+                ];
+
+                $seedStmt = $db->prepare("
+                    INSERT INTO availability_status_master
+                        (status_key, status_label, badge_color, description, display_order, is_active)
+                    VALUES (?, ?, ?, ?, ?, 1)
+                    ON DUPLICATE KEY UPDATE
+                        status_key = status_key
+                ");
+                foreach ($seedRows as $row) {
+                    $seedStmt->execute($row);
+                }
+            } else {
+                // Keep core fallback status present without re-seeding all defaults every load.
+                $notUpdatedStmt = $db->prepare("
+                    INSERT INTO availability_status_master
+                        (status_key, status_label, badge_color, description, display_order, is_active)
+                    VALUES ('not_updated', 'Not Updated', 'secondary', 'No status update submitted yet', 0, 1)
+                    ON DUPLICATE KEY UPDATE
+                        status_key = status_key
+                ");
+                $notUpdatedStmt->execute();
             }
         } catch (Exception $e) {
             // Keep call-sites resilient; they will use fallback options.

@@ -262,7 +262,7 @@ try {
                                         $messageText = htmlspecialchars($msg['message']);
                                         // Highlight mentions
                                         $messageText = preg_replace(
-                                            '/@(\w+)/',
+                                            '/@([A-Za-z0-9._-]+)/',
                                             '<span class="mention">@$1</span>',
                                             $messageText
                                         );

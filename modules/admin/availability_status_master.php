@@ -86,28 +86,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($statusKey === 'not_updated') {
                     $_SESSION['error'] = 'Not Updated status cannot be deleted.';
                 } else {
-                    $usageCount = 0;
-                    $usageStmt = $db->prepare('SELECT COUNT(*) FROM user_daily_status WHERE status = ?');
-                    $usageStmt->execute([$statusKey]);
-                    $usageCount += (int)$usageStmt->fetchColumn();
+                    $db->beginTransaction();
+                    $remappedRows = 0;
 
+                    // Remap existing daily-status data to a safe fallback before deletion.
+                    $mapDailyStmt = $db->prepare("UPDATE user_daily_status SET status = 'not_updated' WHERE status = ?");
+                    $mapDailyStmt->execute([$statusKey]);
+                    $remappedRows += (int)$mapDailyStmt->rowCount();
+
+                    // Optional table in some deployments; ignore if unavailable.
                     try {
-                        $pendingUsageStmt = $db->prepare('SELECT COUNT(*) FROM user_pending_changes WHERE status = ?');
-                        $pendingUsageStmt->execute([$statusKey]);
-                        $usageCount += (int)$pendingUsageStmt->fetchColumn();
+                        $mapPendingStmt = $db->prepare("UPDATE user_pending_changes SET status = 'not_updated' WHERE status = ?");
+                        $mapPendingStmt->execute([$statusKey]);
+                        $remappedRows += (int)$mapPendingStmt->rowCount();
                     } catch (Exception $e) {
                         // user_pending_changes may not exist in older setups.
                     }
 
-                    if ($usageCount > 0) {
-                        $_SESSION['error'] = 'Cannot delete status because it is currently in use.';
+                    $delStmt = $db->prepare('DELETE FROM availability_status_master WHERE id = ?');
+                    $delStmt->execute([$id]);
+
+                    if ((int)$delStmt->rowCount() > 0) {
+                        $db->commit();
+                        $suffix = $remappedRows > 0 ? (" (" . $remappedRows . " record(s) remapped to Not Updated).") : '';
+                        $_SESSION['success'] = 'Availability status deleted successfully.' . $suffix;
                     } else {
-                        $delStmt = $db->prepare('DELETE FROM availability_status_master WHERE id = ?');
-                        $delStmt->execute([$id]);
-                        $_SESSION['success'] = 'Availability status deleted successfully.';
+                        if ($db->inTransaction()) $db->rollBack();
+                        $_SESSION['error'] = 'Status not found or already deleted.';
                     }
                 }
             } catch (Exception $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
                 $_SESSION['error'] = 'Failed to delete status.';
             }
         }
@@ -125,20 +136,6 @@ include __DIR__ . '/../../includes/header.php';
 ?>
 
 <div class="container-fluid mt-4">
-    <?php if (isset($_SESSION['success'])): ?>
-        <div class="alert alert-success alert-dismissible fade show">
-            <?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    <?php endif; ?>
-
-    <?php if (isset($_SESSION['error'])): ?>
-        <div class="alert alert-danger alert-dismissible fade show">
-            <?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    <?php endif; ?>
-
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <div>

@@ -151,7 +151,7 @@ function handlePostChat() {
     
     // Parse mentions
     $mentions = [];
-    preg_match_all('/@(\w+)/', $message, $matches);
+    preg_match_all('/@([A-Za-z0-9._-]+)/', $message, $matches);
     if (!empty($matches[1])) {
         foreach ($matches[1] as $username) {
             $user = $db->prepare("SELECT id FROM users WHERE username = ?");

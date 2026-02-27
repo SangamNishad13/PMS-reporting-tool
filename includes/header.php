@@ -45,6 +45,12 @@ if ($pageTitle === '') $pageTitle = 'Dashboard';
 if (stripos($pageTitle, 'PMS') === false) {
     $pageTitle .= ' - PMS';
 }
+
+$globalFlashSuccess = isset($_SESSION['success']) ? (string)$_SESSION['success'] : '';
+$globalFlashError = isset($_SESSION['error']) ? (string)$_SESSION['error'] : '';
+if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
+    unset($_SESSION['success'], $_SESSION['error']);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -205,7 +211,7 @@ if (stripos($pageTitle, 'PMS') === false) {
             if (!container) {
                 container = document.createElement('div');
                 container.id = containerId;
-                container.className = 'position-fixed bottom-0 end-0 p-3';
+                container.className = 'position-fixed top-0 end-0 p-3';
                 container.style.zIndex = 10800;
                 document.body.appendChild(container);
             }
@@ -244,6 +250,16 @@ if (stripos($pageTitle, 'PMS') === false) {
             try { window._origAlert ? window._origAlert(message) : null; } catch (_) {}
         }
     }
+
+    (function () {
+        var flashSuccess = <?php echo json_encode($globalFlashSuccess, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+        var flashError = <?php echo json_encode($globalFlashError, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+        if (!flashSuccess && !flashError) return;
+        document.addEventListener('DOMContentLoaded', function () {
+            if (flashSuccess) showToast(flashSuccess, 'success');
+            if (flashError) showToast(flashError, 'danger');
+        });
+    })();
     </script>
 </head>
 <body class="app-shell">

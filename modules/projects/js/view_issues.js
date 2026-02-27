@@ -1383,7 +1383,7 @@
             var query = textBeforeCaret.substring(lastAtPos + 1);
             if (/\s/.test(query)) return null;
             if (query.length > 50) return null;
-            if (!/^[\w]*$/.test(query)) return null;
+            if (!/^[A-Za-z0-9._-]*$/.test(query)) return null;
 
             return {
                 query: query
@@ -1582,7 +1582,7 @@
 
                     // Remove the partial query after @
                     // Find the next space, tag, or end
-                    var endMatch = afterAtHtml.match(/^[\w]*/);
+                    var endMatch = afterAtHtml.match(/^[A-Za-z0-9._-]*/);
                     var queryLength = endMatch ? endMatch[0].length : 0;
                     afterAtHtml = afterAtHtml.substring(queryLength);
 
@@ -1919,6 +1919,34 @@
         return { key: key, label: label, bgColor: bgColor, textColor: textColor };
     }
 
+    function normalizeQaStatusList(raw) {
+        var list = [];
+        if (Array.isArray(raw)) {
+            list = raw;
+        } else if (typeof raw === 'string') {
+            list = raw.split(',').map(function (v) { return String(v || '').trim(); });
+        } else if (raw != null) {
+            list = [String(raw)];
+        }
+        return list.map(function (v) { return String(v || '').trim(); }).filter(Boolean);
+    }
+
+    function setFinalQaStatusValue(raw) {
+        var values = normalizeQaStatusList(raw);
+        var $qa = jQuery('#finalIssueQaStatus');
+        if (!$qa.length) return;
+        values.forEach(function (v) {
+            var exists = false;
+            $qa.find('option').each(function () {
+                if (String(this.value || '') === v) exists = true;
+            });
+            if (!exists) {
+                $qa.append(new Option(v, v, false, false));
+            }
+        });
+        $qa.val(values).trigger('change');
+    }
+
     function getIssueReporterIds(issue) {
         var ids = [];
         if (issue && Array.isArray(issue.reporters) && issue.reporters.length > 0) {
@@ -1970,7 +1998,16 @@
                 '</div>'
             );
         });
-        return rows.length ? rows.join('') : '<span class="text-muted">N/A</span>';
+        if (rows.length) return rows.join('');
+
+        var fallbackStatuses = normalizeQaStatusList(issue && issue.qa_status ? issue.qa_status : []);
+        if (!fallbackStatuses.length) return '<span class="text-muted">N/A</span>';
+        var fallbackBadges = fallbackStatuses.map(function (statusKey) {
+            var badgeInfo = getQaBadgeInfo(statusKey);
+            if (!badgeInfo) return '';
+            return '<span class="qa-status-badge me-1" style="background-color: ' + badgeInfo.bgColor + ' !important; color: ' + badgeInfo.textColor + ' !important;">' + escapeHtml(badgeInfo.label) + '</span>';
+        }).filter(Boolean).join('');
+        return fallbackBadges || '<span class="text-muted">N/A</span>';
     }
 
     function captureFormState() {
@@ -2144,6 +2181,7 @@
         }
 
         document.getElementById('finalIssueStatus').value = issue.status || 'Open';
+        setFinalQaStatusValue(issue.qa_status || []);
         jQuery('#finalIssuePages').val(issue.pages || [issueData.selectedPageId]).trigger('change');
         jQuery('#finalIssueGroupedUrls').val(issue.grouped_urls || []).trigger('change');
         if (window.jQuery && jQuery.fn.summernote) jQuery('#finalIssueDetails').summernote('code', issue.description || '');
@@ -2272,6 +2310,7 @@
 
         // Store values to set after modal is shown
         var reportersValue = issue ? (issue.reporters || []) : (draftData ? draftData.reporters : []);
+        var qaStatusValue = issue ? (issue.qa_status || []) : (draftData ? (draftData.qa_status || []) : []);
         var reporterQaStatusMapValue = issue
             ? (issue.reporter_qa_status_map || {})
             : (draftData ? (draftData.reporter_qa_status_map || {}) : {});
@@ -2291,6 +2330,7 @@
         function applySelectValuesNow() {
             setTimeout(function () { applyIssueQaPermissionState(); }, 50);
             setTimeout(function () {
+                setFinalQaStatusValue(qaStatusValue);
                 jQuery('#finalIssueReporters').val(reportersValue).trigger('change');
                 refreshReporterQaStatusEditor(reporterQaStatusMapValue);
             }, 60);
@@ -4076,7 +4116,7 @@
             var canViewHistory = !!c.can_view_history && isAdminUser;
 
             var commentText = decorateIssueImages(c.text || '');
-            commentText = commentText.replace(/@(\w+)/g, '<span class="badge bg-warning text-dark">@$1</span>');
+            commentText = commentText.replace(/@([A-Za-z0-9._-]+)/g, '<span class="badge bg-warning text-dark">@$1</span>');
 
             var replyPreview = '';
             if (c.reply_to && c.reply_preview) {
@@ -4191,7 +4231,7 @@
 
     function extractMentionUserIdsFromHtml(html) {
         var mentions = [];
-        var mentionRegex = /@(\w+)/g;
+        var mentionRegex = /@([A-Za-z0-9._-]+)/g;
         var match;
         while ((match = mentionRegex.exec(String(html || ''))) !== null) {
             var username = match[1];

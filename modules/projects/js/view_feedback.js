@@ -174,7 +174,7 @@ $(document).ready(function () {
         }
         var beforeAtHtml = editorHtml.substring(0, lastAtHtmlPos);
         var afterAtHtml = editorHtml.substring(lastAtHtmlPos + 1);
-        var endMatch = afterAtHtml.match(/^[\w]*/);
+        var endMatch = afterAtHtml.match(/^[A-Za-z0-9._-]*/);
         var queryLength = endMatch ? endMatch[0].length : 0;
         afterAtHtml = afterAtHtml.substring(queryLength);
         var newHtml = beforeAtHtml + '@' + username + ' ' + afterAtHtml;
@@ -329,7 +329,7 @@ $(document).ready(function () {
             var atPos = text.lastIndexOf('@');
             if (atPos < 0) { hideFeedbackMentionDropdown(); return; }
             var query = text.substring(atPos + 1);
-            if (/\s/.test(query) || query.length > 50 || !/^[\w]*$/.test(query)) { hideFeedbackMentionDropdown(); return; }
+            if (/\s/.test(query) || query.length > 50 || !/^[A-Za-z0-9._-]*$/.test(query)) { hideFeedbackMentionDropdown(); return; }
             showFeedbackMentionDropdown(query);
         }
 

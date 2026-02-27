@@ -276,7 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_message'])) {
         $mentions = [];
         
         // Parse mentions
-        preg_match_all('/@(\w+)/', $message, $matches);
+        preg_match_all('/@([A-Za-z0-9._-]+)/', $message, $matches);
         if (!empty($matches[1])) {
             foreach ($matches[1] as $username) {
                 $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
@@ -765,7 +765,7 @@ if (!$embed) {
                         <?php
                         $messageHtml = sanitize_chat_html($msg['message']);
                         $messageHtml = rewrite_upload_urls_to_secure($messageHtml);
-                        $messageHtml = preg_replace('/@(\w+)/', '<span class="mention">@$1</span>', $messageHtml);
+                        $messageHtml = preg_replace('/@([A-Za-z0-9._-]+)/', '<span class="mention">@$1</span>', $messageHtml);
                         $messageHtml = preg_replace_callback('/<img[^>]*src=["\']([^"\']+)["\'][^>]*>/i', function($m) {
                             $src = $m[1];
                             $safeSrc = htmlspecialchars($src, ENT_QUOTES, 'UTF-8');
@@ -921,7 +921,7 @@ if (!$embed) {
                                         $messageHtml = sanitize_chat_html($msg['message']);
                                         $messageHtml = rewrite_upload_urls_to_secure($messageHtml);
                                         // Highlight mentions server-side
-                                        $messageHtml = preg_replace('/@(\w+)/', '<span class="mention">@$1</span>', $messageHtml);
+                                        $messageHtml = preg_replace('/@([A-Za-z0-9._-]+)/', '<span class="mention">@$1</span>', $messageHtml);
                                         $messageHtml = preg_replace_callback('/<img[^>]*src=["\']([^"\']+)["\'][^>]*>/i', function($m) {
                                             $src = $m[1];
                                             $safeSrc = htmlspecialchars($src, ENT_QUOTES, 'UTF-8');
@@ -2790,7 +2790,7 @@ if (!$embed) {
                 });
             } else {
                 $('#message').on('keyup', function(){
-                    if (mentionSearchDisabled && !/@\w*$/.test($(this).val())) mentionSearchDisabled = false;
+                    if (mentionSearchDisabled && !/@[A-Za-z0-9._-]*$/.test($(this).val())) mentionSearchDisabled = false;
                     handleMentionSearch($(this).val(), $(this));
                 });
             }
@@ -2835,7 +2835,7 @@ if (!$embed) {
             }
             if (msgEl) {
                 msgEl.addEventListener('keyup', function(){
-                    if (mentionSearchDisabled && !/@\w*$/.test(msgEl.value)) mentionSearchDisabled = false;
+                    if (mentionSearchDisabled && !/@[A-Za-z0-9._-]*$/.test(msgEl.value)) mentionSearchDisabled = false;
                     handleMentionSearch(msgEl.value, msgEl);
                 });
             }
@@ -2864,7 +2864,7 @@ if (!$embed) {
 
         function handleMentionSearch(text, anchorEl) {
             if (mentionSearchDisabled) return;
-            const match = /@([\w]*)$/.exec((text || ''));
+            const match = /@([A-Za-z0-9._-]*)$/.exec((text || ''));
             if (!match) { hideMentionDropdown(); return; }
             const query = match[1] || '';
             const list = mentionUsers.filter(u => 

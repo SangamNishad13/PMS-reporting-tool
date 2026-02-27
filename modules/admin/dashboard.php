@@ -135,6 +135,9 @@ $pendingTotalCount = (int)$pendingData['pendingTotalCount'];
 
 if (isset($_GET['action']) && $_GET['action'] === 'pending_requests_summary') {
     header('Content-Type: application/json');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    header('Expires: 0');
     echo json_encode([
         'success' => true,
         'pendingBuckets' => $pendingBuckets,
@@ -980,9 +983,14 @@ function renderPendingRequests(data) {
 }
 
 function refreshPendingRequests() {
-    fetch(pendingSummaryUrl, {
+    var url = pendingSummaryUrl + '&_ts=' + Date.now();
+    fetch(url, {
+        cache: 'no-store',
         credentials: 'same-origin',
-        headers: { 'Accept': 'application/json' }
+        headers: {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache'
+        }
     })
     .then(function(resp) { return resp.json(); })
     .then(function(data) {
@@ -1116,6 +1124,7 @@ function respondHoursRequestFromDashboard(requestId, userId, reqDate, action) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    refreshPendingRequests();
     setInterval(refreshPendingRequests, 30000);
 });
 </script>

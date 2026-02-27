@@ -548,9 +548,10 @@ if (!$projectId) {
             $checked = in_array($envId, $selectedEnvs);
             if ($checked) {
                 // read per-env tester selections
-                $atEnv = isset($_POST['at_tester_env_' . $envId]) && $_POST['at_tester_env_' . $envId] !== '' ? (int)$_POST['at_tester_env_' . $envId] : null;
-                $ftEnv = isset($_POST['ft_tester_env_' . $envId]) && $_POST['ft_tester_env_' . $envId] !== '' ? (int)$_POST['ft_tester_env_' . $envId] : null;
-                $qaEnv = isset($_POST['qa_env_' . $envId]) && $_POST['qa_env_' . $envId] !== '' ? (int)$_POST['qa_env_' . $envId] : null;
+                // If per-env value is empty, fall back to page-level defaults selected in modal.
+                $atEnv = isset($_POST['at_tester_env_' . $envId]) && $_POST['at_tester_env_' . $envId] !== '' ? (int)$_POST['at_tester_env_' . $envId] : $atTesterId;
+                $ftEnv = isset($_POST['ft_tester_env_' . $envId]) && $_POST['ft_tester_env_' . $envId] !== '' ? (int)$_POST['ft_tester_env_' . $envId] : $ftTesterId;
+                $qaEnv = isset($_POST['qa_env_' . $envId]) && $_POST['qa_env_' . $envId] !== '' ? (int)$_POST['qa_env_' . $envId] : $qaId;
 
                 $stmt = $db->prepare("INSERT INTO page_environments (page_id, environment_id, at_tester_id, ft_tester_id, qa_id) VALUES (?, ?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE at_tester_id = VALUES(at_tester_id), ft_tester_id = VALUES(ft_tester_id), qa_id = VALUES(qa_id)");

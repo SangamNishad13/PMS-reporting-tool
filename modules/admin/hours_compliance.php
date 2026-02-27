@@ -5,6 +5,15 @@ requireAdmin();
 $page_title = 'Hours Compliance Report';
 include '../../includes/header.php';
 ?>
+<style>
+#nonCompliantTable_wrapper .dataTables_length select,
+#compliantTable_wrapper .dataTables_length select {
+    min-width: 86px;
+    padding-right: 2rem !important;
+    background-position: right 0.6rem center;
+    text-overflow: clip;
+}
+</style>
 
 <div class="container-fluid mt-4">
     <div class="row mb-3">
@@ -182,6 +191,39 @@ $(document).ready(function() {
     loadReport();
 });
 
+function initComplianceTables() {
+    if (!$.fn.DataTable) return;
+
+    const commonOptions = {
+        pageLength: 10,
+        lengthMenu: [[10, 25, 50], [10, 25, 50]],
+        paging: true,
+        searching: true,
+        info: true,
+        autoWidth: false,
+        language: {
+            search: 'Filter:',
+            lengthMenu: 'Show _MENU_ entries',
+            info: 'Showing _START_ to _END_ of _TOTAL_ entries'
+        }
+    };
+
+    if ($.fn.DataTable.isDataTable('#nonCompliantTable')) {
+        $('#nonCompliantTable').DataTable().destroy();
+    }
+    if ($.fn.DataTable.isDataTable('#compliantTable')) {
+        $('#compliantTable').DataTable().destroy();
+    }
+
+    $('#nonCompliantTable').DataTable($.extend(true, {}, commonOptions, {
+        order: [[0, 'asc']],
+        columnDefs: [{ targets: [6], orderable: false, searchable: false }]
+    }));
+    $('#compliantTable').DataTable($.extend(true, {}, commonOptions, {
+        order: [[0, 'asc']]
+    }));
+}
+
 function loadSettings() {
     $.get('../../api/hours_reminder.php?action=get_settings', function(response) {
         if (response.success) {
@@ -265,6 +307,8 @@ function renderReport() {
             `);
         });
     }
+
+    initComplianceTables();
 }
 
 function showSettingsModal() {

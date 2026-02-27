@@ -136,7 +136,7 @@ switch ($action) {
         }
         
         $mentions = [];
-        preg_match_all('/@(\w+)/', $message, $matches);
+        preg_match_all('/@([A-Za-z0-9._-]+)/', $message, $matches);
         if (!empty($matches[1])) {
             foreach ($matches[1] as $username) {
                 $stmt = $db->prepare("SELECT id, full_name FROM users WHERE username = ?");

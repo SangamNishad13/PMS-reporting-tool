@@ -333,13 +333,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $_SESSION['success'] = "User updated successfully!";
     } elseif (isset($_POST['reset_password'])) {
-        $userId = $_POST['user_id'];
-        $password = password_hash($_POST['new_password'], PASSWORD_DEFAULT);
+        $isAjax = (
+            (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') ||
+            (isset($_SERVER['HTTP_ACCEPT']) && stripos((string)$_SERVER['HTTP_ACCEPT'], 'application/json') !== false)
+        );
 
-        // Update password and force the user to reset their password on next login
-        $db->prepare("UPDATE users SET password = ?, force_password_reset = 1 WHERE id = ?")
-           ->execute([$password, $userId]);
-        $_SESSION['success'] = "Password reset successfully! The user will be required to change their password on next login.";
+        $userId = (int)($_POST['user_id'] ?? 0);
+        $newPassword = (string)($_POST['new_password'] ?? '');
+        $confirmPassword = (string)($_POST['confirm_password'] ?? '');
+
+        if ($userId <= 0) {
+            $msg = "Invalid user selected.";
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                exit;
+            }
+            $_SESSION['error'] = $msg;
+        } elseif (strlen($newPassword) < 6) {
+            $msg = "Password must be at least 6 characters.";
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                exit;
+            }
+            $_SESSION['error'] = $msg;
+        } elseif ($newPassword !== $confirmPassword) {
+            $msg = "Passwords do not match.";
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                exit;
+            }
+            $_SESSION['error'] = $msg;
+        } else {
+            $password = password_hash($newPassword, PASSWORD_DEFAULT);
+
+            // Update password and force the user to reset their password on next login
+            $db->prepare("UPDATE users SET password = ?, force_password_reset = 1 WHERE id = ?")
+               ->execute([$password, $userId]);
+            $msg = "Password reset successfully! The user will be required to change their password on next login.";
+
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => $msg]);
+                exit;
+            }
+            $_SESSION['success'] = $msg;
+        }
     } elseif (isset($_POST['delete_user'])) {
         $userId = $_POST['user_id'];
         $userId = intval($userId);
@@ -358,9 +399,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ((int)$stmt->fetchColumn() > 0) $hasData = true;
 
                 if (!$hasData) {
-                    // Check Assignments
-                    $stmt = $db->prepare("SELECT COUNT(*) FROM user_assignments WHERE user_id = ? OR assigned_by = ?");
-                    $stmt->execute([$userId, $userId]);
+                    // Check only active assignments for this user.
+                    // Soft-removed entries (is_removed=1) are shown under "Removed resources"
+                    // and should not block admin delete.
+                    $stmt = $db->prepare("
+                        SELECT COUNT(*)
+                        FROM user_assignments
+                        WHERE user_id = ?
+                          AND (is_removed IS NULL OR is_removed = 0)
+                    ");
+                    $stmt->execute([$userId]);
                     if ((int)$stmt->fetchColumn() > 0) $hasData = true;
                 }
 
@@ -644,6 +692,36 @@ $users = $db->query("
     ORDER BY u.role, u.full_name
 ")->fetchAll();
 
+// Recent credentials mail logs for admin visibility
+$credentialsMailLogs = [];
+try {
+    ensureCredentialsMailLogTable($db);
+    $logStmt = $db->query("
+        SELECT
+            l.id,
+            l.request_id,
+            l.target_user_id,
+            l.requested_by,
+            l.mail_mode,
+            l.status,
+            l.detail,
+            l.created_at,
+            tu.username AS target_username,
+            tu.full_name AS target_full_name,
+            ru.username AS requested_by_username,
+            ru.full_name AS requested_by_full_name
+        FROM credentials_mail_log l
+        LEFT JOIN users tu ON tu.id = l.target_user_id
+        LEFT JOIN users ru ON ru.id = l.requested_by
+        ORDER BY l.id DESC
+        LIMIT 150
+    ");
+    $credentialsMailLogs = $logStmt ? ($logStmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+} catch (Exception $e) {
+    // non-fatal; page still works even if log table is unavailable
+    $credentialsMailLogs = [];
+}
+
 include __DIR__ . '/../../includes/header.php';
 ?>
 <style>
@@ -689,7 +767,7 @@ if (!empty($_SESSION['success'])) {
         </button>
         <span class="align-self-center text-muted small" id="selectedUsersHint">0 users selected</span>
     </div>
-    
+
     <!-- Users Table -->
 
 <!-- Autofocus the close button of the top-most toast/alert for keyboard users -->
@@ -767,7 +845,7 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                         <div class="modal fade" id="editUserModal<?php echo $user['id']; ?>" tabindex="-1">
                             <div class="modal-dialog">
                                 <div class="modal-content">
-                                    <form method="POST">
+                                    <form method="POST" class="reset-password-form" data-reset-password-form="1">
                                         <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
                                         <div class="modal-header">
                                             <h5 class="modal-title">Edit User: <?php echo renderUserNameLink(['id'=>$user['id'],'full_name'=>$user['full_name'],'role'=>$user['role']]); ?></h5>
@@ -884,6 +962,86 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
     </div>
 </div>
 
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <button
+            class="btn btn-sm btn-outline-secondary"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#mailLogsCollapse"
+            aria-expanded="false"
+            aria-controls="mailLogsCollapse"
+        >
+            <i class="fas fa-envelope-open-text me-1"></i> Setup/Reset Mail Logs (Expand/Collapse)
+        </button>
+        <small class="text-muted">Latest <?php echo (int)count($credentialsMailLogs); ?> entries</small>
+    </div>
+    <div id="mailLogsCollapse" class="collapse">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table id="credentialsMailLogsTable" class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="min-width:120px;">When</th>
+                            <th style="min-width:150px;">User</th>
+                            <th style="min-width:90px;">Mode</th>
+                            <th style="min-width:90px;">Status</th>
+                            <th style="min-width:150px;">Sent By</th>
+                            <th style="min-width:230px;">Detail</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (!empty($credentialsMailLogs)): ?>
+                            <?php foreach ($credentialsMailLogs as $log): ?>
+                                <tr>
+                                    <td>
+                                        <small><?php echo htmlspecialchars((string)($log['created_at'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></small>
+                                    </td>
+                                    <td>
+                                        <?php
+                                            $targetLabel = trim((string)($log['target_full_name'] ?? ''));
+                                            if ($targetLabel === '') $targetLabel = trim((string)($log['target_username'] ?? ''));
+                                            if ($targetLabel === '') $targetLabel = 'User#' . (int)($log['target_user_id'] ?? 0);
+                                        ?>
+                                        <span><?php echo htmlspecialchars($targetLabel, ENT_QUOTES, 'UTF-8'); ?></span>
+                                    </td>
+                                    <td>
+                                        <?php $mode = strtolower((string)($log['mail_mode'] ?? 'setup')); ?>
+                                        <span class="badge bg-<?php echo $mode === 'reset' ? 'warning text-dark' : 'info'; ?>">
+                                            <?php echo htmlspecialchars(strtoupper($mode), ENT_QUOTES, 'UTF-8'); ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <?php $ok = strtolower((string)($log['status'] ?? 'fail')) === 'success'; ?>
+                                        <span class="badge bg-<?php echo $ok ? 'success' : 'danger'; ?>">
+                                            <?php echo $ok ? 'SUCCESS' : 'FAIL'; ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <?php
+                                            $byLabel = trim((string)($log['requested_by_full_name'] ?? ''));
+                                            if ($byLabel === '') $byLabel = trim((string)($log['requested_by_username'] ?? ''));
+                                            if ($byLabel === '') $byLabel = 'System';
+                                        ?>
+                                        <span><?php echo htmlspecialchars($byLabel, ENT_QUOTES, 'UTF-8'); ?></span>
+                                    </td>
+                                    <td>
+                                        <small><?php echo htmlspecialchars((string)($log['detail'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></small>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-3">No setup/reset mail logs found yet.</td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Bulk setup/reset mail modal -->
 <div class="modal fade" id="bulkMailModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -993,6 +1151,55 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
 
 <script>
 $(document).ready(function() {
+    // Ensure users table is initialized with checkbox column non-sortable.
+    // This prevents header-sort click conflicts with the select-all checkbox.
+    if ($.fn.DataTable && !$.fn.DataTable.isDataTable('#usersTable')) {
+        $('#usersTable').DataTable({
+            pageLength: 25,
+            order: [[1, 'asc']],
+            columnDefs: [
+                { targets: 0, orderable: false, searchable: false }
+            ],
+            language: {
+                search: 'Filter:',
+                lengthMenu: 'Show _MENU_ entries',
+                info: 'Showing _START_ to _END_ of _TOTAL_ entries'
+            }
+        });
+    }
+
+    function initCredentialsLogsTable() {
+        if (!$.fn.DataTable || $.fn.DataTable.isDataTable('#credentialsMailLogsTable')) return;
+        $('#credentialsMailLogsTable').DataTable({
+            pageLength: 10,
+            lengthMenu: [[10, 25, 50], [10, 25, 50]],
+            paging: true,
+            searching: true,
+            info: true,
+            autoWidth: false,
+            order: [[0, 'desc']],
+            columnDefs: [
+                { targets: [2, 3], orderable: false }
+            ],
+            language: {
+                search: 'Filter logs:',
+                lengthMenu: 'Show _MENU_ entries',
+                info: 'Showing _START_ to _END_ of _TOTAL_ entries'
+            }
+        });
+    }
+
+    $('#mailLogsCollapse').on('shown.bs.collapse', function() {
+        initCredentialsLogsTable();
+        if ($.fn.DataTable && $.fn.DataTable.isDataTable('#credentialsMailLogsTable')) {
+            $('#credentialsMailLogsTable').DataTable().columns.adjust().draw(false);
+        }
+    });
+
+    if ($('#mailLogsCollapse').hasClass('show')) {
+        initCredentialsLogsTable();
+    }
+
     // Password confirmation validation
     $('form').on('submit', function() {
         var password = $('input[name="password"]').val();
@@ -1005,8 +1212,89 @@ $(document).ready(function() {
         return true;
     });
 
+    // Reset password form (force reset) via AJAX to avoid full page reload.
+    $(document).on('submit', 'form[data-reset-password-form="1"]', function(e) {
+        e.preventDefault();
+        const form = this;
+        const $form = $(form);
+        const $submitBtn = $form.find('button[type="submit"][name="reset_password"]');
+        const newPassword = String($form.find('input[name="new_password"]').val() || '');
+        const confirmPassword = String($form.find('input[name="confirm_password"]').val() || '');
+
+        if (newPassword.length < 6) {
+            showToast('Password must be at least 6 characters.', 'warning');
+            return false;
+        }
+        if (newPassword !== confirmPassword) {
+            showToast('Passwords do not match!', 'warning');
+            return false;
+        }
+
+        const oldBtnHtml = $submitBtn.html();
+        $submitBtn.prop('disabled', true).html('Resetting...');
+
+        $.ajax({
+            url: window.location.pathname,
+            method: 'POST',
+            dataType: 'json',
+            timeout: 60000,
+            data: $form.serialize() + '&reset_password=1',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).done(function(resp) {
+            if (resp && resp.success) {
+                showToast(resp.message || 'Password reset successfully.', 'success');
+                try {
+                    const modalEl = form.closest('.modal');
+                    if (modalEl) {
+                        const instance = bootstrap.Modal.getInstance(modalEl) || bootstrap.Modal.getOrCreateInstance(modalEl);
+                        instance.hide();
+                    }
+                } catch (err) {}
+                form.reset();
+            } else {
+                showToast((resp && resp.error) ? resp.error : 'Failed to reset password.', 'danger');
+            }
+        }).fail(function(xhr) {
+            let msg = 'Failed to reset password.';
+            try {
+                const j = xhr.responseJSON;
+                if (j && (j.error || j.message)) msg = j.error || j.message;
+            } catch (err) {}
+            showToast(msg, 'danger');
+        }).always(function() {
+            $submitBtn.prop('disabled', false).html(oldBtnHtml);
+        });
+
+        return false;
+    });
+
+    const selectedUserIds = new Set();
+
+    function getVisibleUserIds() {
+        return $('.user-select').map(function() {
+            return String($(this).val());
+        }).get();
+    }
+
     function getSelectedUserIds() {
-        return $('.user-select:checked').map(function() { return String($(this).val()); }).get();
+        return Array.from(selectedUserIds);
+    }
+
+    function syncVisibleSelectionState() {
+        $('.user-select').each(function() {
+            const uid = String($(this).val());
+            $(this).prop('checked', selectedUserIds.has(uid));
+        });
+
+        const visibleIds = getVisibleUserIds();
+        const total = visibleIds.length;
+        let checked = 0;
+        visibleIds.forEach(function(uid) {
+            if (selectedUserIds.has(uid)) checked++;
+        });
+        const allChecked = total > 0 && checked === total;
+        const partial = checked > 0 && checked < total;
+        $('#selectAllUsers').prop('checked', allChecked).prop('indeterminate', partial);
     }
 
     function refreshBulkMailUi() {
@@ -1016,21 +1304,44 @@ $(document).ready(function() {
         $('#selectedUsersHint').text(count + ' users selected');
         $('#selectedUsersCount').text(count);
         $('#selectedUserIdsInput').val(selected.join(','));
-        if (count === 0) {
-            $('#selectAllUsers').prop('checked', false);
-        }
+        syncVisibleSelectionState();
     }
 
-    $('#selectAllUsers').on('change', function() {
-        $('.user-select').prop('checked', $(this).is(':checked'));
+    $(document).on('click', '#selectAllUsers', function(e) {
+        e.stopPropagation(); // prevent header sort click side-effects
+        e.preventDefault();
+        const visibleIds = getVisibleUserIds();
+        if (!visibleIds.length) {
+            refreshBulkMailUi();
+            return;
+        }
+
+        const allVisibleSelected = visibleIds.every(function(uid) {
+            return selectedUserIds.has(uid);
+        });
+
+        if (allVisibleSelected) {
+            visibleIds.forEach(function(uid) { selectedUserIds.delete(uid); });
+        } else {
+            visibleIds.forEach(function(uid) { selectedUserIds.add(uid); });
+        }
         refreshBulkMailUi();
     });
 
     $(document).on('change', '.user-select', function() {
-        const total = $('.user-select').length;
-        const checked = $('.user-select:checked').length;
-        $('#selectAllUsers').prop('checked', total > 0 && total === checked);
+        const uid = String($(this).val());
+        if ($(this).is(':checked')) {
+            selectedUserIds.add(uid);
+        } else {
+            selectedUserIds.delete(uid);
+        }
         refreshBulkMailUi();
+    });
+
+    // DataTables redraw (pagination/search/sort) can re-render rows;
+    // re-apply selection so "Select All" works across all pages.
+    $('#usersTable').on('draw.dt', function() {
+        syncVisibleSelectionState();
     });
 
     $('#bulkMailForm').on('submit', async function(e) {

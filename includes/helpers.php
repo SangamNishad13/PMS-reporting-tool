@@ -166,6 +166,7 @@ function getBaseDir() {
  */
 function createNotification($db, $userId, $type, $message, $link = null) {
     static $emailMirrorTemporarilyDisabled = false;
+    static $notificationTypeEnumEnsured = false;
     $userId = (int)$userId;
     if ($userId <= 0) return false;
 
@@ -195,6 +196,15 @@ function createNotification($db, $userId, $type, $message, $link = null) {
         if (!preg_match('/^https?:\/\//i', $link) && $baseDir && strpos($link, $baseDir . '/') === 0) {
             $link = substr($link, strlen($baseDir));
             if ($link === '') $link = '/';
+        }
+    }
+
+    if (!$notificationTypeEnumEnsured) {
+        $notificationTypeEnumEnsured = true;
+        try {
+            $db->exec("ALTER TABLE notifications MODIFY COLUMN type ENUM('mention','assignment','system','edit_request','edit_request_response','permission_update','deadline') NOT NULL");
+        } catch (Exception $e) {
+            // Older production DBs may block DDL here; we'll still try insert below.
         }
     }
 
