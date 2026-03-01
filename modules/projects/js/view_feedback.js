@@ -117,6 +117,7 @@ $(document).ready(function () {
     var feedbackMentionDropdown = null;
     var feedbackMentionList = [];
     var feedbackMentionIndex = -1;
+    var feedbackMentionRange = null;
 
     function ensureFeedbackMentionDropdown() {
         if (feedbackMentionDropdown && document.body.contains(feedbackMentionDropdown)) return feedbackMentionDropdown;
@@ -141,6 +142,7 @@ $(document).ready(function () {
         dd.innerHTML = '';
         feedbackMentionList = [];
         feedbackMentionIndex = -1;
+        feedbackMentionRange = null;
     }
 
     function moveFeedbackMentionSelection(direction) {
@@ -160,39 +162,93 @@ $(document).ready(function () {
         if (!$editor.length || !$editor.data('summernote')) return;
         var $editable = $editor.next('.note-editor').find('.note-editable');
         if (!$editable.length) return;
-        var text = $editable.text();
-        var atPos = text.lastIndexOf('@');
-        if (atPos < 0) {
-            hideFeedbackMentionDropdown();
-            return;
-        }
-        var editorHtml = $editor.summernote('code');
-        var lastAtHtmlPos = editorHtml.lastIndexOf('@');
-        if (lastAtHtmlPos < 0) {
-            hideFeedbackMentionDropdown();
-            return;
-        }
-        var beforeAtHtml = editorHtml.substring(0, lastAtHtmlPos);
-        var afterAtHtml = editorHtml.substring(lastAtHtmlPos + 1);
-        var endMatch = afterAtHtml.match(/^[A-Za-z0-9._-]*/);
-        var queryLength = endMatch ? endMatch[0].length : 0;
-        afterAtHtml = afterAtHtml.substring(queryLength);
-        var newHtml = beforeAtHtml + '@' + username + ' ' + afterAtHtml;
-        $editor.summernote('code', newHtml);
         try {
-            var range = document.createRange();
-            var sel = window.getSelection();
-            var editableEl = $editable[0];
-            range.selectNodeContents(editableEl);
-            range.collapse(false);
-            sel.removeAllRanges();
-            sel.addRange(range);
-            $editor.summernote('editor.focus');
-        } catch (e) {
-            try {
-                $editor.summernote('editor.focus');
-            } catch (ex) {}
+            if (feedbackMentionRange && typeof feedbackMentionRange.select === 'function') {
+                feedbackMentionRange.select();
+            } else {
+                $editor.summernote('editor.restoreRange');
+            }
+        } catch (e) { }
+        var editableEl = $editable[0];
+        var sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) {
+            hideFeedbackMentionDropdown();
+            return;
         }
+        var range = sel.getRangeAt(0);
+        if (!editableEl.contains(range.startContainer)) {
+            hideFeedbackMentionDropdown();
+            return;
+        }
+
+        function findMentionStart(node, offset) {
+            function previousPosition(n, o) {
+                if (!n) return null;
+                if (n.nodeType === 3 && o > 0) {
+                    return { node: n, offset: o - 1, ch: n.textContent.charAt(o - 1) };
+                }
+                var cur = n;
+                while (cur) {
+                    if (cur.previousSibling) {
+                        cur = cur.previousSibling;
+                        while (cur && cur.lastChild) cur = cur.lastChild;
+                        if (cur && cur.nodeType === 3) {
+                            var len = cur.textContent.length;
+                            if (len > 0) return { node: cur, offset: len - 1, ch: cur.textContent.charAt(len - 1) };
+                        }
+                    } else {
+                        cur = cur.parentNode;
+                        if (!cur || cur === editableEl) break;
+                    }
+                }
+                return null;
+            }
+
+            var pos = { node: node, offset: offset };
+            while (true) {
+                var prev = previousPosition(pos.node, pos.offset);
+                if (!prev) return null;
+                if (prev.ch === '@') return { node: prev.node, offset: prev.offset };
+                if (/\s/.test(prev.ch || '')) return null;
+                pos = { node: prev.node, offset: prev.offset };
+            }
+        }
+
+        var startPos = findMentionStart(range.startContainer, range.startOffset);
+        if (!startPos) {
+            hideFeedbackMentionDropdown();
+            return;
+        }
+
+        var deleteRange = document.createRange();
+        deleteRange.setStart(startPos.node, startPos.offset);
+        deleteRange.setEnd(range.startContainer, range.startOffset);
+        deleteRange.deleteContents();
+
+        var caretRange = sel.rangeCount ? sel.getRangeAt(0) : null;
+        var needsLeadingSpace = false;
+        if (caretRange) {
+            var probe = caretRange.cloneRange();
+            probe.selectNodeContents(editableEl);
+            probe.setEnd(caretRange.startContainer, caretRange.startOffset);
+            var textBefore = String(probe.toString() || '');
+            needsLeadingSpace = !!(textBefore && !/\s$/.test(textBefore));
+        }
+        var mentionText = (needsLeadingSpace ? ' ' : '') + '@' + String(username || '') + ' ';
+
+        try {
+            document.execCommand('insertText', false, mentionText);
+        } catch (e) {
+            var fallbackRange = sel.rangeCount ? sel.getRangeAt(0) : null;
+            if (fallbackRange) {
+                var node = document.createTextNode(mentionText);
+                fallbackRange.insertNode(node);
+                fallbackRange.setStartAfter(node);
+                fallbackRange.collapse(true);
+            }
+        }
+        feedbackMentionRange = null;
+        try { $editor.summernote('editor.focus'); } catch (e) { }
         hideFeedbackMentionDropdown();
     }
 
@@ -244,6 +300,7 @@ $(document).ready(function () {
         }).join('');
         feedbackMentionIndex = 0;
         dd.style.display = 'block';
+        try { feedbackMentionRange = $('#pf_editor').summernote('createRange'); } catch (e) { feedbackMentionRange = null; }
 
         var $editable = $editorEditable();
         if ($editable && $editable.length) {

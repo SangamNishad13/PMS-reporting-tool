@@ -165,7 +165,6 @@ function getBaseDir() {
  * @return bool
  */
 function createNotification($db, $userId, $type, $message, $link = null) {
-    static $emailMirrorTemporarilyDisabled = false;
     static $notificationTypeEnumEnsured = false;
     $userId = (int)$userId;
     if ($userId <= 0) return false;
@@ -218,14 +217,7 @@ function createNotification($db, $userId, $type, $message, $link = null) {
         // Best-effort email mirror for in-app notifications.
         // Never block primary request flow if email transport is failing.
         try {
-            if ($emailMirrorTemporarilyDisabled) {
-                return true;
-            }
             $settings = @include(__DIR__ . '/../config/settings.php');
-            $emailNotificationsEnabled = is_array($settings) ? (bool)($settings['email_notifications_enabled'] ?? false) : false;
-            if (!$emailNotificationsEnabled) {
-                return true;
-            }
             $userStmt = $db->prepare("SELECT full_name, email FROM users WHERE id = ? AND is_active = 1 LIMIT 1");
             $userStmt->execute([$userId]);
             $recipient = $userStmt->fetch(PDO::FETCH_ASSOC);
@@ -278,13 +270,11 @@ function createNotification($db, $userId, $type, $message, $link = null) {
                     $mailer = new EmailSender();
                     $sent = $mailer->send($recipientEmail, $subject, $body, true);
                     if (!$sent) {
-                        $emailMirrorTemporarilyDisabled = true;
                         error_log('createNotification email mirror failed: mailer returned false for user_id=' . $userId);
                     }
                 }
             }
         } catch (Exception $mailEx) {
-            $emailMirrorTemporarilyDisabled = true;
             error_log('createNotification email mirror failed: ' . $mailEx->getMessage());
         }
 

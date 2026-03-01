@@ -416,10 +416,12 @@ try {
             const cursorPos = textarea[0].selectionStart;
             const textBefore = current.substring(0, cursorPos);
             const textAfter = current.substring(cursorPos);
+            const needsLeadingSpace = textBefore.length > 0 && !/\s$/.test(textBefore);
+            const insertText = (needsLeadingSpace ? ' ' : '') + username + ' ';
             
-            textarea.val(textBefore + username + ' ' + textAfter);
+            textarea.val(textBefore + insertText + textAfter);
             textarea.focus();
-            textarea[0].selectionStart = textarea[0].selectionEnd = cursorPos + username.length + 1;
+            textarea[0].selectionStart = textarea[0].selectionEnd = cursorPos + insertText.length;
             
             // Update character count
             $('#charCount').text(textarea.val().length + '/1000');

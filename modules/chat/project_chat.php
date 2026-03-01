@@ -2996,14 +2996,15 @@ if (!$embed) {
                 if (!editable || !window.getSelection) return;
                 const sel = window.getSelection();
                 if (!sel.rangeCount) return;
-                const range = sel.getRangeAt(0);
-                if (!editable.contains(range.commonAncestorContainer)) return;
 
                 // Restore saved range if available to ensure we operate at the trigger position
                 if (lastMentionRange) {
                     sel.removeAllRanges();
                     sel.addRange(lastMentionRange);
                 }
+                if (!sel.rangeCount) return;
+                const range = sel.getRangeAt(0);
+                if (!editable.contains(range.commonAncestorContainer)) return;
 
                 let cursorNode = range.startContainer;
                 let cursorOffset = range.startOffset;
@@ -3053,6 +3054,37 @@ if (!$embed) {
                 }
             }
 
+            function shouldPrefixSpaceInEditable(editable) {
+                if (!editable || !window.getSelection) return false;
+                const sel = window.getSelection();
+                if (!sel || !sel.rangeCount) return false;
+                const range = sel.getRangeAt(0).cloneRange();
+                if (!editable.contains(range.commonAncestorContainer)) return false;
+                const probe = range.cloneRange();
+                probe.collapse(true);
+                try { probe.setStart(editable, 0); } catch (e) { return false; }
+                const textBefore = probe.toString();
+                if (!textBefore) return false;
+                return !/\s$/.test(textBefore);
+            }
+
+            function buildPlainMentionInsert(text, start, end, uname) {
+                const safeText = String(text || '');
+                const caretStart = Math.max(0, Number(start || 0));
+                const caretEnd = Math.max(caretStart, Number(end || caretStart));
+                const beforeCaret = safeText.substring(0, caretStart);
+                const tokenMatch = /@[A-Za-z0-9._-]*$/.exec(beforeCaret);
+                const atPos = tokenMatch ? (beforeCaret.length - tokenMatch[0].length) : -1;
+                const before = atPos >= 0 ? safeText.substring(0, atPos) : beforeCaret;
+                const after = atPos >= 0 ? safeText.substring(caretEnd) : safeText.substring(caretStart);
+                const needsLeadingSpace = before.length > 0 && !/\s$/.test(before);
+                const insert = (needsLeadingSpace ? ' ' : '') + '@' + uname + ' ';
+                return {
+                    value: before + insert + after,
+                    caret: before.length + insert.length
+                };
+            }
+
             if (summernoteReady) {
                 const editable = $msg.next('.note-editor').find('.note-editable')[0];
                 const sel = window.getSelection();
@@ -3068,35 +3100,37 @@ if (!$embed) {
                     selAfter.removeAllRanges();
                     selAfter.addRange(r);
                 }
+                const needsLeadingSpace = shouldPrefixSpaceInEditable(editable);
+                const mentionText = (needsLeadingSpace ? ' ' : '') + '@' + username + ' ';
                 $msg.summernote('editor.focus');
                 try {
-                    document.execCommand('insertText', false, '@' + username + ' ');
+                    document.execCommand('insertText', false, mentionText);
                 } catch (e) {
-                    $msg.summernote('editor.insertText', '@' + username + ' ');
+                    $msg.summernote('editor.insertText', mentionText);
                 }
                 lastMentionRange = null;
             } else if (hasJQ) {
                 const ta = $msg.get(0);
                 const start = ta.selectionStart;
                 const end = ta.selectionEnd;
-                const text = $msg.val();
-                const atPos = text.lastIndexOf('@', start);
-                const before = atPos >= 0 ? text.substring(0, atPos) : text.substring(0, start);
-                const after = atPos >= 0 ? text.substring(end) : text.substring(start);
-                const newText = before + '@' + username + ' ' + after;
-                $msg.val(newText).focus();
+                const text = $msg.val() || '';
+                const next = buildPlainMentionInsert(text, start, end, username);
+                $msg.val(next.value).focus();
+                if (ta && typeof ta.setSelectionRange === 'function') {
+                    ta.setSelectionRange(next.caret, next.caret);
+                }
                 lastMentionRange = null;
             } else {
                 const ta = document.getElementById('message');
                 if (!ta) return;
                 const start = ta.selectionStart;
                 const end = ta.selectionEnd;
-                const text = ta.value;
-                const atPos = text.lastIndexOf('@', start);
-                const before = atPos >= 0 ? text.substring(0, atPos) : text.substring(0, start);
-                const after = atPos >= 0 ? text.substring(end) : text.substring(start);
-                ta.value = before + '@' + username + ' ' + after;
+                const next = buildPlainMentionInsert(ta.value || '', start, end, username);
+                ta.value = next.value;
                 ta.focus();
+                if (typeof ta.setSelectionRange === 'function') {
+                    ta.setSelectionRange(next.caret, next.caret);
+                }
                 lastMentionRange = null;
             }
             updateCharCount();

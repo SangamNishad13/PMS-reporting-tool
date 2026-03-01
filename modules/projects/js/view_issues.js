@@ -1355,6 +1355,7 @@
         var mentionDropdown = null;
         var mentionIndex = -1;
         var mentionList = [];
+        var mentionRange = null;
 
         // Create mention dropdown
         var dropdownHtml = '<div id="issueMentionDropdown" class="dropdown-menu" style="display:none; position:fixed; z-index:99999; max-height:200px; overflow-y:auto;"></div>';
@@ -1492,6 +1493,7 @@
             mentionDropdown.innerHTML = html;
             mentionDropdown.style.display = 'block';
             mentionIndex = 0;
+            try { mentionRange = $editor.summernote('createRange'); } catch (e) { mentionRange = null; }
 
             // Position dropdown near @ symbol using cursor position
             if ($editable && $editable.length) {
@@ -1539,6 +1541,7 @@
             }
             mentionList = [];
             mentionIndex = -1;
+            mentionRange = null;
         }
 
         function moveMentionHighlight(direction) {
@@ -1555,59 +1558,97 @@
 
         function insertMention(username) {
             var $editable = $editor.next('.note-editor').find('.note-editable');
-            var text = $editable.text();
-            var lastAtPos = text.lastIndexOf('@');
-
-            if (lastAtPos >= 0) {
-                // Get current HTML
-                var currentHtml = $editor.summernote('code');
-
-                // Find position of @ in text
-                var beforeAtText = text.substring(0, lastAtPos);
-                var afterAtText = text.substring(lastAtPos);
-
-                // Find where the query ends (space or end of string)
-                var queryEndPos = afterAtText.indexOf(' ');
-                if (queryEndPos === -1) queryEndPos = afterAtText.length;
-
-                // Build new text with mention
-                var newText = beforeAtText + '@' + username + ' ' + afterAtText.substring(queryEndPos);
-
-                // For HTML, we need to be more careful
-                // Find the last @ in HTML
-                var lastAtHtmlPos = currentHtml.lastIndexOf('@');
-                if (lastAtHtmlPos >= 0) {
-                    var beforeAtHtml = currentHtml.substring(0, lastAtHtmlPos);
-                    var afterAtHtml = currentHtml.substring(lastAtHtmlPos + 1);
-
-                    // Remove the partial query after @
-                    // Find the next space, tag, or end
-                    var endMatch = afterAtHtml.match(/^[A-Za-z0-9._-]*/);
-                    var queryLength = endMatch ? endMatch[0].length : 0;
-                    afterAtHtml = afterAtHtml.substring(queryLength);
-
-                    // Insert the mention with space
-                    var newHtml = beforeAtHtml + '@' + username + ' ' + afterAtHtml;
-
-                    // Set the new HTML
-                    $editor.summernote('code', newHtml);
-
-                    // Move cursor to end
-                    $editor.summernote('editor.saveRange');
+            if (!$editable.length) {
+                hideMentionDropdown();
+                return;
+            }
+            try {
+                if (mentionRange && typeof mentionRange.select === 'function') {
+                    mentionRange.select();
+                } else {
                     $editor.summernote('editor.restoreRange');
+                }
+            } catch (e) { }
+            var editableEl = $editable[0];
+            var sel = window.getSelection();
+            if (!sel || sel.rangeCount === 0) {
+                hideMentionDropdown();
+                return;
+            }
+            var range = sel.getRangeAt(0);
+            if (!editableEl.contains(range.startContainer)) {
+                hideMentionDropdown();
+                return;
+            }
 
-                    // Focus at the end
-                    var range = document.createRange();
-                    var sel = window.getSelection();
-                    var editableEl = $editable[0];
+            function findMentionStart(node, offset) {
+                function previousPosition(n, o) {
+                    if (!n) return null;
+                    if (n.nodeType === 3 && o > 0) {
+                        return { node: n, offset: o - 1, ch: n.textContent.charAt(o - 1) };
+                    }
+                    var cur = n;
+                    while (cur) {
+                        if (cur.previousSibling) {
+                            cur = cur.previousSibling;
+                            while (cur && cur.lastChild) cur = cur.lastChild;
+                            if (cur && cur.nodeType === 3) {
+                                var len = cur.textContent.length;
+                                if (len > 0) return { node: cur, offset: len - 1, ch: cur.textContent.charAt(len - 1) };
+                            }
+                        } else {
+                            cur = cur.parentNode;
+                            if (!cur || cur === editableEl) break;
+                        }
+                    }
+                    return null;
+                }
 
-                    // Move to end of content
-                    range.selectNodeContents(editableEl);
-                    range.collapse(false);
-                    sel.removeAllRanges();
-                    sel.addRange(range);
+                var pos = { node: node, offset: offset };
+                while (true) {
+                    var prev = previousPosition(pos.node, pos.offset);
+                    if (!prev) return null;
+                    if (prev.ch === '@') return { node: prev.node, offset: prev.offset };
+                    if (/\s/.test(prev.ch || '')) return null;
+                    pos = { node: prev.node, offset: prev.offset };
                 }
             }
+
+            var startPos = findMentionStart(range.startContainer, range.startOffset);
+            if (!startPos) {
+                hideMentionDropdown();
+                return;
+            }
+
+            var deleteRange = document.createRange();
+            deleteRange.setStart(startPos.node, startPos.offset);
+            deleteRange.setEnd(range.startContainer, range.startOffset);
+            deleteRange.deleteContents();
+
+            var caretRange = sel.rangeCount ? sel.getRangeAt(0) : null;
+            var needsLeadingSpace = false;
+            if (caretRange) {
+                var probe = caretRange.cloneRange();
+                probe.selectNodeContents(editableEl);
+                probe.setEnd(caretRange.startContainer, caretRange.startOffset);
+                var textBefore = String(probe.toString() || '');
+                needsLeadingSpace = !!(textBefore && !/\s$/.test(textBefore));
+            }
+            var mentionText = (needsLeadingSpace ? ' ' : '') + '@' + String(username || '') + ' ';
+
+            try {
+                document.execCommand('insertText', false, mentionText);
+            } catch (e) {
+                var fallbackRange = sel.rangeCount ? sel.getRangeAt(0) : null;
+                if (fallbackRange) {
+                    var node = document.createTextNode(mentionText);
+                    fallbackRange.insertNode(node);
+                    fallbackRange.setStartAfter(node);
+                    fallbackRange.collapse(true);
+                }
+            }
+
+            mentionRange = null;
             hideMentionDropdown();
         }
 
