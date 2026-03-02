@@ -287,6 +287,9 @@ include __DIR__ . '/../../includes/header.php';
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
+<!-- SheetJS for Excel file reading -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
 <style>
 /* Core Styles */
 .timeline-marker { width: 40px; height: 40px; border-radius: 50%; background: #f8f9fa; border: 2px solid #dee2e6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -312,6 +315,26 @@ include __DIR__ . '/../../includes/header.php';
 .modal-backdrop { z-index: 10540; }
 .select2-container--open .select2-dropdown { z-index: 10600; }
 .select2-results__options { max-height: 250px !important; overflow-y: auto !important; }
+
+/* Grouped URLs collapse styling */
+.unique-grouped-list .grouped-url-item {
+    font-size: 0.85rem;
+    padding: 2px 0;
+    word-break: break-all;
+}
+.unique-grouped-list .btn-link {
+    font-size: 0.8rem;
+    padding: 0;
+}
+.unique-grouped-list .when-expanded {
+    display: none;
+}
+.unique-grouped-list .collapse.show ~ button .when-collapsed {
+    display: none;
+}
+.unique-grouped-list .collapse.show ~ button .when-expanded {
+    display: inline;
+}
 
 /* MAIN PROJECT TABS - keep Bootstrap defaults */
 #projectTabsContent {
@@ -1432,6 +1455,7 @@ include __DIR__ . '/../../includes/header.php';
 ?>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_core.js?v=<?php echo $viewJsVersion('view_core.js'); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_pages.js?v=<?php echo time(); ?>"></script>
+<script src="<?php echo $baseDir; ?>/modules/projects/js/view_pages_enhanced.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_feedback.js?v=<?php echo $viewJsVersion('view_feedback.js'); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_production.js?v=<?php echo $viewJsVersion('view_production.js'); ?>"></script>

@@ -142,10 +142,24 @@ try {
             $projectId = (int)($_GET['project_id'] ?? 0);
             if (!$projectId) jsonRes(['error' => 'project_id required'], 400);
 
-            $stmt = $db->prepare('SELECT id, page_name AS name, url AS canonical_url, created_at FROM project_pages WHERE project_id = ? ORDER BY page_name');
-            $stmt->execute([$projectId]);
-            $rows = $stmt->fetchAll();
-            jsonRes(['project_pages' => $rows]);
+                    $stmt = $db->prepare('SELECT id, page_name AS name, page_number, url AS canonical_url, created_at FROM project_pages WHERE project_id = ? ORDER BY page_name');
+                    $stmt->execute([$projectId]);
+                    $rows = $stmt->fetchAll();
+                    foreach ($rows as &$row) {
+                        // If page_number or page_name indicates global, always show 'Global N'
+                        if (
+                            (isset($row['page_number']) && preg_match('/^Global\s*\d+$/i', $row['page_number'], $matches)) ||
+                            (isset($row['name']) && preg_match('/^Global\s*\d+$/i', $row['name'], $matches))
+                        ) {
+                            // Extract N from either field
+                            if (preg_match('/Global\s*(\d+)/i', $row['page_number'] ?? $row['name'], $numMatch)) {
+                                $row['page_number'] = 'Global ' . $numMatch[1];
+                            } else {
+                                $row['page_number'] = 'Global';
+                            }
+                        }
+                    }
+                    jsonRes(['project_pages' => $rows]);
         }
 
         if ($action === 'list_grouped') {
@@ -327,14 +341,28 @@ try {
             $canonical = trim($input['canonical_url'] ?? '');
             if (!$projectId) jsonRes(['error' => 'project_id required'], 400);
 
-            // Generate the next page number
-            $maxStmt = $db->prepare("SELECT MAX(CAST(REPLACE(page_number, 'Page ', '') AS UNSIGNED)) as maxn FROM project_pages WHERE project_id = ? AND page_number LIKE 'Page %'");
-            $maxStmt->execute([$projectId]);
-            $maxRow = $maxStmt->fetch(PDO::FETCH_ASSOC);
-            $nextN = (int)($maxRow['maxn'] ?? 0) + 1;
-            $pageLabel = 'Page ' . $nextN;
-            
-            // If no name provided, use the generated page number
+                // Always set page_number to 'Global N' if 'GLOBAL' is selected, else normal logic
+                $requestedPageNumber = trim((string)($input['page_number'] ?? ''));
+                if (strtoupper($requestedPageNumber) === 'GLOBAL') {
+                    // Find next Global N for this project
+                    $gStmt = $db->prepare("SELECT MAX(CAST(REPLACE(page_number, 'Global ', '') AS UNSIGNED)) as maxg FROM project_pages WHERE project_id = ? AND page_number LIKE 'Global %'");
+                    $gStmt->execute([$projectId]);
+                    $gRow = $gStmt->fetch(PDO::FETCH_ASSOC);
+                    $nextG = (int)($gRow['maxg'] ?? 0) + 1;
+                    $pageLabel = 'Global ' . $nextG;
+                } else if ($requestedPageNumber !== '' && strtoupper($requestedPageNumber) !== 'GLOBAL') {
+                    // accept any provided label (caller is trusted to provide sensible value)
+                    $pageLabel = $requestedPageNumber;
+                } else {
+                    // Generate the next page number
+                    $maxStmt = $db->prepare("SELECT MAX(CAST(REPLACE(page_number, 'Page ', '') AS UNSIGNED)) as maxn FROM project_pages WHERE project_id = ? AND page_number LIKE 'Page %'");
+                    $maxStmt->execute([$projectId]);
+                    $maxRow = $maxStmt->fetch(PDO::FETCH_ASSOC);
+                    $nextN = (int)($maxRow['maxn'] ?? 0) + 1;
+                    $pageLabel = 'Page ' . $nextN;
+                }
+
+            // If no name provided, use the chosen/generated page number
             if ($name === '') {
                 $name = $pageLabel;
             }

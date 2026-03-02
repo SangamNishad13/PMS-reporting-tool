@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/functions.php';
 
 if (!isset($_SESSION['user_id'])) {
     http_response_code(403);
@@ -73,6 +74,52 @@ if (!$insideAllowed) {
     http_response_code(403);
     echo 'Forbidden';
     exit;
+}
+
+// Check if this is a project asset and verify user has access to the project
+try {
+    $db = Database::getInstance();
+    $userId = (int)$_SESSION['user_id'];
+    $userRole = $_SESSION['role'] ?? '';
+    
+    // Check if file is a project asset
+    $assetStmt = $db->prepare("SELECT project_id FROM project_assets WHERE file_path = ? LIMIT 1");
+    $assetStmt->execute([$relPath]);
+    $asset = $assetStmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($asset) {
+        // This is a project asset - check if user has access to the project
+        $projectId = (int)$asset['project_id'];
+        
+        // Admin and super_admin have access to all projects
+        if (!in_array($userRole, ['admin', 'super_admin'], true)) {
+            // Check if user is project lead
+            $leadStmt = $db->prepare("SELECT project_lead_id FROM projects WHERE id = ? LIMIT 1");
+            $leadStmt->execute([$projectId]);
+            $projectLeadId = (int)($leadStmt->fetchColumn() ?? 0);
+            
+            // Check if user is assigned to the project
+            $assignedStmt = $db->prepare("
+                SELECT id FROM user_assignments 
+                WHERE project_id = ? AND user_id = ? AND (is_removed IS NULL OR is_removed = 0) 
+                LIMIT 1
+            ");
+            $assignedStmt->execute([$projectId, $userId]);
+            $isAssigned = (bool)$assignedStmt->fetch();
+            
+            // If user is not project lead and not assigned, deny access
+            if ($projectLeadId !== $userId && !$isAssigned) {
+                http_response_code(403);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Forbidden: You do not have access to this project asset';
+                exit;
+            }
+        }
+    }
+    // If not a project asset, allow access (for other uploads like chat images, issue screenshots, etc.)
+} catch (Exception $e) {
+    // If database check fails, log error but allow access to avoid breaking existing functionality
+    error_log('secure_file.php: Failed to check project asset permissions: ' . $e->getMessage());
 }
 
 $mime = 'application/octet-stream';

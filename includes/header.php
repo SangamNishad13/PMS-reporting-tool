@@ -207,13 +207,30 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
     function showToast(message, variant = 'info', ttl = 4000) {
         try {
             const containerId = 'pmsGlobalToastContainer';
+            
+            // Remove any old containers with wrong positioning
+            document.querySelectorAll('[id^="pmsGlobalToast"]').forEach(el => {
+                if (el.id !== containerId || !el.style.top) {
+                    el.remove();
+                }
+            });
+            
             let container = document.getElementById(containerId);
             if (!container) {
                 container = document.createElement('div');
                 container.id = containerId;
-                container.className = 'position-fixed top-0 end-0 p-3';
-                container.style.zIndex = 10800;
+                container.className = 'position-fixed';
+                container.style.zIndex = '10800';
+                container.style.top = '70px';
+                container.style.right = '20px';
+                container.style.padding = '1rem';
                 document.body.appendChild(container);
+            } else {
+                // Ensure existing container has correct position
+                container.style.top = '70px';
+                container.style.right = '20px';
+                container.style.bottom = 'auto';
+                container.style.left = 'auto';
             }
             const toastId = 'toast_' + Date.now() + '_' + Math.floor(Math.random()*1000);
             const bg = variant === 'success' ? 'bg-success text-white' : (variant === 'danger' ? 'bg-danger text-white' : (variant === 'warning' ? 'bg-warning text-dark' : 'bg-secondary text-white'));

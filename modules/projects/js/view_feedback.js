@@ -236,17 +236,17 @@ $(document).ready(function () {
         }
         var mentionText = (needsLeadingSpace ? ' ' : '') + '@' + String(username || '') + ' ';
 
-        try {
-            document.execCommand('insertText', false, mentionText);
-        } catch (e) {
-            var fallbackRange = sel.rangeCount ? sel.getRangeAt(0) : null;
-            if (fallbackRange) {
-                var node = document.createTextNode(mentionText);
-                fallbackRange.insertNode(node);
-                fallbackRange.setStartAfter(node);
-                fallbackRange.collapse(true);
-            }
+        // Insert mention text - use direct node insertion to preserve spaces
+        var node = document.createTextNode(mentionText);
+        var insertRange = sel.rangeCount ? sel.getRangeAt(0) : null;
+        if (insertRange) {
+            insertRange.insertNode(node);
+            insertRange.setStartAfter(node);
+            insertRange.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(insertRange);
         }
+
         feedbackMentionRange = null;
         try { $editor.summernote('editor.focus'); } catch (e) { }
         hideFeedbackMentionDropdown();

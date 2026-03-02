@@ -2,8 +2,10 @@
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/project_permissions.php';
+require_once __DIR__ . '/../../includes/excel_reader.php';
 
 header('Content-Type: application/json; charset=utf-8');
+
 $auth = new Auth();
 if (!$auth->isLoggedIn()) {
     http_response_code(401);
@@ -33,6 +35,28 @@ if (empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
 $tmp = $_FILES['file']['tmp_name'];
 if (!is_uploaded_file($tmp)) {
     echo json_encode(['error' => 'Invalid upload']);
+    exit;
+}
+
+// Detect file type and read data
+$fileName = $_FILES['file']['name'];
+$ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+
+$allRows = [];
+if (in_array($ext, ['xlsx', 'xls', 'csv'])) {
+    $result = readExcelFile($tmp, $fileName);
+    if (isset($result['error'])) {
+        echo json_encode(['error' => $result['error']]);
+        exit;
+    }
+    $allRows = $result['rows'];
+} else {
+    echo json_encode(['error' => 'Unsupported file format. Please upload CSV, XLSX, or XLS file.']);
+    exit;
+}
+
+if (empty($allRows)) {
+    echo json_encode(['error' => 'Empty file']);
     exit;
 }
 
@@ -87,32 +111,34 @@ if (empty($uniqueCols) && empty($allCols)) {
 $addedUnique = 0; $addedGrouped = 0;
 $addedProjectPages = 0;
 
-if (($fp = fopen($tmp, 'r')) !== false) {
-    // Read header
-    $header = fgetcsv($fp);
-    if ($header === false) { fclose($fp); echo json_encode(['error'=>'Empty CSV']); exit; }
+// Extract header and data rows
+$header = array_shift($allRows);
+if ($header === null) {
+    echo json_encode(['error' => 'No header row found']);
+    exit;
+}
 
-    // Prepare statements
-    $findUnique = $db->prepare('SELECT id FROM project_pages WHERE project_id = ? AND (url = ? OR page_name = ?) LIMIT 1');
-    $insertUnique = $db->prepare('INSERT INTO project_pages (project_id, page_name, url, page_number, screen_name, notes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())');
-    $getUniqueById = $db->prepare('SELECT id, page_name AS name, url AS canonical_url, page_number, screen_name FROM project_pages WHERE id = ? LIMIT 1');
-    $findProjectPageByUrl = $db->prepare('SELECT id FROM project_pages WHERE project_id = ? AND url = ? LIMIT 1');
-    $insertProjectPage = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, screen_name, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())');
-    $findGrouped = $db->prepare('SELECT id FROM grouped_urls WHERE project_id = ? AND url = ? LIMIT 1');
-    $insertGrouped = $db->prepare('INSERT INTO grouped_urls (project_id, unique_page_id, url, normalized_url, created_at) VALUES (?, ?, ?, ?, NOW())');
+// Prepare statements
+$findUnique = $db->prepare('SELECT id FROM project_pages WHERE project_id = ? AND (url = ? OR page_name = ?) LIMIT 1');
+$insertUnique = $db->prepare('INSERT INTO project_pages (project_id, page_name, url, page_number, screen_name, notes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())');
+$getUniqueById = $db->prepare('SELECT id, page_name AS name, url AS canonical_url, page_number, screen_name FROM project_pages WHERE id = ? LIMIT 1');
+$findProjectPageByUrl = $db->prepare('SELECT id FROM project_pages WHERE project_id = ? AND url = ? LIMIT 1');
+$insertProjectPage = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, screen_name, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())');
+$findGrouped = $db->prepare('SELECT id FROM grouped_urls WHERE project_id = ? AND url = ? LIMIT 1');
+$insertGrouped = $db->prepare('INSERT INTO grouped_urls (project_id, unique_page_id, url, normalized_url, created_at) VALUES (?, ?, ?, ?, NOW())');
 
-    // Get current count for unique naming and page numbering
-    $cntStmt = $db->prepare('SELECT COUNT(*) FROM project_pages WHERE project_id = ?');
-    $cntStmt->execute([$projectId]);
-    $nextIndex = (int)$cntStmt->fetchColumn() + 1;
-    
-    // Get the next page number using the same logic as the API
-    $maxStmt = $db->prepare("SELECT MAX(CAST(REPLACE(page_number, 'Page ', '') AS UNSIGNED)) as maxn FROM project_pages WHERE project_id = ? AND page_number LIKE 'Page %'");
-    $maxStmt->execute([$projectId]);
-    $maxRow = $maxStmt->fetch(PDO::FETCH_ASSOC);
-    $nextPageNumber = (int)($maxRow['maxn'] ?? 0) + 1;
+// Get current count for unique naming and page numbering
+$cntStmt = $db->prepare('SELECT COUNT(*) FROM project_pages WHERE project_id = ?');
+$cntStmt->execute([$projectId]);
+$nextIndex = (int)$cntStmt->fetchColumn() + 1;
 
-    while (($row = fgetcsv($fp)) !== false) {
+// Get the next page number using the same logic as the API
+$maxStmt = $db->prepare("SELECT MAX(CAST(REPLACE(page_number, 'Page ', '') AS UNSIGNED)) as maxn FROM project_pages WHERE project_id = ? AND page_number LIKE 'Page %'");
+$maxStmt->execute([$projectId]);
+$maxRow = $maxStmt->fetch(PDO::FETCH_ASSOC);
+$nextPageNumber = (int)($maxRow['maxn'] ?? 0) + 1;
+
+foreach ($allRows as $row) {
         // Extract values from CSV columns
         $uniqueParts = [];
         foreach ($uniqueCols as $uc) { if (isset($row[$uc])) $uniqueParts[] = trim($row[$uc]); }
@@ -212,18 +238,14 @@ if (($fp = fopen($tmp, 'r')) !== false) {
                 $addedGrouped++;
             }
         }
-    }
-    fclose($fp);
-    echo json_encode([
-        'success' => true,
-        'added_unique' => $addedUnique,
-        'added_grouped' => $addedGrouped,
-        'added_project_pages' => $addedProjectPages
-    ]);
-    exit;
-} else {
-    echo json_encode(['error' => 'Unable to open uploaded file']);
-    exit;
 }
+
+echo json_encode([
+    'success' => true,
+    'added_unique' => $addedUnique,
+    'added_grouped' => $addedGrouped,
+    'added_project_pages' => $addedProjectPages
+]);
+exit;
 
 ?>

@@ -68,7 +68,7 @@ if ($stmt->rowCount() > 0) {
             echo '<button type="button" class="btn btn-sm btn-outline-primary mt-2" data-bs-toggle="modal" data-bs-target="#viewTextModal" data-title="' . htmlspecialchars($asset['asset_name']) . '" data-content="' . htmlspecialchars($content) . '"><i class="fas fa-eye"></i> View Full Content</button>';
             echo '</div>';
         } else {
-            echo '<div class="d-grid"><a href="' . $baseDir . '/' . htmlspecialchars($asset['file_path']) . '" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-download"></i> Download File</a></div>';
+            echo '<div class="d-grid"><a href="' . $baseDir . '/api/secure_file.php?path=' . rawurlencode($asset['file_path']) . '" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-download"></i> Download File</a></div>';
         }
 
         echo '</div>'; // card-body

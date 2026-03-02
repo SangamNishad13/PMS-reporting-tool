@@ -5,7 +5,7 @@
                 <p class="text-muted">Track recent changes and updates to this project.</p>
             </div>
             
-            <div class="timeline">
+            <div class="timeline" style="max-height: 600px; overflow-y: auto; padding-right: 10px;">
                 <?php 
                 // Get recent project activity from activity_log table
                 $activity = $db->prepare("

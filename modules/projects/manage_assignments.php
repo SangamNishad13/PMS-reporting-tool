@@ -7,6 +7,75 @@ require_once __DIR__ . '/../../includes/hours_validation.php';
 $auth = new Auth();
 $auth->requireRole(['admin', 'super_admin', 'project_lead', 'qa']);
 
+// Helper functions for project_pages table management
+function isProjectPagesView($db) {
+    try {
+        $stmt = $db->prepare("SELECT TABLE_TYPE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_pages' LIMIT 1");
+        $stmt->execute();
+        $type = $stmt->fetchColumn();
+        return strtoupper((string)$type) === 'VIEW';
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+function ensureProjectPagesTable($db) {
+    if (!isProjectPagesView($db)) {
+        return;
+    }
+
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS project_pages_tmp_no_view (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            project_id int(11) DEFAULT NULL,
+            page_name varchar(200) NOT NULL,
+            page_number varchar(50) DEFAULT NULL,
+            url varchar(500) DEFAULT NULL,
+            screen_name varchar(200) DEFAULT NULL,
+            status enum('not_started','in_progress','on_hold','qa_in_progress','in_fixing','needs_review','completed') DEFAULT 'not_started',
+            at_tester_id int(11) DEFAULT NULL,
+            ft_tester_id int(11) DEFAULT NULL,
+            qa_id int(11) DEFAULT NULL,
+            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+            created_by int(11) DEFAULT NULL,
+            at_tester_ids longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+            ft_tester_ids longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+            updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+            notes text DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY idx_project_pages_project_id (project_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    ");
+
+    $db->exec("
+        INSERT INTO project_pages_tmp_no_view
+            (id, project_id, page_name, page_number, url, screen_name, status, at_tester_id, ft_tester_id, qa_id, created_at, created_by, at_tester_ids, ft_tester_ids, updated_at, notes)
+        SELECT
+            up.id,
+            up.project_id,
+            up.page_name,
+            up.page_number,
+            up.url,
+            up.screen_name,
+            up.status,
+            up.at_tester_id,
+            up.ft_tester_id,
+            up.qa_id,
+            up.created_at,
+            up.created_by,
+            up.at_tester_ids,
+            up.ft_tester_ids,
+            up.updated_at,
+            up.notes
+        FROM project_pages up
+        LEFT JOIN project_pages_tmp_no_view t ON t.id = up.id
+        WHERE t.id IS NULL
+    ");
+
+    $db->exec("DROP VIEW project_pages");
+    $db->exec("RENAME TABLE project_pages_tmp_no_view TO project_pages");
+}
+
 $db = Database::getInstance();
 $projectManager = new ProjectManager();
 $userId = $_SESSION['user_id'];
@@ -240,7 +309,7 @@ if (!$projectId) {
                             $uId,
                             'assignment',
                             $notificationMessage,
-                            getBaseDir() . "/modules/projects/view.php?id=" . $projectId
+                            "/modules/projects/view.php?id=" . $projectId
                         );
 
                         logActivity($db, $userId, 'restore_team', 'project', $projectId, [
@@ -278,7 +347,7 @@ if (!$projectId) {
                             $uId,
                             'assignment',
                             $notificationMessage,
-                            getBaseDir() . "/modules/projects/view.php?id=" . $projectId
+                            "/modules/projects/view.php?id=" . $projectId
                         );
 
                         // Log Activity
@@ -411,7 +480,7 @@ if (!$projectId) {
                     $restoredUserId, 
                     'assignment', 
                     $notificationMessage,
-                    getBaseDir() . "/modules/projects/view.php?id=" . $projectId
+                    "/modules/projects/view.php?id=" . $projectId
                 );
             }
             
@@ -764,6 +833,124 @@ if (!$projectId) {
         exit;
     }
 
+    // Handle Bulk Delete Pages
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_delete_pages'])) {
+        $pageIdsRaw = trim($_POST['page_ids'] ?? '');
+        $pageIds = array_values(array_unique(array_filter(array_map('intval', explode(',', $pageIdsRaw)), function($v) {
+            return $v > 0;
+        })));
+        
+        if (!empty($pageIds)) {
+            try {
+                // Ensure project_pages is a table, not a view
+                ensureProjectPagesTable($db);
+                
+                // Check if pages exist before deletion
+                $placeholders = implode(',', array_fill(0, count($pageIds), '?'));
+                $checkStmt = $db->prepare("SELECT id, page_name, project_id FROM project_pages WHERE id IN ($placeholders)");
+                $checkStmt->execute($pageIds);
+                $existingPages = $checkStmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // Filter to only pages belonging to this project
+                $validPageIds = [];
+                foreach ($existingPages as $page) {
+                    if ((int)$page['project_id'] === (int)$projectId) {
+                        $validPageIds[] = (int)$page['id'];
+                    }
+                }
+                
+                if (empty($validPageIds)) {
+                    $_SESSION['error'] = "No valid pages found to delete for this project.";
+                    header("Location: manage_assignments.php?project_id=$projectId&tab=pages");
+                    exit;
+                }
+                
+                $db->beginTransaction();
+                
+                // Create placeholders for valid page IDs
+                $validPlaceholders = implode(',', array_fill(0, count($validPageIds), '?'));
+                
+                // Delete related data first
+                
+                // Delete issue_pages
+                $delIssuePagesStmt = $db->prepare("DELETE FROM issue_pages WHERE page_id IN ($validPlaceholders)");
+                $delIssuePagesStmt->execute($validPageIds);
+                
+                // Delete chat_messages
+                $delChatMessages = $db->prepare("DELETE FROM chat_messages WHERE page_id IN ($validPlaceholders)");
+                $delChatMessages->execute($validPageIds);
+                
+                // Delete project_time_logs
+                $delTimeLogs = $db->prepare("DELETE FROM project_time_logs WHERE page_id IN ($validPlaceholders)");
+                $delTimeLogs->execute($validPageIds);
+                
+                // Delete page_environments
+                $deleteEnvStmt = $db->prepare("DELETE FROM page_environments WHERE page_id IN ($validPlaceholders)");
+                $deleteEnvStmt->execute($validPageIds);
+                
+                // Delete testing_results
+                $delTestResults = $db->prepare("DELETE FROM testing_results WHERE page_id IN ($validPlaceholders)");
+                $delTestResults->execute($validPageIds);
+                
+                // Delete qa_results
+                $delQaResults = $db->prepare("DELETE FROM qa_results WHERE page_id IN ($validPlaceholders)");
+                $delQaResults->execute($validPageIds);
+                
+                // Delete assignments
+                $delAssignments = $db->prepare("DELETE FROM assignments WHERE page_id IN ($validPlaceholders)");
+                $delAssignments->execute($validPageIds);
+                
+                // Delete grouped_urls (unique_page_id references)
+                $delGroupedUrls = $db->prepare("DELETE FROM grouped_urls WHERE unique_page_id IN ($validPlaceholders)");
+                $delGroupedUrls->execute($validPageIds);
+                
+                // Update issues to set page_id to NULL (since FK is SET NULL)
+                $updateIssues = $db->prepare("UPDATE issues SET page_id = NULL WHERE page_id IN ($validPlaceholders)");
+                $updateIssues->execute($validPageIds);
+                
+                // Delete project_pages
+                $deletePagesStmt = $db->prepare("DELETE FROM project_pages WHERE id IN ($validPlaceholders) AND project_id = ?");
+                $deletePagesStmt->execute(array_merge($validPageIds, [$projectId]));
+                $deletedCount = $deletePagesStmt->rowCount();
+                
+                // CRITICAL CHECK - Verify deletion before commit
+                $verifyStmt = $db->prepare("SELECT COUNT(*) FROM project_pages WHERE id IN ($validPlaceholders)");
+                $verifyStmt->execute($validPageIds);
+                $stillExistBeforeCommit = $verifyStmt->fetchColumn();
+                
+                $db->commit();
+                
+                // CRITICAL CHECK - Verify deletion after commit
+                $verifyStmt2 = $db->prepare("SELECT COUNT(*) FROM project_pages WHERE id IN ($validPlaceholders)");
+                $verifyStmt2->execute($validPageIds);
+                $stillExistAfterCommit = $verifyStmt2->fetchColumn();
+                
+                $_SESSION['success'] = "Successfully deleted {$deletedCount} page(s) and their related data.";
+                
+                // Log activity
+                try {
+                    logActivity($db, $userId, 'bulk_delete_pages', 'project', $projectId, [
+                        'deleted_page_ids' => $validPageIds,
+                        'count' => $deletedCount
+                    ]);
+                } catch (Exception $e) {
+                    error_log('Failed to log bulk delete pages activity: ' . $e->getMessage());
+                }
+            } catch (Exception $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                error_log('Bulk delete pages error: ' . $e->getMessage());
+                $_SESSION['error'] = "Failed to delete pages: " . $e->getMessage();
+            }
+        } else {
+            $_SESSION['error'] = "No pages selected for deletion.";
+        }
+        
+        header("Location: manage_assignments.php?project_id=$projectId&tab=pages");
+        exit;
+    }
+
     // Handle Quick Assign All
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quick_assign_all'])) {
         $quickAtTester = isset($_POST['quick_at_tester']) ? (int)$_POST['quick_at_tester'] : 0;
@@ -914,6 +1101,9 @@ if (!$projectId) {
     $removedMembers = $removedTeam->fetchAll();
 
     // Backfill from grouped URLs: ensure URLs are represented in project_pages.
+    // DISABLED: This was causing deleted pages to be re-inserted on every page load
+    // Only enable this if you explicitly want to sync grouped_urls to project_pages
+    /*
     $syncUniqueToProjectPages = $db->prepare("
         INSERT INTO project_pages (project_id, page_name, page_number, url, screen_name, created_by, created_at)
         SELECT
@@ -934,9 +1124,32 @@ if (!$projectId) {
           AND pp.id IS NULL
     ");
     $syncUniqueToProjectPages->execute([$userId, $projectId]);
+    */
+
+    // Ensure project_pages is a table, not a view (required for deletions)
+    ensureProjectPagesTable($db);
 
     // Fetch pages for this project (now using only project_pages table)
-    $pagesStmt = $db->prepare("SELECT id, page_name, url, screen_name, at_tester_id, ft_tester_id, qa_id FROM project_pages WHERE project_id = ? ORDER BY id ASC");
+    // Order: Global pages first (Global 1, Global 2, ...), then Page pages (Page 1, Page 2, ..., Page 10, ...)
+    $pagesStmt = $db->prepare("
+        SELECT id, page_name, page_number, url, screen_name, at_tester_id, ft_tester_id, qa_id 
+        FROM project_pages 
+        WHERE project_id = ? 
+        ORDER BY 
+            CASE 
+                WHEN page_number LIKE 'Global%' THEN 0
+                WHEN page_number LIKE 'Page%' THEN 1
+                ELSE 2
+            END,
+            CAST(
+                SUBSTRING_INDEX(
+                    SUBSTRING_INDEX(page_number, ' ', -1),
+                    ' ', 1
+                ) AS UNSIGNED
+            ),
+            page_number,
+            id ASC
+    ");
     $pagesStmt->execute([$projectId]);
     $projectPages = $pagesStmt->fetchAll();
 
@@ -1485,11 +1698,24 @@ include __DIR__ . '/../../includes/header.php';
                     </div>
                     
                     <div class="card-body p-0">
+                        <?php if (hasProjectLeadPrivileges()): ?>
+                        <div class="p-3 border-bottom bg-light">
+                            <button type="button" class="btn btn-sm btn-danger" id="bulkDeletePagesBtn" disabled>
+                                <i class="fas fa-trash"></i> Delete Selected (<span id="selectedPagesCount">0</span>)
+                            </button>
+                        </div>
+                        <?php endif; ?>
                         <div class="table-responsive">
                             <table class="table table-hover mb-0 table-sm">
                                 <thead class="bg-light">
                                     <tr>
-                                        <th class="text-start" style="width: 40%;">Page/Screen</th>
+                                        <?php if (hasProjectLeadPrivileges()): ?>
+                                        <th style="width: 40px;">
+                                            <input type="checkbox" id="selectAllPages" aria-label="Select all pages">
+                                        </th>
+                                        <?php endif; ?>
+                                        <th class="text-center" style="width: 10%;">Page No.</th>
+                                        <th class="text-start" style="width: 30%;">Page/Screen</th>
                                         <th class="text-center" style="width: 30%;">Assignments</th>
                                         <th class="text-center" style="width: 20%;">Status</th>
                                         <th class="text-center" style="width: 10%;">Action</th>
@@ -1527,6 +1753,18 @@ include __DIR__ . '/../../includes/header.php';
                                         $isReady = ($hasFT && $hasQA && $envCount > 0); // AT is optional
                                     ?>
                                     <tr class="align-middle">
+                                        <?php if (hasProjectLeadPrivileges()): ?>
+                                        <td>
+                                            <input type="checkbox" class="page-select" value="<?php echo (int)$p['id']; ?>" aria-label="Select <?php echo htmlspecialchars($p['page_name']); ?>">
+                                        </td>
+                                        <?php endif; ?>
+                                        <td class="text-center">
+                                            <?php if (!empty($p['page_number'])): ?>
+                                                <span class="badge bg-secondary"><?php echo htmlspecialchars($p['page_number']); ?></span>
+                                            <?php else: ?>
+                                                <span class="text-muted">-</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="text-start">
                                             <div>
                                                 <strong class="d-block"><?php echo htmlspecialchars($p['page_name']); ?></strong>
@@ -2530,5 +2768,104 @@ function toggleRowDetails(pageId, context = 'main') {
 </div>
 <?php endforeach; ?>
 <?php endif; ?>
+
+<script>
+// Multiselect delete functionality for pages tab
+$(document).ready(function() {
+    // Select all checkbox
+    $('#selectAllPages').on('change', function() {
+        $('.page-select').prop('checked', $(this).prop('checked'));
+        updateSelectedPagesCount();
+    });
+    
+    // Individual checkbox
+    $('.page-select').on('change', function() {
+        updateSelectedPagesCount();
+        // Update select all checkbox state
+        const total = $('.page-select').length;
+        const checked = $('.page-select:checked').length;
+        $('#selectAllPages').prop('checked', total === checked);
+    });
+    
+    // Update count and enable/disable delete button
+    function updateSelectedPagesCount() {
+        const count = $('.page-select:checked').length;
+        $('#selectedPagesCount').text(count);
+        $('#bulkDeletePagesBtn').prop('disabled', count === 0);
+    }
+    
+    // Bulk delete button click
+    $('#bulkDeletePagesBtn').on('click', function() {
+        const selectedIds = [];
+        $('.page-select:checked').each(function() {
+            selectedIds.push($(this).val());
+        });
+        
+        if (selectedIds.length === 0) {
+            return;
+        }
+        
+        const message = `Are you sure you want to delete ${selectedIds.length} page(s)? This will also delete all environment assignments and cannot be undone.`;
+        
+        if (typeof confirmModal === 'function') {
+            confirmModal(message, function() {
+                // Create form and submit
+                const form = $('<form>', {
+                    method: 'POST',
+                    action: window.location.href
+                });
+                
+                form.append($('<input>', {
+                    type: 'hidden',
+                    name: 'bulk_delete_pages',
+                    value: '1'
+                }));
+                
+                form.append($('<input>', {
+                    type: 'hidden',
+                    name: 'project_id',
+                    value: '<?php echo $projectId; ?>'
+                }));
+                
+                form.append($('<input>', {
+                    type: 'hidden',
+                    name: 'page_ids',
+                    value: selectedIds.join(',')
+                }));
+                
+                $('body').append(form);
+                form.submit();
+            });
+        } else if (confirm(message)) {
+            // Fallback to regular confirm
+            const form = $('<form>', {
+                method: 'POST',
+                action: window.location.href
+            });
+            
+            form.append($('<input>', {
+                type: 'hidden',
+                name: 'bulk_delete_pages',
+                value: '1'
+            }));
+            
+            form.append($('<input>', {
+                type: 'hidden',
+                name: 'project_id',
+                value: '<?php echo $projectId; ?>'
+            }));
+            
+            form.append($('<input>', {
+                type: 'hidden',
+                name: 'page_ids',
+                value: selectedIds.join(',')
+            }));
+            
+            $('body').append(form);
+            form.submit();
+        }
+    });
+});
+</script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

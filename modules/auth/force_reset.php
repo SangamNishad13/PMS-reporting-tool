@@ -28,8 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
         
-        // Update password and clear the flag
-        $stmt = $db->prepare("UPDATE users SET password = ?, force_password_reset = 0 WHERE id = ?");
+        // Update password, clear the flag, clear temp password, and mark account setup as completed
+        $stmt = $db->prepare("UPDATE users SET password = ?, force_password_reset = 0, temp_password = NULL, account_setup_completed = 1 WHERE id = ?");
         if ($stmt->execute([$hashedPassword, $userId])) {
             $_SESSION['force_reset'] = 0;
             $_SESSION['success'] = "Password updated successfully. Welcome!";

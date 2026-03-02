@@ -1523,6 +1523,8 @@ CREATE TABLE `users` (
   `force_password_reset` tinyint(1) DEFAULT 0,
   `can_manage_issue_config` tinyint(1) NOT NULL DEFAULT 0,
   `can_manage_devices` tinyint(1) NOT NULL DEFAULT 0,
+  `account_setup_completed` tinyint(1) DEFAULT 0,
+  `temp_password` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
   UNIQUE KEY `email` (`email`)

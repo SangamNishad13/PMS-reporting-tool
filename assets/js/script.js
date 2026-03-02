@@ -88,25 +88,9 @@ function updateStatus(elementId, url, data) {
     });
 }
 
-// Toast notifications
-function showToast(message, type = 'info') {
-    var toast = $('<div class="toast align-items-center text-white bg-' +
-        (type === 'success' ? 'success' :
-            type === 'error' ? 'danger' : 'info') +
-        ' border-0" role="alert">' +
-        '<div class="d-flex">' +
-        '<div class="toast-body">' + message + '</div>' +
-        '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>' +
-        '</div></div>');
-
-    $('#toastContainer').append(toast);
-    var bsToast = new bootstrap.Toast(toast[0]);
-    bsToast.show();
-
-    setTimeout(function () {
-        toast.remove();
-    }, 3000);
-}
+// Toast notifications - uses global showToast() from header.php
+// The global showToast() function is defined in includes/header.php and uses pmsGlobalToastContainer
+// No need to redefine it here - it's already available globally
 
 // Initialize DataTables with common settings
 function initDataTable(tableId) {
@@ -176,11 +160,6 @@ $(document).ready(function () {
     // Start real-time updates if user is logged in
     if (typeof userId !== 'undefined') {
         startRealTimeUpdates();
-    }
-
-    // Add toast container if not present
-    if (!$('#toastContainer').length) {
-        $('body').append('<div id="toastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index: 11"></div>');
     }
 });
 

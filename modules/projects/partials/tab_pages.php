@@ -25,7 +25,26 @@
 
             <?php 
             // Get project pages with environment details (show all pages here; dashboards control visibility)
-            $pages = $db->prepare("SELECT pp.* FROM project_pages pp WHERE pp.project_id = ? ORDER BY pp.page_number, pp.page_name");
+            // Order: Global pages first (Global 1, Global 2, ...), then Page pages (Page 1, Page 2, ..., Page 10, ...)
+            $pages = $db->prepare("
+                SELECT pp.* 
+                FROM project_pages pp 
+                WHERE pp.project_id = ? 
+                ORDER BY 
+                    CASE 
+                        WHEN pp.page_number LIKE 'Global%' THEN 0
+                        WHEN pp.page_number LIKE 'Page%' THEN 1
+                        ELSE 2
+                    END,
+                    CAST(
+                        SUBSTRING_INDEX(
+                            SUBSTRING_INDEX(pp.page_number, ' ', -1),
+                            ' ', 1
+                        ) AS UNSIGNED
+                    ),
+                    pp.page_number,
+                    pp.id ASC
+            ");
             $pages->execute([$projectId]);
             
             if ($pages->rowCount() > 0):
@@ -301,7 +320,7 @@
                             <i class="fas fa-trash"></i> Delete Selected
                         </button>
                         <a href="#" class="btn btn-sm btn-primary" id="importUrlsBtn">
-                            <i class="fas fa-upload"></i> Import CSV
+                            <i class="fas fa-upload"></i> Import CSV/Excel
                         </a>
                         <button class="btn btn-sm btn-outline-primary" id="addUniqueBtn">
                             <i class="fas fa-plus"></i> Add Unique
@@ -455,13 +474,18 @@
                                     // Determine display for Page No and Page Name.
                                     $displayPageNo = '';
                                     $displayPageName = '';
-                                    if (!empty($mapped) && !empty($mapped['page_number'])) {
+                                    
+                                    // First check if unique page itself has page_number field set
+                                    if (!empty($u['page_number'])) {
+                                        $displayPageNo = $u['page_number'];
+                                        $displayPageName = $u['name'] ?? '';
+                                    } elseif (!empty($mapped) && !empty($mapped['page_number'])) {
                                         $displayPageNo = $mapped['page_number'];
                                         $displayPageName = $mapped['page_name'] ?? ($u['name'] ?? '');
                                     } else {
-                                        // If no mapped project page, prefer moving generated "Page N" (from unique name) into Page No
+                                        // If no mapped project page, prefer moving generated "Page N" or "Global N" (from unique name) into Page No
                                         $genLike = '';
-                                        if (!empty($u['name']) && preg_match('/^Page\s+\d+/i', $u['name'])) {
+                                        if (!empty($u['name']) && preg_match('/^(Page|Global)\s+\d+/i', $u['name'])) {
                                             $genLike = $u['name'];
                                         }
                                         if ($genLike) {
@@ -493,8 +517,29 @@
                                         $groupForUnique->execute([$projectId, $u['id']]);
                                         $grows = $groupForUnique->fetchAll(PDO::FETCH_COLUMN);
                                         if (!empty($grows)) {
+                                            $urlCount = count($grows);
+                                            $maxVisible = 3; // Show only first 3 URLs initially
                                             echo '<div class="unique-grouped-list" data-unique-id="' . (int)$u['id'] . '">';
-                                            foreach ($grows as $gurl) { echo '<div class="grouped-url-item">' . htmlspecialchars($gurl) . '</div>'; }
+                                            
+                                            // Show first few URLs
+                                            for ($i = 0; $i < min($maxVisible, $urlCount); $i++) {
+                                                echo '<div class="grouped-url-item">' . htmlspecialchars($grows[$i]) . '</div>';
+                                            }
+                                            
+                                            // If more URLs exist, show them in a collapsible section
+                                            if ($urlCount > $maxVisible) {
+                                                $collapseId = 'collapse-urls-' . (int)$u['id'];
+                                                echo '<div class="collapse" id="' . $collapseId . '">';
+                                                for ($i = $maxVisible; $i < $urlCount; $i++) {
+                                                    echo '<div class="grouped-url-item">' . htmlspecialchars($grows[$i]) . '</div>';
+                                                }
+                                                echo '</div>';
+                                                echo '<button class="btn btn-sm btn-link p-0 mt-1 text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#' . $collapseId . '" aria-expanded="false">';
+                                                echo '<span class="when-collapsed"><i class="fas fa-chevron-down"></i> Show ' . ($urlCount - $maxVisible) . ' more</span>';
+                                                echo '<span class="when-expanded"><i class="fas fa-chevron-up"></i> Show less</span>';
+                                                echo '</button>';
+                                            }
+                                            
                                             echo '</div>';
                                         } else {
                                             echo '<div class="unique-grouped-list" data-unique-id="' . (int)$u['id'] . '"><span class="text-muted">No grouped URLs</span></div>';
@@ -784,11 +829,14 @@
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">All URLs</h5>
                     <div class="btn-group" role="group">
+                        <button class="btn btn-sm btn-primary" id="copySelectedUrls" disabled>
+                            <i class="fas fa-copy"></i> Copy Selected URLs (<span id="selectedUrlsCount">0</span>)
+                        </button>
                         <button class="btn btn-sm btn-danger" id="deleteSelectedGrouped">
                             <i class="fas fa-trash"></i> Delete Selected
                         </button>
                         <a href="#" class="btn btn-sm btn-outline-primary" id="importAllUrlsBtn">
-                            <i class="fas fa-upload"></i> Import All URLs CSV
+                            <i class="fas fa-upload"></i> Import All URLs CSV/Excel
                         </a>
                         <?php if (in_array($userRole, ['admin', 'super_admin', 'project_lead', 'qa'])): ?>
                             <button class="btn btn-sm btn-primary" id="openAddGroupedUrlModal">
@@ -823,6 +871,17 @@
                     </div>
                 </div>
                 
+                <!-- Pagination for All URLs (Top) -->
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <span id="allUrlsInfo" class="text-muted small"></span>
+                    </div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0" id="allUrlsPagination">
+                        </ul>
+                    </nav>
+                </div>
+                
                 <div class="table-responsive">
                     <table class="table table-striped table-sm resizable-table" id="allUrlsTable">
                         <thead>
@@ -852,7 +911,7 @@
                         <tbody>
                         <?php if (!empty($groupedUrls)): foreach ($groupedUrls as $g): ?>
                             <tr id="grouped-row-<?php echo (int)$g['grouped_id']; ?>">
-                                <td><input type="checkbox" class="grouped-check" value="<?php echo (int)$g['grouped_id']; ?>"></td>
+                                <td><input type="checkbox" class="grouped-check" value="<?php echo (int)$g['grouped_id']; ?>" data-url="<?php echo htmlspecialchars($g['url']); ?>"></td>
                                 <td><?php echo htmlspecialchars($g['url']); ?></td>
                                 <td class="dropdown-cell">
                                     <select class="form-select form-select-sm grouped-unique-select" data-grouped-id="<?php echo (int)$g['grouped_id']; ?>" style="min-width:160px;">
@@ -885,10 +944,21 @@
                                 </td>
                             </tr>
                         <?php endforeach; else: ?>
-                            <tr><td colspan="4" class="text-muted">No URLs uploaded for this project.</td></tr>
+                            <tr><td colspan="5" class="text-muted">No URLs uploaded for this project.</td></tr>
                         <?php endif; ?>
                         </tbody>
                     </table>
+                </div>
+                
+                <!-- Pagination for All URLs (Bottom) -->
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <div>
+                        <span id="allUrlsInfoBottom" class="text-muted small"></span>
+                    </div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0" id="allUrlsPaginationBottom">
+                        </ul>
+                    </nav>
                 </div>
             </div>
 

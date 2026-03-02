@@ -359,13 +359,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title">Import URLs CSV</h5>
+                            <h5 class="modal-title">Import URLs CSV/Excel</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
                             <div class="mb-3">
-                                <label class="form-label">CSV File</label>
-                                <input type="file" accept=".csv,text/csv" id="importCsvFile" class="form-control">
+                                <label class="form-label">CSV/Excel File</label>
+                                <input type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" id="importCsvFile" class="form-control">
+                                <small class="form-text text-muted">Supports CSV, XLSX, and XLS formats</small>
+                            </div>
+                            <div class="mb-3" id="sheetSelectorDiv" style="display:none;">
+                                <label class="form-label">Select Sheet</label>
+                                <select id="sheetSelector" class="form-select">
+                                </select>
                             </div>
                             <div class="mb-3">
                                 <small class="text-muted">After selecting a CSV we'll preview the first rows and let you choose which columns map to Unique Page and All URLs.</small>
@@ -434,13 +440,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title">Import All URLs CSV</h5>
+                            <h5 class="modal-title">Import All URLs CSV/Excel</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
                             <div class="mb-3">
-                                <label class="form-label">CSV File</label>
-                                <input type="file" accept=".csv,text/csv" id="importAllCsvFile" class="form-control">
+                                <label class="form-label">CSV/Excel File</label>
+                                <input type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" id="importAllCsvFile" class="form-control">
+                                <small class="form-text text-muted">Supports CSV, XLSX, and XLS formats</small>
+                            </div>
+                            <div class="mb-3" id="sheetSelectorAllDiv" style="display:none;">
+                                <label class="form-label">Select Sheet</label>
+                                <select id="sheetSelectorAll" class="form-select">
+                                </select>
                             </div>
                             <div class="mb-3">
                                 <small class="text-muted">Preview first rows and choose the column that contains URL(s). Multiple URLs in a cell can be separated by ; or |.</small>
@@ -585,6 +597,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     <label class="form-label">Canonical URL (optional)</label>
                     <input id="newUniqueCanonical" class="form-control" placeholder="https://example.com/page" />
                 </div>
+                <div class="mb-2">
+                    <label class="form-label">Page No. (optional)</label>
+                    <select id="newUniquePageNumber" class="form-select">
+                        <option value="">Auto-generate (Page N)</option>
+                        <option value="GLOBAL">Global</option>
+                    </select>
+                    <small class="form-text text-muted">Choose "Global" to mark this unique as a global page number.</small>
+                </div>
                 <div id="addUniqueError" class="text-danger" style="display:none;"></div>
             </div>
             <div class="modal-footer">
@@ -594,6 +614,136 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </div>
 </div>
+
+<script>
+    (function(){
+        if (!window.ProjectConfig) return;
+        var projectId = window.ProjectConfig.projectId || 0;
+        var baseDir = window.ProjectConfig.baseDir || '';
+        var btn = document.getElementById('createUniqueBtn');
+        if (!btn) return;
+            btn.addEventListener('click', function(){
+            var name = (document.getElementById('newUniqueName') || {value:''}).value || '';
+            var canonical = (document.getElementById('newUniqueCanonical') || {value:''}).value || '';
+            var pageNumber = (document.getElementById('newUniquePageNumber') || {value:''}).value || '';
+            var errEl = document.getElementById('addUniqueError');
+            if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+            btn.disabled = true;
+            // Debug: log request URL and payload to console
+            var _createUrl = baseDir + '/api/project_pages.php?action=create_unique';
+            var _payload = { project_id: projectId, name: name, canonical_url: canonical, page_number: pageNumber };
+            try { console.info('Add Unique -> POST', _createUrl, _payload); } catch (e) {}
+
+            fetch(_createUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(_payload),
+                credentials: 'same-origin'
+            }).then(function(r){ return r.json(); }).then(function(j){
+                try { console.info('Add Unique response', j); } catch (e) {}
+                btn.disabled = false;
+                if (j && j.success) {
+                    try { if (!j.page_number_label) console.warn('create_unique: missing page_number_label in response', j); } catch (e) {}
+                    // Insert new unique row into the Unique Pages table without reloading
+                    try {
+                        // local escapeHtml fallback
+                        function _escapeHtml(inp) {
+                            if (typeof window.escapeHtml === 'function') return window.escapeHtml(inp);
+                            return String(inp || '').replace(/[&<>"']/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]; });
+                        }
+                        var uid = Number(j.id || j.created_page_id || 0);
+                        var pageLabel = String(j.page_number_label || '').trim();
+                        if (!pageLabel) {
+                            // If server didn't return a label but user requested GLOBAL, derive next Global N from table
+                            if (pageNumber && String(pageNumber || '').toUpperCase() === 'GLOBAL') {
+                                var maxG = 0;
+                                try {
+                                    var existingCells = document.querySelectorAll('#uniquePagesTable tbody tr td:nth-child(2)');
+                                    existingCells.forEach(function(td){
+                                        var t = (td.textContent || '').trim();
+                                        var m = t.match(/^Global\s+(\d+)/i);
+                                        if (m && m[1]) {
+                                            var n = Number(m[1]); if (!isNaN(n) && n > maxG) maxG = n;
+                                        }
+                                    });
+                                } catch (e) { maxG = 0; }
+                                pageLabel = 'Global ' + (maxG + 1);
+                            } else {
+                                // Use provided non-GLOBAL pageNumber or fallback to name
+                                if (pageNumber && String(pageNumber || '').toUpperCase() !== 'GLOBAL') pageLabel = String(pageNumber);
+                                else pageLabel = '';
+                            }
+                        }
+                        // If name matches "Page N" or "Global N" pattern, use it as pageLabel
+                        if (!pageLabel && name && /^(Page|Global)\s+\d+/i.test(name)) {
+                            pageLabel = name;
+                        }
+                        var displayName = name || canonical || pageLabel || '';
+                        var tbody = document.querySelector('#uniquePagesTable tbody');
+                        if (tbody) {
+                            // remove 'No unique pages' placeholder row if present
+                            var noRow = tbody.querySelector('tr td[colspan]');
+                            if (noRow) {
+                                var tr = noRow.closest('tr'); if (tr) tr.parentNode.removeChild(tr);
+                            }
+
+                            var tr = document.createElement('tr');
+                            tr.id = 'unique-row-' + uid;
+                            tr.innerHTML = ''+
+                                '<td><input type="checkbox" class="unique-check" value="' + uid + '"></td>'+
+                                '<td>' + _escapeHtml(pageLabel) + '</td>'+
+                                '<td>' +
+                                    '<div class="d-flex align-items-center justify-content-between gap-2">'+
+                                        '<span class="page-name-display flex-grow-1 text-truncate">' + _escapeHtml(displayName) + '</span>'+
+                                        '<button type="button" class="btn btn-sm btn-link flex-shrink-0 edit-page-name" data-field="page_name" data-unique-id="' + uid + '" data-page-id="' + uid + '" data-current-name="' + _escapeHtml(displayName) + '" onclick="return window.handleEditPageName(this);">Edit</button>'+
+                                    '</div>'+
+                                '</td>'+
+                                '<td>' + _escapeHtml(canonical || name || '') + '</td>'+
+                                '<td><div class="unique-grouped-list" data-unique-id="' + uid + '"><span class="text-muted">No grouped URLs</span></div></td>'+
+                                '<td><span class="text-muted">No FT assignments</span></td>'+
+                                '<td><span class="text-muted">No AT assignments</span></td>'+
+                                '<td><span class="text-muted">No QA assignments</span></td>'+
+                                '<td><span class="badge bg-secondary">Not started</span></td>'+
+                                '<td><div class="d-flex align-items-center justify-content-between gap-2">'+
+                                    '<span class="notes-display flex-grow-1 text-truncate"></span>'+
+                                    '<div class="d-flex align-items-center gap-2 flex-shrink-0">'+
+                                        '<button type="button" class="btn btn-sm btn-link edit-page-name" data-field="notes" data-unique-id="' + uid + '" data-page-id="' + uid + '" data-current-name="" onclick="return window.handleEditPageName(this);">Edit</button>'+
+                                        '<button type="button" class="btn btn-sm btn-link text-danger d-none" data-unique-id="' + uid + '" data-page-id="' + uid + '" onclick="return window.handleDeletePageNotes(this);">Delete</button>'+
+                                    '</div>'+
+                                '</div></td>'+
+                                '<td>'+
+                                    '<span class="text-muted small">No mapped page</span> '+
+                                    '<button class="btn btn-sm btn-danger delete-unique ms-2" data-id="' + uid + '">Delete</button>'+
+                                '</td>';
+                            tbody.appendChild(tr);
+
+                            // re-bind any handlers if necessary (delete handler relies on event delegation elsewhere)
+                        }
+                    } catch (ee) {
+                        // fallback to reload if insertion fails
+                        location.reload();
+                        return;
+                    }
+
+                    // reset modal and inputs
+                    try {
+                        var modalEl = document.getElementById('addUniqueModal');
+                        if (modalEl && window.bootstrap) bootstrap.Modal.getInstance(modalEl).hide();
+                    } catch (e) {}
+                    document.getElementById('newUniqueName').value = '';
+                    document.getElementById('newUniqueCanonical').value = '';
+                    document.getElementById('newUniquePageNumber').value = '';
+                } else {
+                    if (errEl) errEl.style.display = 'block';
+                    if (errEl) errEl.textContent = (j && j.error) ? j.error : 'Failed to create unique page';
+                }
+            }).catch(function(e){
+                btn.disabled = false;
+                if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Request failed'; }
+            });
+        });
+    })();
+</script>
 
 <!-- Edit Page Name / Notes Modal -->
 <div class="modal fade" id="editPageModal" tabindex="-1" aria-hidden="true">

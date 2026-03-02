@@ -2091,7 +2091,12 @@ if (!$embed) {
                 const textarea = $('#message');
                 const cursorPos = textarea[0].selectionStart;
                 const current = textarea.val();
-                textarea.val(current.substring(0, cursorPos) + username + ' ' + current.substring(cursorPos)).focus();
+                const textBefore = current.substring(0, cursorPos);
+                const textAfter = current.substring(cursorPos);
+                const needsLeadingSpace = textBefore.length > 0 && !/\s$/.test(textBefore);
+                const insertText = (needsLeadingSpace ? ' ' : '') + username + ' ';
+                textarea.val(textBefore + insertText + textAfter).focus();
+                textarea[0].selectionStart = textarea[0].selectionEnd = cursorPos + insertText.length;
             });
 
             $(document).on('click', '.note-editor .note-editable img', function(e) {

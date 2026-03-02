@@ -419,12 +419,14 @@ try {
             const needsLeadingSpace = textBefore.length > 0 && !/\s$/.test(textBefore);
             const insertText = (needsLeadingSpace ? ' ' : '') + username + ' ';
             
-            textarea.val(textBefore + insertText + textAfter);
+            const newValue = textBefore + insertText + textAfter;
+            textarea.val(newValue);
             textarea.focus();
-            textarea[0].selectionStart = textarea[0].selectionEnd = cursorPos + insertText.length;
+            const newCursorPos = cursorPos + insertText.length;
+            textarea[0].selectionStart = textarea[0].selectionEnd = newCursorPos;
             
             // Update character count
-            $('#charCount').text(textarea.val().length + '/1000');
+            $('#charCount').text(newValue.length + '/1000');
         });
         
         // Clear message

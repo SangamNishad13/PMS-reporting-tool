@@ -174,8 +174,8 @@ function sendCredentialsMailForUser(PDO $db, $uid, $mailMode, $requestId = '') {
 
         $tempPassword = generateTemporaryPassword(12);
         $newHash = password_hash($tempPassword, PASSWORD_DEFAULT);
-        $upd = $db->prepare("UPDATE users SET password = ?, force_password_reset = 1 WHERE id = ?");
-        $upd->execute([$newHash, $uid]);
+        $upd = $db->prepare("UPDATE users SET password = ?, force_password_reset = 1, temp_password = ?, account_setup_completed = 0 WHERE id = ?");
+        $upd->execute([$newHash, $tempPassword, $uid]);
 
         $subject = ($mailMode === 'reset')
             ? "PMS Password Reset - Login Details"
@@ -190,15 +190,18 @@ function sendCredentialsMailForUser(PDO $db, $uid, $mailMode, $requestId = '') {
         );
 
         $sent = $mailer->send($recipientEmail, $subject, $body, true);
+        
+        // Commit the password and temp_password changes regardless of email success
+        // This ensures admin can see the temp password even if email fails
+        $db->commit();
+        
         if ($sent) {
-            $db->commit();
             logCredentialsMailAttempt($db, $requestId, $uid, $mailMode, 'success', (string)($user['username'] ?? "User#{$uid}") . ' sent.');
             return ['success' => true, 'username' => (string)($user['username'] ?? "User#{$uid}")];
         }
 
-        $db->rollBack();
         logCredentialsMailAttempt($db, $requestId, $uid, $mailMode, 'fail', (string)($user['username'] ?? "User#{$uid}") . ' mail send failed.');
-        return ['success' => false, 'error' => (string)($user['username'] ?? "User#{$uid}") . ' mail send failed.'];
+        return ['success' => false, 'error' => (string)($user['username'] ?? "User#{$uid}") . ' mail send failed. Temporary password is visible in the users table.', 'temp_password_saved' => true];
     } catch (Exception $e) {
         if ($db->inTransaction()) {
             $db->rollBack();
@@ -255,13 +258,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } else {
                 $stmt = $db->prepare(
-                    "INSERT INTO users (username, email, password, full_name, role, force_password_reset, can_manage_issue_config, can_manage_devices) VALUES (?, ?, ?, ?, ?, 1, ?, ?)"
+                    "INSERT INTO users (username, email, password, full_name, role, force_password_reset, can_manage_issue_config, can_manage_devices, temp_password, account_setup_completed) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, 0)"
                 );
                 $canManageConfig = isset($_POST['can_manage_issue_config']) ? 1 : 0;
                 $canManageDevices = isset($_POST['can_manage_devices']) ? 1 : 0;
 
                 try {
-                    if ($stmt->execute([$username, $email, $password, $fullName, $role, $canManageConfig, $canManageDevices])) {
+                    if ($stmt->execute([$username, $email, $password, $fullName, $role, $canManageConfig, $canManageDevices, $rawPassword])) {
                         $mailNote = '';
                         if (!empty($_POST['send_setup_email'])) {
                             try {
@@ -731,6 +734,12 @@ include __DIR__ . '/../../includes/header.php';
     background-position: right 0.6rem center;
     text-overflow: clip;
 }
+#usersTable td, #usersTable th {
+    white-space: nowrap;
+}
+#usersTable {
+    width: 100% !important;
+}
 </style>
 <?php
 // Render compact fixed-position flash messages (top-right) so they don't push content
@@ -789,6 +798,8 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                             <th>Role</th>
                             <th>Projects</th>
                             <th>Pages</th>
+                            <th>Setup Status</th>
+                            <th>Temp Password</th>
                             <th>Status</th>
                             <th>Actions</th>
                         </tr>
@@ -813,6 +824,20 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                             <td><?php echo $user['project_count']; ?></td>
                             <td><?php echo $user['page_count']; ?></td>
                             <td>
+                                <?php if (!empty($user['account_setup_completed'])): ?>
+                                    <span class="badge bg-success">Completed</span>
+                                <?php else: ?>
+                                    <span class="badge bg-warning text-dark">Pending</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if (empty($user['account_setup_completed']) && !empty($user['temp_password'])): ?>
+                                    <code class="text-danger"><?php echo htmlspecialchars($user['temp_password']); ?></code>
+                                <?php else: ?>
+                                    <span class="text-muted">-</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
                                 <?php if ($user['is_active']): ?>
                                     <span class="badge bg-success">Active</span>
                                 <?php else: ?>
@@ -825,9 +850,10 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                                         data-bs-target="#editUserModal<?php echo $user['id']; ?>">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button type="button" class="btn btn-sm btn-info" 
-                                        data-bs-toggle="modal" 
-                                        data-bs-target="#resetPasswordModal<?php echo $user['id']; ?>">
+                                <button type="button" class="btn btn-sm btn-info send-reset-email-btn" 
+                                        data-user-id="<?php echo $user['id']; ?>"
+                                        data-username="<?php echo htmlspecialchars($user['username']); ?>"
+                                        title="Send Reset Password Email">
                                     <i class="fas fa-key"></i>
                                 </button>
                                     <button type="button" class="btn btn-sm btn-secondary view-user-btn" data-user-id="<?php echo $user['id']; ?>">
@@ -902,36 +928,6 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                             </div>
                         </div>
                         
-                        <!-- Reset Password Modal -->
-                        <div class="modal fade" id="resetPasswordModal<?php echo $user['id']; ?>" tabindex="-1">
-                            <!-- ... existing reset password modal content ... -->
-                            <div class="modal-dialog">
-                                <div class="modal-content">
-                                    <form method="POST">
-                                        <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
-                                        <div class="modal-header">
-                                            <h5 class="modal-title">Reset Password for <?php echo renderUserNameLink(['id'=>$user['id'],'full_name'=>$user['full_name'],'role'=>$user['role']]); ?></h5>
-                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                        </div>
-                                        <div class="modal-body">
-                                            <div class="mb-3">
-                                                <label>New Password *</label>
-                                                <input type="password" name="new_password" class="form-control" required>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label>Confirm Password *</label>
-                                                <input type="password" name="confirm_password" class="form-control" required>
-                                            </div>
-                                        </div>
-                                        <div class="modal-footer">
-                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                            <button type="submit" name="reset_password" class="btn btn-primary">Reset Password</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-
                         <!-- Delete User Modal -->
                         <div class="modal fade" id="deleteUserModal<?php echo $user['id']; ?>" tabindex="-1">
                             <div class="modal-dialog">
@@ -1588,6 +1584,117 @@ $(document).on('click', '.view-user-btn', function() {
             $('#viewUserContent').html('<p class="text-danger">Request failed: ' + xhr.status + ' ' + $('<div>').text(body).html() + '</p>');
             console.error('User details request failed', xhr.status, body);
         }
+    });
+});
+
+// Handle send reset email button click
+$('.send-reset-email-btn').on('click', function() {
+    const userId = $(this).data('user-id');
+    const username = $(this).data('username');
+    const btn = $(this);
+    
+    // Show confirmation modal
+    const modalHtml = `
+        <div class="modal fade" id="confirmResetEmailModal" tabindex="-1" aria-labelledby="confirmResetEmailModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="confirmResetEmailModalLabel">
+                            <i class="fas fa-paper-plane text-primary"></i> Send Password Reset Email
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to send a password reset email to <strong>${username}</strong>?</p>
+                        <div class="alert alert-info mb-0">
+                            <i class="fas fa-info-circle"></i> A new temporary password will be generated and sent to the user's email address.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="confirmSendResetEmail">
+                            <i class="fas fa-paper-plane"></i> Send Email
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if any
+    $('#confirmResetEmailModal').remove();
+    
+    // Add modal to body
+    $('body').append(modalHtml);
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('confirmResetEmailModal'));
+    modal.show();
+    
+    // Handle confirm button click
+    $('#confirmSendResetEmail').off('click').on('click', function() {
+        const confirmBtn = $(this);
+        confirmBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
+        
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+        
+        const requestId = 'reset_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        
+        $.ajax({
+            url: window.location.pathname,
+            method: 'POST',
+            data: {
+                send_credentials_email_single: 1,
+                user_id: userId,
+                mail_mode: 'reset',
+                request_id: requestId
+            },
+            dataType: 'json',
+            success: function(response) {
+                modal.hide();
+                
+                if (response.success) {
+                    if (typeof showToast === 'function') {
+                        showToast(`Password reset email sent to ${response.username || username}`, 'success');
+                    } else {
+                        alert(`Password reset email sent to ${response.username || username}`);
+                    }
+                    // Reload page to show updated temp password
+                    setTimeout(function() {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    // Even if email failed, temp password is saved - show message and reload
+                    const errorMsg = response.error || 'Failed to send reset email';
+                    if (typeof showToast === 'function') {
+                        showToast(errorMsg, 'warning');
+                    } else {
+                        alert(errorMsg);
+                    }
+                    
+                    // Reload page to show temp password in table
+                    setTimeout(function() {
+                        location.reload();
+                    }, 2000);
+                }
+            },
+            error: function(xhr) {
+                modal.hide();
+                
+                const errorMsg = 'Error sending reset email: ' + (xhr.responseText || xhr.statusText);
+                if (typeof showToast === 'function') {
+                    showToast(errorMsg, 'danger');
+                } else {
+                    alert(errorMsg);
+                }
+                btn.prop('disabled', false).html('<i class="fas fa-key"></i>');
+            }
+        });
+    });
+    
+    // Reset button state when modal is closed without confirming
+    $('#confirmResetEmailModal').on('hidden.bs.modal', function() {
+        $(this).remove();
     });
 });
 </script>

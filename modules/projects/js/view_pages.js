@@ -256,10 +256,11 @@ $(document).ready(function () {
     $('#createUniqueBtn').on('click', function (e) {
         var name = $('#newUniqueName').val().trim();
         var canonical = $('#newUniqueCanonical').val().trim();
+        var pageNumber = $('#newUniquePageNumber').val().trim();
         var err = $('#addUniqueError'); err.hide().text('');
         
         $(this).prop('disabled', true);
-        fetch(baseDir + '/api/project_pages.php?action=create_unique', { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify({ project_id: projectId, name: name, canonical_url: canonical }), credentials: 'same-origin' })
+        fetch(baseDir + '/api/project_pages.php?action=create_unique', { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify({ project_id: projectId, name: name, canonical_url: canonical, page_number: pageNumber }), credentials: 'same-origin' })
             .then(r => r.json()).then(function (j) {
                 $('#createUniqueBtn').prop('disabled', false); if (j && j.success) {
                     $('#addUniqueModal').modal('hide');
@@ -418,10 +419,80 @@ $(document).ready(function () {
 
     // Edit Page Name / Notes handled in view_core.js to avoid duplicate bindings
 
-    // Select All Grouped
+    // Select All Grouped (only visible rows on current page)
     $(document).on('change', '#selectAllGrouped', function () {
-        $('.grouped-check').prop('checked', $(this).prop('checked'));
+        const isChecked = $(this).prop('checked');
+        // Only select checkboxes in visible rows (not hidden by pagination)
+        $('#allUrlsTable tbody tr:visible .grouped-check').prop('checked', isChecked);
+        updateCopyButtonState();
     });
+
+    // Update checkbox selection count and button state
+    $(document).on('change', '.grouped-check', function() {
+        updateCopyButtonState();
+    });
+
+    function updateCopyButtonState() {
+        const selectedCount = $('.grouped-check:checked').length;
+        $('#selectedUrlsCount').text(selectedCount);
+        $('#copySelectedUrls').prop('disabled', selectedCount === 0);
+    }
+
+    // Copy Selected URLs
+    $(document).on('click', '#copySelectedUrls', function () {
+        const urls = [];
+        $('.grouped-check:checked').each(function () {
+            const url = $(this).data('url');
+            if (url) {
+                urls.push(url);
+            }
+        });
+        
+        if (urls.length === 0) {
+            showToast('No URLs selected', 'warning');
+            return;
+        }
+        
+        // Copy to clipboard
+        const urlText = urls.join('\n');
+        
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(urlText).then(function() {
+                showToast('Copied ' + urls.length + ' URL(s) to clipboard', 'success');
+            }).catch(function(err) {
+                // Fallback method
+                fallbackCopyToClipboard(urlText, urls.length);
+            });
+        } else {
+            // Fallback for older browsers
+            fallbackCopyToClipboard(urlText, urls.length);
+        }
+    });
+
+    // Fallback copy method for older browsers
+    function fallbackCopyToClipboard(text, count) {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+                showToast('Copied ' + count + ' URL(s) to clipboard', 'success');
+            } else {
+                showToast('Failed to copy URLs', 'error');
+            }
+        } catch (err) {
+            showToast('Failed to copy URLs', 'error');
+        }
+        
+        document.body.removeChild(textArea);
+    }
 
     // Delete Selected Grouped
     $(document).on('click', '#deleteSelectedGrouped', function () {
@@ -489,6 +560,11 @@ $(document).ready(function () {
         const mapNotes = document.getElementById('mapNotesCol');
         const mapGroupedUrls = document.getElementById('mapGroupedUrlsCol');
         const uploadBtn = document.getElementById('uploadCsvBtn');
+        const sheetSelectorDiv = document.getElementById('sheetSelectorDiv');
+        const sheetSelector = document.getElementById('sheetSelector');
+        
+        let currentWorkbook = null;
+        let currentRows = [];
 
         function clearPreview() { 
             if (previewArea) previewArea.style.display = 'none'; 
@@ -502,86 +578,148 @@ $(document).ready(function () {
                     sel.innerHTML = hasNone ? '<option value="">-- None --</option>' : '';
                 }
             });
+            if (sheetSelectorDiv) sheetSelectorDiv.style.display = 'none';
+            if (sheetSelector) sheetSelector.innerHTML = '';
+            currentWorkbook = null;
+            currentRows = [];
+        }
+        
+        function processRows(rows) {
+            if (!rows || rows.length === 0) return;
+            currentRows = rows;
+            const header = rows[0];
+            
+            // Populate all dropdowns
+            [mapPageNumber, mapPageName, mapUniqueUrl, mapScreenName, mapNotes, mapGroupedUrls].forEach(sel => {
+                if (!sel) return;
+                const hasNone = sel.querySelector('option[value=""]');
+                if (hasNone) sel.innerHTML = '<option value="">-- None --</option>';
+                else sel.innerHTML = '';
+                
+                for (let i = 0; i < header.length; i++) {
+                    const txt = header[i] || ('Column ' + (i + 1));
+                    const opt = document.createElement('option');
+                    opt.value = i;
+                    opt.textContent = txt;
+                    sel.appendChild(opt);
+                }
+            });
+            
+            // Smart auto-mapping based on header names
+            if (header.length > 0) {
+                header.forEach((h, idx) => {
+                    const lower = String(h).toLowerCase();
+                    if (mapPageNumber && (lower.includes('page') && lower.includes('no')) || lower.includes('page_number')) {
+                        mapPageNumber.value = idx;
+                    } else if (mapPageName && (lower.includes('page') && lower.includes('name')) || lower === 'name') {
+                        mapPageName.value = idx;
+                    } else if (mapUniqueUrl && (lower.includes('url') || lower.includes('link') || lower.includes('unique'))) {
+                        if (!mapUniqueUrl.value) mapUniqueUrl.value = idx; // First URL column
+                    } else if (mapScreenName && lower.includes('screen')) {
+                        mapScreenName.value = idx;
+                    } else if (mapNotes && lower.includes('note')) {
+                        mapNotes.value = idx;
+                    } else if (mapGroupedUrls && lower.includes('grouped')) {
+                        mapGroupedUrls.value = idx;
+                    }
+                });
+                
+                // If no URL was auto-detected, select first column
+                if (mapUniqueUrl && !mapUniqueUrl.value) {
+                    mapUniqueUrl.value = 0;
+                }
+            }
+
+            const thead = previewTable.querySelector('thead'); 
+            const tbody = previewTable.querySelector('tbody');
+            thead.innerHTML = '<tr>' + header.map(h => '<th>' + (String(h) || '') + '</th>').join('') + '</tr>';
+            tbody.innerHTML = '';
+            const displayRows = rows.slice(1, 6); // Show first 5 data rows
+            for (let r = 0; r < displayRows.length; r++) {
+                const cols = displayRows[r];
+                const tr = document.createElement('tr');
+                for (let c = 0; c < header.length; c++) { 
+                    const td = document.createElement('td'); 
+                    td.textContent = cols[c] || ''; 
+                    tr.appendChild(td); 
+                }
+                tbody.appendChild(tr);
+            }
+            previewArea.style.display = '';
+        }
+        
+        function loadSheetData(sheetName) {
+            if (!currentWorkbook || !sheetName) return;
+            const worksheet = currentWorkbook.Sheets[sheetName];
+            if (!worksheet) return;
+            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+            processRows(rows);
         }
 
         fileInput?.addEventListener('change', function () {
             clearPreview();
-            const f = this.files && this.files[0]; if (!f) return;
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                const text = e.target.result.replace(/\r\n|\r/g, '\n');
-                const lines = text.split('\n').filter(l => l.trim() != '');
-                if (!lines.length) return;
-                const rows = lines.slice(0, 6).map(r => {
-                    const cols = r.match(/(?:"([^"]*)")|([^,]+)/g);
-                    if (cols) return cols.map(c => c.replace(/^"|"$/g, '').trim());
-                    return r.split(',').map(c => c.trim());
-                });
-                const header = rows[0];
-                
-                // Populate all dropdowns
-                [mapPageNumber, mapPageName, mapUniqueUrl, mapScreenName, mapNotes, mapGroupedUrls].forEach(sel => {
-                    if (!sel) return;
-                    const hasNone = sel.querySelector('option[value=""]');
-                    if (hasNone) sel.innerHTML = '<option value="">-- None --</option>';
-                    else sel.innerHTML = '';
-                    
-                    for (let i = 0; i < header.length; i++) {
-                        const txt = header[i] || ('Column ' + (i + 1));
-                        const opt = document.createElement('option');
-                        opt.value = i;
-                        opt.textContent = txt;
-                        sel.appendChild(opt);
-                    }
-                });
-                
-                // Smart auto-mapping based on header names
-                if (header.length > 0) {
-                    header.forEach((h, idx) => {
-                        const lower = h.toLowerCase();
-                        if (mapPageNumber && (lower.includes('page') && lower.includes('no')) || lower.includes('page_number')) {
-                            mapPageNumber.value = idx;
-                        } else if (mapPageName && (lower.includes('page') && lower.includes('name')) || lower === 'name') {
-                            mapPageName.value = idx;
-                        } else if (mapUniqueUrl && (lower.includes('url') || lower.includes('link') || lower.includes('unique'))) {
-                            if (!mapUniqueUrl.value) mapUniqueUrl.value = idx; // First URL column
-                        } else if (mapScreenName && lower.includes('screen')) {
-                            mapScreenName.value = idx;
-                        } else if (mapNotes && lower.includes('note')) {
-                            mapNotes.value = idx;
-                        } else if (mapGroupedUrls && lower.includes('grouped')) {
-                            mapGroupedUrls.value = idx;
+            const f = this.files && this.files[0]; 
+            if (!f) return;
+            
+            const fileName = f.name.toLowerCase();
+            const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+            
+            if (isExcel && typeof XLSX !== 'undefined') {
+                // Handle Excel file
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        currentWorkbook = workbook;
+                        
+                        // Populate sheet selector
+                        if (sheetSelector && sheetSelectorDiv) {
+                            sheetSelector.innerHTML = '';
+                            workbook.SheetNames.forEach(function(name) {
+                                const opt = document.createElement('option');
+                                opt.value = name;
+                                opt.textContent = name;
+                                sheetSelector.appendChild(opt);
+                            });
+                            sheetSelectorDiv.style.display = '';
+                            
+                            // Load first sheet by default
+                            if (workbook.SheetNames.length > 0) {
+                                loadSheetData(workbook.SheetNames[0]);
+                            }
                         }
+                    } catch (err) {
+                        alert('Error reading Excel file: ' + err.message);
+                    }
+                };
+                reader.readAsArrayBuffer(f);
+            } else {
+                // Handle CSV file
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const text = e.target.result.replace(/\r\n|\r/g, '\n');
+                    const lines = text.split('\n').filter(l => l.trim() != '');
+                    if (!lines.length) return;
+                    const rows = lines.map(r => {
+                        const cols = r.match(/(?:"([^"]*)")|([^,]+)/g);
+                        if (cols) return cols.map(c => c.replace(/^"|"$/g, '').trim());
+                        return r.split(',').map(c => c.trim());
                     });
-                    
-                    // If no URL was auto-detected, select first column
-                    if (mapUniqueUrl && !mapUniqueUrl.value) {
-                        mapUniqueUrl.value = 0;
-                    }
-                }
-
-                const thead = previewTable.querySelector('thead'); 
-                const tbody = previewTable.querySelector('tbody');
-                thead.innerHTML = '<tr>' + header.map(h => '<th>' + (h || '') + '</th>').join('') + '</tr>';
-                tbody.innerHTML = '';
-                for (let r = 1; r < rows.length; r++) {
-                    const cols = rows[r];
-                    const tr = document.createElement('tr');
-                    for (let c = 0; c < header.length; c++) { 
-                        const td = document.createElement('td'); 
-                        td.textContent = cols[c] || ''; 
-                        tr.appendChild(td); 
-                    }
-                    tbody.appendChild(tr);
-                }
-                previewArea.style.display = '';
-            };
-            reader.readAsText(f);
+                    processRows(rows);
+                };
+                reader.readAsText(f);
+            }
+        });
+        
+        // Sheet selector change handler
+        sheetSelector?.addEventListener('change', function() {
+            loadSheetData(this.value);
         });
 
         uploadBtn?.addEventListener('click', function () {
             const f = fileInput.files && fileInput.files[0]; 
-            if (!f) { alert('Select a CSV file'); return; }
+            if (!f) { alert('Select a file'); return; }
             
             const uniqueUrl = mapUniqueUrl ? mapUniqueUrl.value : '';
             if (uniqueUrl === '' || uniqueUrl === undefined) { 
@@ -589,16 +727,41 @@ $(document).ready(function () {
                 return; 
             }
             
-            const fd = new FormData(); 
-            fd.append('file', f); 
+            const fd = new FormData();
+            
+            // If Excel file and we have currentRows (from selected sheet), convert to CSV
+            const fileName = f.name.toLowerCase();
+            const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+            
+            if (isExcel && currentRows && currentRows.length > 0) {
+                // Convert currentRows to CSV
+                const csvContent = currentRows.map(row => {
+                    return row.map(cell => {
+                        const str = String(cell || '');
+                        // Escape quotes and wrap in quotes if contains comma, quote, or newline
+                        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                            return '"' + str.replace(/"/g, '""') + '"';
+                        }
+                        return str;
+                    }).join(',');
+                }).join('\n');
+                
+                // Create a Blob from CSV content
+                const csvBlob = new Blob([csvContent], { type: 'text/csv' });
+                fd.append('file', csvBlob, 'converted.csv');
+            } else {
+                // Upload original file (CSV)
+                fd.append('file', f);
+            }
+            
             fd.append('project_id', projectId);
             fd.append('unique_url_col', uniqueUrl);
             
-            if (mapPageNumber && mapPageNumber.value) fd.append('page_number_col', mapPageNumber.value);
-            if (mapPageName && mapPageName.value) fd.append('page_name_col', mapPageName.value);
-            if (mapScreenName && mapScreenName.value) fd.append('screen_name_col', mapScreenName.value);
-            if (mapNotes && mapNotes.value) fd.append('notes_col', mapNotes.value);
-            if (mapGroupedUrls && mapGroupedUrls.value) fd.append('grouped_urls_col', mapGroupedUrls.value);
+            if (mapPageNumber && mapPageNumber.value !== '') fd.append('page_number_col', mapPageNumber.value);
+            if (mapPageName && mapPageName.value !== '') fd.append('page_name_col', mapPageName.value);
+            if (mapScreenName && mapScreenName.value !== '') fd.append('screen_name_col', mapScreenName.value);
+            if (mapNotes && mapNotes.value !== '') fd.append('notes_col', mapNotes.value);
+            if (mapGroupedUrls && mapGroupedUrls.value !== '') fd.append('grouped_urls_col', mapGroupedUrls.value);
             
             uploadBtn.disabled = true; 
             uploadBtn.textContent = 'Uploading...';
@@ -608,7 +771,12 @@ $(document).ready(function () {
                 body: fd, 
                 credentials: 'same-origin' 
             })
-            .then(r => r.json())
+            .then(r => {
+                if (!r.ok) {
+                    throw new Error('HTTP error ' + r.status);
+                }
+                return r.json();
+            })
             .then(j => {
                 uploadBtn.disabled = false; 
                 uploadBtn.textContent = 'Upload';
@@ -616,12 +784,12 @@ $(document).ready(function () {
                     alert('Import complete. Added unique pages: ' + (j.added_unique || 0) + ', grouped URLs: ' + (j.added_grouped || 0));
                     location.reload();
                 } else {
-                    alert('Import failed: ' + (j.error || j.message || 'Unknown'));
+                    alert('Import failed: ' + (j.error || j.message || 'Unknown error'));
                 }
             }).catch(err => { 
                 uploadBtn.disabled = false; 
                 uploadBtn.textContent = 'Upload'; 
-                alert('Upload error'); 
+                alert('Upload error: ' + err.message); 
             });
         });
     })();
@@ -633,44 +801,179 @@ $(document).ready(function () {
         const previewTable = document.getElementById('csvAllPreviewTable');
         const mapAllOnly = document.getElementById('mapAllOnlyCol');
         const uploadBtn = document.getElementById('uploadAllCsvBtn');
+        const sheetSelectorDiv = document.getElementById('sheetSelectorAllDiv');
+        const sheetSelector = document.getElementById('sheetSelectorAll');
+        
+        let currentWorkbook = null;
+        let currentRows = [];
 
-        function clearPreview() { if (previewArea) previewArea.style.display = 'none'; if (previewTable) { previewTable.querySelector('thead').innerHTML = ''; previewTable.querySelector('tbody').innerHTML = ''; } if (mapAllOnly) mapAllOnly.innerHTML = ''; }
+        function clearPreview() { 
+            if (previewArea) previewArea.style.display = 'none'; 
+            if (previewTable) { 
+                previewTable.querySelector('thead').innerHTML = ''; 
+                previewTable.querySelector('tbody').innerHTML = ''; 
+            } 
+            if (mapAllOnly) mapAllOnly.innerHTML = ''; 
+            if (sheetSelectorDiv) sheetSelectorDiv.style.display = 'none';
+            if (sheetSelector) sheetSelector.innerHTML = '';
+            currentWorkbook = null;
+            currentRows = [];
+        }
+        
+        function processRows(rows) {
+            if (!rows || rows.length === 0) return;
+            currentRows = rows;
+            const header = rows[0];
+            
+            mapAllOnly.innerHTML = '';
+            for (let i = 0; i < header.length; i++) { 
+                const txt = String(header[i]) || ('Column ' + (i + 1)); 
+                const opt = document.createElement('option'); 
+                opt.value = i; 
+                opt.textContent = txt; 
+                mapAllOnly.appendChild(opt); 
+            }
+            if (header.length > 0) { mapAllOnly.querySelector('option:last-child').selected = true; }
+            
+            const thead = previewTable.querySelector('thead'); 
+            const tbody = previewTable.querySelector('tbody');
+            thead.innerHTML = '<tr>' + header.map(h => '<th>' + (String(h) || '') + '</th>').join('') + '</tr>';
+            tbody.innerHTML = '';
+            const displayRows = rows.slice(1, 6);
+            for (let r = 0; r < displayRows.length; r++) { 
+                const cols = displayRows[r]; 
+                const tr = document.createElement('tr'); 
+                for (let c = 0; c < header.length; c++) { 
+                    const td = document.createElement('td'); 
+                    td.textContent = cols[c] || ''; 
+                    tr.appendChild(td); 
+                } 
+                tbody.appendChild(tr); 
+            }
+            previewArea.style.display = '';
+        }
+        
+        function loadSheetData(sheetName) {
+            if (!currentWorkbook || !sheetName) return;
+            const worksheet = currentWorkbook.Sheets[sheetName];
+            if (!worksheet) return;
+            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+            processRows(rows);
+        }
 
         fileInput?.addEventListener('change', function () {
             clearPreview();
-            const f = this.files && this.files[0]; if (!f) return;
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                const text = e.target.result.replace(/\r\n|\r/g, '\n');
-                const lines = text.split('\n').filter(l => l.trim() != '');
-                if (!lines.length) return;
-                const rows = lines.slice(0, 6).map(r => { const cols = r.match(/(?:(?:"([^"]*)")|([^,]+))/g); if (cols) return cols.map(c => c.replace(/^"|"$/g, '').trim()); return r.split(',').map(c => c.trim()); });
-                const header = rows[0];
-                mapAllOnly.innerHTML = '';
-                for (let i = 0; i < header.length; i++) { const txt = header[i] || ('Column ' + (i + 1)); const opt = document.createElement('option'); opt.value = i; opt.textContent = txt; mapAllOnly.appendChild(opt); }
-                if (header.length > 0) { mapAllOnly.querySelector('option:last-child').selected = true; }
-                const thead = previewTable.querySelector('thead'); const tbody = previewTable.querySelector('tbody');
-                thead.innerHTML = '<tr>' + header.map(h => '<th>' + (h || '') + '</th>').join('') + '</tr>';
-                tbody.innerHTML = '';
-                for (let r = 1; r < rows.length; r++) { const cols = rows[r]; const tr = document.createElement('tr'); for (let c = 0; c < header.length; c++) { const td = document.createElement('td'); td.textContent = cols[c] || ''; tr.appendChild(td); } tbody.appendChild(tr); }
-                previewArea.style.display = '';
-            };
-            reader.readAsText(f);
+            const f = this.files && this.files[0]; 
+            if (!f) return;
+            
+            const fileName = f.name.toLowerCase();
+            const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+            
+            if (isExcel && typeof XLSX !== 'undefined') {
+                // Handle Excel file
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        currentWorkbook = workbook;
+                        
+                        // Populate sheet selector
+                        if (sheetSelector && sheetSelectorDiv) {
+                            sheetSelector.innerHTML = '';
+                            workbook.SheetNames.forEach(function(name) {
+                                const opt = document.createElement('option');
+                                opt.value = name;
+                                opt.textContent = name;
+                                sheetSelector.appendChild(opt);
+                            });
+                            sheetSelectorDiv.style.display = '';
+                            
+                            // Load first sheet by default
+                            if (workbook.SheetNames.length > 0) {
+                                loadSheetData(workbook.SheetNames[0]);
+                            }
+                        }
+                    } catch (err) {
+                        alert('Error reading Excel file: ' + err.message);
+                    }
+                };
+                reader.readAsArrayBuffer(f);
+            } else {
+                // Handle CSV file
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const text = e.target.result.replace(/\r\n|\r/g, '\n');
+                    const lines = text.split('\n').filter(l => l.trim() != '');
+                    if (!lines.length) return;
+                    const rows = lines.map(r => { 
+                        const cols = r.match(/(?:(?:"([^"]*)")|([^,]+))/g); 
+                        if (cols) return cols.map(c => c.replace(/^"|"$/g, '').trim()); 
+                        return r.split(',').map(c => c.trim()); 
+                    });
+                    processRows(rows);
+                };
+                reader.readAsText(f);
+            }
+        });
+        
+        // Sheet selector change handler
+        sheetSelector?.addEventListener('change', function() {
+            loadSheetData(this.value);
         });
 
         uploadBtn?.addEventListener('click', function () {
-            const f = fileInput.files && fileInput.files[0]; if (!f) { alert('Select a CSV file'); return; }
+            const f = fileInput.files && fileInput.files[0]; 
+            if (!f) { alert('Select a file'); return; }
             const acolArr = Array.from(mapAllOnly.selectedOptions).map(o => o.value);
             if (acolArr.length === 0) { alert('Choose column mapping'); return; }
-            const fd = new FormData(); fd.append('file', f); fd.append('project_id', projectId); acolArr.forEach(function (v) { fd.append('all_cols[]', v); });
-            uploadBtn.disabled = true; uploadBtn.textContent = 'Uploading...';
+            
+            const fd = new FormData();
+            
+            // If Excel file and we have currentRows (from selected sheet), convert to CSV
+            const fileName = f.name.toLowerCase();
+            const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+            
+            if (isExcel && currentRows && currentRows.length > 0) {
+                // Convert currentRows to CSV
+                const csvContent = currentRows.map(row => {
+                    return row.map(cell => {
+                        const str = String(cell || '');
+                        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                            return '"' + str.replace(/"/g, '""') + '"';
+                        }
+                        return str;
+                    }).join(',');
+                }).join('\n');
+                
+                const csvBlob = new Blob([csvContent], { type: 'text/csv' });
+                fd.append('file', csvBlob, 'converted.csv');
+            } else {
+                fd.append('file', f);
+            }
+            
+            fd.append('project_id', projectId); 
+            acolArr.forEach(function (v) { fd.append('all_cols[]', v); });
+            
+            uploadBtn.disabled = true; 
+            uploadBtn.textContent = 'Uploading...';
+            
             fetch(baseDir + '/modules/projects/upload_pages.php', { method: 'POST', body: fd, credentials: 'same-origin' })
                 .then(r => r.json())
                 .then(j => {
-                    uploadBtn.disabled = false; uploadBtn.textContent = 'Upload All URLs';
-                    if (j && j.success) { alert('Import complete. Added urls: ' + (j.added_grouped || 0)); location.reload(); }
-                    else { alert('Import failed: ' + (j.error || j.message || 'Unknown')); }
-                }).catch(err => { uploadBtn.disabled = false; uploadBtn.textContent = 'Upload All URLs'; alert('Upload error'); });
+                    uploadBtn.disabled = false; 
+                    uploadBtn.textContent = 'Upload All URLs';
+                    if (j && j.success) { 
+                        alert('Import complete. Added urls: ' + (j.added_grouped || 0)); 
+                        location.reload(); 
+                    } else { 
+                        alert('Import failed: ' + (j.error || j.message || 'Unknown')); 
+                    }
+                }).catch(err => { 
+                    uploadBtn.disabled = false; 
+                    uploadBtn.textContent = 'Upload All URLs'; 
+                    alert('Upload error: ' + err.message); 
+                });
         });
     })();
 
