@@ -1451,10 +1451,24 @@ include __DIR__ . '/../../includes/header.php';
             $chatWidget.addClass('open');
             $chatLauncher.hide();
             
-            // Hide badge when chat opens (messages will be marked as read)
+            // Hide badge when chat opens
             if ($chatBadge.length) {
                 $chatBadge.fadeOut(300);
             }
+            
+            // Immediately mark messages as read via AJAX
+            $.ajax({
+                url: '<?php echo $baseDir; ?>/api/mark_chat_read.php?project_id=<?php echo $projectId; ?>',
+                method: 'GET',
+                dataType: 'json',
+                success: function(response) {
+                    // Messages marked as read successfully
+                    console.log('Chat messages marked as read');
+                },
+                error: function() {
+                    console.error('Failed to mark messages as read');
+                }
+            });
             
             // Stop polling while chat is open
             stopChatPolling();
