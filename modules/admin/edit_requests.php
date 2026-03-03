@@ -270,7 +270,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $reqData = $reqStmt->fetch(PDO::FETCH_ASSOC);
                     
                     if ($reqData) {
-                        $finalRequestStatus = ($bulkAction === 'approved') ? 'used' : 'rejected';
+                        $finalRequestStatus = ($bulkAction === 'approved') ? 'approved' : 'rejected';
                         $stmt = $db->prepare("UPDATE user_edit_requests SET status = ?, updated_at = NOW() WHERE id = ?");
                         $stmt->execute([$finalRequestStatus, $reqId]);
                         
@@ -302,7 +302,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Handle single actions
     elseif ($requestId && $action && in_array($action, ['approved', 'rejected'])) {
         try {
-            $finalRequestStatus = ($action === 'approved') ? 'used' : 'rejected';
+            $finalRequestStatus = ($action === 'approved') ? 'approved' : 'rejected';
             $stmt = $db->prepare("UPDATE user_edit_requests SET status = ?, updated_at = NOW() WHERE id = ?");
             $stmt->execute([$finalRequestStatus, $requestId]);
             
@@ -378,6 +378,18 @@ $stmt = $db->prepare("
 ");
 $stmt->execute();
 $recentRequests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Debug: Check all processed requests (remove after debugging)
+$debugStmt = $db->prepare("
+    SELECT COUNT(*) as total, status 
+    FROM user_edit_requests 
+    WHERE status IN ('approved', 'rejected')
+    GROUP BY status
+");
+$debugStmt->execute();
+$debugCounts = $debugStmt->fetchAll(PDO::FETCH_ASSOC);
+// Uncomment below line to see debug info
+// echo "<!-- Debug: "; print_r($debugCounts); echo " -->";
 
 include __DIR__ . '/../../includes/header.php';
 ?>

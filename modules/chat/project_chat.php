@@ -5,6 +5,7 @@
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
+require_once __DIR__ . '/../../includes/chat_helpers.php';
 
 $auth = new Auth();
 $auth->requireLogin();
@@ -436,6 +437,9 @@ try {
     }
     
     $messages = $stmt->fetchAll();
+    
+    // Mark messages as read when chat is opened
+    markChatMessagesAsRead($db, $_SESSION['user_id'], $projectId, $pageId);
     
 } catch (Exception $e) {
     $error = "Failed to load messages: " . $e->getMessage();

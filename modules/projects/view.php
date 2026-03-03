@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/project_permissions.php';
+require_once __DIR__ . '/../../includes/chat_helpers.php';
 
 $auth = new Auth();
 $auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin']);
@@ -137,6 +138,18 @@ if ($isParent) {
 $projectUsersStmt = $db->prepare("SELECT u.id, u.full_name FROM user_assignments ua JOIN users u ON ua.user_id = u.id WHERE ua.project_id = ? AND (ua.is_removed IS NULL OR ua.is_removed = 0) UNION SELECT pl.id, pl.full_name FROM projects p JOIN users pl ON p.project_lead_id = pl.id WHERE p.id = ? AND p.project_lead_id IS NOT NULL AND p.project_lead_id NOT IN (SELECT user_id FROM user_assignments WHERE project_id = ? AND (is_removed IS NULL OR is_removed = 0))");
 $projectUsersStmt->execute([$projectId, $projectId, $projectId]);
 $projectUsers = $projectUsersStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Get unread chat count for this project
+$unreadChatCount = 0;
+try {
+    $unreadChatCount = getUnreadChatCount($db, $_SESSION['user_id'], $projectId);
+} catch (Exception $e) {
+    error_log('Error getting unread count: ' . $e->getMessage());
+    $unreadChatCount = 0;
+}
+
+// Debug: Uncomment to see unread count
+echo "<!-- Debug: Unread count for user " . $_SESSION['user_id'] . " in project $projectId: $unreadChatCount -->";
 
 // Fetch QA statuses from master table
 $qaStatusesStmt = $db->query("SELECT id, status_key, status_label, badge_color FROM qa_status_master WHERE is_active = 1 ORDER BY display_order ASC, status_label ASC");
@@ -1379,10 +1392,73 @@ include __DIR__ . '/../../includes/header.php';
         var $chatWidget = $('#projectChatWidget');
         var $chatClose = $('#chatWidgetClose');
         var $chatFullscreen = $('#chatWidgetFullscreen');
+        var $chatBadge = $('#chatBadge');
+        var chatPollingInterval = null;
+
+        // Function to update badge count
+        function updateChatBadge() {
+            $.ajax({
+                url: '<?php echo $baseDir; ?>/api/chat_unread_count.php?project_id=<?php echo $projectId; ?>',
+                method: 'GET',
+                dataType: 'json',
+                success: function(response) {
+                    if (response.success && response.unread_count > 0) {
+                        var count = response.unread_count > 99 ? '99+' : response.unread_count;
+                        
+                        if ($chatBadge.length) {
+                            // Update existing badge
+                            $chatBadge.text(count).show();
+                        } else {
+                            // Create new badge
+                            var badgeHtml = '<span class="badge rounded-pill bg-danger" id="chatBadge">' + 
+                                          count + 
+                                          '<span class="visually-hidden">unread messages</span></span>';
+                            $chatLauncher.append(badgeHtml);
+                            $chatBadge = $('#chatBadge');
+                        }
+                    } else if ($chatBadge.length && response.unread_count === 0) {
+                        // Hide badge if count is 0
+                        $chatBadge.fadeOut(300);
+                    }
+                },
+                error: function() {
+                    // Silently fail - don't show errors for polling
+                }
+            });
+        }
+
+        // Start polling for unread count (every 10 seconds)
+        function startChatPolling() {
+            if (chatPollingInterval) return; // Already polling
+            
+            chatPollingInterval = setInterval(function() {
+                // Only poll if chat is closed
+                if (!$chatWidget.hasClass('open')) {
+                    updateChatBadge();
+                }
+            }, 10000); // 10 seconds
+        }
+
+        // Stop polling
+        function stopChatPolling() {
+            if (chatPollingInterval) {
+                clearInterval(chatPollingInterval);
+                chatPollingInterval = null;
+            }
+        }
 
         function openChatWidget() {
             $chatWidget.addClass('open');
             $chatLauncher.hide();
+            
+            // Hide badge when chat opens (messages will be marked as read)
+            if ($chatBadge.length) {
+                $chatBadge.fadeOut(300);
+            }
+            
+            // Stop polling while chat is open
+            stopChatPolling();
+            
             setTimeout(function () {
                 var el = $chatClose.get(0);
                 if (el && typeof el.focus === 'function') el.focus();
@@ -1392,6 +1468,15 @@ include __DIR__ . '/../../includes/header.php';
         function closeChatWidget() {
             $chatWidget.removeClass('open');
             $chatLauncher.show();
+            
+            // Resume polling when chat closes
+            startChatPolling();
+            
+            // Check for new messages immediately after closing
+            setTimeout(function() {
+                updateChatBadge();
+            }, 1000);
+            
             setTimeout(function () {
                 var el = $chatLauncher.get(0);
                 if (el && typeof el.focus === 'function') el.focus();
@@ -1407,6 +1492,9 @@ include __DIR__ . '/../../includes/header.php';
             if (!event || !event.data || event.data.type !== 'pms-chat-close') return;
             closeChatWidget();
         });
+
+        // Start polling on page load
+        startChatPolling();
 
         // Initialize production hours when tab is shown
         var productionHoursTab = document.getElementById('production-hours-tab');

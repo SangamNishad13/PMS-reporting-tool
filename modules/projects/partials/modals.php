@@ -2,6 +2,7 @@
         <style>
         .chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1060; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
         .chat-launcher i { font-size: 1.1rem; }
+        .chat-launcher .badge { position: absolute !important; top: -8px !important; right: -8px !important; }
 
         .chat-widget { position: fixed; bottom: 86px; right: 20px; width: 360px; max-width: 92vw; height: 520px; max-height: 78vh; background: #fff; border-radius: 16px; box-shadow: 0 18px 40px rgba(0,0,0,0.25); border: 1px solid #e5e7eb; overflow: hidden; z-index: 1060; display: none; }
         .chat-widget.open { display: block; }
@@ -37,6 +38,12 @@
         <button type="button" class="btn btn-primary chat-launcher" id="chatLauncher">
             <i class="fas fa-comments"></i>
             <span>Project Chat</span>
+            <?php if (isset($unreadChatCount) && $unreadChatCount > 0): ?>
+                <span class="badge rounded-pill bg-danger" id="chatBadge">
+                    <?php echo $unreadChatCount > 99 ? '99+' : $unreadChatCount; ?>
+                    <span class="visually-hidden">unread messages</span>
+                </span>
+            <?php endif; ?>
         </button>
 
 <!-- Add Phase Modal -->
