@@ -2,7 +2,17 @@
         <div class="tab-pane fade show active" id="phases" role="tabpanel">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h5 class="mb-0">Project Phases</h5>
-                <?php if (in_array($userRole, ['admin', 'project_lead', 'super_admin'])): ?>
+                <?php 
+                // Check if user can manage phases
+                $canManagePhases = in_array($userRole, ['admin', 'project_lead', 'super_admin']);
+                
+                // Also check client permissions for edit access
+                if (!$canManagePhases) {
+                    $canManagePhases = canEditProjectById($db, $userId, $projectId);
+                }
+                
+                if ($canManagePhases): 
+                ?>
                 <div>
                     <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addPhaseModal">
                         <i class="fas fa-plus"></i> Add Phase
@@ -20,7 +30,7 @@
                             <th>Planned Hours</th>
                             <th>Actual Hours</th>
                             <th>Status</th>
-                            <?php if (in_array($userRole, ['admin', 'project_lead', 'super_admin'])): ?>
+                            <?php if ($canManagePhases): ?>
                             <th>Actions</th>
                             <?php endif; ?>
                         </tr>
@@ -51,7 +61,15 @@
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <?php if (in_array($userRole, ['admin', 'super_admin', 'project_lead', 'qa'])): ?>
+                                <?php 
+                                // Check if user can update phase status (includes QA role)
+                                $canUpdatePhaseStatus = in_array($userRole, ['admin', 'super_admin', 'project_lead', 'qa']);
+                                if (!$canUpdatePhaseStatus) {
+                                    $canUpdatePhaseStatus = canEditProjectById($db, $userId, $projectId);
+                                }
+                                
+                                if ($canUpdatePhaseStatus): 
+                                ?>
                                     <select class="form-select form-select-sm phase-status-update" 
                                             data-phase-id="<?php echo $phase['id']; ?>" 
                                             data-project-id="<?php echo $projectId; ?>">
@@ -73,7 +91,7 @@
                                     </span>
                                 <?php endif; ?>
                             </td>
-                            <?php if (in_array($userRole, ['admin', 'project_lead', 'super_admin'])): ?>
+                            <?php if ($canManagePhases): ?>
                             <td>
                                 <div class="d-flex gap-1">
                                     <button type="button" class="btn btn-sm btn-outline-primary edit-phase-btn" 

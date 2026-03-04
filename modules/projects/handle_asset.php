@@ -10,33 +10,23 @@ $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'] ?? '';
 
-function canManageProjectAsset($db, $userId, $userRole, $projectId, $permissionType = 'assets_edit') {
+function canManageProjectAsset($db, $userId, $userRole, $projectId, $assetId, $permissionType = 'assets_edit') {
+    // Admin can always manage all assets
     if (in_array($userRole, ['admin', 'super_admin'], true)) {
         return true;
     }
 
-    // Project lead can always manage assets for their project
-    $leadStmt = $db->prepare("SELECT project_lead_id FROM projects WHERE id = ? LIMIT 1");
-    $leadStmt->execute([$projectId]);
-    $leadId = (int)($leadStmt->fetchColumn() ?? 0);
-    if ($leadId === (int)$userId) {
-        return true;
+    // Check if user is the uploader of this specific asset
+    $assetStmt = $db->prepare("SELECT created_by FROM project_assets WHERE id = ? AND project_id = ? LIMIT 1");
+    $assetStmt->execute([$assetId, $projectId]);
+    $assetCreatorId = (int)($assetStmt->fetchColumn() ?? 0);
+    
+    if ($assetCreatorId === (int)$userId) {
+        return true; // Uploader can edit/delete their own asset
     }
 
-    // Any active assigned team member can manage edit/delete as requested
-    $teamStmt = $db->prepare("
-        SELECT id
-        FROM user_assignments
-        WHERE project_id = ? AND user_id = ? AND (is_removed IS NULL OR is_removed = 0)
-        LIMIT 1
-    ");
-    $teamStmt->execute([$projectId, $userId]);
-    if ($teamStmt->fetch()) {
-        return true;
-    }
-
-    // Fallback: explicit project-specific permission
-    return hasProjectPermission($db, $userId, $projectId, $permissionType);
+    // All other users (including project lead and team members) cannot edit/delete
+    return false;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_asset'])) {
@@ -142,8 +132,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_asset'])) {
         exit;
     }
 
-    if (!canManageProjectAsset($db, $userId, $userRole, $projectId, 'assets_edit')) {
-        $_SESSION['error'] = "You don't have permission to edit assets.";
+    if (!canManageProjectAsset($db, $userId, $userRole, $projectId, $assetId, 'assets_edit')) {
+        $_SESSION['error'] = "You don't have permission to edit this asset. Only the uploader or admin can edit assets.";
         header("Location: view.php?id=$projectId#assets");
         exit;
     }
@@ -260,8 +250,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_asset'])) {
         exit;
     }
 
-    if (!canManageProjectAsset($db, $userId, $userRole, $projectId, 'assets_delete')) {
-        $_SESSION['error'] = "You don't have permission to delete assets.";
+    if (!canManageProjectAsset($db, $userId, $userRole, $projectId, $assetId, 'assets_delete')) {
+        $_SESSION['error'] = "You don't have permission to delete this asset. Only the uploader or admin can delete assets.";
         header("Location: view.php?id=$projectId#assets");
         exit;
     }

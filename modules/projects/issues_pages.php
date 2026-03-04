@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/project_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin', 'client']);
 
 $baseDir = getBaseDir();
 $projectId = (int)($_GET['project_id'] ?? 0);
@@ -79,6 +79,7 @@ try {
 // Issue page summaries - Count actual issues from issues table
 $issuePageSummaries = [];
 try {
+    $clientFilter = ($userRole === 'client') ? 'AND i.client_ready = 1' : '';
     $issuePageStmt = $db->prepare("
         SELECT 
             pp.id,
@@ -95,7 +96,8 @@ try {
             (SELECT COUNT(DISTINCT i.id) 
              FROM issues i 
              WHERE i.project_id = pp.project_id 
-             AND i.page_id = pp.id) AS issues_count,
+             AND i.page_id = pp.id
+             $clientFilter) AS issues_count,
             (SELECT COALESCE(SUM(ptl.hours_spent), 0)
              FROM project_time_logs ptl
              WHERE ptl.page_id = pp.id) AS production_hours
@@ -169,7 +171,10 @@ try {
             )
         WHERE up.project_id = ?
         GROUP BY up.id
-        ORDER BY up.created_at ASC
+        ORDER BY 
+            SUBSTRING_INDEX(MIN(pp.page_number), ' ', 1) ASC,
+            CAST(SUBSTRING_INDEX(MIN(pp.page_number), ' ', -1) AS UNSIGNED) ASC,
+            up.page_name ASC
     ");
     $uniqueIssueStmt->execute([$projectId]);
     $uniqueIssuePages = $uniqueIssueStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -214,10 +219,12 @@ include __DIR__ . '/../../includes/header.php';
         <div class="col">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
+                    <?php if ($_SESSION['role'] !== 'client'): ?>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/index.php">Dashboard</a></li>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $projectId; ?>">
                         <?php echo htmlspecialchars($project['title']); ?>
                     </a></li>
+                    <?php endif; ?>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>">Accessibility Report</a></li>
                     <li class="breadcrumb-item active">Pages</li>
                 </ol>
@@ -275,6 +282,7 @@ include __DIR__ . '/../../includes/header.php';
                 <label class="form-label small text-muted">Search</label>
                 <input id="issuesPagesFilterSearch" class="form-control form-control-sm" placeholder="Search name or URL..." />
             </div>
+            <?php if ($_SESSION['role'] !== 'client'): ?>
             <div class="col-md-2">
                 <label class="form-label small text-muted">User Filter</label>
                 <select id="issuesPagesFilterUser" class="form-select form-select-sm">
@@ -284,6 +292,7 @@ include __DIR__ . '/../../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php endif; ?>
             <div class="col-md-2">
                 <label class="form-label small text-muted">Environment</label>
                 <select id="issuesPagesFilterEnv" class="form-select form-select-sm">
@@ -293,6 +302,7 @@ include __DIR__ . '/../../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php if ($_SESSION['role'] !== 'client'): ?>
             <div class="col-md-2">
                 <label class="form-label small text-muted">QA Filter</label>
                 <select id="issuesPagesFilterQa" class="form-select form-select-sm">
@@ -318,6 +328,7 @@ include __DIR__ . '/../../includes/header.php';
                     <option value="Completed">Completed</option>
                 </select>
             </div>
+            <?php endif; ?>
         </div>
         
         <div class="row g-3 p-3" id="issuesPagesRow">
@@ -341,13 +352,17 @@ include __DIR__ . '/../../includes/header.php';
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 40px;">#<div class="col-resizer"></div></th>
-                                <th>Page Name<div class="col-resizer"></div></th>
                                 <th style="width: 100px;">Page No<div class="col-resizer"></div></th>
+                                <th>Page Name<div class="col-resizer"></div></th>
                                 <th style="width: 100px;">Issues<div class="col-resizer"></div></th>
+                                <?php if ($_SESSION['role'] !== 'client'): ?>
                                 <th style="width: 150px;">Members<div class="col-resizer"></div></th>
+                                <?php endif; ?>
                                 <th style="width: 120px;">Environment<div class="col-resizer"></div></th>
+                                <?php if ($_SESSION['role'] !== 'client'): ?>
                                 <th style="width: 120px;">Prod Hours<div class="col-resizer"></div></th>
                                 <th style="width: 150px;">Page Status<div class="col-resizer"></div></th>
+                                <?php endif; ?>
                                 <th style="width: 120px;">Grouped URLs</th>
                             </tr>
                         </thead>
@@ -429,29 +444,33 @@ include __DIR__ . '/../../includes/header.php';
                                 onclick="window.location.href='<?php echo $baseDir; ?>/modules/projects/issues_page_detail.php?project_id=<?php echo $projectId; ?>&page_id=<?php echo (int)$mappedPageId; ?>'">
                                 <td class="text-muted"><?php echo $rowNum++; ?></td>
                                 <td>
+                                    <span class="badge bg-primary-subtle text-primary">
+                                        <?php echo htmlspecialchars($pageNoLabel ?: '-'); ?>
+                                    </span>
+                                </td>
+                                <td>
                                     <div class="fw-semibold text-primary"><?php echo htmlspecialchars($displayName); ?></div>
                                     <div class="small text-muted text-truncate" style="max-width: 300px;" title="<?php echo htmlspecialchars($uniqueLabel); ?>">
                                         <?php echo htmlspecialchars($uniqueLabel ?: '-'); ?>
                                     </div>
                                 </td>
                                 <td>
-                                    <span class="badge bg-primary-subtle text-primary">
-                                        <?php echo htmlspecialchars($pageNoLabel ?: '-'); ?>
-                                    </span>
-                                </td>
-                                <td>
                                     <span class="badge <?php echo $count > 0 ? 'bg-warning-subtle text-warning' : 'bg-secondary-subtle text-secondary'; ?>">
                                         <?php echo $count; ?>
                                     </span>
                                 </td>
+                                <?php if ($_SESSION['role'] !== 'client'): ?>
                                 <td class="small"><?php echo htmlspecialchars($tester ?: '-'); ?></td>
+                                <?php endif; ?>
                                 <td class="small"><?php echo htmlspecialchars($envs ?: '-'); ?></td>
+                                <?php if ($_SESSION['role'] !== 'client'): ?>
                                 <td class="small"><?php echo number_format($prodHours, 2); ?> hrs</td>
                                 <td>
                                     <span class="badge bg-<?php echo htmlspecialchars($pageStatusBadge); ?>">
                                         <?php echo htmlspecialchars($pageStatusLabel); ?>
                                     </span>
                                 </td>
+                                <?php endif; ?>
                                 <td>
                                     <?php if ($hasUrls): ?>
                                     <button class="btn btn-xs btn-outline-secondary" 
@@ -469,7 +488,7 @@ include __DIR__ . '/../../includes/header.php';
                             </tr>
                             <?php if ($hasUrls): ?>
                             <tr class="collapse" id="urls-<?php echo (int)$u['unique_id']; ?>">
-                                <td colspan="9" class="p-0 border-0">
+                                <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '6' : '9'; ?>" class="p-0 border-0">
                                     <div class="bg-light p-3 border-top">
                                         <div class="small fw-bold text-muted mb-2">
                                             <i class="fas fa-link me-1"></i> Grouped URLs (<?php echo $urlCount; ?>)
@@ -488,7 +507,7 @@ include __DIR__ . '/../../includes/header.php';
                             <?php endif; ?>
 <?php endforeach; else: ?>
                             <tr>
-                                <td colspan="9" class="text-center text-muted py-5">
+                                <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '6' : '9'; ?>" class="text-center text-muted py-5">
                                     <i class="fas fa-inbox fa-3x mb-3 opacity-25"></i>
                                     <div>No unique pages added yet.</div>
                                 </td>

@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/project_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin', 'client']);
 
 $baseDir = getBaseDir();
 $projectId = (int)($_GET['project_id'] ?? 0);
@@ -44,10 +44,12 @@ include __DIR__ . '/../../includes/header.php';
         <div class="col">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
+                    <?php if ($_SESSION['role'] !== 'client'): ?>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/index.php">Dashboard</a></li>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $projectId; ?>">
                         <?php echo htmlspecialchars($project['title']); ?>
                     </a></li>
+                    <?php endif; ?>
                     <li class="breadcrumb-item active">Accessibility Report</li>
                 </ol>
             </nav>
@@ -64,16 +66,18 @@ include __DIR__ . '/../../includes/header.php';
                     </h2>
                     <p class="text-muted mb-0">
                         Project: <strong><?php echo htmlspecialchars($project['title']); ?></strong>
-                        <?php if ($project['client_name']): ?>
+                        <?php if ($_SESSION['role'] !== 'client' && $project['client_name']): ?>
                             | Client: <strong><?php echo htmlspecialchars($project['client_name']); ?></strong>
                         <?php endif; ?>
                     </p>
                 </div>
+                <?php if ($_SESSION['role'] !== 'client'): ?>
                 <div class="col-md-4 text-md-end">
                     <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $projectId; ?>" class="btn btn-outline-secondary">
                         <i class="fas fa-arrow-left me-1"></i> Back to Project
                     </a>
                 </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>

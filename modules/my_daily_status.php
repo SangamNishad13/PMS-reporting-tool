@@ -486,7 +486,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
             exit;
         }
 
-        $_SESSION['success'] = "Status updated successfully.";
         setMyDailyStatusToast('success', 'Status updated successfully.');
         header("Location: " . getBaseDir() . "/modules/admin/calendar.php");
         exit;
@@ -563,7 +562,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
         exit;
     }
 
-    $_SESSION['success'] = "Status updated successfully.";
     setMyDailyStatusToast('success', 'Status updated successfully.');
     header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
     exit;
@@ -601,7 +599,6 @@ if ($isTimeLogPost) {
         }
     }
     if ($logRequestToken !== '' && isset($logTokenStore[$logRequestToken])) {
-        $_SESSION['success'] = "Hours already logged. Duplicate request ignored.";
         setMyDailyStatusToast('success', 'Hours already logged. Duplicate request ignored.');
         $_SESSION['my_daily_status_log_tokens'] = $logTokenStore;
         header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
@@ -802,7 +799,6 @@ if ($isTimeLogPost) {
                 }
                 createNotification($db, (int)$userId, 'edit_request', "Your time log edit request for {$date} was submitted to admin.", "/modules/notifications.php?filter=edit_request");
 
-                $_SESSION['success'] = "Edit request sent to admin for approval. Your log will be applied after approval.";
                 setMyDailyStatusToast('success', 'Edit request sent to admin for approval. Your log will be applied after approval.');
                 header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
                 exit;
@@ -962,13 +958,10 @@ if ($isTimeLogPost) {
             $totalStmt->execute([$projectId]);
             $totalUtilizedHours = $totalStmt->fetchColumn();
             
-            // Update project's total hours (this could be used for tracking)
-            $updateProjectStmt = $db->prepare("
-                UPDATE projects 
-                SET total_hours = ? 
-                WHERE id = ?
-            ");
-            $updateProjectStmt->execute([$totalUtilizedHours, $projectId]);
+            // NOTE: DO NOT update projects.total_hours here!
+            // total_hours is the BUDGET (fixed value set by admin)
+            // It should NEVER be auto-updated based on logged hours
+            // Logged hours are tracked separately in project_time_logs table
         }
         
         // Log generic task if applicable
@@ -985,7 +978,6 @@ if ($isTimeLogPost) {
             $logTokenStore[$logRequestToken] = $nowTs;
             $_SESSION['my_daily_status_log_tokens'] = $logTokenStore;
         }
-        $_SESSION['success'] = "Time logged successfully and project hours updated.";
         setMyDailyStatusToast('success', 'Time logged successfully and project hours updated.');
         
     } catch (Exception $e) {
@@ -1055,7 +1047,6 @@ if (isset($_GET['delete_log_request'])) {
             }
             createNotification($db, (int)$userId, 'edit_request', "Your deletion request for {$date} (Log ID: {$logId}) was submitted to admin.", "/modules/notifications.php?filter=edit_request");
 
-            $_SESSION['success'] = "Deletion request sent to admin for approval.";
             setMyDailyStatusToast('success', 'Deletion request sent to admin for approval.');
         } catch (Exception $e) {
             $_SESSION['error'] = "Failed to send deletion request: " . $e->getMessage();
@@ -1252,10 +1243,8 @@ if (isset($_GET['delete_log'])) {
                     'task_type' => $existingLog['task_type'] ?? null
                 ], JSON_UNESCAPED_UNICODE)
             ]);
-            $_SESSION['success'] = "Log deleted.";
             setMyDailyStatusToast('success', 'Log deleted.');
         } else {
-            $_SESSION['error'] = "Log not found.";
             setMyDailyStatusToast('danger', 'Log not found.');
         }
 
@@ -2695,26 +2684,35 @@ document.addEventListener('DOMContentLoaded', function(){
 
     function buildProductionPreview(form) {
         var taskType = getSelectedText(form, 'select[name=\"task_type\"]', false);
+        var taskTypeValue = form.querySelector('select[name=\"task_type\"]')?.value || '';
+        
         var html = '<table class="table table-sm mb-0"><tbody>';
         html += rowHtml('Section', 'Log Production Hours');
         html += rowHtml('Project', getSelectedText(form, 'select[name=\"project_id\"]', false));
         html += rowHtml('Task Type', taskType);
-        var pages = getSelectedText(form, '#productionPageSelect', true);
-        if (pages) html += rowHtml('Page/Screen', pages);
-        var envs = getSelectedText(form, '#productionEnvSelect', true);
-        if (envs) html += rowHtml('Environments', envs);
-        var testingType = getSelectedText(form, '#testingTypeSelect', false);
-        if (testingType) html += rowHtml('Testing Type', testingType);
-        var issueText = getSelectedText(form, '#productionIssueSelect', false);
-        if (issueText) html += rowHtml('Issue', issueText);
-        var phaseText = getSelectedText(form, '#projectPhaseSelect', false);
-        if (phaseText) html += rowHtml('Project Phase', phaseText);
-        var phaseActivity = getSelectedText(form, 'select[name=\"phase_activity\"]', false);
-        if (phaseActivity) html += rowHtml('Phase Activity', phaseActivity);
-        var genericCat = getSelectedText(form, '#genericCategorySelect', false);
-        if (genericCat) html += rowHtml('Task Category', genericCat);
-        var genericDetailEl = form.querySelector('input[name=\"generic_task_detail\"]');
-        if (genericDetailEl && genericDetailEl.value.trim()) html += rowHtml('Task Details', genericDetailEl.value.trim());
+        
+        // Show fields based on task type
+        if (taskTypeValue === 'page_testing' || taskTypeValue === 'page_qa' || taskTypeValue === 'regression_testing') {
+            var pages = getSelectedText(form, '#productionPageSelect', true);
+            if (pages) html += rowHtml('Page/Screen', pages);
+            var envs = getSelectedText(form, '#productionEnvSelect', true);
+            if (envs) html += rowHtml('Environments', envs);
+            var testingType = getSelectedText(form, '#testingTypeSelect', false);
+            if (testingType) html += rowHtml('Testing Type', testingType);
+            var issueText = getSelectedText(form, '#productionIssueSelect', false);
+            if (issueText) html += rowHtml('Issue', issueText);
+        } else if (taskTypeValue === 'project_phase') {
+            var phaseText = getSelectedText(form, '#projectPhaseSelect', false);
+            if (phaseText) html += rowHtml('Project Phase', phaseText);
+            var phaseActivity = getSelectedText(form, 'select[name=\"phase_activity\"]', false);
+            if (phaseActivity) html += rowHtml('Phase Activity', phaseActivity);
+        } else if (taskTypeValue === 'generic_task') {
+            var genericCat = getSelectedText(form, '#genericCategorySelect', false);
+            if (genericCat) html += rowHtml('Task Category', genericCat);
+            var genericDetailEl = form.querySelector('input[name=\"generic_task_detail\"]');
+            if (genericDetailEl && genericDetailEl.value.trim()) html += rowHtml('Task Details', genericDetailEl.value.trim());
+        }
+        
         var hoursEl = form.querySelector('input[name=\"hours_spent\"]');
         html += rowHtml('Hours', hoursEl ? hoursEl.value : '');
         var descEl = form.querySelector('input[name=\"description\"]');

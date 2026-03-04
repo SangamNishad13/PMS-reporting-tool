@@ -4,12 +4,27 @@ require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/project_permissions.php';
 require_once __DIR__ . '/../../includes/chat_helpers.php';
+require_once __DIR__ . '/../../includes/client_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin', 'client']);
 
 $baseDir = getBaseDir();
 $projectId = (int)($_GET['id'] ?? 0);
+
+$db = Database::getInstance();
+$userId = $_SESSION['user_id'];
+$userRole = $_SESSION['role'] ?? '';
+
+// Debug output
+error_log("Project View - User ID: $userId, Role: $userRole, Project ID: $projectId");
+
+// Redirect client users directly to issues page
+if ($userRole === 'client' && $projectId) {
+    header('Location: ' . $baseDir . '/modules/projects/issues.php?project_id=' . $projectId);
+    exit;
+}
+
 if (!$projectId) {
     // Redirect to role-specific projects page
     if ($userRole === 'admin' || $userRole === 'super_admin') {
@@ -27,10 +42,6 @@ if (!$projectId) {
     }
     exit;
 }
-
-$db = Database::getInstance();
-$userId = $_SESSION['user_id'];
-$userRole = $_SESSION['role'] ?? '';
 
 if (!hasProjectAccess($db, $userId, $projectId)) {
     $_SESSION['error'] = "You don't have access to this project.";
@@ -101,12 +112,15 @@ $hoursData = getProjectHoursSummary($db, $projectId);
 
 // Calculate hours metrics
 $totalHours = $project['total_hours'] ?: 0;
-// Show the project's originally assigned total hours as Allocated by default
-$allocatedHours = $totalHours ?: ($hoursData['allocated_hours'] ?: 0);
+// Budget hours should ALWAYS be from projects.total_hours (fixed budget)
+$budgetHours = $totalHours;
+// Allocated hours is sum of hours assigned to team members
+$allocatedHours = $hoursData['allocated_hours'] ?: 0;
+// Utilized hours is sum of actual logged hours
 $utilizedHours = $hoursData['utilized_hours'] ?: 0;
-// Use allocated hours as the primary budget baseline in the project view UI
-$availableHours = max(0, $allocatedHours - $utilizedHours);
-$overshootHours = max(0, ($utilizedHours - $allocatedHours));
+// Calculate remaining budget
+$availableHours = max(0, $budgetHours - $utilizedHours);
+$overshootHours = max(0, ($utilizedHours - $budgetHours));
 $utilizationPercentage = $allocatedHours > 0 ? ($utilizedHours / $allocatedHours) * 100 : 0;
 $allocationPercentage = $totalHours > 0 ? ($allocatedHours / $totalHours) * 100 : 0;
 
@@ -552,9 +566,35 @@ include __DIR__ . '/../../includes/header.php';
             <div class="col-lg-8 col-md-7">
                 <h2 class="mb-1"><?php echo htmlspecialchars($project['title']); ?> <small class="text-muted">(<?php echo htmlspecialchars($project['po_number'] ?? ''); ?>)</small></h2>
                 <div class="mb-2 text-muted small"><?php echo htmlspecialchars($project['client_name'] ?? ''); ?></div>
-                <div class="d-flex flex-wrap gap-2 mb-2">
+                <div class="d-flex flex-wrap gap-2 mb-2 align-items-center">
                     <span class="badge bg-light text-dark border">Lead: <?php echo htmlspecialchars($project['project_lead_name'] ?? 'N/A'); ?></span>
+                    
+                    <?php 
+                    // Check if user can update project status (admin, super_admin, project lead, or has project edit permission)
+                    $canUpdateStatus = in_array($userRole, ['admin', 'super_admin']) || 
+                                      ($userRole === 'project_lead' && $project['project_lead_id'] == $userId) ||
+                                      canEditProjectById($db, $userId, $projectId);
+                    ?>
+                    
+                    <?php if ($canUpdateStatus): ?>
+                    <!-- Status Dropdown for Admin/Project Lead -->
+                    <div class="d-inline-block">
+                        <select id="projectStatusDropdown" class="form-select form-select-sm" style="min-width: 150px;" data-project-id="<?php echo $projectId; ?>">
+                            <?php 
+                            $projectStatuses = getStatusOptions('project');
+                            foreach ($projectStatuses as $status): 
+                            ?>
+                                <option value="<?php echo $status['status_key']; ?>" 
+                                    <?php echo $project['status'] === $status['status_key'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($status['status_label']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <?php else: ?>
+                    <!-- Status Badge for other users -->
                     <span class="badge bg-secondary text-white"><?php echo formatProjectStatusLabel($project['status'] ?? 'Draft'); ?></span>
+                    <?php endif; ?>
                     <?php 
                     // Priority badge with appropriate color
                     $priority = $project['priority'] ?? 'medium';
@@ -622,7 +662,12 @@ include __DIR__ . '/../../includes/header.php';
                 <div class="small text-muted">Created by <strong><?php echo htmlspecialchars($project['created_by_name'] ?? ''); ?></strong> on <?php echo date('M d, Y', strtotime($project['created_at'])); ?></div>
             </div>
             <div class="col-lg-4 col-md-5 mt-3 mt-md-0">
-                <?php if (in_array($userRole, ['admin','super_admin'], true)): ?>
+                <?php 
+                // Check if user can edit project (admin, super_admin, or has client permission)
+                $canEditProject = in_array($userRole, ['admin','super_admin'], true) || 
+                                 canEditProject($db, $userId, $projectId);
+                ?>
+                <?php if ($canEditProject): ?>
                 <div class="d-flex justify-content-md-end mb-2">
                     <a href="<?php echo $baseDir; ?>/modules/projects/edit.php?id=<?php echo $projectId; ?>" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit"></i> Edit</a>
                 </div>
@@ -630,21 +675,22 @@ include __DIR__ . '/../../includes/header.php';
                 
                 <?php 
                 $isOvershoot = $overshootHours > 0;
-                $remainingHours = $allocatedHours - $utilizedHours;
+                $remainingHours = $budgetHours - $utilizedHours;
+                $usagePercentage = $budgetHours > 0 ? ($utilizedHours / $budgetHours) * 100 : 0;
                 ?>
                 
                 <div class="d-flex justify-content-md-end gap-3" id="projectHoursSummary">
                     <div style="min-width:220px;">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <div class="text-center flex-fill">
-                                <div class="fw-bold text-primary" id="hoursSummaryBudget"><?php echo number_format($allocatedHours, 1); ?></div>
+                                <div class="fw-bold text-primary" id="hoursSummaryBudget"><?php echo number_format($budgetHours, 1); ?></div>
                                 <small class="text-muted">Budget</small>
                             </div>
                             <div class="text-center flex-fill">
                                 <div class="fw-bold <?php echo $isOvershoot ? 'text-danger' : 'text-success'; ?>" id="hoursSummaryUsed">
                                     <?php echo number_format($utilizedHours, 1); ?>
                                 </div>
-                                <small class="text-muted">Used</small>
+                                <small class="text-muted">Used <span id="hoursSummaryPercentText">(<?php echo number_format($usagePercentage, 1); ?>%)</span></small>
                             </div>
                             <div class="text-center flex-fill">
                                 <div class="fw-bold <?php echo $isOvershoot ? 'text-danger' : 'text-warning'; ?>" id="hoursSummaryRemaining">
@@ -658,12 +704,12 @@ include __DIR__ . '/../../includes/header.php';
                         <div class="progress" style="height: 8px;">
                             <?php if ($isOvershoot): ?>
                                 <!-- Green bar for budget (100% of container) -->
-                                <div class="progress-bar bg-success" id="hoursSummaryBudgetBar" style="width: 100%;" title="Budget: <?php echo number_format($allocatedHours, 1); ?> hours"></div>
+                                <div class="progress-bar bg-success" id="hoursSummaryBudgetBar" style="width: 100%;" title="Budget: <?php echo number_format($budgetHours, 1); ?> hours"></div>
                                 <!-- Red bar for overshoot hours -->
-                                <div class="progress-bar bg-danger" id="hoursSummaryOverBar" style="width: <?php echo ($overshootHours / $allocatedHours) * 100; ?>%;" title="Overshoot: <?php echo number_format($overshootHours, 1); ?> hours"></div>
+                                <div class="progress-bar bg-danger" id="hoursSummaryOverBar" style="width: <?php echo ($overshootHours / $budgetHours) * 100; ?>%;" title="Overshoot: <?php echo number_format($overshootHours, 1); ?> hours"></div>
                             <?php else: ?>
                                 <!-- Normal green bar for used hours within budget -->
-                                <div class="progress-bar bg-success" id="hoursSummaryUsedBar" style="width: <?php echo ($utilizedHours / $allocatedHours) * 100; ?>%;" title="Used: <?php echo number_format($utilizedHours, 1); ?> hours"></div>
+                                <div class="progress-bar bg-success" id="hoursSummaryUsedBar" style="width: <?php echo ($budgetHours > 0 ? ($utilizedHours / $budgetHours) * 100 : 0); ?>%;" title="Used: <?php echo number_format($utilizedHours, 1); ?> hours"></div>
                             <?php endif; ?>
                         </div>
                         <div class="text-center mt-1">
@@ -720,7 +766,9 @@ include __DIR__ . '/../../includes/header.php';
 <ul class="nav nav-tabs mt-3" id="projectTabs" role="tablist">
     <li class="nav-item"><button class="nav-link active" id="phases-tab" data-bs-toggle="tab" data-bs-target="#phases" type="button"><i class="fas fa-layer-group"></i> Phases</button></li>
     <li class="nav-item"><button class="nav-link" id="pages-tab" data-bs-toggle="tab" data-bs-target="#pages" type="button"><i class="fas fa-file-alt"></i> Pages/Screens</button></li>
+    <?php if ($userRole !== 'client'): ?>
     <li class="nav-item"><button class="nav-link" id="team-tab" data-bs-toggle="tab" data-bs-target="#team" type="button"><i class="fas fa-users"></i> Team</button></li>
+    <?php endif; ?>
     <li class="nav-item"><button class="nav-link" id="performance-tab" data-bs-toggle="tab" data-bs-target="#performance" type="button"><i class="fas fa-chart-line"></i> Performance</button></li>
     <li class="nav-item"><button class="nav-link" id="assets-tab" data-bs-toggle="tab" data-bs-target="#assets" type="button"><i class="fas fa-paperclip"></i> Assets</button></li>
     <li class="nav-item"><button class="nav-link" id="activity-tab" data-bs-toggle="tab" data-bs-target="#activity" type="button"><i class="fas fa-history"></i> Activity</button></li>
@@ -732,7 +780,9 @@ include __DIR__ . '/../../includes/header.php';
     <span id="project_tabs_probe" data-file="view.php" style="display:none;"></span>
     <?php include 'partials/tab_phases.php'; ?>
     <?php include 'partials/tab_pages.php'; ?>
+    <?php if ($userRole !== 'client'): ?>
     <?php include 'partials/tab_team.php'; ?>
+    <?php endif; ?>
     <?php include 'partials/tab_performance.php'; ?>
     <?php include 'partials/tab_assets.php'; ?>
     <?php include 'partials/tab_activity.php'; ?>
@@ -1560,6 +1610,81 @@ include __DIR__ . '/../../includes/header.php';
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_pages_enhanced.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_feedback.js?v=<?php echo $viewJsVersion('view_feedback.js'); ?>"></script>
-<script src="<?php echo $baseDir; ?>/modules/projects/js/view_production.js?v=<?php echo $viewJsVersion('view_production.js'); ?>"></script>
+<script src="<?php echo $baseDir; ?>/modules/projects/js/view_production.js?v=<?php echo time(); ?>"></script>
+
+<script>
+// Project Status Update Handler
+$(document).ready(function() {
+    $('#projectStatusDropdown').on('change', function() {
+        const projectId = $(this).data('project-id');
+        const newStatus = $(this).val();
+        const $dropdown = $(this);
+        const originalStatus = $dropdown.find('option:selected').data('original') || $dropdown.data('original-status');
+        
+        // Store original status on first load
+        if (!$dropdown.data('original-status')) {
+            $dropdown.data('original-status', originalStatus || newStatus);
+        }
+        
+        // Confirm status change
+        if (!confirm('Are you sure you want to change the project status?')) {
+            $dropdown.val($dropdown.data('original-status'));
+            return;
+        }
+        
+        // Disable dropdown during update
+        $dropdown.prop('disabled', true);
+        
+        $.ajax({
+            url: '<?php echo $baseDir; ?>/api/update_project_status.php',
+            type: 'POST',
+            data: {
+                project_id: projectId,
+                status: newStatus
+            },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    // Update the stored original status
+                    $dropdown.data('original-status', newStatus);
+                    
+                    // Show success message
+                    if (typeof showToast === 'function') {
+                        showToast('Project status updated successfully!', 'success');
+                    } else {
+                        alert('Project status updated successfully!');
+                    }
+                    
+                    // Optional: Reload page to reflect changes
+                    // setTimeout(() => location.reload(), 1000);
+                } else {
+                    // Revert to original status
+                    $dropdown.val($dropdown.data('original-status'));
+                    
+                    if (typeof showToast === 'function') {
+                        showToast(response.message || 'Failed to update project status', 'danger');
+                    } else {
+                        alert(response.message || 'Failed to update project status');
+                    }
+                }
+            },
+            error: function(xhr, status, error) {
+                // Revert to original status
+                $dropdown.val($dropdown.data('original-status'));
+                
+                if (typeof showToast === 'function') {
+                    showToast('Error updating project status: ' + error, 'danger');
+                } else {
+                    alert('Error updating project status: ' + error);
+                }
+            },
+            complete: function() {
+                // Re-enable dropdown
+                $dropdown.prop('disabled', false);
+            }
+        });
+    });
+});
+</script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

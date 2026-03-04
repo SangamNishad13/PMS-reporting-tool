@@ -219,7 +219,7 @@ include '../../includes/header.php';
                         <select class="form-select" id="editAssignUserId" name="assigned_user_id">
                             <option value="">-- Keep Current Assignment --</option>
                         </select>
-                        <small class="text-muted">Edit mode में यहाँ user select करके device reassign कर सकते हैं.</small>
+                        <small class="text-muted">In edit mode, you can select a user here to reassign the device.</small>
                     </div>
                     
                     <div class="mb-3">

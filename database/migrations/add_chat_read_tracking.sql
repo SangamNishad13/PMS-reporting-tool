@@ -13,7 +13,40 @@ CREATE TABLE IF NOT EXISTS chat_read_status (
     FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Add index on chat_messages for better performance
-ALTER TABLE chat_messages 
-ADD INDEX idx_project_page (project_id, page_id),
-ADD INDEX idx_created_at (created_at);
+-- Add indexes on chat_messages for better performance (only if they don't exist)
+SET @dbname = DATABASE();
+SET @tablename = 'chat_messages';
+
+-- Check and add idx_project_page index
+SET @indexname = 'idx_project_page';
+SET @preparedStatement = (SELECT IF(
+  (
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+    WHERE
+      (table_name = @tablename)
+      AND (table_schema = @dbname)
+      AND (index_name = @indexname)
+  ) > 0,
+  'SELECT 1',
+  CONCAT('ALTER TABLE `', @tablename, '` ADD INDEX `', @indexname, '` (project_id, page_id)')
+));
+PREPARE alterIfNotExists FROM @preparedStatement;
+EXECUTE alterIfNotExists;
+DEALLOCATE PREPARE alterIfNotExists;
+
+-- Check and add idx_created_at index
+SET @indexname = 'idx_created_at';
+SET @preparedStatement = (SELECT IF(
+  (
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+    WHERE
+      (table_name = @tablename)
+      AND (table_schema = @dbname)
+      AND (index_name = @indexname)
+  ) > 0,
+  'SELECT 1',
+  CONCAT('ALTER TABLE `', @tablename, '` ADD INDEX `', @indexname, '` (created_at)')
+));
+PREPARE alterIfNotExists FROM @preparedStatement;
+EXECUTE alterIfNotExists;
+DEALLOCATE PREPARE alterIfNotExists;

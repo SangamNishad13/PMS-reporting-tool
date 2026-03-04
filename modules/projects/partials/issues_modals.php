@@ -72,6 +72,7 @@
                                                 <option value="regression">Regression Comment</option>
                                             </select>
                                         </div>
+                                        <?php if ($_SESSION['role'] !== 'client'): ?>
                                         <div class="mb-3">
                                             <textarea id="finalIssueCommentEditor" class="issue-summernote"></textarea>
                                             <div class="small text-muted mt-1">
@@ -84,6 +85,7 @@
                                                 <i class="fas fa-paper-plane me-1"></i> Add Comment
                                             </button>
                                         </div>
+                                        <?php endif; ?>
                                         <div id="finalIssueCommentsList" class="small text-muted border rounded p-3 bg-light" style="max-height: 400px; overflow-y: auto;">
                                             <div class="text-center py-5">
                                                 <i class="fas fa-comments fa-3x mb-3 opacity-25"></i>
@@ -138,6 +140,7 @@
                         <div class="d-none" aria-hidden="true">
                             <select id="finalIssueGroupedUrls" class="form-select form-select-sm issue-select2" multiple></select>
                         </div>
+                        <?php if ($_SESSION['role'] !== 'client'): ?>
                         <label class="form-label mt-2">Reporter Name(s)</label>
                         <select id="finalIssueReporters" class="form-select form-select-sm issue-select2" multiple>
                             <?php foreach ($projectUsers as $u): ?>
@@ -149,8 +152,22 @@
                             <div id="reporterQaStatusRows" class="small border rounded p-2 bg-light"></div>
                             <small class="text-muted">This mapping is used for reporter-wise performance scoring.</small>
                         </div>
+                        <?php endif; ?>
                         <!-- Dynamic Metadata Container -->
                         <div id="finalIssueMetadataContainer"></div>
+                        
+                        <!-- Client Ready Checkbox (only for QA, Project Lead, Admin) -->
+                        <?php if (in_array($userRole, ['qa', 'project_lead', 'admin', 'super_admin'])): ?>
+                        <div class="mt-3 pt-3 border-top">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="finalIssueClientReady" value="1">
+                                <label class="form-check-label fw-bold" for="finalIssueClientReady">
+                                    <i class="fas fa-eye me-1 text-primary"></i> Client Ready
+                                </label>
+                                <div class="form-text small">Mark this issue as ready for client viewing</div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>

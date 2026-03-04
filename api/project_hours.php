@@ -162,6 +162,18 @@ try {
             }
 
             $summary = getProjectHoursSummary($db, $projectId);
+            
+            // SAFEGUARD: Ensure budget (total_hours) was not accidentally modified
+            // This is a safety check to prevent any rogue code from changing the budget
+            $verifyBudget = $db->prepare("SELECT total_hours FROM projects WHERE id = ?");
+            $verifyBudget->execute([$projectId]);
+            $currentBudget = $verifyBudget->fetch(PDO::FETCH_ASSOC);
+            
+            // If budget in summary doesn't match database, use database value (the source of truth)
+            if (isset($summary['total_hours']) && $currentBudget && $currentBudget['total_hours'] != $summary['total_hours']) {
+                error_log("WARNING: Budget mismatch detected for project $projectId. DB: " . $currentBudget['total_hours'] . ", Summary: " . $summary['total_hours']);
+                $summary['total_hours'] = $currentBudget['total_hours'];
+            }
 
             // One-time approval usage: once a past-date approved edit is used, mark it as used.
             if (!$isAdmin && $hasApprovedPastEdit) {

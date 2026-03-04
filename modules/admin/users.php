@@ -679,7 +679,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'verify_credentials_mail') {
     exit;
 }
 
-// Get all users
+// Get all users (excluding client role - they have separate management page)
 $users = $db->query("
     SELECT u.*, 
            COUNT(DISTINCT p.id) as project_count,
@@ -691,6 +691,7 @@ $users = $db->query("
         OR (pp.at_tester_ids IS NOT NULL AND JSON_CONTAINS(pp.at_tester_ids, JSON_ARRAY(u.id)))
         OR (pp.ft_tester_ids IS NOT NULL AND JSON_CONTAINS(pp.ft_tester_ids, JSON_ARRAY(u.id)))
     )
+    WHERE u.role != 'client'
     GROUP BY u.id
     ORDER BY u.role, u.full_name
 ")->fetchAll();
@@ -765,7 +766,8 @@ if (!empty($_SESSION['success'])) {
 }
 ?>
 <div class="container-fluid">
-    <h2>User Management</h2>
+    <h2><i class="fas fa-user-tie"></i> Internal Users Management</h2>
+    <p class="text-muted">Manage internal team members (Admin, QA, Developers, Project Leads, Testers)</p>
     
     <div class="d-flex flex-wrap gap-2 mb-3">
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">

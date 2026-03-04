@@ -8,19 +8,6 @@
             </div>
 
             <?php 
-            $isActiveAssignedMemberStmt = $db->prepare("
-                SELECT id
-                FROM user_assignments
-                WHERE project_id = ? AND user_id = ? AND (is_removed IS NULL OR is_removed = 0)
-                LIMIT 1
-            ");
-            $isActiveAssignedMemberStmt->execute([$projectId, $userId]);
-            $isActiveAssignedMember = (bool)$isActiveAssignedMemberStmt->fetch();
-            $canManageAssets = in_array($userRole, ['admin', 'super_admin'], true)
-                || ($userRole === 'project_lead' && (int)$project['project_lead_id'] === (int)$userId)
-                || $isActiveAssignedMember
-                || hasAnyProjectPermission($db, $userId, $projectId, ['assets_edit', 'assets_delete']);
-
             // Get project assets
             $assets = $db->prepare("
                 SELECT pa.*, u.full_name as creator_name 
@@ -78,7 +65,7 @@
                                 </div>
                             <?php else: ?>
                                 <div class="d-grid">
-                                    <a href="<?php echo $baseDir . '/' . htmlspecialchars($asset['file_path']); ?>" 
+                                    <a href="<?php echo $baseDir . '/api/secure_file.php?path=' . urlencode($asset['file_path']); ?>" 
                                        target="_blank" class="btn btn-sm btn-outline-primary">
                                         <i class="fas fa-download"></i> Download File
                                     </a>
@@ -91,7 +78,14 @@
                                 <br>
                                 <?php echo date('M d, Y', strtotime($asset['created_at'])); ?>
                             </small>
-                            <?php if ($canManageAssets): ?>
+                            <?php 
+                            // Only uploader or admin can edit/delete
+                            $isUploader = ((int)$asset['created_by'] === (int)$userId);
+                            $isAdmin = in_array($userRole, ['admin', 'super_admin'], true);
+                            $canEditDeleteAsset = $isUploader || $isAdmin;
+                            
+                            if ($canEditDeleteAsset): 
+                            ?>
                             <div class="d-flex align-items-center gap-2">
                                 <button type="button"
                                         class="btn btn-sm btn-link text-primary p-0 border-0 js-edit-asset"

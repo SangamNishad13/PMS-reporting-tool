@@ -2,10 +2,15 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
+// Debug logging
+error_log("secure_file.php: Session user_id = " . ($_SESSION['user_id'] ?? 'NOT SET'));
+error_log("secure_file.php: Requested path = " . ($_GET['path'] ?? 'NOT SET'));
+
 if (!isset($_SESSION['user_id'])) {
+    error_log("secure_file.php: Access denied - No user session");
     http_response_code(403);
     header('Content-Type: text/plain; charset=utf-8');
-    echo 'Forbidden';
+    echo 'Forbidden: Not logged in';
     exit;
 }
 
@@ -91,30 +96,20 @@ try {
         // This is a project asset - check if user has access to the project
         $projectId = (int)$asset['project_id'];
         
-        // Admin and super_admin have access to all projects
-        if (!in_array($userRole, ['admin', 'super_admin'], true)) {
-            // Check if user is project lead
-            $leadStmt = $db->prepare("SELECT project_lead_id FROM projects WHERE id = ? LIMIT 1");
-            $leadStmt->execute([$projectId]);
-            $projectLeadId = (int)($leadStmt->fetchColumn() ?? 0);
-            
-            // Check if user is assigned to the project
-            $assignedStmt = $db->prepare("
-                SELECT id FROM user_assignments 
-                WHERE project_id = ? AND user_id = ? AND (is_removed IS NULL OR is_removed = 0) 
-                LIMIT 1
-            ");
-            $assignedStmt->execute([$projectId, $userId]);
-            $isAssigned = (bool)$assignedStmt->fetch();
-            
-            // If user is not project lead and not assigned, deny access
-            if ($projectLeadId !== $userId && !$isAssigned) {
-                http_response_code(403);
-                header('Content-Type: text/plain; charset=utf-8');
-                echo 'Forbidden: You do not have access to this project asset';
-                exit;
-            }
+        error_log("secure_file.php: Found project asset - Project ID: $projectId, User ID: $userId");
+        
+        // Use the standard hasProjectAccess function for consistent permission checking
+        require_once __DIR__ . '/../includes/project_permissions.php';
+        if (!hasProjectAccess($db, $userId, $projectId)) {
+            http_response_code(403);
+            header('Content-Type: text/plain; charset=utf-8');
+            error_log("secure_file.php: User $userId denied access to project $projectId asset: $relPath");
+            echo 'Forbidden: You do not have access to this project asset';
+            exit;
         }
+        error_log("secure_file.php: User $userId granted access to project $projectId asset: $relPath");
+    } else {
+        error_log("secure_file.php: Not a project asset, allowing access: $relPath");
     }
     // If not a project asset, allow access (for other uploads like chat images, issue screenshots, etc.)
 } catch (Exception $e) {

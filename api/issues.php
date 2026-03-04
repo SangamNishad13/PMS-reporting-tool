@@ -697,7 +697,13 @@ try {
         } else {
             $sql .= " WHERE i.project_id = ?";
         }
-        $sql .= " ORDER BY i.updated_at DESC, i.id DESC";
+        
+        // Filter for client role - only show client_ready issues
+        if ($userRole === 'client') {
+            $sql .= " AND i.client_ready = 1";
+        }
+        
+        $sql .= " ORDER BY i.issue_key ASC";
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
         $issues = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -805,6 +811,7 @@ try {
                 'reporters' => ($meta['reporter_ids'] ?? []),
                 'reporter_name' => $i['reporter_name'] ?? null,
                 'qa_name' => $i['qa_name'] ?? null,
+                'client_ready' => (int)($i['client_ready'] ?? 0),
                 // Return all metadata fields with their actual keys from issue_metadata table
                 'usersaffected' => ($meta['usersaffected'] ?? []),
                 'wcagsuccesscriteria' => ($meta['wcagsuccesscriteria'] ?? []),
@@ -837,8 +844,14 @@ try {
                 FROM issues i
                 LEFT JOIN issue_statuses s ON i.status_id = s.id
                 LEFT JOIN users reporter ON i.reporter_id = reporter.id
-                WHERE i.project_id = ?
-                ORDER BY i.updated_at DESC, i.id DESC";
+                WHERE i.project_id = ?";
+        
+        // Filter for client role - only show client_ready issues
+        if ($userRole === 'client') {
+            $sql .= " AND i.client_ready = 1";
+        }
+        
+        $sql .= " ORDER BY i.issue_key ASC";
         
         $stmt = $db->prepare($sql);
         $stmt->execute([$projectId]);
@@ -1038,6 +1051,7 @@ try {
                 'severity' => isset($meta['severity']) ? (is_array($meta['severity']) ? $meta['severity'][0] : $meta['severity']) : 'medium',
                 'priority' => isset($meta['priority']) ? (is_array($meta['priority']) ? $meta['priority'][0] : $meta['priority']) : 'medium',
                 'grouped_urls' => isset($meta['grouped_urls']) && is_array($meta['grouped_urls']) ? $meta['grouped_urls'] : [],
+                'client_ready' => (int)($i['client_ready'] ?? 0),
                 'metadata' => $meta, // Include all metadata for custom fields
                 'created_at' => $i['created_at'],
                 'updated_at' => $i['updated_at']
@@ -1211,14 +1225,15 @@ try {
         $issueKey = '';
         $severity = $_POST['severity'] ?? 'major';
         $commonTitle = trim($_POST['common_title'] ?? '');
+        $clientReady = (int)($_POST['client_ready'] ?? 0);
 
         if ($action === 'create') {
-            $stmt = $db->prepare("INSERT INTO issues (project_id, issue_key, title, description, type_id, priority_id, status_id, reporter_id, page_id, severity, is_final, common_issue_title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)");
+            $stmt = $db->prepare("INSERT INTO issues (project_id, issue_key, title, description, type_id, priority_id, status_id, reporter_id, page_id, severity, is_final, common_issue_title, client_ready) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
             $created = false;
             for ($attempt = 0; $attempt < 5; $attempt++) {
                 $issueKey = getIssueKey($db, $projectId);
                 try {
-                    $stmt->execute([$projectId, $issueKey, $title, $description, $typeId, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null]);
+                    $stmt->execute([$projectId, $issueKey, $title, $description, $typeId, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady]);
                     $id = (int)$db->lastInsertId();
                     $created = true;
                     break;
@@ -1284,10 +1299,11 @@ try {
             logHistory($db, $id, $userId, 'description', $oldIssue['description'], $description);
             logHistory($db, $id, $userId, 'severity', $oldIssue['severity'], $severity);
             logHistory($db, $id, $userId, 'common_issue_title', $oldIssue['common_issue_title'], $commonTitle ?: null);
+            logHistory($db, $id, $userId, 'client_ready', $oldIssue['client_ready'] ?? 0, $clientReady);
             // More fields could be logged if needed (status, priority etc)
 
-            $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, page_id = ?, severity = ?, common_issue_title = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
-            $stmt->execute([$title, $description, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null, $id, $projectId]);
+            $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
+            $stmt->execute([$title, $description, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady, $id, $projectId]);
         }
 
         function normalizeHistoryMetaValues($values, $allowCsv = false) {
@@ -1470,6 +1486,27 @@ try {
         jsonResponse(['success' => true, 'id' => $id, 'issue_key' => $issueKey]);
     }
 
+    if ($method === 'POST' && $action === 'bulk_client_ready') {
+        $issueIds = $_POST['issue_ids'] ?? '';
+        $clientReady = (int)($_POST['client_ready'] ?? 0);
+        
+        $ids = is_array($issueIds) ? $issueIds : array_filter(array_map('intval', explode(',', $issueIds)));
+        if (empty($ids)) jsonError('issue_ids required', 400);
+        
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $params = array_merge([$clientReady], $ids, [$projectId]);
+        
+        try {
+            $stmt = $db->prepare("UPDATE issues SET client_ready = ?, updated_at = NOW() WHERE id IN ($placeholders) AND project_id = ?");
+            $stmt->execute($params);
+            
+            jsonResponse(['success' => true, 'updated' => $stmt->rowCount()]);
+        } catch (PDOException $e) {
+            error_log("Bulk client ready update error: " . $e->getMessage());
+            jsonError('Failed to update issues', 500);
+        }
+    }
+
     if ($method === 'POST' && $action === 'delete') {
         $idsRaw = $_POST['ids'] ?? '';
         $ids = is_array($idsRaw) ? $idsRaw : array_filter(array_map('intval', explode(',', $idsRaw)));
@@ -1517,7 +1554,7 @@ try {
             JOIN issues i ON ci.issue_id = i.id
             LEFT JOIN issue_statuses s ON s.id = i.status_id
             WHERE ci.project_id = ?
-            ORDER BY ci.updated_at DESC, ci.id DESC
+            ORDER BY ci.issue_key ASC
         ");
         $stmt->execute([$projectId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);

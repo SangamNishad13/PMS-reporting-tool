@@ -3,9 +3,10 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/hours_validation.php';
+require_once __DIR__ . '/../../includes/client_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'super_admin', 'project_lead', 'qa']);
+$auth->requireLogin(); // Allow any logged-in user, we'll check specific permissions after loading the project
 
 // Helper functions for project_pages table management
 function isProjectPagesView($db) {
@@ -95,7 +96,7 @@ if (!$projectId) {
         $projects = $db->prepare("SELECT id, title FROM projects WHERE project_lead_id = ? AND status != 'cancelled' ORDER BY title");
         $projects->execute([$userId]);
         $projects = $projects->fetchAll();
-    } else { // QA
+    } elseif ($userRole === 'qa') {
         $projects = $db->prepare("
             SELECT DISTINCT p.id, p.title 
             FROM projects p
@@ -104,6 +105,17 @@ if (!$projectId) {
         ");
         $projects->execute([$userId]);
         $projects = $projects->fetchAll();
+    } else {
+        // Check if user has client permissions
+        $clientIds = getClientsWithPermission($db, $userId, 'edit_project');
+        if (!empty($clientIds)) {
+            $placeholders = str_repeat('?,', count($clientIds) - 1) . '?';
+            $stmt = $db->prepare("SELECT id, title FROM projects WHERE client_id IN ($placeholders) AND status != 'cancelled' ORDER BY title");
+            $stmt->execute($clientIds);
+            $projects = $stmt->fetchAll();
+        } else {
+            $projects = [];
+        }
     }
 } else {
     // Validate project access
@@ -122,6 +134,23 @@ if (!$projectId) {
         header("Location: manage_assignments.php");
         exit;
     }
+    
+    // Check if user has permission to manage this project's team
+    $canManageTeam = hasAdminPrivileges() || 
+                     ($userRole === 'project_lead' && $project['project_lead_id'] == $userId) ||
+                     ($userRole === 'qa');
+    
+    // Also check client permissions for edit access
+    if (!$canManageTeam) {
+        $canManageTeam = canEditProjectById($db, $userId, $projectId);
+    }
+    
+    if (!$canManageTeam) {
+        $_SESSION['error'] = "You don't have permission to manage this project's team.";
+        header("Location: " . getBaseDir() . "/modules/projects/view.php?id=$projectId");
+        exit;
+    }
+    
     $projectTotalHoursForTeam = (float)($project['total_hours'] ?? 0);
     $activeAllocatedStmtForTeam = $db->prepare("
         SELECT COALESCE(SUM(hours_allocated), 0)
@@ -131,8 +160,8 @@ if (!$projectId) {
     $activeAllocatedStmtForTeam->execute([$projectId]);
     $activeAllocatedHoursForTeam = (float)$activeAllocatedStmtForTeam->fetchColumn();
 
-    // Handle Team Assignment (Add/Remove) - ONLY for Lead/Admin
-    if (hasProjectLeadPrivileges()) {
+    // Handle Team Assignment (Add/Remove) - Users with manage team permission
+    if ($canManageTeam) {
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_member_hours'])) {
             $assignmentId = (int)($_POST['assignment_id'] ?? 0);
             $newHoursRaw = $_POST['new_hours'] ?? '';
@@ -762,7 +791,7 @@ if (!$projectId) {
         $bulkQa = isset($_POST['bulk_qa']) ? (int)$_POST['bulk_qa'] : 0;
 
         // QA assignment is allowed only for privileged users. Ignore crafted values otherwise.
-        if (!hasProjectLeadPrivileges()) {
+        if (!$canManageTeam) {
             $bulkQa = 0;
         }
 
@@ -958,7 +987,7 @@ if (!$projectId) {
         $quickQa = isset($_POST['quick_qa']) ? (int)$_POST['quick_qa'] : 0;
 
         // QA assignment is allowed only for privileged users. Ignore any crafted value otherwise.
-        if (!hasProjectLeadPrivileges()) {
+        if (!$canManageTeam) {
             $quickQa = 0;
         }
 
@@ -1329,7 +1358,7 @@ include __DIR__ . '/../../includes/header.php';
             <!-- TAB 1: TEAM STAFFING -->
             <div class="tab-pane fade <?php echo $activeTab === 'team' ? 'show active' : ''; ?>" id="pills-team">
                 <div class="row">
-                    <?php if (hasProjectLeadPrivileges()): ?>
+                    <?php if ($canManageTeam): ?>
                     <div class="col-md-4">
                         <div class="card" style="top: 20px;">
                             <div class="card-header">
@@ -1392,7 +1421,7 @@ include __DIR__ . '/../../includes/header.php';
                     </div>
                     <?php endif; ?>
 
-                    <div class="<?php echo hasProjectLeadPrivileges() ? 'col-md-8' : 'col-md-12'; ?>">
+                    <div class="<?php echo $canManageTeam ? 'col-md-8' : 'col-md-12'; ?>">
                         <div class="card">
                             <div class="card-header">
                                 <h5 class="mb-0">Current Project Team</h5>
@@ -1455,7 +1484,7 @@ include __DIR__ . '/../../includes/header.php';
                                                     <?php endif; ?>
                                                 </td>
                                                 <td>
-                                                    <?php if (hasProjectLeadPrivileges() && $m['role'] !== 'project_lead'): ?>
+                                                    <?php if ($canManageTeam && $m['role'] !== 'project_lead'): ?>
                                                         <?php
                                                             $memberCurrentHours = (float)($m['hours_allocated'] ?? 0);
                                                             $memberFreeHours = max(0.0, $projectTotalHoursForTeam - $activeAllocatedHoursForTeam);
@@ -1570,7 +1599,7 @@ include __DIR__ . '/../../includes/header.php';
                                                     </small>
                                                 </td>
                                                 <td>
-                                                    <?php if (hasProjectLeadPrivileges()): ?>
+                                                    <?php if ($canManageTeam): ?>
                                                         <a href="?project_id=<?php echo $projectId; ?>&restore_member=<?php echo $rm['id']; ?>" 
                                                            class="btn btn-sm btn-outline-success" title="Restore to project"
                                                            onclick="confirmModal('Restore <?php echo htmlspecialchars($rm['full_name'], ENT_QUOTES); ?> back to the project?', function(){ window.location.href='?project_id=<?php echo $projectId; ?>&restore_member=<?php echo $rm['id']; ?>'; }); return false;">
@@ -1698,7 +1727,7 @@ include __DIR__ . '/../../includes/header.php';
                     </div>
                     
                     <div class="card-body p-0">
-                        <?php if (hasProjectLeadPrivileges()): ?>
+                        <?php if ($canManageTeam): ?>
                         <div class="p-3 border-bottom bg-light">
                             <button type="button" class="btn btn-sm btn-danger" id="bulkDeletePagesBtn" disabled>
                                 <i class="fas fa-trash"></i> Delete Selected (<span id="selectedPagesCount">0</span>)
@@ -1709,7 +1738,7 @@ include __DIR__ . '/../../includes/header.php';
                             <table class="table table-hover mb-0 table-sm">
                                 <thead class="bg-light">
                                     <tr>
-                                        <?php if (hasProjectLeadPrivileges()): ?>
+                                        <?php if ($canManageTeam): ?>
                                         <th style="width: 40px;">
                                             <input type="checkbox" id="selectAllPages" aria-label="Select all pages">
                                         </th>
@@ -1753,7 +1782,7 @@ include __DIR__ . '/../../includes/header.php';
                                         $isReady = ($hasFT && $hasQA && $envCount > 0); // AT is optional
                                     ?>
                                     <tr class="align-middle">
-                                        <?php if (hasProjectLeadPrivileges()): ?>
+                                        <?php if ($canManageTeam): ?>
                                         <td>
                                             <input type="checkbox" class="page-select" value="<?php echo (int)$p['id']; ?>" aria-label="Select <?php echo htmlspecialchars($p['page_name']); ?>">
                                         </td>
@@ -1819,7 +1848,7 @@ include __DIR__ . '/../../includes/header.php';
                                             <button type="button" class="btn btn-sm btn-outline-primary" data-page-edit-id="<?php echo $p['id']; ?>" data-bs-toggle="modal" data-bs-target="#pageModal<?php echo $p['id']; ?>" title="Edit assignments">
                                                 <i class="fas fa-edit"></i>
                                             </button>
-                                            <?php if (hasProjectLeadPrivileges()): ?>
+                                            <?php if ($canManageTeam): ?>
                                                 <a href="?project_id=<?php echo $projectId; ?>&remove_page=<?php echo $p['id']; ?>" class="btn btn-sm btn-outline-danger ms-1" title="Delete page" onclick="confirmModal('Delete this page and its environment links? This cannot be undone.', function(){ window.location.href='?project_id=<?php echo $projectId; ?>&remove_page=<?php echo $p['id']; ?>'; }); return false;">
                                                     <i class="fas fa-trash"></i>
                                                 </a>
@@ -1992,7 +2021,7 @@ include __DIR__ . '/../../includes/header.php';
                                             
                                             <div class="mb-3">
                                                 <label class="form-label">QA</label>
-                                                <select name="bulk_qa" class="form-select" <?php echo !hasProjectLeadPrivileges() ? 'disabled' : ''; ?>>
+                                                <select name="bulk_qa" class="form-select" <?php echo !$canManageTeam ? 'disabled' : ''; ?>>
                                                     <option value="">-- Don't Change --</option>
                                                     <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'qa'): ?>
                                                         <option value="<?php echo $tm['user_id']; ?>"><?php echo htmlspecialchars($tm['full_name']); ?></option>
@@ -2613,7 +2642,7 @@ function toggleRowDetails(pageId, context = 'main') {
                             
                             <div class="mb-3">
                                 <label class="form-label">QA</label>
-                                <select name="quick_qa" class="form-select" <?php echo !hasProjectLeadPrivileges() ? 'disabled' : ''; ?>>
+                                <select name="quick_qa" class="form-select" <?php echo !$canManageTeam ? 'disabled' : ''; ?>>
                                     <option value="">-- Keep Current --</option>
                                     <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'qa'): ?>
                                         <option value="<?php echo $tm['user_id']; ?>"><?php echo htmlspecialchars($tm['full_name']); ?></option>
@@ -2746,7 +2775,7 @@ function toggleRowDetails(pageId, context = 'main') {
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">QA</label>
-                                    <select name="qa_env_<?php echo $envId; ?>" class="form-select" <?php echo !hasProjectLeadPrivileges() ? 'disabled' : ''; ?> >
+                                    <select name="qa_env_<?php echo $envId; ?>" class="form-select" <?php echo !$canManageTeam ? 'disabled' : ''; ?> >
                                         <option value="">-- None --</option>
                                         <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'qa'): ?>
                                             <option value="<?php echo $tm['user_id']; ?>" <?php echo $qaSelected == $tm['user_id'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($tm['full_name']); ?></option>

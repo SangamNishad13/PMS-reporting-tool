@@ -266,7 +266,24 @@ function hasProjectAccess($db, $userId, $projectId) {
         ");
         $permStmt->execute([$projectId, $userId]);
         
-        return $permStmt->fetch() !== false;
+        if ($permStmt->fetch()) {
+            return true;
+        }
+        
+        // Check client permissions (for client role users)
+        if ($user && $user['role'] === 'client') {
+            $clientPermStmt = $db->prepare("
+                SELECT id FROM client_permissions 
+                WHERE project_id = ? AND user_id = ? AND is_active = 1 
+                AND (expires_at IS NULL OR expires_at > NOW())
+                LIMIT 1
+            ");
+            $clientPermStmt->execute([$projectId, $userId]);
+            
+            return $clientPermStmt->fetch() !== false;
+        }
+        
+        return false;
         
     } catch (PDOException $e) {
         error_log("Project access check error: " . $e->getMessage());

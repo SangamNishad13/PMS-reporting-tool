@@ -10,8 +10,8 @@
 
     function updateTopHoursSummary(summary) {
         if (!summary) return;
+        // Budget should ALWAYS come from total_hours (fixed budget), never from allocated_hours
         var budget = parseFloat(summary.total_hours || 0);
-        if (!(budget > 0)) budget = parseFloat(summary.allocated_hours || 0);
         var used = parseFloat(summary.utilized_hours || 0);
         var remaining = budget - used;
         var overshoot = remaining < 0 ? Math.abs(remaining) : 0;
@@ -332,6 +332,13 @@
                 dataType: 'json',
                 success: function (resp) {
                     if (resp.success) {
+                        // Show success message
+                        if (typeof showToast === 'function') {
+                            showToast('Hours logged successfully!', 'success');
+                        } else {
+                            alert('Hours logged successfully!');
+                        }
+                        
                         updateTopHoursSummary(resp.summary || null);
                         // fetch updated production-hours panel and replace
                         fetch(window.location.href, { credentials: 'same-origin' }).then(r => r.text()).then(function (html) {
@@ -354,10 +361,26 @@
                             } catch (e) { location.reload(); }
                         }).catch(function () { location.reload(); });
                     } else {
-                        if (typeof showToast === 'function') showToast('Failed to log hours: ' + (resp.message || resp.error || 'Unknown'), 'danger');
+                        if (typeof showToast === 'function') {
+                            showToast('Failed to log hours: ' + (resp.message || resp.error || 'Unknown error'), 'danger');
+                        } else {
+                            alert('Failed to log hours: ' + (resp.message || resp.error || 'Unknown error'));
+                        }
                     }
                 },
-                error: function (xhr) { if (typeof showToast === 'function') showToast('Error logging hours', 'danger'); }
+                error: function (xhr) {
+                    var errorMsg = 'Error logging hours';
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        if (resp.error) errorMsg = resp.error;
+                    } catch (e) {}
+                    
+                    if (typeof showToast === 'function') {
+                        showToast(errorMsg, 'danger');
+                    } else {
+                        alert(errorMsg);
+                    }
+                }
             });
         });
     }

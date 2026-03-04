@@ -2,9 +2,10 @@
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
+require_once __DIR__ . '/../../includes/client_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'super_admin']);
+$auth->requireLogin();
 
 $base_url = getBaseDir();
 

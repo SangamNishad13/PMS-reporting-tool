@@ -2,7 +2,17 @@
         <div class="tab-pane fade" id="team" role="tabpanel">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h5 class="mb-0">Project Team</h5>
-                <?php if (in_array($userRole, ['admin', 'project_lead', 'super_admin'])): ?>
+                <?php 
+                // Check if user can manage team
+                $canManageTeam = in_array($userRole, ['admin', 'project_lead', 'super_admin']);
+                
+                // Also check client permissions for edit access
+                if (!$canManageTeam) {
+                    $canManageTeam = canEditProjectById($db, $userId, $projectId);
+                }
+                
+                if ($canManageTeam): 
+                ?>
                 <a href="<?php echo $baseDir; ?>/modules/projects/manage_assignments.php?project_id=<?php echo $projectId; ?>" class="btn btn-primary">
                     <i class="fas fa-users-cog"></i> Manage Team
                 </a>

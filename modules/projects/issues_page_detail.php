@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/project_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin', 'client']);
 
 $baseDir = getBaseDir();
 $projectId = (int)($_GET['project_id'] ?? 0);
@@ -92,7 +92,7 @@ try {
             pp.page_name,
             (SELECT GROUP_CONCAT(DISTINCT te.name SEPARATOR ', ') FROM page_environments pe2 JOIN testing_environments te ON pe2.environment_id = te.id WHERE pe2.page_id = pp.id) AS envs,
             (SELECT GROUP_CONCAT(DISTINCT u.full_name SEPARATOR ', ') FROM users u JOIN page_environments pe3 ON u.id = pe3.at_tester_id OR u.id = pe3.ft_tester_id OR u.id = pe3.qa_id WHERE pe3.page_id = pp.id) AS testers,
-            (SELECT COUNT(*) FROM issues i WHERE i.project_id = pp.project_id AND i.page_id = pp.id) AS issues_count,
+            (SELECT COUNT(*) FROM issues i WHERE i.project_id = pp.project_id AND i.page_id = pp.id" . ($userRole === 'client' ? ' AND i.client_ready = 1' : '') . ") AS issues_count,
             (SELECT COALESCE(SUM(ptl.hours_spent), 0) FROM project_time_logs ptl WHERE ptl.page_id = pp.id) AS production_hours
         FROM project_pages pp
         WHERE pp.id = ?
@@ -213,6 +213,22 @@ include __DIR__ . '/../../includes/header.php';
 .modal-backdrop { z-index: 10540; }
 .select2-container--open .select2-dropdown { z-index: 10600; }
 .select2-results__options { max-height: 250px !important; overflow-y: auto !important; }
+/* Issue key column - prevent text wrapping */
+#finalIssuesTable td:nth-child(2),
+#finalIssuesTable th:nth-child(2) {
+    white-space: nowrap;
+    min-width: 120px;
+}
+/* Make all badges consistent size */
+.badge,
+.status-badge {
+    padding: 3px 10px !important;
+    font-size: 10px !important;
+    font-weight: 500 !important;
+    border-radius: 10px !important;
+    white-space: nowrap;
+    display: inline-block;
+}
 .qa-status-badge {
     padding: 3px 10px;
     border-radius: 10px;
@@ -364,10 +380,12 @@ include __DIR__ . '/../../includes/header.php';
         <div class="col">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
+                    <?php if ($_SESSION['role'] !== 'client'): ?>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/index.php">Dashboard</a></li>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $projectId; ?>">
                         <?php echo htmlspecialchars($project['title']); ?>
                     </a></li>
+                    <?php endif; ?>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>">Accessibility Report</a></li>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/modules/projects/issues_pages.php?project_id=<?php echo $projectId; ?>">Pages</a></li>
                     <li class="breadcrumb-item active"><?php echo htmlspecialchars($page['page_name']); ?></li>
@@ -446,6 +464,7 @@ include __DIR__ . '/../../includes/header.php';
     </div>
     <?php endif; ?>
 
+    <?php if ($_SESSION['role'] !== 'client'): ?>
     <!-- Testing Status Section -->
     <div class="card mb-2">
         <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
@@ -634,6 +653,7 @@ include __DIR__ . '/../../includes/header.php';
         </div>
         <?php endif; ?>
     </div>
+    <?php endif; ?>
 
     <!-- Issues Table Card -->
     <div class="card">
@@ -642,41 +662,59 @@ include __DIR__ . '/../../includes/header.php';
                 <strong>Page Issues</strong>
                 <span class="small text-muted ms-2">Final issues</span>
             </div>
+            <?php if ($_SESSION['role'] !== 'client'): ?>
             <button class="btn btn-primary btn-sm" id="issueAddFinalBtn">
                 <i class="fas fa-plus me-1"></i> Add Issue
             </button>
+            <?php endif; ?>
         </div>
         <div class="card-body p-0">
             <ul class="nav nav-tabs px-3 pt-2 mb-0" id="pageIssueTabs" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active py-2" id="final-issues-tab" data-bs-toggle="tab" data-bs-target="#final_issues_tab" type="button">Final Issues <span class="badge bg-secondary ms-1" id="finalIssuesCountBadge">0</span></button>
                 </li>
+                <?php if ($_SESSION['role'] !== 'client'): ?>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link py-2" id="needs-review-tab" data-bs-toggle="tab" data-bs-target="#needs_review_tab" type="button">Needs Review <span class="badge bg-secondary ms-1" id="needsReviewCountBadge">0</span></button>
                 </li>
+                <?php endif; ?>
             </ul>
 
             <div class="tab-content">
                 <div class="tab-pane fade show active" id="final_issues_tab" role="tabpanel">
+                    <?php if ($_SESSION['role'] !== 'client'): ?>
                     <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
                         <div class="small text-muted">Issues for the final report</div>
-                        <button class="btn btn-sm btn-outline-secondary" id="finalDeleteSelected" disabled>Delete Selected</button>
+                        <div>
+                            <button class="btn btn-sm btn-outline-success me-1" id="finalMarkClientReadyBtn" disabled>
+                                <i class="fas fa-check"></i> Mark Client Ready
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" id="finalDeleteSelected" disabled>Delete Selected</button>
+                        </div>
                     </div>
+                    <?php endif; ?>
                     <div class="table-responsive">
                         <table class="table table-sm table-hover align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
+                                    <?php if ($_SESSION['role'] !== 'client'): ?>
                                     <th style="width:30px;"><input type="checkbox" id="finalSelectAll"></th>
-                                    <th style="width:80px;">Issue Key</th>
+                                    <?php endif; ?>
+                                    <th style="width:120px; white-space: nowrap;">Issue Key</th>
                                     <th>Issue Title</th>
                                     <th style="width:100px;">Severity</th>
                                     <th style="width:100px;">Priority</th>
                                     <th style="width:120px;">Status</th>
+                                    <?php if ($_SESSION['role'] !== 'client'): ?>
                                     <th style="width:120px;">QA Status</th>
                                     <th style="width:120px;">Reporter</th>
                                     <th style="width:120px;">QA Name</th>
+                                    <th style="width:100px;">Client Ready</th>
+                                    <?php endif; ?>
                                     <th style="width:100px;">Pages</th>
+                                    <?php if ($_SESSION['role'] !== 'client'): ?>
                                     <th style="width:120px;">Actions</th>
+                                    <?php endif; ?>
                                 </tr>
                             </thead>
                             <tbody id="finalIssuesBody">
@@ -689,6 +727,7 @@ include __DIR__ . '/../../includes/header.php';
                         </table>
                     </div>
                 </div>
+                <?php if ($_SESSION['role'] !== 'client'): ?>
                 <div class="tab-pane fade" id="needs_review_tab" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
                         <div class="small text-muted">Automated tool findings for manual verification</div>
@@ -739,6 +778,7 @@ include __DIR__ . '/../../includes/header.php';
                         </table>
                     </div>
                 </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>

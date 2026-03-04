@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/project_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin', 'client']);
 
 $baseDir = getBaseDir();
 $projectId = (int)($_GET['project_id'] ?? 0);
@@ -115,6 +115,10 @@ try {
     $uniqueIssuePages = [];
 }
 
+// Fetch issue metadata fields
+$metadataFieldsStmt = $db->query("SELECT id, field_key, field_label, options_json FROM issue_metadata_fields WHERE is_active = 1 ORDER BY sort_order ASC");
+$metadataFields = $metadataFieldsStmt->fetchAll(PDO::FETCH_ASSOC);
+
 $pageTitle = 'All Issues - ' . htmlspecialchars($project['title']);
 include __DIR__ . '/../../includes/header.php';
 ?>
@@ -138,12 +142,13 @@ include __DIR__ . '/../../includes/header.php';
 .issue-row:hover {
     background-color: #f8f9fa;
 }
+/* Make all badges consistent size */
+.badge,
 .status-badge {
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
+    padding: 3px 10px !important;
+    font-size: 10px !important;
+    font-weight: 500 !important;
+    border-radius: 10px !important;
     white-space: nowrap;
     display: inline-block;
 }
@@ -168,10 +173,12 @@ include __DIR__ . '/../../includes/header.php';
         <div class="col">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
+                    <?php if ($_SESSION['role'] !== 'client'): ?>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/index.php">Dashboard</a></li>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $projectId; ?>">
                         <?php echo htmlspecialchars($project['title']); ?>
                     </a></li>
+                    <?php endif; ?>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>">Accessibility Report</a></li>
                     <li class="breadcrumb-item active">All Issues</li>
                 </ol>
@@ -190,9 +197,11 @@ include __DIR__ . '/../../includes/header.php';
                     <p class="text-muted mb-0">Complete list of all accessibility issues in this project</p>
                 </div>
                 <div class="col-md-4 text-md-end">
+                    <?php if ($_SESSION['role'] !== 'client'): ?>
                     <button class="btn btn-primary me-2" id="addIssueBtn">
                         <i class="fas fa-plus me-1"></i> Add Issue
                     </button>
+                    <?php endif; ?>
                     <a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-secondary">
                         <i class="fas fa-arrow-left me-1"></i> Back
                     </a>
@@ -228,6 +237,7 @@ include __DIR__ . '/../../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php if ($_SESSION['role'] !== 'client'): ?>
             <div class="col-md-2">
                 <label class="form-label"><i class="fas fa-check-circle me-1"></i> QA Status</label>
                 <select class="form-select" id="filterQAStatus">
@@ -248,6 +258,7 @@ include __DIR__ . '/../../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php endif; ?>
             <div class="col-md-1">
                 <button class="btn btn-secondary w-100" id="clearFilters">
                     <i class="fas fa-times"></i> Clear
@@ -279,14 +290,16 @@ include __DIR__ . '/../../includes/header.php';
                             <th>Title</th>
                             <th style="width: 150px;">Page(s)</th>
                             <th style="width: 120px;">Status</th>
+                            <?php if ($_SESSION['role'] !== 'client'): ?>
                             <th style="width: 150px;">QA Status</th>
                             <th style="width: 120px;">Reporter</th>
                             <th style="width: 100px;">Actions</th>
+                            <?php endif; ?>
                         </tr>
                     </thead>
                     <tbody id="issuesTableBody">
                         <tr>
-                            <td colspan="7" class="text-center py-5">
+                            <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '4' : '7'; ?>" class="text-center py-5">
                                 <div class="spinner-border text-primary" role="status">
                                     <span class="visually-hidden">Loading...</span>
                                 </div>
@@ -322,7 +335,8 @@ window.ProjectConfig = {
     baseDir: '<?php echo $baseDir; ?>',
     projectUsers: <?php echo json_encode($projectUsers); ?>,
     qaStatuses: <?php echo json_encode($qaStatuses); ?>,
-    issueStatuses: <?php echo json_encode($issueStatuses); ?>
+    issueStatuses: <?php echo json_encode($issueStatuses); ?>,
+    metadataFields: <?php echo json_encode($metadataFields); ?>
 };
 </script>
 
@@ -338,12 +352,35 @@ let allIssues = [];
 let filteredIssues = [];
 let autoRefreshTimer = null;
 let autoRefreshInFlight = false;
+let loadIssuesDebounceTimer = null;
 
-// Load all issues
+// Load all issues with debouncing
 function loadIssues(options) {
     const opts = options || {};
     const preserveFilters = !!opts.preserveFilters;
     const silentErrors = !!opts.silentErrors;
+    const immediate = !!opts.immediate;
+    
+    // Clear existing debounce timer
+    if (loadIssuesDebounceTimer) {
+        clearTimeout(loadIssuesDebounceTimer);
+        loadIssuesDebounceTimer = null;
+    }
+    
+    // If immediate, load right away
+    if (immediate) {
+        return performLoadIssues(preserveFilters, silentErrors);
+    }
+    
+    // Otherwise debounce by 300ms
+    return new Promise((resolve) => {
+        loadIssuesDebounceTimer = setTimeout(() => {
+            performLoadIssues(preserveFilters, silentErrors).then(resolve);
+        }, 300);
+    });
+}
+
+function performLoadIssues(preserveFilters, silentErrors) {
     return fetch(`${baseDir}/api/issues.php?action=get_all&project_id=${projectId}`)
         .then(response => response.json())
         .then(data => {
@@ -378,11 +415,14 @@ function startIssuesAutoRefresh() {
 // Render issues table
 function renderIssues() {
     const tbody = document.getElementById('issuesTableBody');
+    const userRole = window.ProjectConfig?.userRole || '';
+    const isClient = (userRole === 'client');
+    const colspan = isClient ? 4 : 7;
     
     if (filteredIssues.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="text-center py-5">
+                <td colspan="${colspan}" class="text-center py-5">
                     <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
                     <p class="text-muted">No issues found</p>
                 </td>
@@ -391,13 +431,13 @@ function renderIssues() {
         return;
     }
     
-    tbody.innerHTML = filteredIssues.map(issue => `
-        <tr class="issue-row" data-issue-id="${issue.id}" style="cursor: pointer;">
+    tbody.innerHTML = filteredIssues.map(issue => {
+        let mainRow = `<tr class="issue-row" data-issue-id="${issue.id}" style="cursor: pointer;">
             <td>
                 <button class="btn btn-link p-0 me-2 text-muted chevron-toggle" style="border: none; background: none;">
                     <i class="fas fa-chevron-right chevron-icon" id="chevron-${issue.id}"></i>
                 </button>
-                <strong>${escapeHtml(issue.issue_key)}</strong>
+                <span class="badge bg-primary">${escapeHtml(issue.issue_key)}</span>
             </td>
             <td>
                 ${issue.common_title ? 
@@ -414,7 +454,11 @@ function renderIssues() {
                 <span class="status-badge" style="background-color: ${issue.status_color}; color: white;">
                     ${escapeHtml(issue.status_name)}
                 </span>
-            </td>
+            </td>`;
+        
+        // QA Status, Reporter, Actions columns - hide for client
+        if (!isClient) {
+            mainRow += `
             <td>
                 ${issue.qa_statuses && issue.qa_statuses.length > 0 ? issue.qa_statuses.map(qs => {
                     const bgColor = getBootstrapColor(qs.color || 'secondary');
@@ -432,10 +476,12 @@ function renderIssues() {
                 <button class="btn btn-sm btn-outline-danger delete-btn" data-issue-id="${issue.id}" title="Delete">
                     <i class="fas fa-trash"></i>
                 </button>
-            </td>
-        </tr>
+            </td>`;
+        }
+        
+        mainRow += `</tr>
         <tr id="issue-details-${issue.id}" style="display: none;">
-            <td colspan="7" class="p-0">
+            <td colspan="${colspan}" class="p-0">
                 <div class="bg-light p-4 border-top">
                     <div class="row">
                         <div class="col-md-8">
@@ -450,6 +496,12 @@ function renderIssues() {
                             <h6 class="fw-bold mb-3"><i class="fas fa-info-circle me-2"></i>Metadata</h6>
                             <div class="card">
                                 <div class="card-body">
+                                    ${issue.common_title ? `
+                                    <div class="mb-2">
+                                        <strong>Common Title:</strong><br>
+                                        ${escapeHtml(issue.common_title)}
+                                    </div>
+                                    ` : ''}
                                     <div class="mb-2">
                                         <strong>Issue Key:</strong><br>
                                         <span class="badge bg-primary">${escapeHtml(issue.issue_key)}</span>
@@ -459,6 +511,18 @@ function renderIssues() {
                                         <span class="status-badge" style="background-color: ${issue.status_color}; color: white;">${escapeHtml(issue.status_name)}</span>
                                     </div>
                                     <div class="mb-2">
+                                        <strong>Severity:</strong><br>
+                                        <span class="badge bg-warning text-dark">${escapeHtml((issue.severity || 'N/A').toUpperCase())}</span>
+                                    </div>
+                                    <div class="mb-2">
+                                        <strong>Priority:</strong><br>
+                                        <span class="badge bg-info text-dark">${escapeHtml((issue.priority || 'N/A').toUpperCase())}</span>
+                                    </div>`;
+        
+        // QA Status, Reporter(s) - hide for clients
+        if (!isClient) {
+            mainRow += `
+                                    <div class="mb-2">
                                         <strong>QA Status:</strong><br>
                                         ${issue.qa_statuses && issue.qa_statuses.length > 0 ? issue.qa_statuses.map(qs => {
                                             const bgColor = getBootstrapColor(qs.color || 'secondary');
@@ -467,17 +531,12 @@ function renderIssues() {
                                         }).join(' ') : '<span class="text-muted">N/A</span>'}
                                     </div>
                                     <div class="mb-2">
-                                        <strong>Severity:</strong><br>
-                                        <span class="badge bg-warning text-dark">${escapeHtml((issue.severity || 'N/A').toUpperCase())}</span>
-                                    </div>
-                                    <div class="mb-2">
-                                        <strong>Priority:</strong><br>
-                                        <span class="badge bg-info text-dark">${escapeHtml((issue.priority || 'N/A').toUpperCase())}</span>
-                                    </div>
-                                    <div class="mb-2">
                                         <strong>Reporter(s):</strong><br>
                                         ${issue.reporters ? escapeHtml(issue.reporters) : '<span class="text-muted">N/A</span>'}
-                                    </div>
+                                    </div>`;
+        }
+        
+        mainRow += `
                                     <div class="mb-2">
                                         <strong>Page(s):</strong><br>
                                         ${issue.pages ? escapeHtml(issue.pages) : '<span class="text-muted">No pages</span>'}
@@ -493,13 +552,11 @@ function renderIssues() {
                                             <small>${issue.grouped_urls.map(url => escapeHtml(url)).join('<br>')}</small>
                                         </div>
                                     </div>
-                                    ` : ''}
-                                    ${issue.common_title ? `
-                                    <div class="mb-2">
-                                        <strong>Common Title:</strong><br>
-                                        ${escapeHtml(issue.common_title)}
-                                    </div>
-                                    ` : ''}
+                                    ` : ''}`;
+        
+        // Created and Updated - hide for client
+        if (!isClient) {
+            mainRow += `
                                     <div class="mb-2">
                                         <strong>Created:</strong><br>
                                         <small class="text-muted">${new Date(issue.created_at).toLocaleString()}</small>
@@ -507,15 +564,38 @@ function renderIssues() {
                                     <div class="mb-2">
                                         <strong>Updated:</strong><br>
                                         <small class="text-muted">${new Date(issue.updated_at).toLocaleString()}</small>
-                                    </div>
+                                    </div>`;
+        }
+        
+        // Add custom metadata fields
+        if (window.ProjectConfig && window.ProjectConfig.metadataFields && issue.metadata) {
+            window.ProjectConfig.metadataFields.forEach(field => {
+                // Skip severity and priority as they're already shown above for all users
+                if (field.field_key === 'severity' || field.field_key === 'priority') return;
+                
+                const value = issue.metadata[field.field_key];
+                if (value && value.length > 0) {
+                    const displayValue = Array.isArray(value) ? value.join(', ') : value;
+                    mainRow += `
+                                    <div class="mb-2">
+                                        <strong>${escapeHtml(field.field_label)}:</strong><br>
+                                        ${escapeHtml(displayValue)}
+                                    </div>`;
+                }
+            });
+        }
+        
+        mainRow += `
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </td>
-        </tr>
-    `).join('');
+        </tr>`;
+        
+        return mainRow;
+    }).join('');
     
     // Attach event listeners
     attachEventListeners();
@@ -532,8 +612,10 @@ function applyFilters() {
     const searchTerm = document.getElementById('searchInput').value.toLowerCase();
     const pageFilter = document.getElementById('filterPage').value;
     const statusFilter = document.getElementById('filterStatus').value;
-    const qaStatusFilter = document.getElementById('filterQAStatus').value;
-    const reporterFilter = document.getElementById('filterReporter').value;
+    const qaStatusFilterEl = document.getElementById('filterQAStatus');
+    const qaStatusFilter = qaStatusFilterEl ? qaStatusFilterEl.value : '';
+    const reporterFilterEl = document.getElementById('filterReporter');
+    const reporterFilter = reporterFilterEl ? reporterFilterEl.value : '';
     
     filteredIssues = allIssues.filter(issue => {
         // Search filter
@@ -550,12 +632,12 @@ function applyFilters() {
         // Status filter
         if (statusFilter && issue.status_id != statusFilter) return false;
         
-        // QA Status filter
+        // QA Status filter (only if element exists)
         if (qaStatusFilter && issue.qa_status_keys) {
             if (!issue.qa_status_keys.includes(qaStatusFilter)) return false;
         }
         
-        // Reporter filter
+        // Reporter filter (only if element exists)
         if (reporterFilter && issue.reporter_ids) {
             if (!issue.reporter_ids.includes(parseInt(reporterFilter))) return false;
         }
@@ -765,7 +847,8 @@ function performDelete(issueId) {
     .then(data => {
         if (data.success) {
             showSuccess('Issue deleted successfully');
-            loadIssues();
+            // Debounced reload
+            loadIssues({ preserveFilters: true, silentErrors: true });
         } else {
             showError(data.message || data.error || 'Failed to delete issue');
         }
@@ -859,15 +942,23 @@ function showError(message) {
 document.getElementById('searchInput').addEventListener('input', applyFilters);
 document.getElementById('filterPage').addEventListener('change', applyFilters);
 document.getElementById('filterStatus').addEventListener('change', applyFilters);
-document.getElementById('filterQAStatus').addEventListener('change', applyFilters);
-document.getElementById('filterReporter').addEventListener('change', applyFilters);
+
+// QA Status and Reporter filters - only for non-client users
+const qaStatusFilterEl = document.getElementById('filterQAStatus');
+if (qaStatusFilterEl) {
+    qaStatusFilterEl.addEventListener('change', applyFilters);
+}
+const reporterFilterEl = document.getElementById('filterReporter');
+if (reporterFilterEl) {
+    reporterFilterEl.addEventListener('change', applyFilters);
+}
 
 document.getElementById('clearFilters').addEventListener('click', function() {
     document.getElementById('searchInput').value = '';
     document.getElementById('filterPage').value = '';
     document.getElementById('filterStatus').value = '';
-    document.getElementById('filterQAStatus').value = '';
-    document.getElementById('filterReporter').value = '';
+    if (qaStatusFilterEl) qaStatusFilterEl.value = '';
+    if (reporterFilterEl) reporterFilterEl.value = '';
     applyFilters();
 });
 
@@ -881,7 +972,7 @@ document.addEventListener('pms:issues-changed', function () {
 });
 
 // Initial load
-loadIssues();
+loadIssues({ immediate: true });
 startIssuesAutoRefresh();
 
 // Handle Add Issue button - open finalIssueModal for new issue
@@ -1039,16 +1130,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     const modal = bootstrap.Modal.getInstance(modalEl);
                     if (modal) modal.hide();
                     
-                    // Show success message
+                    // Show success message immediately
                     showSuccess(editId ? 'Issue updated successfully' : 'Issue created successfully');
                     
-                    // Reload issues list
-                    loadIssues();
+                    // Debounced reload - will wait 300ms before actually loading
+                    // This prevents multiple rapid reloads if user saves multiple issues quickly
+                    loadIssues({ preserveFilters: true, silentErrors: true });
                     
                 } catch (e) {
                     if (String(e.message || '').toLowerCase().indexOf('modified by another user') !== -1) {
                         showError('Issue was updated by another user. Latest data loaded. Please review and save again.');
-                        loadIssues({ preserveFilters: true, silentErrors: true });
+                        loadIssues({ preserveFilters: true, silentErrors: true, immediate: true });
                         return;
                     }
                     console.error('Save error:', e);

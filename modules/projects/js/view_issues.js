@@ -635,6 +635,7 @@
                     reporter_name: it.reporter_name || null,
                     qa_name: it.qa_name || null,
                     page_id: it.page_id || pageId,
+                    client_ready: it.client_ready || 0,
                     // Metadata fields - use correct field names from API
                     usersaffected: it.usersaffected || [],
                     wcagsuccesscriteria: it.wcagsuccesscriteria || [],
@@ -2423,6 +2424,14 @@
 
         var commonTitleVal = issue ? (issue.common_title || '') : (draftData ? draftData.common_title : '');
         document.getElementById('finalIssueCommonTitle').value = commonTitleVal;
+        
+        // Set client_ready checkbox
+        var clientReadyCheckbox = document.getElementById('finalIssueClientReady');
+        if (clientReadyCheckbox) {
+            // Handle both string "1" and integer 1
+            clientReadyCheckbox.checked = (issue && (issue.client_ready == 1 || issue.client_ready === '1' || issue.client_ready === true));
+        }
+        
         if (issue && issue.grouped_urls) setGroupedUrls(issue.grouped_urls);
         else if (draftData && draftData.grouped_urls) setGroupedUrls(draftData.grouped_urls);
         else updateGroupedUrls();
@@ -2821,6 +2830,27 @@
             return;
         }
         var issues = issueData.pages[issueData.selectedPageId].final || [];
+        
+        // Sort issues by issue_key (natural sorting: ISS-1, ISS-2, ISS-10, ISS-11)
+        issues = issues.slice().sort(function(a, b) {
+            var keyA = String(a.issue_key || '');
+            var keyB = String(b.issue_key || '');
+            
+            // Extract prefix and number from issue key (e.g., "ISS-123" -> ["ISS", "123"])
+            var partsA = keyA.split('-');
+            var partsB = keyB.split('-');
+            
+            // Compare prefix first
+            if (partsA[0] !== partsB[0]) {
+                return partsA[0].localeCompare(partsB[0]);
+            }
+            
+            // Compare numeric part
+            var numA = parseInt(partsA[1]) || 0;
+            var numB = parseInt(partsB[1]) || 0;
+            return numA - numB;
+        });
+        
         if (!issues.length) {
             tbody.innerHTML = '<tr><td colspan="11" class="text-center py-5"><div class="text-muted mb-2"><i class="fas fa-check-circle fa-2x opacity-25"></i></div><div class="text-muted fw-medium">No final issues recorded yet.</div></td></tr>';
             updateIssueTabCounts();
@@ -2966,9 +2996,14 @@
                 : 'Delete Issue';
 
             // Main row - NOT directly clickable, only chevron button is
-            var mainRow = '<tr class="align-middle issue-expandable-row" data-collapse-target="#' + uniqueId + '">' +
-                '<td class="checkbox-cell"><input type="checkbox" class="final-select" value="' + issue.id + '"' + (testerDeleteBlocked ? ' disabled' : '') + '></td>' +
-                '<td><span class="badge bg-primary">' + escapeHtml(issueKey) + '</span></td>' +
+            var mainRow = '<tr class="align-middle issue-expandable-row" data-collapse-target="#' + uniqueId + '">';
+            
+            // Checkbox column - hide for client
+            if (userRole !== 'client') {
+                mainRow += '<td class="checkbox-cell"><input type="checkbox" class="final-select" value="' + issue.id + '"' + (testerDeleteBlocked ? ' disabled' : '') + '></td>';
+            }
+            
+            mainRow += '<td><span class="badge bg-primary">' + escapeHtml(issueKey) + '</span></td>' +
                 '<td style="min-width: 250px; max-width: 400px;">' +
                 '<div class="d-flex align-items-center">' +
                 '<button class="btn btn-link p-0 me-2 text-muted chevron-toggle-btn" ' +
@@ -2990,26 +3025,41 @@
                 '</td>' +
                 '<td>' + getSeverityBadge(severity) + '</td>' +
                 '<td>' + getPriorityBadge(priority) + '</td>' +
-                '<td>' + getStatusBadge(statusId) + '</td>' +
-                '<td>' + qaStatusHtml + '</td>' +
-                '<td>' + reporterHtml + '</td>' +
-                '<td>' +
-                (qaName !== 'N/A' ?
-                    '<span class="badge bg-success">' + escapeHtml(qaName) + '</span>' :
-                    '<span class="text-muted">N/A</span>') +
-                '</td>' +
-                '<td>' +
+                '<td>' + getStatusBadge(statusId) + '</td>';
+            
+            // QA Status, Reporter, QA Name, Client Ready columns - hide for client
+            if (userRole !== 'client') {
+                mainRow += '<td>' + qaStatusHtml + '</td>' +
+                    '<td>' + reporterHtml + '</td>' +
+                    '<td>' +
+                    (qaName !== 'N/A' ?
+                        '<span class="badge bg-success">' + escapeHtml(qaName) + '</span>' :
+                        '<span class="text-muted">N/A</span>') +
+                    '</td>' +
+                    '<td>' +
+                    (issue.client_ready == 1 ?
+                        '<span class="badge bg-success"><i class="fas fa-check"></i> Yes</span>' :
+                        '<span class="badge bg-secondary"><i class="fas fa-times"></i> No</span>') +
+                    '</td>';
+            }
+            
+            mainRow += '<td>' +
                 '<span class="badge bg-secondary">' + pageCount + ' page(s)</span>' +
-                '</td>' +
-                '<td class="action-buttons-cell">' +
-                '<button class="btn btn-sm btn-outline-primary me-1 final-edit" data-id="' + issue.id + '" type="button" title="Edit Issue">' +
-                '<i class="fas fa-edit"></i>' +
-                '</button>' +
-                '<button class="btn btn-sm btn-outline-danger final-delete" data-id="' + issue.id + '" type="button" title="' + escapeAttr(deleteTitle) + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
-                '<i class="fas fa-trash"></i>' +
-                '</button>' +
-                '</td>' +
-                '</tr>';
+                '</td>';
+            
+            // Actions column - hide for client
+            if (userRole !== 'client') {
+                mainRow += '<td class="action-buttons-cell">' +
+                    '<button class="btn btn-sm btn-outline-primary me-1 final-edit" data-id="' + issue.id + '" type="button" title="Edit Issue">' +
+                    '<i class="fas fa-edit"></i>' +
+                    '</button>' +
+                    '<button class="btn btn-sm btn-outline-danger final-delete" data-id="' + issue.id + '" type="button" title="' + escapeAttr(deleteTitle) + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
+                    '<i class="fas fa-trash"></i>' +
+                    '</button>' +
+                    '</td>';
+            }
+            
+            mainRow += '</tr>';
 
             // Expandable details row
             var detailsRow = '<tr class="collapse" id="' + uniqueId + '">' +
@@ -3032,14 +3082,14 @@
                 '<span class="badge bg-primary">' + escapeHtml(issueKey) + '</span>' +
                 '</div>' +
                 '<div class="mb-2"><strong>Status:</strong><br>' + getStatusBadge(statusId) + '</div>' +
-                '<div class="mb-2"><strong>QA Status:</strong><br>' + qaStatusHtml + '</div>' +
+                (userRole !== 'client' ? '<div class="mb-2"><strong>QA Status:</strong><br>' + qaStatusHtml + '</div>' : '') +
                 '<div class="mb-2"><strong>Severity:</strong><br>' +
                 '<span class="badge bg-warning text-dark">' + escapeHtml((severity || 'N/A').toUpperCase()) + '</span>' +
                 '</div>' +
                 '<div class="mb-2"><strong>Priority:</strong><br>' +
                 '<span class="badge bg-info text-dark">' + escapeHtml((priority || 'N/A').toUpperCase()) + '</span>' +
                 '</div>' +
-                '<div class="mb-2"><strong>Reporter(s):</strong><br>' +
+                (userRole !== 'client' ? '<div class="mb-2"><strong>Reporter(s):</strong><br>' +
                 (reportersArray.length > 0 ? reportersArray.map(function (reporterId) {
                     var reporterName = 'Unknown';
                     if (ProjectConfig.projectUsers) {
@@ -3048,8 +3098,8 @@
                     }
                     return escapeHtml(reporterName);
                 }).join(', ') : (issue.reporter_name ? escapeHtml(issue.reporter_name) : '<span class="text-muted">N/A</span>')) +
-                '</div>' +
-                '<div class="mb-2"><strong>QA Name:</strong><br>' + escapeHtml(qaName) + '</div>' +
+                '</div>' : '') +
+                (userRole !== 'client' ? '<div class="mb-2"><strong>QA Name:</strong><br>' + escapeHtml(qaName) + '</div>' : '') +
                 (function () {
                     // Pages section with names
                     var pagesHtml = '<div class="mb-2"><strong>Pages:</strong> ';
@@ -3123,12 +3173,14 @@
                             }
                         });
                     }
-                    // Add created_at and updated_at timestamps
-                    if (issue.created_at) {
-                        metaHtml += '<div class="mb-2"><strong>Created:</strong><br><small class="text-muted">' + new Date(issue.created_at).toLocaleString() + '</small></div>';
-                    }
-                    if (issue.updated_at) {
-                        metaHtml += '<div class="mb-2"><strong>Updated:</strong><br><small class="text-muted">' + new Date(issue.updated_at).toLocaleString() + '</small></div>';
+                    // Add created_at and updated_at timestamps - hide for client
+                    if (userRole !== 'client') {
+                        if (issue.created_at) {
+                            metaHtml += '<div class="mb-2"><strong>Created:</strong><br><small class="text-muted">' + new Date(issue.created_at).toLocaleString() + '</small></div>';
+                        }
+                        if (issue.updated_at) {
+                            metaHtml += '<div class="mb-2"><strong>Updated:</strong><br><small class="text-muted">' + new Date(issue.updated_at).toLocaleString() + '</small></div>';
+                        }
                     }
                     return metaHtml;
                 })() +
@@ -3162,16 +3214,29 @@
             });
         });
 
-        // Add click handler for issue title to open edit modal
+        // Add click handler for issue title
         document.querySelectorAll('#finalIssuesBody .issue-title-click').forEach(function (titleEl) {
             titleEl.addEventListener('click', function (e) {
                 e.stopPropagation();
-                var issueId = this.getAttribute('data-issue-id');
-                if (issueId && issueData.selectedPageId) {
-                    var issue = issueData.pages[issueData.selectedPageId].final.find(function (i) {
-                        return String(i.id) === String(issueId);
-                    });
-                    if (issue) openFinalEditor(issue);
+                
+                // For client users, just expand/collapse the row
+                if (userRole === 'client') {
+                    var row = this.closest('tr');
+                    if (row) {
+                        var chevronBtn = row.querySelector('.chevron-toggle-btn');
+                        if (chevronBtn) {
+                            toggleIssueRow(chevronBtn);
+                        }
+                    }
+                } else {
+                    // For non-client users, open edit modal
+                    var issueId = this.getAttribute('data-issue-id');
+                    if (issueId && issueData.selectedPageId) {
+                        var issue = issueData.pages[issueData.selectedPageId].final.find(function (i) {
+                            return String(i.id) === String(issueId);
+                        });
+                        if (issue) openFinalEditor(issue);
+                    }
                 }
             });
         });
@@ -3546,8 +3611,9 @@
     function renderCommonIssues() {
         var tbody = document.getElementById('commonIssuesBody');
         if (!tbody) return;
+        var colspanCount = (userRole === 'client') ? 2 : 4;
         if (!issueData.common.length) {
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-5 text-muted">No common issues found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="' + colspanCount + '" class="text-center py-5 text-muted">No common issues found.</td></tr>';
             return;
         }
 
@@ -3574,11 +3640,16 @@
             }
 
             // Main row with expand button
-            var mainRow = '<tr class="align-middle issue-expandable-row" data-collapse-target="#' + uniqueId + '">' +
-                '<td class="text-center checkbox-cell">' +
-                '<input type="checkbox" class="form-check-input common-select" data-id="' + it.id + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
-                '</td>' +
-                '<td style="min-width: 250px; max-width: 400px;">' +
+            var mainRow = '<tr class="align-middle issue-expandable-row" data-collapse-target="#' + uniqueId + '">';
+            
+            // Checkbox column - hide for client
+            if (userRole !== 'client') {
+                mainRow += '<td class="text-center checkbox-cell">' +
+                    '<input type="checkbox" class="form-check-input common-select" data-id="' + it.id + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
+                    '</td>';
+            }
+            
+            mainRow += '<td style="min-width: 250px; max-width: 400px;">' +
                 '<div class="d-flex align-items-center">' +
                 '<button class="btn btn-link p-0 me-2 text-muted chevron-toggle-btn" ' +
                 'data-collapse-target="#' + uniqueId + '" ' +
@@ -3594,18 +3665,23 @@
                 '</td>' +
                 '<td class="small text-muted">' +
                 '<span class="badge bg-secondary">' + pageCount + ' page(s)</span>' +
-                '</td>' +
-                '<td class="text-end action-buttons-cell">' +
-                '<div class="btn-group">' +
-                '<button class="btn btn-sm btn-outline-primary common-edit bg-white" data-id="' + it.id + '" title="Edit Common Issue">' +
-                '<i class="fas fa-pencil-alt"></i>' +
-                '</button>' +
-                '<button class="btn btn-sm btn-outline-danger common-delete bg-white" data-id="' + it.id + '" title="' + escapeAttr(deleteTitle) + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
-                '<i class="far fa-trash-alt"></i>' +
-                '</button>' +
-                '</div>' +
-                '</td>' +
-                '</tr>';
+                '</td>';
+            
+            // Actions column - hide for client
+            if (userRole !== 'client') {
+                mainRow += '<td class="text-end action-buttons-cell">' +
+                    '<div class="btn-group">' +
+                    '<button class="btn btn-sm btn-outline-primary common-edit bg-white" data-id="' + it.id + '" title="Edit Common Issue">' +
+                    '<i class="fas fa-pencil-alt"></i>' +
+                    '</button>' +
+                    '<button class="btn btn-sm btn-outline-danger common-delete bg-white" data-id="' + it.id + '" title="' + escapeAttr(deleteTitle) + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
+                    '<i class="far fa-trash-alt"></i>' +
+                    '</button>' +
+                    '</div>' +
+                    '</td>';
+            }
+            
+            mainRow += '</tr>';
 
             // Build metadata section if actual issue is found
             var metadataHtml = '';
@@ -3650,10 +3726,10 @@
                     urlsHtml = '<div class="mb-2">';
                     urlsHtml += '<strong>Grouped URLs:</strong> ';
                     urlsHtml += '<span class="badge bg-info">' + actualIssue.grouped_urls.length + '</span> ';
-                    urlsHtml += '<button class="btn btn-xs btn-link p-0 grouped-urls-toggle" data-bs-toggle="collapse" data-bs-target="#' + urlsId + '" aria-expanded="false">';
-                    urlsHtml += '<i class="fas fa-chevron-down transition-transform"></i>';
+                    urlsHtml += '<button type="button" class="btn btn-xs btn-link p-0 ms-1 grouped-urls-toggle-btn" data-target="' + urlsId + '" aria-expanded="false">';
+                    urlsHtml += '<i class="fas fa-chevron-down"></i>';
                     urlsHtml += '</button>';
-                    urlsHtml += '<div class="mt-2" id="' + urlsId + '" style="display: none;">';
+                    urlsHtml += '<div class="collapse mt-2" id="' + urlsId + '">';
                     urlsHtml += '<div class="small p-2 border rounded bg-light" style="max-height: 150px; overflow-y: auto;">';
 
                     actualIssue.grouped_urls.forEach(function (urlString) {
@@ -3672,32 +3748,52 @@
                     urlsHtml += '</div></div></div>';
                 }
 
-                metadataHtml = '<div class="mb-2"><strong>Issue Key:</strong><br>' +
+                // Build metadata HTML - Common Title first, then conditionally show other fields
+                metadataHtml = '';
+                
+                // Common Title - show for everyone at the top
+                if (actualIssue.common_title) {
+                    metadataHtml += '<div class="mb-2"><strong>Common Title:</strong><br>' + escapeHtml(actualIssue.common_title) + '</div>';
+                }
+                
+                metadataHtml += '<div class="mb-2"><strong>Issue Key:</strong><br>' +
                     '<span class="badge bg-primary">' + escapeHtml(actualIssue.issue_key || 'N/A') + '</span>' +
                     '</div>' +
                     '<div class="mb-2"><strong>Status:</strong><br>' + getStatusBadge(statusId) + '</div>' +
-                    '<div class="mb-2"><strong>QA Status:</strong><br>' + qaStatusHtml + '</div>' +
                     '<div class="mb-2"><strong>Severity:</strong><br>' +
                     '<span class="badge bg-warning text-dark">' + escapeHtml((severity || 'N/A').toUpperCase()) + '</span>' +
                     '</div>' +
                     '<div class="mb-2"><strong>Priority:</strong><br>' +
                     '<span class="badge bg-info text-dark">' + escapeHtml((priority || 'N/A').toUpperCase()) + '</span>' +
-                    '</div>' +
-                    '<div class="mb-2"><strong>Reporter(s):</strong><br>' +
-                    (reportersArray.length > 0 ? reportersArray.map(function (reporterId) {
-                        var reporterName = 'Unknown';
-                        if (ProjectConfig.projectUsers) {
-                            var found = ProjectConfig.projectUsers.find(function (u) { return u.id == reporterId; });
-                            if (found) reporterName = found.full_name;
-                        }
-                        return escapeHtml(reporterName);
-                    }).join(', ') : (actualIssue.reporter_name ? escapeHtml(actualIssue.reporter_name) : '<span class="text-muted">N/A</span>')) +
-                    '</div>' +
-                    '<div class="mb-2"><strong>Page(s):</strong><br>' + escapeHtml(pagesStr) + '</div>' +
-                    urlsHtml +
-                    (actualIssue.common_title ? '<div class="mb-2"><strong>Common Title:</strong><br>' + escapeHtml(actualIssue.common_title) + '</div>' : '') +
-                    (actualIssue.created_at ? '<div class="mb-2"><strong>Created:</strong><br><small class="text-muted">' + new Date(actualIssue.created_at).toLocaleString() + '</small></div>' : '') +
-                    (actualIssue.updated_at ? '<div class="mb-2"><strong>Updated:</strong><br><small class="text-muted">' + new Date(actualIssue.updated_at).toLocaleString() + '</small></div>' : '');
+                    '</div>';
+                
+                // QA Status, Reporter(s), Created, Updated - hide for client
+                if (userRole !== 'client') {
+                    metadataHtml += '<div class="mb-2"><strong>QA Status:</strong><br>' + qaStatusHtml + '</div>' +
+                        '<div class="mb-2"><strong>Reporter(s):</strong><br>' +
+                        (reportersArray.length > 0 ? reportersArray.map(function (reporterId) {
+                            var reporterName = 'Unknown';
+                            if (ProjectConfig.projectUsers) {
+                                var found = ProjectConfig.projectUsers.find(function (u) { return u.id == reporterId; });
+                                if (found) reporterName = found.full_name;
+                            }
+                            return escapeHtml(reporterName);
+                        }).join(', ') : (actualIssue.reporter_name ? escapeHtml(actualIssue.reporter_name) : '<span class="text-muted">N/A</span>')) +
+                        '</div>';
+                }
+                
+                metadataHtml += '<div class="mb-2"><strong>Page(s):</strong><br>' + escapeHtml(pagesStr) + '</div>' +
+                    urlsHtml;
+                
+                // Created and Updated - hide for client
+                if (userRole !== 'client') {
+                    if (actualIssue.created_at) {
+                        metadataHtml += '<div class="mb-2"><strong>Created:</strong><br><small class="text-muted">' + new Date(actualIssue.created_at).toLocaleString() + '</small></div>';
+                    }
+                    if (actualIssue.updated_at) {
+                        metadataHtml += '<div class="mb-2"><strong>Updated:</strong><br><small class="text-muted">' + new Date(actualIssue.updated_at).toLocaleString() + '</small></div>';
+                    }
+                }
 
                 // Add metadata fields
                 if (typeof issueMetadataFields !== 'undefined') {
@@ -3722,7 +3818,7 @@
 
             // Expandable details row
             var detailsRow = '<tr class="collapse" id="' + uniqueId + '">' +
-                '<td colspan="4" class="p-0 border-0">' +
+                '<td colspan="' + colspanCount + '" class="p-0 border-0">' +
                 '<div class="bg-light p-4 border-top">' +
                 '<div class="row g-3">' +
                 '<div class="col-md-8">' +
@@ -3840,6 +3936,33 @@
                 }
             }
         }
+        
+        // Add event listeners for grouped URLs toggle buttons
+        document.querySelectorAll('#commonIssuesBody .grouped-urls-toggle-btn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var targetId = this.getAttribute('data-target');
+                var targetEl = document.getElementById(targetId);
+                var icon = this.querySelector('i');
+                
+                if (targetEl) {
+                    if (targetEl.classList.contains('show')) {
+                        targetEl.classList.remove('show');
+                        if (icon) {
+                            icon.classList.remove('fa-chevron-up');
+                            icon.classList.add('fa-chevron-down');
+                        }
+                    } else {
+                        targetEl.classList.add('show');
+                        if (icon) {
+                            icon.classList.remove('fa-chevron-down');
+                            icon.classList.add('fa-chevron-up');
+                        }
+                    }
+                }
+            });
+        });
     }
 
     function renderAll() { renderFinalIssues(); renderCommonIssues(); updateSelectionButtons(); }
@@ -4087,6 +4210,9 @@
         var finalChecked = document.querySelectorAll('.final-select:checked').length;
         var finalDelete = document.getElementById('finalDeleteSelected');
         if (finalDelete) finalDelete.disabled = !finalChecked || !canEdit();
+        
+        var finalMarkClientReady = document.getElementById('finalMarkClientReadyBtn');
+        if (finalMarkClientReady) finalMarkClientReady.disabled = !finalChecked || !canEdit();
     }
 
     function getPageName(id) { var p = (pages || []).find(function (x) { return String(x.id) === String(id); }); return p ? p.page_name : id; }
@@ -4138,6 +4264,14 @@
         var listEl = document.getElementById('finalIssueCommentsList');
         if (!listEl) return;
         var items = issueData.comments[issueId || 'new'] || [];
+        
+        // Filter comments for client role - show only regression comments
+        if (userRole === 'client') {
+            items = items.filter(function(c) {
+                return c.comment_type === 'regression';
+            });
+        }
+        
         updateIssueCommentCount(items);
 
         if (!items.length) {
@@ -4862,6 +4996,16 @@
 
         if (!data.title) { issueNotify('Issue title is required.', 'warning'); return; }
 
+        // Get client_ready checkbox value
+        var clientReadyCheckbox = document.getElementById('finalIssueClientReady');
+        var clientReady = clientReadyCheckbox ? (clientReadyCheckbox.checked ? 1 : 0) : 0;
+        
+        // If editing an existing issue and client_ready checkbox is not explicitly checked,
+        // automatically set it to 0 (issue needs review after edit)
+        if (editId && clientReadyCheckbox && !clientReadyCheckbox.checked) {
+            clientReady = 0;
+        }
+
         var pendingCommentHtml = (window.jQuery && jQuery.fn.summernote)
             ? jQuery('#finalIssueCommentEditor').summernote('code')
             : ((document.getElementById('finalIssueCommentEditor') || {}).value || '');
@@ -4878,6 +5022,7 @@
             if (editId) fd.append('expected_history_id', (document.getElementById('finalIssueModal') || {}).dataset.expectedHistoryId || '0');
             fd.append('page_id', selectedPageId);
             fd.append('metadata', JSON.stringify(metadata));
+            fd.append('client_ready', clientReady);
 
             Object.keys(data).forEach(function (k) {
                 var v = data[k];
@@ -4937,8 +5082,11 @@
             issueData.initialFormState = null;
             finalIssueBypassCloseConfirm = true;
             hideEditors();
-            await loadFinalIssues(selectedPageId);
-            await loadCommonIssues();
+            
+            // Optimistic update - no need to reload from server
+            // The data is already updated in the store above
+            issueNotify(editId ? 'Issue updated successfully' : 'Issue created successfully', 'success');
+            
             dispatchIssuesChanged({
                 action: editId ? 'update' : 'create',
                 type: 'final',
@@ -5929,6 +6077,69 @@
             if (confirm('Delete selected issues?')) deleteSelected('final');
         }
     });
+    
+    // Mark Client Ready button handler
+    var markClientReadyBtn = document.getElementById('finalMarkClientReadyBtn');
+    if (markClientReadyBtn) {
+        markClientReadyBtn.addEventListener('click', async function () {
+            var selectedCheckboxes = document.querySelectorAll('.final-select:checked');
+            if (selectedCheckboxes.length === 0) return;
+            
+            var issueIds = Array.from(selectedCheckboxes).map(function(cb) { return cb.value; });
+            
+            var confirmMessage = 'Mark ' + issueIds.length + ' issue(s) as Client Ready?';
+            
+            var proceedWithUpdate = function() {
+                (async function() {
+                    try {
+                        var formData = 'action=bulk_client_ready&issue_ids=' + encodeURIComponent(issueIds.join(',')) + '&client_ready=1&project_id=' + ProjectConfig.projectId;
+                        
+                        var response = await fetch(issuesApiBase, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: formData
+                        });
+                        
+                        var data = await response.json();
+                        
+                        if (!data.success) {
+                            throw new Error(data.message || data.error || 'Failed to update issues');
+                        }
+                        
+                        showToast('Success', data.updated + ' issue(s) marked as Client Ready', 'success');
+                        
+                        // Force reload issues without cache
+                        if (issueData.selectedPageId) {
+                            // Clear the cache first
+                            if (issueData.pages && issueData.pages[issueData.selectedPageId]) {
+                                issueData.pages[issueData.selectedPageId].final = [];
+                            }
+                            await loadFinalIssues(issueData.selectedPageId, { silent: false, onlyIfChanged: false });
+                        }
+                        
+                        // Uncheck all
+                        document.querySelectorAll('.final-select:checked').forEach(function(cb) { cb.checked = false; });
+                        var selectAll = document.getElementById('finalSelectAll');
+                        if (selectAll) selectAll.checked = false;
+                        updateSelectionButtons();
+                        
+                    } catch (error) {
+                        console.error('Bulk client ready error:', error);
+                        showToast('Error', error.message || 'Failed to mark issues as Client Ready', 'error');
+                    }
+                })();
+            };
+            
+            if (typeof confirmModal === 'function') {
+                confirmModal(confirmMessage, proceedWithUpdate);
+            } else {
+                if (confirm(confirmMessage)) {
+                    proceedWithUpdate();
+                }
+            }
+        });
+    }
+    
     ['common', 'final'].forEach(function (t) {
         var c = document.getElementById(t + 'SelectAll');
         if (c) c.addEventListener('change', function (e) {
@@ -6019,6 +6230,52 @@
                     jQuery('#finalIssueTitle').prop('disabled', false).trigger('change.select2');
                 }
             }
+            
+            // Track if this is an edit (has issue ID) and if client_ready was initially checked
+            var editId = document.getElementById('finalIssueEditId').value;
+            var clientReadyCheckbox = document.getElementById('finalIssueClientReady');
+            if (editId && clientReadyCheckbox) {
+                var initialClientReady = clientReadyCheckbox.checked;
+                
+                // Function to uncheck client_ready when any field changes
+                var uncheckClientReady = function() {
+                    if (clientReadyCheckbox && initialClientReady) {
+                        clientReadyCheckbox.checked = false;
+                    }
+                };
+                
+                // Add change listeners to form fields
+                var fieldsToWatch = [
+                    'finalIssueTitle',
+                    'finalIssueDetails',
+                    'finalIssueStatus',
+                    'finalIssueSeverity',
+                    'finalIssuePriority',
+                    'finalIssueCommonTitle'
+                ];
+                
+                fieldsToWatch.forEach(function(fieldId) {
+                    var field = document.getElementById(fieldId);
+                    if (field) {
+                        // Remove any existing listener first
+                        field.removeEventListener('input', uncheckClientReady);
+                        field.removeEventListener('change', uncheckClientReady);
+                        // Add new listeners
+                        field.addEventListener('input', uncheckClientReady);
+                        field.addEventListener('change', uncheckClientReady);
+                    }
+                });
+                
+                // Watch Summernote editor if it exists
+                if (window.jQuery && jQuery.fn.summernote) {
+                    jQuery('#finalIssueDetails').off('summernote.change').on('summernote.change', uncheckClientReady);
+                }
+                
+                // Watch Select2 fields
+                if (window.jQuery && jQuery.fn.select2) {
+                    jQuery('#finalIssuePages, #finalIssueReporters, #finalIssueGroupedUrls, #finalIssueQaStatus').off('change.uncheckClientReady').on('change.uncheckClientReady', uncheckClientReady);
+                }
+            }
         });
     }
 
@@ -6043,18 +6300,3 @@
     window.loadCommonIssues = loadCommonIssues;
     window.openFinalEditor = openFinalEditor;
 })(); // IIFE invocation - this actually executes the function
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

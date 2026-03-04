@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/project_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin', 'client']);
 
 $baseDir = getBaseDir();
 $projectId = (int)($_GET['project_id'] ?? 0);
@@ -154,6 +154,19 @@ include __DIR__ . '/../../includes/header.php';
 .modal-backdrop { z-index: 10540; }
 .select2-container--open .select2-dropdown { z-index: 10600; }
 .select2-results__options { max-height: 250px !important; overflow-y: auto !important; }
+/* Make all badges consistent size */
+.badge {
+    padding: 3px 10px !important;
+    font-size: 10px !important;
+    font-weight: 500 !important;
+    border-radius: 10px !important;
+}
+.qa-status-badge {
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 500;
+}
 </style>
 
 <div class="container-fluid mt-4">
@@ -161,10 +174,12 @@ include __DIR__ . '/../../includes/header.php';
         <div class="col">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
+                    <?php if ($_SESSION['role'] !== 'client'): ?>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/index.php">Dashboard</a></li>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $projectId; ?>">
                         <?php echo htmlspecialchars($project['title']); ?>
                     </a></li>
+                    <?php endif; ?>
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>">Accessibility Report</a></li>
                     <li class="breadcrumb-item active">Common Issues</li>
                 </ol>
@@ -200,27 +215,35 @@ include __DIR__ . '/../../includes/header.php';
                 <h5 class="mb-0">Common Issues</h5>
                 <div class="small text-muted">Issues that apply across multiple pages</div>
             </div>
+            <?php if ($_SESSION['role'] !== 'client'): ?>
             <button class="btn btn-primary" id="commonAddBtn">
                 <i class="fas fa-plus me-1"></i> Add Common Issue
             </button>
+            <?php endif; ?>
         </div>
         <div class="card-body">
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
                     <thead class="table-light">
                         <tr>
+                            <?php if ($_SESSION['role'] !== 'client'): ?>
                             <th style="width:30px;"><input type="checkbox" id="commonSelectAll"></th>
+                            <?php endif; ?>
                             <th>Common Issue Title</th>
                             <th style="width:200px;">Pages</th>
+                            <?php if ($_SESSION['role'] !== 'client'): ?>
                             <th style="width:150px;">Actions</th>
+                            <?php endif; ?>
                         </tr>
                     </thead>
                     <tbody id="commonIssuesBody">
                         <tr>
-                            <td colspan="4" class="text-center text-muted py-5">
+                            <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '2' : '4'; ?>" class="text-center text-muted py-5">
                                 <i class="fas fa-layer-group fa-3x mb-3 opacity-25"></i>
                                 <div>No common issues added yet.</div>
+                                <?php if ($_SESSION['role'] !== 'client'): ?>
                                 <div class="small mt-2">Click "Add Common Issue" to create one</div>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     </tbody>

@@ -1,4 +1,5 @@
-        <!-- Floating Project Chat (bottom-right) -->
+        <!-- Floating Project Chat (bottom-right) - Hidden for client role -->
+        <?php if ($userRole !== 'client'): ?>
         <style>
         .chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1060; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
         .chat-launcher i { font-size: 1.1rem; }
@@ -45,6 +46,7 @@
                 </span>
             <?php endif; ?>
         </button>
+        <?php endif; ?>
 
 <!-- Add Phase Modal -->
 <div class="modal fade" id="addPhaseModal" tabindex="-1">
