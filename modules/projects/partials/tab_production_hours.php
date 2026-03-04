@@ -17,50 +17,59 @@
                 $utilizedStmt->execute([$projectId]);
                 $totalUtilized = $utilizedStmt->fetchColumn();
 
-                // Calculate overshoot hours (relative to allocated hours)
-                $overshootHours = max(0, ($totalUtilized - $allocatedHours));
+                // Calculate overshoot hours (relative to BUDGET hours, not allocated)
+                $overshootHours = max(0, ($totalUtilized - $budgetHours));
                 $hasOvershoot = $overshootHours > 0;
-                $colClass = $hasOvershoot ? 'col-md-2' : 'col-md-3';
                 ?>
                 
-                <div class="<?php echo $colClass; ?>">
+                <div class="col-md-2">
                     <div class="card text-center">
                         <div class="card-body">
-                            <h4 class="text-primary"><?php echo $allocatedHours ?: '0'; ?></h4>
-                            <small class="text-muted">Total Allocated</small>
+                            <h4 class="text-primary"><?php echo number_format($budgetHours, 1); ?></h4>
+                            <small class="text-muted">Budget Hours</small>
                         </div>
                     </div>
                 </div>
-                <div class="<?php echo $colClass; ?>">
+                <div class="col-md-2">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h4 class="text-info">
+                                <?php echo number_format($allocatedHours, 1); ?>
+                            </h4>
+                            <small class="text-muted">Allocated to Team</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
                     <div class="card text-center">
                         <div class="card-body">
                             <h4 class="text-success">
-                                <?php echo $totalUtilized ?: '0'; ?>
+                                <?php echo number_format($totalUtilized, 1); ?>
                             </h4>
                             <small class="text-muted">Total Utilized</small>
                         </div>
                     </div>
                 </div>
-                <div class="<?php echo $colClass; ?>">
+                <div class="col-md-2">
                     <div class="card text-center">
                         <div class="card-body">
                             <h4 class="text-warning">
                                 <?php 
-                                // Remaining budget = total budget minus allocated hours
-                                echo $availableHours;
+                                // Remaining budget = budget hours minus utilized hours
+                                echo number_format($availableHours, 1);
                                 ?>
                             </h4>
-                            <small class="text-muted">Remaining</small>
+                            <small class="text-muted">Remaining Budget</small>
                         </div>
                     </div>
                 </div>
                 
                 <?php if ($hasOvershoot): ?>
-                <div class="<?php echo $colClass; ?>">
+                <div class="col-md-2">
                     <div class="card text-center border-danger">
                         <div class="card-body">
                             <h4 class="text-danger">
-                                <i class="fas fa-exclamation-triangle"></i> <?php echo $overshootHours; ?>
+                                <i class="fas fa-exclamation-triangle"></i> <?php echo number_format($overshootHours, 1); ?>
                             </h4>
                             <small class="text-muted">Overshoot Hours</small>
                         </div>
@@ -68,19 +77,19 @@
                 </div>
                 <?php endif; ?>
                 
-                <div class="<?php echo $colClass; ?>">
+                <div class="col-md-2">
                     <div class="card text-center">
                         <div class="card-body">
                             <h4 class="text-info">
                                 <?php 
-                                if ($allocatedHours > 0) {
-                                    echo round(($totalUtilized / $allocatedHours) * 100, 1) . '%';
+                                if ($budgetHours > 0) {
+                                    echo round(($totalUtilized / $budgetHours) * 100, 1) . '%';
                                 } else {
                                     echo '0%';
                                 }
                                 ?>
                             </h4>
-                            <small class="text-muted">Utilization</small>
+                            <small class="text-muted">Budget Utilization</small>
                         </div>
                     </div>
                 </div>
@@ -90,8 +99,8 @@
                     <div class="alert alert-warning">
                         <i class="fas fa-exclamation-triangle"></i> 
                         <strong>Budget Overshoot Alert:</strong> 
-                        This project has exceeded its allocated hours by <?php echo $overshootHours; ?> hours 
-                        (<?php echo $allocatedHours > 0 ? round(($overshootHours / $allocatedHours) * 100, 1) : 0; ?>% over allocated).
+                        This project has exceeded its budget by <?php echo number_format($overshootHours, 1); ?> hours 
+                        (<?php echo $budgetHours > 0 ? round(($overshootHours / $budgetHours) * 100, 1) : 0; ?>% over budget).
                     </div>
                 </div>
                 <?php endif; ?>
