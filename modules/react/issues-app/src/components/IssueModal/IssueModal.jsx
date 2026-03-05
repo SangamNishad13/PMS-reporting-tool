@@ -49,13 +49,26 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
   }, [isOpen, issue, reset, fetchIssueStatuses, fetchMetadataFields]);
 
   const onSubmit = async (data) => {
+    console.log('Form submitted with data:', data);
+    console.log('Description:', description);
+    
     setLoading(true);
     try {
       const issueData = {
-        ...data,
+        title: data.title,
         description,
         project_id: projectId,
+        issue_status: data.status_id, // API expects issue_status
+        severity: data.severity || 'medium',
+        priority: data.priority || 'medium',
+        pages: data.page_id ? [data.page_id] : [],
+        // Add other metadata fields
+        wcag_criteria: data.wcag_criteria || '',
+        issue_type: data.issue_type || '',
+        environments: data.environments || '',
       };
+
+      console.log('Sending to API:', issueData);
 
       if (isEditMode) {
         await updateIssue(issue.id, issueData);
@@ -63,12 +76,13 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
         await createIssue(issueData);
       }
 
+      alert('Issue saved successfully!');
       onClose();
       reset();
       setDescription('');
     } catch (error) {
       console.error('Failed to save issue:', error);
-      alert('Failed to save issue. Please try again.');
+      alert('Failed to save issue: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -88,8 +102,8 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-      <div className="modal-dialog modal-xl">
+    <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }} onClick={onClose}>
+      <div className="modal-dialog modal-xl" onClick={(e) => e.stopPropagation()}>
         <div className="modal-content">
           <div className="modal-header bg-primary text-white">
             <h5 className="modal-title">
@@ -159,6 +173,18 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
                   <label className="form-label">Severity</label>
                   <select className="form-select" {...register('severity')}>
                     <option value="">Select Severity</option>
+                    <option value="Critical">Critical</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </div>
+
+                {/* Priority */}
+                <div className="col-md-6 mb-3">
+                  <label className="form-label">Priority</label>
+                  <select className="form-select" {...register('priority')}>
+                    <option value="">Select Priority</option>
                     <option value="Critical">Critical</option>
                     <option value="High">High</option>
                     <option value="Medium">Medium</option>
