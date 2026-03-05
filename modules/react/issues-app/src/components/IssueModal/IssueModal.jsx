@@ -5,7 +5,19 @@ import Button from '../Common/Button';
 import './IssueModal.css';
 
 const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
-  const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm();
+  const { register, handleSubmit, reset, formState: { errors } } = useForm({
+    defaultValues: {
+      title: '',
+      description: '',
+      status_id: '',
+      page_id: '',
+      severity: '',
+      priority: '',
+      wcag_criteria: '',
+      issue_type: '',
+      environments: '',
+    }
+  });
   const { createIssue, updateIssue, issueStatuses, metadataFields, fetchIssueStatuses, fetchMetadataFields } = useIssuesStore();
   
   const [loading, setLoading] = useState(false);
