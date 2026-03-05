@@ -69,10 +69,12 @@
                             </td>
                             <td>
                                 <span class="badge bg-<?php 
-                                    echo $member['role'] === 'project_lead' ? 'warning' : 
-                                         ($member['role'] === 'qa' ? 'info' : 'primary');
+                                    // Use current user role, not assignment role
+                                    $displayRole = $member['user_role'] ?? $member['role'];
+                                    echo $displayRole === 'project_lead' ? 'warning' : 
+                                         ($displayRole === 'qa' ? 'info' : 'primary');
                                 ?>">
-                                    <?php echo ucfirst(str_replace('_', ' ', $member['role'])); ?>
+                                    <?php echo ucfirst(str_replace('_', ' ', $displayRole)); ?>
                                 </span>
                             </td>
                             <td><?php echo htmlspecialchars($member['email']); ?></td>

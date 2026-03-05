@@ -13,6 +13,57 @@ include '../../includes/header.php';
     background-position: right 0.6rem center;
     text-overflow: clip;
 }
+
+.expand-btn {
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.expand-btn.expanded {
+    transform: rotate(90deg);
+}
+
+.details-row {
+    background-color: #f8f9fa;
+}
+
+.details-content {
+    padding: 15px;
+}
+
+.time-log-entry {
+    border-left: 3px solid #007bff;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: white;
+    border-radius: 4px;
+}
+
+.time-log-entry:last-child {
+    margin-bottom: 0;
+}
+
+.time-log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.time-log-hours {
+    font-weight: bold;
+    color: #007bff;
+}
+
+.time-log-project {
+    font-weight: 500;
+    color: #333;
+}
+
+.time-log-details {
+    font-size: 0.9em;
+    color: #666;
+}
 </style>
 
 <div class="container-fluid mt-4">
@@ -97,6 +148,7 @@ include '../../includes/header.php';
                 <table class="table table-hover" id="nonCompliantTable">
                     <thead>
                         <tr>
+                            <th style="width: 30px;"></th>
                             <th>User</th>
                             <th>Role</th>
                             <th>Email</th>
@@ -122,6 +174,7 @@ include '../../includes/header.php';
                 <table class="table table-hover" id="compliantTable">
                     <thead>
                         <tr>
+                            <th style="width: 30px;"></th>
                             <th>User</th>
                             <th>Role</th>
                             <th>Email</th>
@@ -216,11 +269,17 @@ function initComplianceTables() {
     }
 
     $('#nonCompliantTable').DataTable($.extend(true, {}, commonOptions, {
-        order: [[0, 'asc']],
-        columnDefs: [{ targets: [6], orderable: false, searchable: false }]
+        order: [[1, 'asc']],
+        columnDefs: [
+            { targets: [0], orderable: false, searchable: false },
+            { targets: [7], orderable: false, searchable: false }
+        ]
     }));
     $('#compliantTable').DataTable($.extend(true, {}, commonOptions, {
-        order: [[0, 'asc']]
+        order: [[1, 'asc']],
+        columnDefs: [
+            { targets: [0], orderable: false, searchable: false }
+        ]
     }));
 }
 
@@ -262,7 +321,7 @@ function renderReport() {
     nonCompliantTbody.empty();
     
     if (currentReport.non_compliant.length === 0) {
-        nonCompliantTbody.html('<tr><td colspan="7" class="text-center text-success">All users are compliant! 🎉</td></tr>');
+        nonCompliantTbody.html('<tr><td colspan="8" class="text-center text-success">All users are compliant! 🎉</td></tr>');
     } else {
         currentReport.non_compliant.forEach(user => {
             const hoursShort = (currentReport.minimum_hours - user.total_hours).toFixed(2);
@@ -270,8 +329,12 @@ function renderReport() {
                 `<span class="badge bg-success">Sent at ${new Date(user.reminder_sent_at).toLocaleTimeString()}</span>` : 
                 '<span class="badge bg-secondary">Not Sent</span>';
             
+            const rowId = `nc-row-${user.id}`;
             nonCompliantTbody.append(`
-                <tr>
+                <tr id="${rowId}" data-user-id="${user.id}">
+                    <td>
+                        <i class="fas fa-chevron-right expand-btn" onclick="toggleUserDetails(${user.id}, 'nc')"></i>
+                    </td>
                     <td><strong>${user.full_name || user.username}</strong></td>
                     <td><span class="badge bg-secondary">${user.role}</span></td>
                     <td>${user.email}</td>
@@ -293,11 +356,15 @@ function renderReport() {
     compliantTbody.empty();
     
     if (currentReport.compliant.length === 0) {
-        compliantTbody.html('<tr><td colspan="5" class="text-center text-muted">No compliant users found</td></tr>');
+        compliantTbody.html('<tr><td colspan="6" class="text-center text-muted">No compliant users found</td></tr>');
     } else {
         currentReport.compliant.forEach(user => {
+            const rowId = `c-row-${user.id}`;
             compliantTbody.append(`
-                <tr>
+                <tr id="${rowId}" data-user-id="${user.id}">
+                    <td>
+                        <i class="fas fa-chevron-right expand-btn" onclick="toggleUserDetails(${user.id}, 'c')"></i>
+                    </td>
                     <td><strong>${user.full_name || user.username}</strong></td>
                     <td><span class="badge bg-secondary">${user.role}</span></td>
                     <td>${user.email}</td>
@@ -338,6 +405,130 @@ function saveSettings() {
             alert('Error: ' + response.message);
         }
     });
+}
+
+function toggleUserDetails(userId, tablePrefix) {
+    const rowId = `${tablePrefix}-row-${userId}`;
+    const detailsRowId = `${tablePrefix}-details-${userId}`;
+    const expandBtn = $(`#${rowId} .expand-btn`);
+    
+    // Check if details row already exists
+    const existingDetailsRow = $(`#${detailsRowId}`);
+    
+    if (existingDetailsRow.length > 0) {
+        // Collapse
+        existingDetailsRow.remove();
+        expandBtn.removeClass('expanded');
+    } else {
+        // Expand - fetch and show details
+        expandBtn.addClass('expanded');
+        
+        const date = $('#reportDate').val();
+        const colCount = tablePrefix === 'nc' ? 8 : 6;
+        
+        // Insert loading row
+        $(`#${rowId}`).after(`
+            <tr id="${detailsRowId}" class="details-row">
+                <td colspan="${colCount}">
+                    <div class="details-content">
+                        <div class="text-center">
+                            <i class="fas fa-spinner fa-spin"></i> Loading time logs...
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        `);
+        
+        // Fetch time logs
+        $.get('../../api/hours_reminder.php', {
+            action: 'get_user_time_logs',
+            user_id: userId,
+            date: date
+        }, function(response) {
+            if (response.success) {
+                renderTimeLogDetails(detailsRowId, response.logs, response.total_hours);
+            } else {
+                console.error('API Error:', response);
+                $(`#${detailsRowId} .details-content`).html(`
+                    <div class="alert alert-danger mb-0">
+                        <i class="fas fa-exclamation-triangle"></i> Error: ${response.message || 'Unknown error'}
+                    </div>
+                `);
+            }
+        }).fail(function(xhr, status, error) {
+            console.error('Request failed:', xhr.responseText);
+            let errorMsg = 'Failed to load time logs';
+            try {
+                const response = JSON.parse(xhr.responseText);
+                errorMsg = response.message || errorMsg;
+            } catch(e) {}
+            
+            $(`#${detailsRowId} .details-content`).html(`
+                <div class="alert alert-danger mb-0">
+                    <i class="fas fa-exclamation-triangle"></i> ${errorMsg}
+                </div>
+            `);
+        });
+    }
+}
+
+function renderTimeLogDetails(detailsRowId, logs, totalHours) {
+    const detailsContent = $(`#${detailsRowId} .details-content`);
+    
+    if (logs.length === 0) {
+        detailsContent.html(`
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-info-circle"></i> No time logs found for this date
+            </div>
+        `);
+        return;
+    }
+    
+    let html = `<div class="mb-2"><strong>Total Hours: ${totalHours}</strong></div>`;
+    
+    logs.forEach(log => {
+        let taskInfo = '';
+        
+        if (log.task_type === 'page_testing' || log.task_type === 'page_qa' || log.task_type === 'regression') {
+            taskInfo = `
+                <div class="time-log-details">
+                    <span class="badge bg-info">${log.task_type.replace('_', ' ').toUpperCase()}</span>
+                    ${log.page_name ? `<strong>Page:</strong> ${log.page_number ? log.page_number + ' - ' : ''}${log.page_name}` : ''}
+                    ${log.env_name ? ` | <strong>Environment:</strong> ${log.env_name}` : ''}
+                </div>
+            `;
+        } else if (log.task_type === 'project_phase') {
+            taskInfo = `
+                <div class="time-log-details">
+                    <span class="badge bg-info">PROJECT PHASE</span>
+                    ${log.phase_name ? `<strong>Phase:</strong> ${log.phase_name}` : ''}
+                </div>
+            `;
+        } else if (log.task_type === 'generic_task') {
+            taskInfo = `
+                <div class="time-log-details">
+                    <span class="badge bg-info">GENERIC TASK</span>
+                    ${log.task_category ? `<strong>Category:</strong> ${log.task_category}` : ''}
+                </div>
+            `;
+        }
+        
+        html += `
+            <div class="time-log-entry">
+                <div class="time-log-header">
+                    <span class="time-log-project">${log.project_name || 'No Project'}</span>
+                    <span class="time-log-hours">${log.hours_spent} hrs</span>
+                </div>
+                ${taskInfo}
+                ${log.description ? `<div class="time-log-details mt-2"><strong>Description:</strong> ${log.description}</div>` : ''}
+                <div class="time-log-details mt-1">
+                    <small class="text-muted"><i class="fas fa-clock"></i> Logged at ${new Date(log.created_at).toLocaleString()}</small>
+                </div>
+            </div>
+        `;
+    });
+    
+    detailsContent.html(html);
 }
 
 // Auto-refresh every 5 minutes

@@ -57,7 +57,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $priority = isset($_POST['priority']) ? $_POST['priority'] : 'medium';
         $status = isset($_POST['status']) ? $_POST['status'] : 'not_started';
         $totalHours = isset($_POST['total_hours']) ? floatval($_POST['total_hours']) : 0;
-        $projectLeadId = isset($_POST['project_lead_id']) ? intval($_POST['project_lead_id']) : null;
+        $projectLeadId = isset($_POST['project_lead_id']) && $_POST['project_lead_id'] !== '' ? intval($_POST['project_lead_id']) : null;
+        // Ensure project_lead_id is NULL if it's 0 (invalid user ID)
+        if ($projectLeadId === 0) {
+            $projectLeadId = null;
+        }
         
         // Validate required fields
         if (empty($title) || empty($projectType) || $clientId <= 0) {

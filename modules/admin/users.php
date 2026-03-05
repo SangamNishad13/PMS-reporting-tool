@@ -873,7 +873,7 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                         <div class="modal fade" id="editUserModal<?php echo $user['id']; ?>" tabindex="-1">
                             <div class="modal-dialog">
                                 <div class="modal-content">
-                                    <form method="POST" class="reset-password-form" data-reset-password-form="1">
+                                    <form method="POST">
                                         <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
                                         <div class="modal-header">
                                             <h5 class="modal-title">Edit User: <?php echo renderUserNameLink(['id'=>$user['id'],'full_name'=>$user['full_name'],'role'=>$user['role']]); ?></h5>

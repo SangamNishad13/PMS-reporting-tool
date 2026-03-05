@@ -592,18 +592,32 @@ document.addEventListener('DOMContentLoaded', function() {
     // Function to construct URL for main events
     function getEventsUrl() {
         var userId = getSelectedUserId();
-        return '<?php echo $_SERVER["PHP_SELF"]; ?>?action=get_events' + (userId ? '&user_id=' + encodeURIComponent(userId) : '');
+        var url = '<?php echo $_SERVER["PHP_SELF"]; ?>?action=get_events' + (userId ? '&user_id=' + encodeURIComponent(userId) : '');
+        console.log('Calendar: Fetching events from:', url);
+        return url;
     }
 
     // Refresh only the main events source
     function refreshMainEvents() {
+        console.log('Calendar: Refreshing main events...');
         var source = window.calendar.getEventSourceById('mainEvents');
         if (source) {
+            console.log('Calendar: Removing existing source');
             source.remove();
         }
+        console.log('Calendar: Adding new event source');
         window.calendar.addEventSource({
             id: 'mainEvents',
-            url: getEventsUrl()
+            url: getEventsUrl(),
+            success: function(events) {
+                console.log('Calendar: Loaded', events.length, 'events');
+                if (events.length === 0) {
+                    console.warn('Calendar: No events returned from server');
+                }
+            },
+            failure: function(error) {
+                console.error('Calendar: Failed to load events:', error);
+            }
         });
     }
 

@@ -224,6 +224,58 @@ try {
             ]);
             break;
 
+        case 'get_user_time_logs':
+            if (!in_array($user_role, ['admin', 'super_admin'])) {
+                throw new Exception('Only admins can view user time logs');
+            }
+            
+            $target_user_id = $_GET['user_id'] ?? null;
+            $date = $_GET['date'] ?? date('Y-m-d');
+            
+            if (!$target_user_id) {
+                throw new Exception('User ID is required');
+            }
+            
+            try {
+                // Get detailed time logs for the user on the specified date
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        ptl.id,
+                        ptl.hours_spent,
+                        ptl.task_type,
+                        ptl.description,
+                        ptl.log_date,
+                        p.title as project_name,
+                        p.id as project_id,
+                        pp.page_name,
+                        pp.page_number,
+                        te.name as env_name,
+                        COALESCE(pph.phase_name, pm.phase_name) as phase_name,
+                        gtc.name as task_category,
+                        ptl.created_at
+                    FROM project_time_logs ptl
+                    LEFT JOIN projects p ON ptl.project_id = p.id
+                    LEFT JOIN project_pages pp ON ptl.page_id = pp.id
+                    LEFT JOIN testing_environments te ON ptl.environment_id = te.id
+                    LEFT JOIN project_phases pph ON ptl.phase_id = pph.id
+                    LEFT JOIN phase_master pm ON pph.phase_master_id = pm.id
+                    LEFT JOIN generic_task_categories gtc ON ptl.generic_category_id = gtc.id
+                    WHERE ptl.user_id = ? AND DATE(ptl.log_date) = ?
+                    ORDER BY ptl.created_at DESC
+                ");
+                $stmt->execute([$target_user_id, $date]);
+                $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                echo json_encode([
+                    'success' => true,
+                    'logs' => $logs,
+                    'total_hours' => array_sum(array_column($logs, 'hours_spent'))
+                ]);
+            } catch (PDOException $e) {
+                throw new Exception('Database error: ' . $e->getMessage());
+            }
+            break;
+
         default:
             throw new Exception('Invalid action');
     }

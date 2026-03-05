@@ -1456,10 +1456,12 @@ include __DIR__ . '/../../includes/header.php';
                                                 </td>
                                                 <td>
                                                     <span class="badge bg-<?php 
-                                                        echo $m['role'] === 'project_lead' ? 'warning' : 
-                                                             ($m['role'] === 'qa' ? 'info' : 'primary');
+                                                        // Use current user role, not assignment role
+                                                        $displayRole = $m['user_role'] ?? $m['role'];
+                                                        echo $displayRole === 'project_lead' ? 'warning' : 
+                                                             ($displayRole === 'qa' ? 'info' : 'primary');
                                                     ?>">
-                                                        <?php echo ucfirst(str_replace('_', ' ', $m['role'])); ?>
+                                                        <?php echo ucfirst(str_replace('_', ' ', $displayRole)); ?>
                                                     </span>
                                                 </td>
                                                 <td>
@@ -2003,7 +2005,9 @@ include __DIR__ . '/../../includes/header.php';
                                                 <label class="form-label">AT Tester</label>
                                                 <select name="bulk_at_tester" class="form-select">
                                                     <option value="">-- Don't Change --</option>
-                                                    <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'at_tester'): ?>
+                                                    <?php foreach ($teamMembers as $tm): 
+                                                        $currentRole = $tm['user_role'] ?? $tm['role'];
+                                                        if ($currentRole === 'at_tester'): ?>
                                                         <option value="<?php echo $tm['user_id']; ?>"><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                                     <?php endif; endforeach; ?>
                                                 </select>
@@ -2013,7 +2017,9 @@ include __DIR__ . '/../../includes/header.php';
                                                 <label class="form-label">FT Tester</label>
                                                 <select name="bulk_ft_tester" class="form-select">
                                                     <option value="">-- Don't Change --</option>
-                                                    <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'ft_tester'): ?>
+                                                    <?php foreach ($teamMembers as $tm): 
+                                                        $currentRole = $tm['user_role'] ?? $tm['role'];
+                                                        if ($currentRole === 'ft_tester'): ?>
                                                         <option value="<?php echo $tm['user_id']; ?>"><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                                     <?php endif; endforeach; ?>
                                                 </select>
@@ -2023,7 +2029,9 @@ include __DIR__ . '/../../includes/header.php';
                                                 <label class="form-label">QA</label>
                                                 <select name="bulk_qa" class="form-select" <?php echo !$canManageTeam ? 'disabled' : ''; ?>>
                                                     <option value="">-- Don't Change --</option>
-                                                    <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'qa'): ?>
+                                                    <?php foreach ($teamMembers as $tm): 
+                                                        $currentRole = $tm['user_role'] ?? $tm['role'];
+                                                        if ($currentRole === 'qa'): ?>
                                                         <option value="<?php echo $tm['user_id']; ?>"><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                                     <?php endif; endforeach; ?>
                                                 </select>
@@ -2624,7 +2632,9 @@ function toggleRowDetails(pageId, context = 'main') {
                                 <label class="form-label">AT Tester</label>
                                 <select name="quick_at_tester" class="form-select">
                                     <option value="">-- Keep Current --</option>
-                                    <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'at_tester'): ?>
+                                    <?php foreach ($teamMembers as $tm): 
+                                        $currentRole = $tm['user_role'] ?? $tm['role'];
+                                        if ($currentRole === 'at_tester'): ?>
                                         <option value="<?php echo $tm['user_id']; ?>"><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                     <?php endif; endforeach; ?>
                                 </select>
@@ -2634,7 +2644,9 @@ function toggleRowDetails(pageId, context = 'main') {
                                 <label class="form-label">FT Tester</label>
                                 <select name="quick_ft_tester" class="form-select">
                                     <option value="">-- Keep Current --</option>
-                                    <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'ft_tester'): ?>
+                                    <?php foreach ($teamMembers as $tm): 
+                                        $currentRole = $tm['user_role'] ?? $tm['role'];
+                                        if ($currentRole === 'ft_tester'): ?>
                                         <option value="<?php echo $tm['user_id']; ?>"><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                     <?php endif; endforeach; ?>
                                 </select>
@@ -2644,7 +2656,9 @@ function toggleRowDetails(pageId, context = 'main') {
                                 <label class="form-label">QA</label>
                                 <select name="quick_qa" class="form-select" <?php echo !$canManageTeam ? 'disabled' : ''; ?>>
                                     <option value="">-- Keep Current --</option>
-                                    <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'qa'): ?>
+                                    <?php foreach ($teamMembers as $tm): 
+                                        $currentRole = $tm['user_role'] ?? $tm['role'];
+                                        if ($currentRole === 'qa'): ?>
                                         <option value="<?php echo $tm['user_id']; ?>"><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                     <?php endif; endforeach; ?>
                                 </select>
@@ -2707,7 +2721,9 @@ function toggleRowDetails(pageId, context = 'main') {
                         <label class="form-label">AT Tester</label>
                         <select name="at_tester_id" class="form-select">
                             <option value="">-- None --</option>
-                            <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'at_tester'): ?>
+                            <?php foreach ($teamMembers as $tm): 
+                                $currentRole = $tm['user_role'] ?? $tm['role'];
+                                if ($currentRole === 'at_tester'): ?>
                                 <option value="<?php echo $tm['user_id']; ?>" <?php echo $p['at_tester_id'] == $tm['user_id'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($tm['full_name']); ?></option>
                             <?php endif; endforeach; ?>
                         </select>
@@ -2716,7 +2732,9 @@ function toggleRowDetails(pageId, context = 'main') {
                         <label class="form-label">FT Tester</label>
                         <select name="ft_tester_id" class="form-select">
                             <option value="">-- None --</option>
-                            <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'ft_tester'): ?>
+                            <?php foreach ($teamMembers as $tm): 
+                                $currentRole = $tm['user_role'] ?? $tm['role'];
+                                if ($currentRole === 'ft_tester'): ?>
                                 <option value="<?php echo $tm['user_id']; ?>" <?php echo $p['ft_tester_id'] == $tm['user_id'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($tm['full_name']); ?></option>
                             <?php endif; endforeach; ?>
                         </select>
@@ -2725,7 +2743,9 @@ function toggleRowDetails(pageId, context = 'main') {
                         <label class="form-label">QA</label>
                         <select name="qa_id" class="form-select" <?php echo !hasProjectLeadPrivileges() ? 'disabled' : ''; ?> >
                             <option value="">-- None --</option>
-                            <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'qa'): ?>
+                            <?php foreach ($teamMembers as $tm): 
+                                $currentRole = $tm['user_role'] ?? $tm['role'];
+                                if ($currentRole === 'qa'): ?>
                                 <option value="<?php echo $tm['user_id']; ?>" <?php echo $p['qa_id'] == $tm['user_id'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($tm['full_name']); ?></option>
                             <?php endif; endforeach; ?>
                         </select>
@@ -2759,7 +2779,9 @@ function toggleRowDetails(pageId, context = 'main') {
                                     <label class="form-label">AT Tester</label>
                                     <select name="at_tester_env_<?php echo $envId; ?>" class="form-select">
                                         <option value="">-- None --</option>
-                                        <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'at_tester'): ?>
+                                        <?php foreach ($teamMembers as $tm): 
+                                            $currentRole = $tm['user_role'] ?? $tm['role'];
+                                            if ($currentRole === 'at_tester'): ?>
                                             <option value="<?php echo $tm['user_id']; ?>" <?php echo $atSelected == $tm['user_id'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                         <?php endif; endforeach; ?>
                                     </select>
@@ -2768,7 +2790,9 @@ function toggleRowDetails(pageId, context = 'main') {
                                     <label class="form-label">FT Tester</label>
                                     <select name="ft_tester_env_<?php echo $envId; ?>" class="form-select">
                                         <option value="">-- None --</option>
-                                        <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'ft_tester'): ?>
+                                        <?php foreach ($teamMembers as $tm): 
+                                            $currentRole = $tm['user_role'] ?? $tm['role'];
+                                            if ($currentRole === 'ft_tester'): ?>
                                             <option value="<?php echo $tm['user_id']; ?>" <?php echo $ftSelected == $tm['user_id'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                         <?php endif; endforeach; ?>
                                     </select>
@@ -2777,7 +2801,9 @@ function toggleRowDetails(pageId, context = 'main') {
                                     <label class="form-label">QA</label>
                                     <select name="qa_env_<?php echo $envId; ?>" class="form-select" <?php echo !$canManageTeam ? 'disabled' : ''; ?> >
                                         <option value="">-- None --</option>
-                                        <?php foreach ($teamMembers as $tm): if ($tm['role'] === 'qa'): ?>
+                                        <?php foreach ($teamMembers as $tm): 
+                                            $currentRole = $tm['user_role'] ?? $tm['role'];
+                                            if ($currentRole === 'qa'): ?>
                                             <option value="<?php echo $tm['user_id']; ?>" <?php echo $qaSelected == $tm['user_id'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                         <?php endif; endforeach; ?>
                                     </select>

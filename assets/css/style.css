@@ -615,3 +615,131 @@ label {
 #issuesPageList .issues-page-row.table-active td:first-child {
     border-left: none;
 }
+/* --- Issue Content Consistency --- */
+/* Force exact same styling between Summernote editor and table view */
+/* Override all Summernote default styles to match our custom spacing */
+
+/* Base paragraph styling - match Summernote exactly */
+.issue-summernote p,
+.card-body.issue-content p,
+#finalIssueDetails p,
+.note-editable p {
+    margin: 0 0 10px 0 !important;
+    padding: 0 !important;
+    line-height: 1.42857143 !important;
+    font-size: 14px !important;
+}
+
+/* Last paragraph should have no bottom margin */
+.issue-summernote p:last-child,
+.card-body.issue-content p:last-child,
+#finalIssueDetails p:last-child,
+.note-editable p:last-child {
+    margin-bottom: 0 !important;
+}
+
+/* Lists styling */
+.issue-summernote ul,
+.issue-summernote ol,
+.card-body.issue-content ul,
+.card-body.issue-content ol,
+#finalIssueDetails ul,
+#finalIssueDetails ol,
+.note-editable ul,
+.note-editable ol {
+    margin: 0 0 10px 0 !important;
+    padding-left: 40px !important;
+    line-height: 1.42857143 !important;
+}
+
+.issue-summernote li,
+.card-body.issue-content li,
+#finalIssueDetails li,
+.note-editable li {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1.42857143 !important;
+}
+
+/* Headings styling */
+.issue-summernote h1,
+.issue-summernote h2,
+.issue-summernote h3,
+.issue-summernote h4,
+.issue-summernote h5,
+.issue-summernote h6,
+.card-body.issue-content h1,
+.card-body.issue-content h2,
+.card-body.issue-content h3,
+.card-body.issue-content h4,
+.card-body.issue-content h5,
+.card-body.issue-content h6,
+#finalIssueDetails h1,
+#finalIssueDetails h2,
+#finalIssueDetails h3,
+#finalIssueDetails h4,
+#finalIssueDetails h5,
+#finalIssueDetails h6,
+.note-editable h1,
+.note-editable h2,
+.note-editable h3,
+.note-editable h4,
+.note-editable h5,
+.note-editable h6 {
+    margin: 10px 0 10px 0 !important;
+    padding: 0 !important;
+    line-height: 1.2 !important;
+    font-weight: 500 !important;
+}
+
+/* First element should not have top margin */
+.issue-summernote *:first-child,
+.card-body.issue-content *:first-child,
+#finalIssueDetails *:first-child,
+.note-editable *:first-child {
+    margin-top: 0 !important;
+}
+
+/* Strong/bold text */
+.issue-summernote strong,
+.issue-summernote b,
+.card-body.issue-content strong,
+.card-body.issue-content b,
+#finalIssueDetails strong,
+#finalIssueDetails b,
+.note-editable strong,
+.note-editable b {
+    font-weight: 700 !important;
+}
+
+/* Line breaks */
+.issue-summernote br,
+.card-body.issue-content br,
+#finalIssueDetails br,
+.note-editable br {
+    line-height: 1.42857143 !important;
+}
+
+/* Divs and other block elements */
+.issue-summernote div,
+.card-body.issue-content div,
+#finalIssueDetails div,
+.note-editable div {
+    line-height: 1.42857143 !important;
+}
+
+/* Ensure card body has same font size and family */
+.card-body.issue-content {
+    font-size: 14px !important;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+    line-height: 1.42857143 !important;
+    color: #000 !important;
+}
+
+/* Match Summernote's default text color and font */
+.note-editable {
+    font-size: 14px !important;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+    line-height: 1.42857143 !important;
+    color: #000 !important;
+}

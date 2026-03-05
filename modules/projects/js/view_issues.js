@@ -636,6 +636,7 @@
                     page_id: it.page_id || pageId,
                     client_ready: it.client_ready || 0,
                     // Metadata fields - use correct field names from API
+                    environments: it.environments || [],
                     usersaffected: it.usersaffected || [],
                     wcagsuccesscriteria: it.wcagsuccesscriteria || [],
                     wcagsuccesscriterianame: it.wcagsuccesscriterianame || [],
@@ -1330,6 +1331,113 @@
                         }
                     }
                 }
+            }
+        });
+
+        // Auto-formatting for bullet lists: Convert lines starting with - or * to bullet lists
+        $el.on('summernote.keyup', function(we, e) {
+            // Only process on Enter key (13) or Space key (32)
+            if (e.keyCode !== 13 && e.keyCode !== 32) return;
+            
+            try {
+                var content = $el.summernote('code');
+                var range = $el.summernote('createRange');
+                
+                if (!range || !range.sc) return;
+                
+                // Get the current paragraph
+                var currentNode = range.sc.nodeType === 3 ? range.sc.parentNode : range.sc;
+                var currentP = currentNode.closest('p');
+                
+                if (!currentP) return;
+                
+                var text = currentP.textContent || '';
+                
+                // Check if the paragraph starts with - or * followed by space
+                var bulletMatch = text.match(/^[\-\*]\s+(.*)$/);
+                
+                if (bulletMatch && e.keyCode === 32) {
+                    // Convert to bullet list
+                    var listContent = bulletMatch[1];
+                    
+                    // Check if we're already in a list
+                    var existingList = currentP.closest('ul');
+                    
+                    if (!existingList) {
+                        // Create new list
+                        var newList = document.createElement('ul');
+                        var newListItem = document.createElement('li');
+                        newListItem.textContent = listContent;
+                        newList.appendChild(newListItem);
+                        
+                        // Replace the paragraph with the list
+                        currentP.parentNode.replaceChild(newList, currentP);
+                        
+                        // Set cursor at the end of the list item
+                        var newRange = document.createRange();
+                        newRange.setStart(newListItem, newListItem.childNodes.length);
+                        newRange.collapse(true);
+                        
+                        var selection = window.getSelection();
+                        selection.removeAllRanges();
+                        selection.addRange(newRange);
+                    } else {
+                        // Add to existing list
+                        var newListItem = document.createElement('li');
+                        newListItem.textContent = listContent;
+                        
+                        // Find the current list item and add after it
+                        var currentLi = currentP.closest('li');
+                        if (currentLi) {
+                            currentLi.parentNode.insertBefore(newListItem, currentLi.nextSibling);
+                            currentP.remove();
+                            
+                            // Set cursor at the end of the new list item
+                            var newRange = document.createRange();
+                            newRange.setStart(newListItem, newListItem.childNodes.length);
+                            newRange.collapse(true);
+                            
+                            var selection = window.getSelection();
+                            selection.removeAllRanges();
+                            selection.addRange(newRange);
+                        }
+                    }
+                    
+                    // Trigger change event
+                    $el.summernote('code', $el.summernote('code'));
+                }
+                
+                // Handle Enter key in bullet lists to continue the list
+                if (e.keyCode === 13) {
+                    var currentLi = currentNode.closest('li');
+                    if (currentLi && currentLi.textContent.trim() === '') {
+                        // Empty list item - exit the list
+                        var list = currentLi.closest('ul, ol');
+                        if (list) {
+                            var newP = document.createElement('p');
+                            newP.innerHTML = '<br>';
+                            list.parentNode.insertBefore(newP, list.nextSibling);
+                            currentLi.remove();
+                            
+                            // If list is now empty, remove it
+                            if (list.children.length === 0) {
+                                list.remove();
+                            }
+                            
+                            // Set cursor in the new paragraph
+                            var newRange = document.createRange();
+                            newRange.setStart(newP, 0);
+                            newRange.collapse(true);
+                            
+                            var selection = window.getSelection();
+                            selection.removeAllRanges();
+                            selection.addRange(newRange);
+                        }
+                    }
+                }
+            } catch (e) {
+                // Silently handle any errors
+                console.log('Auto-formatting error:', e);
             }
         });
     }
@@ -2391,7 +2499,6 @@
 
         // Populate metadata fields with a slight delay to ensure Select2 is initialized
         setTimeout(function () {
-            console.log('Populating metadata fields for issue:', issue);
             if (typeof issueMetadataFields !== 'undefined') {
                 issueMetadataFields.forEach(function (f) {
                     var elId = 'finalIssueField_' + f.field_key;
@@ -2402,14 +2509,20 @@
                         // First check if it's directly on the issue object
                         if (issue[f.field_key] !== undefined) {
                             val = issue[f.field_key];
-                            console.log('Found', f.field_key, 'directly on issue:', val);
+                            if (f.field_key === 'environments') {
+                                console.log('DEBUG: Found environments directly on issue:', val);
+                            }
                         }
                         // Then check in the metadata object
                         else if (issue.metadata && issue.metadata[f.field_key] !== undefined) {
                             val = issue.metadata[f.field_key];
-                            console.log('Found', f.field_key, 'in metadata object:', val);
+                            if (f.field_key === 'environments') {
+                                console.log('DEBUG: Found environments in metadata object:', val);
+                            }
                         } else {
-                            console.log('Field', f.field_key, 'not found in issue data');
+                            if (f.field_key === 'environments') {
+                                console.log('DEBUG: environments not found. Issue object:', issue);
+                            }
                         }
                     } else if (draftData && draftData.dynamic_fields && draftData.dynamic_fields[f.field_key] !== undefined) {
                         val = draftData.dynamic_fields[f.field_key];
@@ -2427,10 +2540,7 @@
                         if (!$el.prop('multiple') && Array.isArray(val)) {
                             val = val[0] || null;
                         }
-                        console.log('Setting', f.field_key, 'to:', val);
                         $el.val(val).trigger('change');
-                    } else {
-                        console.log('Element not found for field:', f.field_key);
                     }
                 });
             }
@@ -3083,7 +3193,7 @@
                 '<div class="col-md-8">' +
                 '<h6 class="fw-bold mb-3"><i class="fas fa-file-alt me-2"></i>Issue Details</h6>' +
                 '<div class="card">' +
-                '<div class="card-body">' +
+                '<div class="card-body issue-content">' +
                 (issue.details || '<p class="text-muted">No details provided.</p>') +
                 '</div>' +
                 '</div>' +
@@ -4960,7 +5070,17 @@
         fetch(issueTemplatesApi + '?action=metadata_options&project_type=' + encodeURIComponent(projectType), { credentials: 'same-origin' })
             .then(function (res) { return res.json(); })
             .then(function (res) {
-                if (res && res.fields) { issueMetadataFields = res.fields; applyMetadataOptions(res.fields); }
+                console.log('Metadata API Response:', res);
+                if (res && res.fields) { 
+                    console.log('Metadata fields loaded:', res.fields.length);
+                    issueMetadataFields = res.fields; 
+                    applyMetadataOptions(res.fields); 
+                } else {
+                    console.warn('No metadata fields returned from API');
+                }
+            })
+            .catch(function(err) {
+                console.error('Failed to load metadata options:', err);
             });
     }
 
@@ -5000,13 +5120,10 @@
         };
 
         if (typeof issueMetadataFields !== 'undefined') {
-            console.log('issueMetadataFields:', issueMetadataFields);
             issueMetadataFields.forEach(function (f) {
                 var el = document.getElementById('finalIssueField_' + f.field_key);
-                console.log('Looking for field:', f.field_key, 'Element found:', !!el);
                 if (el) {
                     var value = jQuery(el).val();
-                    console.log('Field value for', f.field_key, ':', value);
                     data[f.field_key] = value;
                 }
             });
@@ -5022,7 +5139,6 @@
                 }
             });
         }
-        console.log('Metadata to be sent:', metadata);
 
         if (!data.title) { issueNotify('Issue title is required.', 'warning'); return; }
 
@@ -5111,11 +5227,25 @@
             stopDraftAutosave();
             issueData.initialFormState = null;
             finalIssueBypassCloseConfirm = true;
+            
+            // Close modal immediately for better UX
             hideEditors();
             
-            // Optimistic update - no need to reload from server
-            // The data is already updated in the store above
-            issueNotify(editId ? 'Issue updated successfully' : 'Issue created successfully', 'success');
+            // Show success message after modal closes
+            setTimeout(function() {
+                issueNotify(editId ? 'Issue updated' : 'Issue created', 'success');
+            }, 100);
+            
+            // Optimistic update - data is already updated in the store
+            // No server reload needed
+            renderFinalIssues();
+            updateSelectionButtons();
+            showFinalIssuesTab();
+
+            if (!editId && issueData.comments['new']) {
+                issueData.comments[String(json.id)] = issueData.comments['new'];
+                delete issueData.comments['new'];
+            }
             
             dispatchIssuesChanged({
                 action: editId ? 'update' : 'create',

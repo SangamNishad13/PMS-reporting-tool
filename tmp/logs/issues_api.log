@@ -261,3 +261,57 @@
 [05-Mar-2026 10:00:54 Asia/Kolkata] Saving metadata: key=severity, values=Major
 [05-Mar-2026 10:00:54 Asia/Kolkata] Saving metadata: key=priority, values=
 [05-Mar-2026 10:00:55 Asia/Kolkata] issues api error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'ci.issue_key' in 'order clause' in C:\xampp\htdocs\PMS\api\issues.php:1551
+[05-Mar-2026 10:23:51 Asia/Kolkata] issues api: title=Accordion not programmatically determined, pageId=621
+[05-Mar-2026 10:23:51 Asia/Kolkata] Received metadata JSON: {"environments":["Chrome/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterianame":[],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"],"priority":[]}
+[05-Mar-2026 10:23:51 Asia/Kolkata] Metadata is array with 9 keys: environments, usersaffected, wcagsuccesscriteria, wcagsuccesscriterianame, wcagsuccesscriterialevel, gigw30, is17802, severity, priority
+[05-Mar-2026 10:23:51 Asia/Kolkata] Saving metadata: key=environments, values=Chrome/JAWs
+[05-Mar-2026 10:23:51 Asia/Kolkata] Saving metadata: key=usersaffected, values=Visual Impairment
+[05-Mar-2026 10:23:51 Asia/Kolkata] Saving metadata: key=wcagsuccesscriteria, values=4.1.2
+[05-Mar-2026 10:23:51 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterianame, values=
+[05-Mar-2026 10:23:51 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterialevel, values=A
+[05-Mar-2026 10:23:51 Asia/Kolkata] Saving metadata: key=gigw30, values=5.2.49
+[05-Mar-2026 10:23:51 Asia/Kolkata] Saving metadata: key=is17802, values=9.4.1.2
+[05-Mar-2026 10:23:51 Asia/Kolkata] Saving metadata: key=severity, values=Major
+[05-Mar-2026 10:23:51 Asia/Kolkata] Saving metadata: key=priority, values=
+[05-Mar-2026 10:27:37 Asia/Kolkata] issues api: title=Accordion not programmatically determined, pageId=621
+[05-Mar-2026 10:27:37 Asia/Kolkata] Received metadata JSON: {"environments":["Chrome/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterianame":[],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"],"priority":[]}
+[05-Mar-2026 10:27:37 Asia/Kolkata] Metadata is array with 9 keys: environments, usersaffected, wcagsuccesscriteria, wcagsuccesscriterianame, wcagsuccesscriterialevel, gigw30, is17802, severity, priority
+[05-Mar-2026 10:27:37 Asia/Kolkata] Saving metadata: key=environments, values=Chrome/JAWs
+[05-Mar-2026 10:27:37 Asia/Kolkata] Saving metadata: key=usersaffected, values=Visual Impairment
+[05-Mar-2026 10:27:37 Asia/Kolkata] Saving metadata: key=wcagsuccesscriteria, values=4.1.2
+[05-Mar-2026 10:27:37 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterianame, values=
+[05-Mar-2026 10:27:37 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterialevel, values=A
+[05-Mar-2026 10:27:37 Asia/Kolkata] Saving metadata: key=gigw30, values=5.2.49
+[05-Mar-2026 10:27:37 Asia/Kolkata] Saving metadata: key=is17802, values=9.4.1.2
+[05-Mar-2026 10:27:37 Asia/Kolkata] Saving metadata: key=severity, values=Major
+[05-Mar-2026 10:27:37 Asia/Kolkata] Saving metadata: key=priority, values=
+[05-Mar-2026 10:32:34 Asia/Kolkata] Issue 297 metadata: {"issue_status":["1"],"reporter_qa_status_map":["[]"],"page_ids":["621"],"grouped_urls":["https:\/\/www.samcomf.com\/","https:\/\/www.samcomf.com\/career","https:\/\/www.samcomf.com\/career-open-positions","https:\/\/www.samcomf.com\/disclaimer"],"environments":["Chrome\/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"]}
+[05-Mar-2026 10:32:53 Asia/Kolkata] Issue 297 metadata: {"issue_status":["1"],"reporter_qa_status_map":["[]"],"page_ids":["621"],"grouped_urls":["https:\/\/www.samcomf.com\/","https:\/\/www.samcomf.com\/career","https:\/\/www.samcomf.com\/career-open-positions","https:\/\/www.samcomf.com\/disclaimer"],"environments":["Chrome\/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"]}
+[05-Mar-2026 10:32:57 Asia/Kolkata] Issue 297 metadata: {"issue_status":["1"],"reporter_qa_status_map":["[]"],"page_ids":["621"],"grouped_urls":["https:\/\/www.samcomf.com\/","https:\/\/www.samcomf.com\/career","https:\/\/www.samcomf.com\/career-open-positions","https:\/\/www.samcomf.com\/disclaimer"],"environments":["Chrome\/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"]}
+[05-Mar-2026 10:33:06 Asia/Kolkata] issues api: title=Accordion not programmatically determined, pageId=621
+[05-Mar-2026 10:33:06 Asia/Kolkata] Received metadata JSON: {"environments":[],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterianame":[],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"],"priority":[]}
+[05-Mar-2026 10:33:06 Asia/Kolkata] Metadata is array with 9 keys: environments, usersaffected, wcagsuccesscriteria, wcagsuccesscriterianame, wcagsuccesscriterialevel, gigw30, is17802, severity, priority
+[05-Mar-2026 10:33:06 Asia/Kolkata] Saving metadata: key=environments, values=
+[05-Mar-2026 10:33:06 Asia/Kolkata] Saving metadata: key=usersaffected, values=Visual Impairment
+[05-Mar-2026 10:33:06 Asia/Kolkata] Saving metadata: key=wcagsuccesscriteria, values=4.1.2
+[05-Mar-2026 10:33:06 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterianame, values=
+[05-Mar-2026 10:33:06 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterialevel, values=A
+[05-Mar-2026 10:33:06 Asia/Kolkata] Saving metadata: key=gigw30, values=5.2.49
+[05-Mar-2026 10:33:06 Asia/Kolkata] Saving metadata: key=is17802, values=9.4.1.2
+[05-Mar-2026 10:33:06 Asia/Kolkata] Saving metadata: key=severity, values=Major
+[05-Mar-2026 10:33:06 Asia/Kolkata] Saving metadata: key=priority, values=
+[05-Mar-2026 10:33:06 Asia/Kolkata] Issue 297 metadata: {"issue_status":["1"],"reporter_qa_status_map":["[]"],"page_ids":["621"],"grouped_urls":["https:\/\/www.samcomf.com\/","https:\/\/www.samcomf.com\/career","https:\/\/www.samcomf.com\/career-open-positions","https:\/\/www.samcomf.com\/disclaimer"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"]}
+[05-Mar-2026 10:33:13 Asia/Kolkata] issues api: title=Accordion not programmatically determined, pageId=621
+[05-Mar-2026 10:33:13 Asia/Kolkata] Received metadata JSON: {"environments":["Chrome/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterianame":[],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"],"priority":[]}
+[05-Mar-2026 10:33:13 Asia/Kolkata] Metadata is array with 9 keys: environments, usersaffected, wcagsuccesscriteria, wcagsuccesscriterianame, wcagsuccesscriterialevel, gigw30, is17802, severity, priority
+[05-Mar-2026 10:33:13 Asia/Kolkata] Saving metadata: key=environments, values=Chrome/JAWs
+[05-Mar-2026 10:33:13 Asia/Kolkata] Saving metadata: key=usersaffected, values=Visual Impairment
+[05-Mar-2026 10:33:13 Asia/Kolkata] Saving metadata: key=wcagsuccesscriteria, values=4.1.2
+[05-Mar-2026 10:33:13 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterianame, values=
+[05-Mar-2026 10:33:13 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterialevel, values=A
+[05-Mar-2026 10:33:13 Asia/Kolkata] Saving metadata: key=gigw30, values=5.2.49
+[05-Mar-2026 10:33:13 Asia/Kolkata] Saving metadata: key=is17802, values=9.4.1.2
+[05-Mar-2026 10:33:13 Asia/Kolkata] Saving metadata: key=severity, values=Major
+[05-Mar-2026 10:33:13 Asia/Kolkata] Saving metadata: key=priority, values=
+[05-Mar-2026 10:33:14 Asia/Kolkata] Issue 297 metadata: {"issue_status":["1"],"reporter_qa_status_map":["[]"],"page_ids":["621"],"grouped_urls":["https:\/\/www.samcomf.com\/","https:\/\/www.samcomf.com\/career","https:\/\/www.samcomf.com\/career-open-positions","https:\/\/www.samcomf.com\/disclaimer"],"environments":["Chrome\/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"]}
+[05-Mar-2026 10:33:21 Asia/Kolkata] Issue 297 metadata: {"issue_status":["1"],"reporter_qa_status_map":["[]"],"page_ids":["621"],"grouped_urls":["https:\/\/www.samcomf.com\/","https:\/\/www.samcomf.com\/career","https:\/\/www.samcomf.com\/career-open-positions","https:\/\/www.samcomf.com\/disclaimer"],"environments":["Chrome\/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"]}

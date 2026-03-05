@@ -812,21 +812,19 @@ try {
                 'reporter_name' => $i['reporter_name'] ?? null,
                 'qa_name' => $i['qa_name'] ?? null,
                 'client_ready' => (int)($i['client_ready'] ?? 0),
-                // Return all metadata fields with their actual keys from issue_metadata table
-                'usersaffected' => ($meta['usersaffected'] ?? []),
-                'wcagsuccesscriteria' => ($meta['wcagsuccesscriteria'] ?? []),
-                'wcagsuccesscriterianame' => ($meta['wcagsuccesscriterianame'] ?? []),
-                'wcagsuccesscriterialevel' => ($meta['wcagsuccesscriterialevel'] ?? []),
-                'gigw30' => ($meta['gigw30'] ?? []),
-                'is17802' => ($meta['is17802'] ?? []),
-                'common_title' => ($meta['common_title'][0] ?? ''),
                 'created_at' => $i['created_at'],
                 'updated_at' => $i['updated_at'],
                 'latest_history_id' => (int)($i['latest_history_id'] ?? 0)
             ];
+            // Add all metadata fields dynamically
             foreach ($meta as $metaKey => $metaVals) {
                 if (!array_key_exists($metaKey, $rowOut)) {
-                    $rowOut[$metaKey] = $metaVals;
+                    // Handle common_title as string, others as arrays
+                    if ($metaKey === 'common_title') {
+                        $rowOut[$metaKey] = is_array($metaVals) ? ($metaVals[0] ?? '') : $metaVals;
+                    } else {
+                        $rowOut[$metaKey] = $metaVals;
+                    }
                 }
             }
             $out[] = $rowOut;
