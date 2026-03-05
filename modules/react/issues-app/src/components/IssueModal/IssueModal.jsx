@@ -1,25 +1,24 @@
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
 import useIssuesStore from '../../store/issuesStore';
 import Button from '../Common/Button';
 import './IssueModal.css';
 
 const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
-  const { register, handleSubmit, reset, formState: { errors } } = useForm({
-    defaultValues: {
-      title: '',
-      description: '',
-      status_id: '',
-      page_id: '',
-      severity: '',
-      priority: '',
-      wcag_criteria: '',
-      issue_type: '',
-      environments: '',
-    }
-  });
   const { createIssue, updateIssue, issueStatuses, metadataFields, fetchIssueStatuses, fetchMetadataFields } = useIssuesStore();
   
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    status_id: '',
+    page_id: '',
+    severity: '',
+    priority: '',
+    wcag_criteria: '',
+    issue_type: '',
+    environments: '',
+  });
+  
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
   const isEditMode = !!issue;
@@ -27,11 +26,10 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
   useEffect(() => {
     if (isOpen) {
       fetchIssueStatuses(projectId);
-      fetchMetadataFields('accessibility'); // Default project type
+      fetchMetadataFields('accessibility');
       
       if (issue) {
-        // Populate form with issue data
-        reset({
+        setFormData({
           title: issue.title || '',
           description: issue.description || '',
           status_id: issue.status_id || '',
@@ -43,8 +41,7 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
           environments: issue.environments || '',
         });
       } else {
-        // Reset form for new issue
-        reset({
+        setFormData({
           title: '',
           description: '',
           status_id: '',
@@ -56,26 +53,60 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
           environments: '',
         });
       }
+      setErrors({});
     }
-  }, [isOpen, issue, reset, fetchIssueStatuses, fetchMetadataFields, projectId]);
+  }, [isOpen, issue, fetchIssueStatuses, fetchMetadataFields, projectId]);
 
-  const onSubmit = async (data) => {
-    console.log('Form submitted with data:', data);
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    // Clear error for this field
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const validate = () => {
+    const newErrors = {};
+    
+    if (!formData.title.trim()) {
+      newErrors.title = 'Title is required';
+    }
+    
+    if (!formData.description.trim()) {
+      newErrors.description = 'Description is required';
+    }
+    
+    if (!formData.status_id) {
+      newErrors.status_id = 'Status is required';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!validate()) {
+      return;
+    }
+    
+    console.log('Form submitted with data:', formData);
     
     setLoading(true);
     try {
       const issueData = {
-        title: data.title,
-        description: data.description,
+        title: formData.title,
+        description: formData.description,
         project_id: projectId,
-        issue_status: data.status_id, // API expects issue_status
-        severity: data.severity || 'medium',
-        priority: data.priority || 'medium',
-        pages: data.page_id ? [data.page_id] : [],
-        // Add other metadata fields
-        wcag_criteria: data.wcag_criteria || '',
-        issue_type: data.issue_type || '',
-        environments: data.environments || '',
+        issue_status: formData.status_id,
+        severity: formData.severity || 'medium',
+        priority: formData.priority || 'medium',
+        pages: formData.page_id ? [formData.page_id] : [],
+        wcag_criteria: formData.wcag_criteria || '',
+        issue_type: formData.issue_type || '',
+        environments: formData.environments || '',
       };
 
       console.log('Sending to API:', issueData);
@@ -88,7 +119,6 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
 
       alert('Issue saved successfully!');
       onClose();
-      reset();
     } catch (error) {
       console.error('Failed to save issue:', error);
       alert('Failed to save issue: ' + error.message);
@@ -111,7 +141,7 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
             <button type="button" className="btn-close btn-close-white" onClick={onClose}></button>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)}>
+          <form onSubmit={handleSubmit}>
             <div className="modal-body">
               <div className="row">
                 {/* Title */}
@@ -121,12 +151,14 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
                   </label>
                   <input
                     type="text"
+                    name="title"
                     className={`form-control ${errors.title ? 'is-invalid' : ''}`}
-                    {...register('title', { required: 'Title is required' })}
+                    value={formData.title}
+                    onChange={handleChange}
                     placeholder="Enter issue title"
                   />
                   {errors.title && (
-                    <div className="invalid-feedback">{errors.title.message}</div>
+                    <div className="invalid-feedback">{errors.title}</div>
                   )}
                 </div>
 
@@ -136,13 +168,15 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
                     Description <span className="text-danger">*</span>
                   </label>
                   <textarea
+                    name="description"
                     className={`form-control ${errors.description ? 'is-invalid' : ''}`}
                     rows="8"
-                    {...register('description', { required: 'Description is required' })}
+                    value={formData.description}
+                    onChange={handleChange}
                     placeholder="Enter issue description..."
                   />
                   {errors.description && (
-                    <div className="invalid-feedback">{errors.description.message}</div>
+                    <div className="invalid-feedback">{errors.description}</div>
                   )}
                   <small className="text-muted">
                     You can use HTML tags for formatting if needed
@@ -155,8 +189,10 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
                     Status <span className="text-danger">*</span>
                   </label>
                   <select
+                    name="status_id"
                     className={`form-select ${errors.status_id ? 'is-invalid' : ''}`}
-                    {...register('status_id', { required: 'Status is required' })}
+                    value={formData.status_id}
+                    onChange={handleChange}
                   >
                     <option value="">Select Status</option>
                     {issueStatuses.map(status => (
@@ -166,14 +202,19 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
                     ))}
                   </select>
                   {errors.status_id && (
-                    <div className="invalid-feedback">{errors.status_id.message}</div>
+                    <div className="invalid-feedback">{errors.status_id}</div>
                   )}
                 </div>
 
                 {/* Severity */}
                 <div className="col-md-6 mb-3">
                   <label className="form-label">Severity</label>
-                  <select className="form-select" {...register('severity')}>
+                  <select 
+                    name="severity"
+                    className="form-select"
+                    value={formData.severity}
+                    onChange={handleChange}
+                  >
                     <option value="">Select Severity</option>
                     <option value="Critical">Critical</option>
                     <option value="High">High</option>
@@ -185,7 +226,12 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
                 {/* Priority */}
                 <div className="col-md-6 mb-3">
                   <label className="form-label">Priority</label>
-                  <select className="form-select" {...register('priority')}>
+                  <select 
+                    name="priority"
+                    className="form-select"
+                    value={formData.priority}
+                    onChange={handleChange}
+                  >
                     <option value="">Select Priority</option>
                     <option value="Critical">Critical</option>
                     <option value="High">High</option>
@@ -199,7 +245,12 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
                   <div key={field.field_name} className="col-md-6 mb-3">
                     <label className="form-label">{field.label}</label>
                     {field.field_type === 'select' ? (
-                      <select className="form-select" {...register(field.field_name)}>
+                      <select 
+                        name={field.field_name}
+                        className="form-select"
+                        value={formData[field.field_name] || ''}
+                        onChange={handleChange}
+                      >
                         <option value="">Select {field.label}</option>
                         {field.options?.map(option => (
                           <option key={option} value={option}>
@@ -209,16 +260,20 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
                       </select>
                     ) : field.field_type === 'textarea' ? (
                       <textarea
+                        name={field.field_name}
                         className="form-control"
                         rows="3"
-                        {...register(field.field_name)}
+                        value={formData[field.field_name] || ''}
+                        onChange={handleChange}
                         placeholder={`Enter ${field.label}`}
                       />
                     ) : (
                       <input
                         type="text"
+                        name={field.field_name}
                         className="form-control"
-                        {...register(field.field_name)}
+                        value={formData[field.field_name] || ''}
+                        onChange={handleChange}
                         placeholder={`Enter ${field.label}`}
                       />
                     )}
