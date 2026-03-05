@@ -338,6 +338,9 @@ window.ProjectConfig = {
     issueStatuses: <?php echo json_encode($issueStatuses); ?>,
     metadataFields: <?php echo json_encode($metadataFields); ?>
 };
+
+// Define issueMetadataFields globally for view_issues.js
+window.issueMetadataFields = <?php echo json_encode($metadataFields ?? []); ?>;
 </script>
 
 <!-- Include issue management JavaScript -->

@@ -190,3 +190,19 @@
 [04-Mar-2026 14:18:48 Asia/Kolkata] Saving metadata: key=is17802, values=9.4.1.2
 [04-Mar-2026 14:18:48 Asia/Kolkata] Saving metadata: key=severity, values=Major
 [04-Mar-2026 14:18:48 Asia/Kolkata] Saving metadata: key=priority, values=
+[05-Mar-2026 09:42:42 Asia/Kolkata] issues api error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'ci.issue_key' in 'order clause' in C:\xampp\htdocs\PMS\api\issues.php:1551
+[05-Mar-2026 09:43:02 Asia/Kolkata] issues api error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'ci.issue_key' in 'order clause' in C:\xampp\htdocs\PMS\api\issues.php:1551
+[05-Mar-2026 09:43:04 Asia/Kolkata] issues api error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'ci.issue_key' in 'order clause' in C:\xampp\htdocs\PMS\api\issues.php:1551
+[05-Mar-2026 09:43:14 Asia/Kolkata] issues api: title=Accordion not programmatically determined, pageId=621
+[05-Mar-2026 09:43:14 Asia/Kolkata] Received metadata JSON: {"environments":["Chrome/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterianame":[],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"],"priority":[]}
+[05-Mar-2026 09:43:14 Asia/Kolkata] Metadata is array with 9 keys: environments, usersaffected, wcagsuccesscriteria, wcagsuccesscriterianame, wcagsuccesscriterialevel, gigw30, is17802, severity, priority
+[05-Mar-2026 09:43:14 Asia/Kolkata] Saving metadata: key=environments, values=Chrome/JAWs
+[05-Mar-2026 09:43:14 Asia/Kolkata] Saving metadata: key=usersaffected, values=Visual Impairment
+[05-Mar-2026 09:43:14 Asia/Kolkata] Saving metadata: key=wcagsuccesscriteria, values=4.1.2
+[05-Mar-2026 09:43:14 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterianame, values=
+[05-Mar-2026 09:43:14 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterialevel, values=A
+[05-Mar-2026 09:43:14 Asia/Kolkata] Saving metadata: key=gigw30, values=5.2.49
+[05-Mar-2026 09:43:14 Asia/Kolkata] Saving metadata: key=is17802, values=9.4.1.2
+[05-Mar-2026 09:43:14 Asia/Kolkata] Saving metadata: key=severity, values=Major
+[05-Mar-2026 09:43:14 Asia/Kolkata] Saving metadata: key=priority, values=
+[05-Mar-2026 09:43:14 Asia/Kolkata] issues api error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'ci.issue_key' in 'order clause' in C:\xampp\htdocs\PMS\api\issues.php:1551

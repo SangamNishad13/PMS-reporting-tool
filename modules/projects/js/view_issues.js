@@ -406,10 +406,10 @@
     }
 
     function renderIncorrectCodeBlocks(codeList) {
-        if (!Array.isArray(codeList) || !codeList.length) return '<p><code class="issue-incorrect-code"></code></p>';
+        if (!Array.isArray(codeList) || !codeList.length) return '<code class="issue-incorrect-code"></code>';
         return codeList.map(function (c) {
             var safe = escapeHtml(String(c || '')).replace(/\n/g, '<br>');
-            return '<p><code class="issue-incorrect-code">' + safe + '</code></p>';
+            return '<code class="issue-incorrect-code d-block mb-2">' + safe + '</code>';
         }).join('');
     }
 
@@ -531,8 +531,8 @@
         var rec = extractLabeledValue(raw, 'Recommendation') || String((fallback && fallback.recommendation) || '').trim();
 
         var parts = [];
-        parts.push('<p><strong>[Actual Results]</strong></p>');
-        if (desc) parts.push('<p>' + escapeHtml(desc) + '</p>');
+        parts.push('<strong>[Actual Results]</strong><br>');
+        if (desc) parts.push('<span>' + escapeHtml(desc) + '</span><br>');
         var rows = Array.isArray(entryRows) ? entryRows.filter(function (r) { return r && r.instance; }) : [];
         if (rows.length) {
             var byUrl = {};
@@ -548,10 +548,10 @@
             var urlList = Object.keys(byUrl).filter(function (u) { return String(u || '').trim() !== ''; });
             if (!urlList.length && urls.length) urlList = [urls[0]];
             urlList.forEach(function (u, idx) {
-                parts.push('<p><strong>URL ' + (idx + 1) + ':</strong> ' + escapeHtml(u) + '</p>');
+                parts.push('<strong>URL ' + (idx + 1) + ':</strong> ' + escapeHtml(u) + '<br>');
                 var urlRows = byUrl[u] || [];
                 if (!urlRows.length && instances.length) {
-                    if (fail) parts.push('<p class="review-actual-results-text">' + escapeHtml(fail) + '</p>');
+                    if (fail) parts.push('<span class="review-actual-results-text">' + escapeHtml(fail) + '</span><br>');
                     parts.push('<ul class="review-actual-results-list">' + instances.map(function (x) { return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>');
                     return;
                 }
@@ -562,7 +562,7 @@
                 });
                 if (uniqueFails.length <= 1) {
                     var sharedFail = uniqueFails[0] || fail;
-                    if (sharedFail) parts.push('<p class="review-actual-results-text">' + escapeHtml(sharedFail) + '</p>');
+                    if (sharedFail) parts.push('<span class="review-actual-results-text">' + escapeHtml(sharedFail) + '</span><br>');
                     parts.push('<ul class="review-actual-results-list">' + urlRows.map(function (r) { return '<li>' + escapeHtml(r.instance) + '</li>'; }).join('') + '</ul>');
                 } else {
                     parts.push('<ul class="review-actual-results-list">' + urlRows.map(function (r) {
@@ -574,15 +574,15 @@
                 }
             });
         } else {
-            if (urls.length) parts.push('<p><strong>URL 1:</strong> ' + escapeHtml(urls[0]) + '</p>');
-            if (fail) parts.push('<p class="review-actual-results-text">' + escapeHtml(fail) + '</p>');
+            if (urls.length) parts.push('<strong>URL 1:</strong> ' + escapeHtml(urls[0]) + '<br>');
+            if (fail) parts.push('<span class="review-actual-results-text">' + escapeHtml(fail) + '</span><br>');
             if (instances.length) {
                 parts.push('<ul class="review-actual-results-list">' + instances.map(function (x) { return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>');
             }
         }
-        parts.push('<p><strong>[Incorrect Code]</strong></p>');
+        parts.push('<strong>[Incorrect Code]</strong><br>');
         parts.push(renderIncorrectCodeBlocks(codeList));
-        parts.push('<p><strong>[Screenshots]</strong></p>');
+        parts.push('<strong>[Screenshots]</strong><br>');
         var shotList = normalizeScreenshotList(extractLabeledValue(raw, 'Screenshots'), screenshots);
         if (shotList.length) {
             parts.push('<div class="issue-image-grid">' + shotList.map(function (u, idx) {
@@ -594,12 +594,11 @@
                     '</a>';
             }).join('') + '</div>');
         } else {
-            parts.push('<p></p>');
+            parts.push('<br>');
         }
-        parts.push('<p><strong>[Recommendation]</strong></p>');
-        parts.push('<p>' + escapeHtml(rec) + '</p>');
-        parts.push('<p><br></p>');
-        parts.push('<p><strong>[Correct Code]</strong></p>');
+        parts.push('<strong>[Recommendation]</strong><br>');
+        parts.push('<span>' + escapeHtml(rec) + '</span><br><br>');
+        parts.push('<strong>[Correct Code]</strong><br>');
         parts.push('<pre><code></code></pre>');
         return parts.join('');
     }
@@ -2397,9 +2396,16 @@
                     var elId = 'finalIssueField_' + f.field_key;
                     var val = null;
 
-                    // Get value from issue data
-                    if (issue && issue[f.field_key] !== undefined) {
-                        val = issue[f.field_key];
+                    // Get value from issue data - check multiple locations
+                    if (issue) {
+                        // First check if it's directly on the issue object
+                        if (issue[f.field_key] !== undefined) {
+                            val = issue[f.field_key];
+                        }
+                        // Then check in the metadata object
+                        else if (issue.metadata && issue.metadata[f.field_key] !== undefined) {
+                            val = issue.metadata[f.field_key];
+                        }
                     } else if (draftData && draftData.dynamic_fields && draftData.dynamic_fields[f.field_key] !== undefined) {
                         val = draftData.dynamic_fields[f.field_key];
                     } else if (!issue && (f.field_key === 'severity' || f.field_key === 'priority')) {
