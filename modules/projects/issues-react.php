@@ -3,8 +3,9 @@ require_once '../../includes/auth.php';
 requireLogin();
 
 $projectId = $_GET['id'] ?? 0;
+
 if (!$projectId) {
-    header('Location: /PMS/modules/projects/list.php');
+    header('Location: /PMS/modules/admin/projects.php');
     exit;
 }
 
@@ -15,7 +16,7 @@ $stmt->execute([$projectId]);
 $project = $stmt->fetch();
 
 if (!$project) {
-    header('Location: /PMS/modules/projects/list.php');
+    header('Location: /PMS/modules/admin/projects.php');
     exit;
 }
 
