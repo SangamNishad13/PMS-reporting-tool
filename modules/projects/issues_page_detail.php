@@ -78,6 +78,15 @@ $issueStatuses = $issueStatusesStmt->fetchAll(PDO::FETCH_ASSOC);
 $metadataFieldsStmt = $db->query("SELECT id, field_key, field_label, options_json FROM issue_metadata_fields WHERE is_active = 1 ORDER BY sort_order ASC");
 $metadataFields = $metadataFieldsStmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Parse options_json for each field
+foreach ($metadataFields as &$field) {
+    if (!empty($field['options_json'])) {
+        $field['options'] = json_decode($field['options_json'], true);
+    } else {
+        $field['options'] = [];
+    }
+}
+
 // Pre-fetch project pages with URLs
 $pagesStmt = $db->prepare("SELECT id, page_name, url FROM project_pages WHERE project_id = ? ORDER BY page_name");
 $pagesStmt->execute([$projectId]);

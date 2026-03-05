@@ -4980,10 +4980,13 @@
         };
 
         if (typeof issueMetadataFields !== 'undefined') {
+            console.log('issueMetadataFields:', issueMetadataFields);
             issueMetadataFields.forEach(function (f) {
                 var el = document.getElementById('finalIssueField_' + f.field_key);
+                console.log('Looking for field:', f.field_key, 'Element found:', !!el);
                 if (el) {
                     var value = jQuery(el).val();
+                    console.log('Field value for', f.field_key, ':', value);
                     data[f.field_key] = value;
                 }
             });
@@ -4999,6 +5002,7 @@
                 }
             });
         }
+        console.log('Metadata to be sent:', metadata);
 
         if (!data.title) { issueNotify('Issue title is required.', 'warning'); return; }
 
