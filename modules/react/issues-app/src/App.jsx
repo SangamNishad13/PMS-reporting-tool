@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
 import IssueTable from './components/IssueTable/IssueTable'
+import IssueModal from './components/IssueModal/IssueModal'
+import PageList from './components/PageList/PageList'
 import Button from './components/Common/Button'
+import useIssuesStore from './store/issuesStore'
 import './App.css'
 
 function App() {
   const [config, setConfig] = useState(null);
-  const [activeView, setActiveView] = useState('all'); // 'all', 'pages', 'common'
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const { viewMode, setViewMode } = useIssuesStore();
 
   useEffect(() => {
     // Get config from PHP
@@ -44,7 +48,7 @@ function App() {
                 <Button 
                   variant="light" 
                   icon="fas fa-plus"
-                  onClick={() => alert('Create issue modal - Coming soon!')}
+                  onClick={() => setShowCreateModal(true)}
                 >
                   New Issue
                 </Button>
@@ -58,8 +62,8 @@ function App() {
               <ul className="nav nav-tabs">
                 <li className="nav-item">
                   <button 
-                    className={`nav-link ${activeView === 'all' ? 'active' : ''}`}
-                    onClick={() => setActiveView('all')}
+                    className={`nav-link ${viewMode === 'all' ? 'active' : ''}`}
+                    onClick={() => setViewMode('all')}
                   >
                     <i className="fas fa-list me-2"></i>
                     All Issues
@@ -67,8 +71,8 @@ function App() {
                 </li>
                 <li className="nav-item">
                   <button 
-                    className={`nav-link ${activeView === 'pages' ? 'active' : ''}`}
-                    onClick={() => setActiveView('pages')}
+                    className={`nav-link ${viewMode === 'pages' ? 'active' : ''}`}
+                    onClick={() => setViewMode('pages')}
                   >
                     <i className="fas fa-file-alt me-2"></i>
                     By Pages
@@ -76,8 +80,8 @@ function App() {
                 </li>
                 <li className="nav-item">
                   <button 
-                    className={`nav-link ${activeView === 'common' ? 'active' : ''}`}
-                    onClick={() => setActiveView('common')}
+                    className={`nav-link ${viewMode === 'common' ? 'active' : ''}`}
+                    onClick={() => setViewMode('common')}
                   >
                     <i className="fas fa-layer-group me-2"></i>
                     Common Issues
@@ -90,25 +94,35 @@ function App() {
           {/* Content */}
           <div className="card shadow-sm">
             <div className="card-body">
-              {activeView === 'all' && (
+              {viewMode === 'all' && (
                 <IssueTable projectId={config.projectId} />
               )}
-              {activeView === 'pages' && (
-                <div className="alert alert-info">
-                  <i className="fas fa-info-circle me-2"></i>
-                  Issues by Pages view - Coming soon!
+              {viewMode === 'pages' && (
+                <div className="row">
+                  <div className="col-md-3">
+                    <PageList projectId={config.projectId} />
+                  </div>
+                  <div className="col-md-9">
+                    <IssueTable projectId={config.projectId} />
+                  </div>
                 </div>
               )}
-              {activeView === 'common' && (
-                <div className="alert alert-info">
-                  <i className="fas fa-info-circle me-2"></i>
-                  Common Issues view - Coming soon!
-                </div>
+              {viewMode === 'common' && (
+                <IssueTable projectId={config.projectId} />
               )}
             </div>
           </div>
         </div>
       </div>
+      
+      {/* Create Issue Modal */}
+      {showCreateModal && (
+        <IssueModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          projectId={config.projectId}
+        />
+      )}
     </div>
   )
 }

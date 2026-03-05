@@ -1,5 +1,8 @@
-import React from 'react';
+import React, { useState, memo } from 'react';
 import Badge from '../Common/Badge';
+import Comments from '../Comments/Comments';
+import IssueModal from '../IssueModal/IssueModal';
+import useIssuesStore from '../../store/issuesStore';
 import { 
   formatDateTime, 
   getSeverityColor, 
@@ -9,9 +12,21 @@ import {
   truncate
 } from '../../utils/formatters';
 
-const IssueRow = ({ issue, isExpanded, onToggle }) => {
+const IssueRow = memo(({ issue, isExpanded, onToggle, projectId }) => {
+  const [showEditModal, setShowEditModal] = useState(false);
+  const { deleteIssue } = useIssuesStore();
   const severity = parseArrayValue(issue.severity);
   const priority = parseArrayValue(issue.priority);
+  
+  const handleDelete = async () => {
+    if (window.confirm('Are you sure you want to delete this issue?')) {
+      try {
+        await deleteIssue(issue.id);
+      } catch (error) {
+        alert('Failed to delete issue. Please try again.');
+      }
+    }
+  };
   
   return (
     <>
@@ -58,12 +73,14 @@ const IssueRow = ({ issue, isExpanded, onToggle }) => {
           <button 
             className="btn btn-sm btn-outline-primary me-1"
             title="Edit"
+            onClick={() => setShowEditModal(true)}
           >
             <i className="fas fa-edit"></i>
           </button>
           <button 
             className="btn btn-sm btn-outline-danger"
             title="Delete"
+            onClick={handleDelete}
           >
             <i className="fas fa-trash"></i>
           </button>
@@ -85,12 +102,27 @@ const IssueRow = ({ issue, isExpanded, onToggle }) => {
                   <strong>Pages:</strong> {issue.pages.join(', ')}
                 </div>
               )}
+              
+              {/* Comments Section */}
+              <Comments issueId={issue.id} />
             </div>
           </td>
         </tr>
       )}
+      
+      {/* Edit Modal */}
+      {showEditModal && (
+        <IssueModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          issue={issue}
+          projectId={projectId}
+        />
+      )}
     </>
   );
-};
+});
+
+IssueRow.displayName = 'IssueRow';
 
 export default IssueRow;

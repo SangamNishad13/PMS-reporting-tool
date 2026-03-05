@@ -1,0 +1,73 @@
+/* Page List Styles */
+.page-list {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.page-list-header {
+  padding: 15px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.page-list-body {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.page-item {
+  padding: 12px 15px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.page-item:hover {
+  background-color: #f8f9fa;
+}
+
+.page-item.active {
+  background-color: #e7f3ff;
+  border-left: 3px solid #007bff;
+}
+
+.page-item-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.page-number {
+  font-size: 11px;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+.page-name {
+  font-size: 13px;
+  color: #212529;
+  margin-top: 2px;
+}
+
+/* Scrollbar styling */
+.page-list-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.page-list-body::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.page-list-body::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 10px;
+}
+
+.page-list-body::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}

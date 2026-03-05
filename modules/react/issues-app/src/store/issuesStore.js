@@ -11,8 +11,11 @@ const useIssuesStore = create((set, get) => ({
   metadataFields: [],
   loading: false,
   error: null,
+  viewMode: 'all', // 'all', 'pages', 'common'
 
   // Actions
+  setViewMode: (mode) => set({ viewMode: mode }),
+  
   setSelectedPageId: (pageId) => set({ selectedPageId: pageId }),
   
   setSelectedIssue: (issue) => set({ selectedIssue: issue }),
@@ -20,6 +23,22 @@ const useIssuesStore = create((set, get) => ({
   fetchIssues: async (projectId, pageId = null) => {
     set({ loading: true, error: null });
     try {
+      const viewMode = get().viewMode;
+      const params = {
+        action: 'list',
+        project_id: projectId,
+      };
+      
+      // Add page filter for pages view
+      if (viewMode === 'pages' && pageId) {
+        params.page_id = pageId;
+      }
+      
+      // Add common filter for common issues view
+      if (viewMode === 'common') {
+        params.common_only = true;
+      }
+      
       const response = await issuesApi.getIssues(projectId, pageId);
       set({ 
         issues: response.issues || [],

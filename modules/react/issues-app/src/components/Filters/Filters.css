@@ -1,0 +1,18 @@
+/* Filters Styles */
+.filters-container {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.form-label.small {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6c757d;
+  margin-bottom: 4px;
+}
+
+.form-select-sm {
+  font-size: 13px;
+}

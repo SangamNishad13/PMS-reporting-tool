@@ -1,0 +1,42 @@
+/* Issue Modal Styles */
+.modal.show {
+  display: block;
+}
+
+.modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+/* Quill Editor Customization */
+.ql-container {
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.ql-editor {
+  min-height: 200px;
+  line-height: 1.42857143;
+}
+
+.ql-editor p {
+  margin: 0 0 10px 0;
+}
+
+/* Form validation */
+.is-invalid {
+  border-color: #dc3545;
+}
+
+.invalid-feedback {
+  display: block;
+  color: #dc3545;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+/* Modal responsiveness */
+@media (max-width: 768px) {
+  .modal-xl {
+    max-width: 95%;
+  }
+}
