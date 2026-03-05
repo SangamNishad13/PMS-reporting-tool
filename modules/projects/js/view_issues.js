@@ -4927,7 +4927,19 @@
             var label = document.createElement('label'); label.className = 'form-label mt-2'; label.textContent = f.field_label; container.appendChild(label);
             var select = document.createElement('select'); select.className = 'form-select form-select-sm issue-dynamic-field issue-select2-tags';
             select.id = 'finalIssueField_' + f.field_key; select.multiple = true;
-            (f.options || []).forEach(function (o) { select.appendChild(new Option(o.option_label, o.option_value)); });
+            
+            // Handle both old format (array of strings) and new format (array of objects)
+            var options = f.options || [];
+            options.forEach(function (o) {
+                if (typeof o === 'string') {
+                    // Old format: just a string
+                    select.appendChild(new Option(o, o));
+                } else if (o && typeof o === 'object') {
+                    // New format: object with option_label and option_value
+                    select.appendChild(new Option(o.option_label, o.option_value));
+                }
+            });
+            
             container.appendChild(select);
         });
         if (window.jQuery && jQuery.fn.select2) {
