@@ -1554,7 +1554,7 @@ try {
             JOIN issues i ON ci.issue_id = i.id
             LEFT JOIN issue_statuses s ON s.id = i.status_id
             WHERE ci.project_id = ?
-            ORDER BY ci.issue_key ASC
+            ORDER BY i.issue_key ASC
         ");
         $stmt->execute([$projectId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
