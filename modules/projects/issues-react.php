@@ -29,19 +29,32 @@ $baseDir = getBaseDir();
 include __DIR__ . '/../../includes/header.php';
 ?>
 
+<!-- React App CSS -->
+<link rel="stylesheet" href="<?php echo $baseDir; ?>/modules/react/issues-app/dist/assets/index.css">
+
 <!-- React App Styles -->
 <style>
     #react-root {
-        margin-top: -20px; /* Adjust for header spacing */
+        margin-top: 0;
     }
     .react-app-container {
         background-color: #f8f9fa;
         min-height: calc(100vh - 100px);
+        padding-bottom: 30px;
     }
 </style>
 
 <!-- React App Root -->
-<div id="react-root"></div>
+<div id="react-root">
+    <div class="container-fluid mt-3">
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 text-muted">Loading React App...</p>
+        </div>
+    </div>
+</div>
 
     <!-- Pass PHP data to React -->
     <script>
@@ -56,9 +69,10 @@ include __DIR__ . '/../../includes/header.php';
             baseUrl: '<?php echo $baseDir; ?>',
             issueStatuses: <?php echo json_encode($issueStatuses); ?>
         };
+        console.log('APP_CONFIG loaded:', window.APP_CONFIG);
     </script>
     
     <!-- React App Bundle -->
-    <script type="module" src="<?php echo $baseDir; ?>/modules/react/issues-app/dist/assets/index.js"></script>
+    <script type="module" crossorigin src="<?php echo $baseDir; ?>/modules/react/issues-app/dist/assets/index.js"></script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>
