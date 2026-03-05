@@ -20,6 +20,10 @@ if (!$project) {
     exit;
 }
 
+// Fetch issue statuses
+$statusesStmt = $db->query("SELECT id, name as status_name, color, category FROM issue_statuses ORDER BY name ASC");
+$issueStatuses = $statusesStmt->fetchAll(PDO::FETCH_ASSOC);
+
 $page_title = 'Issues - React Version';
 ?>
 <!DOCTYPE html>
@@ -76,7 +80,8 @@ $page_title = 'Issues - React Version';
             userName: <?php echo json_encode($_SESSION['full_name'] ?? $_SESSION['username']); ?>,
             userRole: <?php echo json_encode($_SESSION['role']); ?>,
             apiBase: '/PMS/api',
-            baseUrl: window.location.origin
+            baseUrl: window.location.origin,
+            issueStatuses: <?php echo json_encode($issueStatuses); ?>
         };
     </script>
 

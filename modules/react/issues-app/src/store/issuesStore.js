@@ -6,7 +6,7 @@ const useIssuesStore = create((set, get) => ({
   issues: [],
   selectedPageId: null,
   selectedIssue: null,
-  issueStatuses: [],
+  issueStatuses: window.APP_CONFIG?.issueStatuses || [],
   projectPages: [],
   metadataFields: [],
   loading: false,
@@ -52,12 +52,19 @@ const useIssuesStore = create((set, get) => ({
     }
   },
 
-  fetchIssueStatuses: async () => {
+  fetchIssueStatuses: async (projectId) => {
+    // Statuses are already loaded from APP_CONFIG, but allow refresh if needed
+    const currentStatuses = get().issueStatuses;
+    if (currentStatuses && currentStatuses.length > 0) {
+      return; // Already have statuses
+    }
+    
     try {
-      const response = await issuesApi.getIssueStatuses();
+      const response = await issuesApi.getIssueStatuses(projectId);
       set({ issueStatuses: response.statuses || [] });
     } catch (error) {
       console.error('Failed to fetch statuses:', error);
+      // Keep existing statuses from APP_CONFIG
     }
   },
 

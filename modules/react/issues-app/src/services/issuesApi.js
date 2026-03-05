@@ -41,8 +41,12 @@ class IssuesApiService {
   }
 
   // Get issue statuses
-  async getIssueStatuses() {
-    return api.get('/issues.php', { action: 'get_statuses' });
+  async getIssueStatuses(projectId) {
+    // API requires project_id for all requests
+    return api.get('/issues.php', { 
+      action: 'get_statuses',
+      project_id: projectId 
+    });
   }
 
   // Get metadata options

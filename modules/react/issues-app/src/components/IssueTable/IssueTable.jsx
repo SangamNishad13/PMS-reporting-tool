@@ -18,7 +18,7 @@ const IssueTable = ({ projectId }) => {
   useEffect(() => {
     if (projectId) {
       fetchIssues(projectId, selectedPageId);
-      fetchIssueStatuses();
+      fetchIssueStatuses(projectId);
     }
   }, [projectId, selectedPageId, fetchIssues, fetchIssueStatuses]);
 

@@ -17,7 +17,7 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
 
   useEffect(() => {
     if (isOpen) {
-      fetchIssueStatuses();
+      fetchIssueStatuses(projectId);
       fetchMetadataFields('accessibility'); // Default project type
       
       if (issue) {
@@ -46,7 +46,7 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
         setDescription('');
       }
     }
-  }, [isOpen, issue, reset, fetchIssueStatuses, fetchMetadataFields]);
+  }, [isOpen, issue, reset, fetchIssueStatuses, fetchMetadataFields, projectId]);
 
   const onSubmit = async (data) => {
     console.log('Form submitted with data:', data);
