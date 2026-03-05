@@ -2391,6 +2391,7 @@
 
         // Populate metadata fields with a slight delay to ensure Select2 is initialized
         setTimeout(function () {
+            console.log('Populating metadata fields for issue:', issue);
             if (typeof issueMetadataFields !== 'undefined') {
                 issueMetadataFields.forEach(function (f) {
                     var elId = 'finalIssueField_' + f.field_key;
@@ -2401,10 +2402,14 @@
                         // First check if it's directly on the issue object
                         if (issue[f.field_key] !== undefined) {
                             val = issue[f.field_key];
+                            console.log('Found', f.field_key, 'directly on issue:', val);
                         }
                         // Then check in the metadata object
                         else if (issue.metadata && issue.metadata[f.field_key] !== undefined) {
                             val = issue.metadata[f.field_key];
+                            console.log('Found', f.field_key, 'in metadata object:', val);
+                        } else {
+                            console.log('Field', f.field_key, 'not found in issue data');
                         }
                     } else if (draftData && draftData.dynamic_fields && draftData.dynamic_fields[f.field_key] !== undefined) {
                         val = draftData.dynamic_fields[f.field_key];
@@ -2422,7 +2427,10 @@
                         if (!$el.prop('multiple') && Array.isArray(val)) {
                             val = val[0] || null;
                         }
+                        console.log('Setting', f.field_key, 'to:', val);
                         $el.val(val).trigger('change');
+                    } else {
+                        console.log('Element not found for field:', f.field_key);
                     }
                 });
             }
