@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
 import useIssuesStore from '../../store/issuesStore';
 import Button from '../Common/Button';
 import './IssueModal.css';
@@ -10,7 +8,6 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
   const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm();
   const { createIssue, updateIssue, issueStatuses, metadataFields, fetchIssueStatuses, fetchMetadataFields } = useIssuesStore();
   
-  const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
 
   const isEditMode = !!issue;
@@ -24,39 +21,40 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
         // Populate form with issue data
         reset({
           title: issue.title || '',
+          description: issue.description || '',
           status_id: issue.status_id || '',
           page_id: issue.page_id || '',
           severity: issue.severity || '',
+          priority: issue.priority || '',
           wcag_criteria: issue.wcag_criteria || '',
           issue_type: issue.issue_type || '',
           environments: issue.environments || '',
         });
-        setDescription(issue.description || '');
       } else {
         // Reset form for new issue
         reset({
           title: '',
+          description: '',
           status_id: '',
           page_id: '',
           severity: '',
+          priority: '',
           wcag_criteria: '',
           issue_type: '',
           environments: '',
         });
-        setDescription('');
       }
     }
   }, [isOpen, issue, reset, fetchIssueStatuses, fetchMetadataFields, projectId]);
 
   const onSubmit = async (data) => {
     console.log('Form submitted with data:', data);
-    console.log('Description:', description);
     
     setLoading(true);
     try {
       const issueData = {
         title: data.title,
-        description,
+        description: data.description,
         project_id: projectId,
         issue_status: data.status_id, // API expects issue_status
         severity: data.severity || 'medium',
@@ -79,24 +77,12 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
       alert('Issue saved successfully!');
       onClose();
       reset();
-      setDescription('');
     } catch (error) {
       console.error('Failed to save issue:', error);
       alert('Failed to save issue: ' + error.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const quillModules = {
-    toolbar: [
-      [{ 'header': [1, 2, 3, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      [{ 'color': [] }, { 'background': [] }],
-      ['link', 'image'],
-      ['clean']
-    ],
   };
 
   if (!isOpen) return null;
@@ -137,14 +123,18 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
                   <label className="form-label">
                     Description <span className="text-danger">*</span>
                   </label>
-                  <ReactQuill
-                    theme="snow"
-                    value={description}
-                    onChange={setDescription}
-                    modules={quillModules}
+                  <textarea
+                    className={`form-control ${errors.description ? 'is-invalid' : ''}`}
+                    rows="8"
+                    {...register('description', { required: 'Description is required' })}
                     placeholder="Enter issue description..."
-                    style={{ height: '200px', marginBottom: '50px' }}
                   />
+                  {errors.description && (
+                    <div className="invalid-feedback">{errors.description.message}</div>
+                  )}
+                  <small className="text-muted">
+                    You can use HTML tags for formatting if needed
+                  </small>
                 </div>
 
                 {/* Status */}
