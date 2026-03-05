@@ -1,0 +1,154 @@
+/* Rich Text Editor Styles */
+.rich-text-editor {
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: white;
+}
+
+.menu-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid #dee2e6;
+  background: #f8f9fa;
+}
+
+.menu-bar button {
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #495057;
+  transition: all 0.2s;
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-bar button:hover:not(:disabled) {
+  background: #e9ecef;
+  border-color: #adb5bd;
+}
+
+.menu-bar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.menu-bar button.is-active {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.menu-bar .separator {
+  width: 1px;
+  height: 24px;
+  background: #dee2e6;
+  margin: 0 4px;
+}
+
+/* Editor Content */
+.ProseMirror {
+  padding: 12px;
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+  outline: none;
+}
+
+.ProseMirror:focus {
+  outline: none;
+}
+
+/* Typography */
+.ProseMirror h1 {
+  font-size: 2em;
+  font-weight: bold;
+  margin: 0.67em 0;
+}
+
+.ProseMirror h2 {
+  font-size: 1.5em;
+  font-weight: bold;
+  margin: 0.75em 0;
+}
+
+.ProseMirror h3 {
+  font-size: 1.17em;
+  font-weight: bold;
+  margin: 0.83em 0;
+}
+
+.ProseMirror p {
+  margin: 0 0 10px 0;
+  line-height: 1.42857143;
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 30px;
+  margin: 0 0 10px 0;
+}
+
+.ProseMirror li {
+  margin-bottom: 5px;
+}
+
+.ProseMirror a {
+  color: #007bff;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ProseMirror a:hover {
+  color: #0056b3;
+}
+
+.ProseMirror strong {
+  font-weight: bold;
+}
+
+.ProseMirror em {
+  font-style: italic;
+}
+
+.ProseMirror u {
+  text-decoration: underline;
+}
+
+.ProseMirror s {
+  text-decoration: line-through;
+}
+
+/* Placeholder */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #adb5bd;
+  pointer-events: none;
+  height: 0;
+}
+
+/* Scrollbar */
+.ProseMirror::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ProseMirror::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.ProseMirror::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+.ProseMirror::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}

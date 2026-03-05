@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import useIssuesStore from '../../store/issuesStore';
 import Button from '../Common/Button';
+import RichTextEditor from '../RichTextEditor/RichTextEditor';
 import './IssueModal.css';
 
 const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
@@ -167,20 +168,19 @@ const IssueModal = ({ isOpen, onClose, issue = null, projectId }) => {
                   <label className="form-label">
                     Description <span className="text-danger">*</span>
                   </label>
-                  <textarea
-                    name="description"
-                    className={`form-control ${errors.description ? 'is-invalid' : ''}`}
-                    rows="8"
+                  <RichTextEditor
                     value={formData.description}
-                    onChange={handleChange}
+                    onChange={(html) => {
+                      setFormData(prev => ({ ...prev, description: html }));
+                      if (errors.description) {
+                        setErrors(prev => ({ ...prev, description: '' }));
+                      }
+                    }}
                     placeholder="Enter issue description..."
                   />
                   {errors.description && (
-                    <div className="invalid-feedback">{errors.description}</div>
+                    <div className="text-danger small mt-1">{errors.description}</div>
                   )}
-                  <small className="text-muted">
-                    You can use HTML tags for formatting if needed
-                  </small>
                 </div>
 
                 {/* Status */}
