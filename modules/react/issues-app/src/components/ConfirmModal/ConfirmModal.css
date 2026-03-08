@@ -1,0 +1,142 @@
+.confirm-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10600;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.confirm-modal-dialog {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  max-width: 450px;
+  width: 90%;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.confirm-modal-content {
+  padding: 32px 24px 24px;
+  text-align: center;
+}
+
+.confirm-modal-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  background: #fff3cd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: #856404;
+}
+
+.confirm-modal-icon.danger {
+  background: #f8d7da;
+  color: #dc3545;
+}
+
+.confirm-modal-icon .fa-trash {
+  color: #dc3545;
+}
+
+.confirm-modal-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #212529;
+}
+
+.confirm-modal-message {
+  font-size: 0.95rem;
+  color: #6c757d;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-direction: row-reverse;
+}
+
+.confirm-modal-actions .btn {
+  min-width: 100px;
+  padding: 10px 20px;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.confirm-modal-actions .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.confirm-modal-actions .btn:active {
+  transform: translateY(0);
+}
+
+.confirm-modal-actions .btn:focus {
+  outline: 2px solid #0d6efd;
+  outline-offset: 2px;
+}
+
+.confirm-modal-actions .btn-danger {
+  background: #dc3545;
+  border-color: #dc3545;
+  color: #fff;
+}
+
+.confirm-modal-actions .btn-danger:hover {
+  background: #c82333;
+  border-color: #bd2130;
+}
+
+.confirm-modal-actions .btn-danger:focus {
+  outline-color: #dc3545;
+}
+
+.confirm-modal-actions .btn-secondary {
+  background: #6c757d;
+  border-color: #6c757d;
+  color: #fff;
+}
+
+.confirm-modal-actions .btn-secondary:hover {
+  background: #5a6268;
+  border-color: #545b62;
+}
+
+.confirm-modal-actions .btn-secondary:focus {
+  outline-color: #6c757d;
+}

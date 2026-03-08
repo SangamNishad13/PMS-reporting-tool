@@ -214,6 +214,8 @@ include __DIR__ . '/../../includes/header.php';
 <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
 <!-- Select2 CSS -->
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<!-- React Issues App CSS -->
+<link rel="stylesheet" href="<?php echo $baseDir; ?>/assets/css/issues-app.css">
 
 <style>
 .issue-image-thumb { max-width: 100%; max-height: 220px; height: auto; object-fit: contain; border-radius: 8px; box-shadow: 0 6px 14px rgba(16, 24, 40, 0.15); cursor: zoom-in; transition: transform 0.2s ease; }
@@ -460,13 +462,15 @@ include __DIR__ . '/../../includes/header.php';
             <div class="card-body py-2">
                 <div class="small">
                     <strong class="text-muted"><i class="fas fa-link me-1"></i>Grouped URLs (<?php echo count($groupedUrls); ?>):</strong>
-                    <div class="mt-1">
+                    <ol class="mt-2 mb-0" style="column-count: 2; column-gap: 20px;">
                         <?php foreach ($groupedUrls as $idx => $url): ?>
-                            <a href="<?php echo htmlspecialchars($url['url']); ?>" target="_blank" class="badge bg-light text-dark text-decoration-none me-1 mb-1">
-                                <?php echo htmlspecialchars($url['url']); ?>
-                            </a>
+                            <li style="break-inside: avoid; margin-bottom: 8px;">
+                                <a href="<?php echo htmlspecialchars($url['url']); ?>" target="_blank" class="text-decoration-none">
+                                    <?php echo htmlspecialchars($url['url']); ?>
+                                </a>
+                            </li>
                         <?php endforeach; ?>
-                    </div>
+                    </ol>
                 </div>
             </div>
         </div>
@@ -671,11 +675,6 @@ include __DIR__ . '/../../includes/header.php';
                 <strong>Page Issues</strong>
                 <span class="small text-muted ms-2">Final issues</span>
             </div>
-            <?php if ($_SESSION['role'] !== 'client'): ?>
-            <button class="btn btn-primary btn-sm" id="issueAddFinalBtn">
-                <i class="fas fa-plus me-1"></i> Add Issue
-            </button>
-            <?php endif; ?>
         </div>
         <div class="card-body p-0">
             <ul class="nav nav-tabs px-3 pt-2 mb-0" id="pageIssueTabs" role="tablist">
@@ -691,50 +690,8 @@ include __DIR__ . '/../../includes/header.php';
 
             <div class="tab-content">
                 <div class="tab-pane fade show active" id="final_issues_tab" role="tabpanel">
-                    <?php if ($_SESSION['role'] !== 'client'): ?>
-                    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
-                        <div class="small text-muted">Issues for the final report</div>
-                        <div>
-                            <button class="btn btn-sm btn-outline-success me-1" id="finalMarkClientReadyBtn" disabled>
-                                <i class="fas fa-check"></i> Mark Client Ready
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" id="finalDeleteSelected" disabled>Delete Selected</button>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <?php if ($_SESSION['role'] !== 'client'): ?>
-                                    <th style="width:30px;"><input type="checkbox" id="finalSelectAll"></th>
-                                    <?php endif; ?>
-                                    <th style="width:120px; white-space: nowrap;">Issue Key</th>
-                                    <th>Issue Title</th>
-                                    <th style="width:100px;">Severity</th>
-                                    <th style="width:100px;">Priority</th>
-                                    <th style="width:120px;">Status</th>
-                                    <?php if ($_SESSION['role'] !== 'client'): ?>
-                                    <th style="width:120px;">QA Status</th>
-                                    <th style="width:120px;">Reporter</th>
-                                    <th style="width:120px;">QA Name</th>
-                                    <th style="width:100px;">Client Ready</th>
-                                    <?php endif; ?>
-                                    <th style="width:100px;">Pages</th>
-                                    <?php if ($_SESSION['role'] !== 'client'): ?>
-                                    <th style="width:120px;">Actions</th>
-                                    <?php endif; ?>
-                                </tr>
-                            </thead>
-                            <tbody id="finalIssuesBody">
-                                <tr><td colspan="11" class="text-muted text-center py-4">
-                                    <i class="fas fa-inbox fa-2x mb-2 opacity-25"></i>
-                                    <div>No issues found for this page.</div>
-                                    <div class="small mt-1">Click "Add Issue" to create one.</div>
-                                </td></tr>
-                            </tbody>
-                        </table>
-                    </div>
+                    <!-- React Issues App Root -->
+                    <div id="issues-app-root"></div>
                 </div>
                 <?php if ($_SESSION['role'] !== 'client'): ?>
                 <div class="tab-pane fade" id="needs_review_tab" role="tabpanel">
@@ -881,8 +838,32 @@ include __DIR__ . '/../../includes/header.php';
 
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js?v=20260210180000"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
+
+<!-- React Issues App -->
+<script type="module" src="<?php echo $baseDir; ?>/assets/js/issues-app.js?v=<?php echo time(); ?>"></script>
+
 <script>
+// Connect Add Issue button to React modal
+document.addEventListener('DOMContentLoaded', function() {
+    const addBtn = document.getElementById('issueAddFinalBtn');
+    if (addBtn) {
+        addBtn.addEventListener('click', function() {
+            if (window.issuesStore) {
+                window.issuesStore.getState().openAddModal();
+            }
+        });
+    }
+});
+
 document.addEventListener('pms:issues-changed', function () {
+    // Reload React issues
+    if (window.issuesStore) {
+        const state = window.issuesStore.getState();
+        if (state.projectId && state.pageId) {
+            state.loadIssues(state.projectId, state.pageId);
+        }
+    }
+    
     if (typeof window.loadFinalIssues === 'function') {
         window.loadFinalIssues(<?php echo (int)$pageId; ?>);
     }

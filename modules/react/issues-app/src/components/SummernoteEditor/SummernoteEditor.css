@@ -1,0 +1,80 @@
+.summernote-editor-wrapper {
+  width: 100%;
+}
+
+.summernote-editor-wrapper .note-editor {
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+}
+
+.summernote-editor-wrapper .note-editor.note-frame {
+  border: 1px solid #dee2e6;
+}
+
+.summernote-editor-wrapper .note-editor.note-frame .note-editing-area .note-editable {
+  background-color: #fff;
+}
+
+.summernote-editor-wrapper .note-toolbar {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #dee2e6;
+}
+
+/* Image Alt Text Modal Styling */
+#imageAltTextModal {
+  height: auto !important;
+}
+
+#imageAltTextModal .modal-dialog {
+  max-width: 400px;
+  margin: 1.75rem auto;
+}
+
+#imageAltTextModal .modal-body {
+  padding: 1rem 1.5rem;
+}
+
+#imageAltTextModal .modal-footer {
+  padding: 0.75rem 1.5rem;
+}
+
+#imageAltTextModal .form-text {
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+}
+
+/* Mention Styling */
+.mention-user {
+  background-color: #e3f2fd;
+  color: #1976d2;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  cursor: default;
+  display: inline-block;
+}
+
+.mention-item {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.mention-item:hover {
+  background-color: #f5f5f5;
+}
+
+.mention-item strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* Summernote hint dropdown styling */
+.note-hint-popover .popover-content .note-hint-group .note-hint-item {
+  padding: 8px 12px !important;
+}
+
+.note-hint-popover .popover-content .note-hint-group .note-hint-item.active,
+.note-hint-popover .popover-content .note-hint-group .note-hint-item:hover {
+  background-color: #e3f2fd !important;
+  color: #1976d2 !important;
+}

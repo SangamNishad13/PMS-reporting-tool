@@ -156,6 +156,8 @@ include __DIR__ . '/../../includes/header.php';
 <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
 <!-- Select2 CSS -->
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<!-- React Issues App CSS -->
+<link rel="stylesheet" href="<?php echo $baseDir; ?>/assets/css/issues-app.css">
 
 <style>
 .modal { z-index: 10550; }
@@ -217,103 +219,17 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
 
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <div>
-                <h5 class="mb-0">Common Issues</h5>
-                <div class="small text-muted">Issues that apply across multiple pages</div>
-            </div>
-            <?php if ($_SESSION['role'] !== 'client'): ?>
-            <button class="btn btn-primary" id="commonAddBtn">
-                <i class="fas fa-plus me-1"></i> Add Common Issue
-            </button>
-            <?php endif; ?>
-        </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <?php if ($_SESSION['role'] !== 'client'): ?>
-                            <th style="width:30px;"><input type="checkbox" id="commonSelectAll"></th>
-                            <?php endif; ?>
-                            <th>Common Issue Title</th>
-                            <th style="width:200px;">Pages</th>
-                            <?php if ($_SESSION['role'] !== 'client'): ?>
-                            <th style="width:150px;">Actions</th>
-                            <?php endif; ?>
-                        </tr>
-                    </thead>
-                    <tbody id="commonIssuesBody">
-                        <tr>
-                            <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '2' : '4'; ?>" class="text-center text-muted py-5">
-                                <i class="fas fa-layer-group fa-3x mb-3 opacity-25"></i>
-                                <div>No common issues added yet.</div>
-                                <?php if ($_SESSION['role'] !== 'client'): ?>
-                                <div class="small mt-2">Click "Add Common Issue" to create one</div>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="alert alert-info small mt-3 mb-0">
-                <i class="fas fa-info-circle me-1"></i>
-                <strong>Tip:</strong> If a final issue applies to more than one page, fill the "Common Issue Title" field while adding it.
-            </div>
-        </div>
-    </div>
-</div>
-
-<?php 
-// Include the final issue modal from issues_modals.php
-include __DIR__ . '/partials/issues_modals.php'; 
-?>
-
-<!-- Common Issue Modal -->
-<div class="modal fade" id="commonIssueModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <div>
-                    <h5 class="modal-title" id="commonEditorTitle">New Common Issue</h5>
-                    <div class="small text-muted">Title + pages + details.</div>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="commonIssueEditId" value="">
-                <div class="row g-3">
-                    <div class="col-lg-6">
-                        <label class="form-label">Common Issue Title</label>
-                        <input type="text" class="form-control" id="commonIssueTitle" placeholder="Common issue title">
-                    </div>
-                    <div class="col-lg-6">
-                        <label class="form-label">Page Name(s)</label>
-                        <select id="commonIssuePages" class="form-select issue-select2" multiple>
-                            <?php foreach ($projectPages as $p): ?>
-                                <option value="<?php echo (int)$p['id']; ?>"><?php echo htmlspecialchars($p['page_name']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Details</label>
-                        <textarea id="commonIssueDetails" class="issue-summernote"></textarea>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button class="btn btn-primary" id="commonIssueSaveBtn">Save</button>
-            </div>
-        </div>
-    </div>
+    <!-- React Issues Table -->
+    <div id="issues-app-root"></div>
 </div>
 
 <!-- Summernote JS -->
 <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
 <!-- Select2 JS -->
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<!-- React Issues App -->
+<script type="module" src="<?php echo $baseDir; ?>/assets/js/issues-app.js?v=<?php echo time(); ?>"></script>
 
 <script>
     window.ProjectConfig = {
@@ -339,9 +255,14 @@ include __DIR__ . '/partials/issues_modals.php';
 
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script>
+// React issues will handle everything - no need for old modal connections
 document.addEventListener('pms:issues-changed', function () {
-    if (typeof window.loadCommonIssues === 'function') {
-        window.loadCommonIssues();
+    // Reload React issues
+    if (window.issuesStore) {
+        const state = window.issuesStore.getState();
+        if (state.projectId) {
+            state.loadIssues(state.projectId, null);
+        }
     }
 });
 </script>

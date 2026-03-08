@@ -3225,20 +3225,24 @@
                 '</div>' : '') +
                 (userRole !== 'client' ? '<div class="mb-2"><strong>QA Name:</strong><br>' + escapeHtml(qaName) + '</div>' : '') +
                 (function () {
-                    // Pages section with names
+                    // Pages section with names - unordered list
                     var pagesHtml = '<div class="mb-2"><strong>Pages:</strong> ';
                     if (issue.pages && issue.pages.length > 0) {
                         var pageNames = issue.pages.map(function (pageId) {
                             return getPageName(pageId);
                         });
                         pagesHtml += '<span class="badge bg-secondary">' + pageNames.length + '</span><br>';
-                        pagesHtml += '<small class="text-muted">' + pageNames.join(', ') + '</small>';
+                        pagesHtml += '<ul class="small text-muted mb-0 mt-1">';
+                        pageNames.forEach(function(name) {
+                            pagesHtml += '<li>' + escapeHtml(name) + '</li>';
+                        });
+                        pagesHtml += '</ul>';
                     } else {
                         pagesHtml += '<span class="text-muted">N/A</span>';
                     }
                     pagesHtml += '</div>';
 
-                    // Grouped URLs section with expand/collapse
+                    // Grouped URLs section with expand/collapse - ordered list
                     var urlsHtml = '';
                     if (issue.grouped_urls && issue.grouped_urls.length > 0) {
                         var urlsId = 'urls-' + issue.id;
@@ -3250,6 +3254,7 @@
                         urlsHtml += '</button>';
                         urlsHtml += '<div class="mt-2" id="' + urlsId + '" style="display: none;">';
                         urlsHtml += '<div class="small p-2 border rounded bg-light" style="max-height: 150px; overflow-y: auto;">';
+                        urlsHtml += '<ol class="mb-0" style="column-count: 2; column-gap: 15px;">';
 
                         var urlsFound = 0;
                         issue.grouped_urls.forEach(function (urlString) {
@@ -3264,21 +3269,21 @@
 
                             if (displayUrl) {
                                 urlsFound++;
-                                urlsHtml += '<div class="mb-1">';
+                                urlsHtml += '<li style="break-inside: avoid; margin-bottom: 6px;">';
                                 urlsHtml += '<a href="' + escapeHtml(displayUrl) + '" target="_blank" class="text-decoration-none">';
                                 urlsHtml += '<i class="fas fa-external-link-alt me-1 text-primary"></i>';
                                 urlsHtml += '<span class="text-primary">' + escapeHtml(displayUrl) + '</span>';
                                 urlsHtml += '</a>';
-                                urlsHtml += '</div>';
+                                urlsHtml += '</li>';
                             }
                         });
 
                         // If no URLs found, show message
                         if (urlsFound === 0) {
-                            urlsHtml += '<div class="text-muted">No URL data available</div>';
+                            urlsHtml += '<li class="text-muted">No URL data available</li>';
                         }
 
-                        urlsHtml += '</div></div></div>';
+                        urlsHtml += '</ol>';                        urlsHtml += '</div></div></div>';
                     }
 
                     return pagesHtml + urlsHtml;
@@ -5070,9 +5075,7 @@
         fetch(issueTemplatesApi + '?action=metadata_options&project_type=' + encodeURIComponent(projectType), { credentials: 'same-origin' })
             .then(function (res) { return res.json(); })
             .then(function (res) {
-                console.log('Metadata API Response:', res);
                 if (res && res.fields) { 
-                    console.log('Metadata fields loaded:', res.fields.length);
                     issueMetadataFields = res.fields; 
                     applyMetadataOptions(res.fields); 
                 } else {
@@ -5548,7 +5551,9 @@
         return true;
     }
 
-    var addF = document.getElementById('issueAddFinalBtn'); if (addF) addF.addEventListener('click', function () { openFinalEditor(null); });
+    var addF = document.getElementById('issueAddFinalBtn'); 
+    // Disabled - Using React modal instead
+    // if (addF) addF.addEventListener('click', function () { openFinalEditor(null); });
 
     // Alt+N shortcut: trigger Add Issue / Add Common Issue on pages where these buttons exist.
     document.addEventListener('keydown', function (e) {

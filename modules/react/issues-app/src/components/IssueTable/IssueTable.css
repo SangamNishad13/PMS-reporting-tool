@@ -1,0 +1,395 @@
+.table {
+  font-size: 0.9rem;
+}
+
+.table th {
+  font-weight: 600;
+  background: #f8f9fa;
+  border-bottom: 2px solid #dee2e6;
+  padding: 12px 8px;
+  vertical-align: middle;
+}
+
+.table td {
+  padding: 10px 8px;
+  vertical-align: middle;
+}
+
+.table-hover tbody tr:hover {
+  background-color: #f8fbff;
+}
+
+.issue-title-cell {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.btn-group-sm .btn {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
+/* Expanded Row */
+.expanded-row {
+  background: #f8f9fa;
+}
+
+.expanded-content {
+  padding: 16px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.expanded-content .row {
+  display: flex;
+  flex-wrap: nowrap;
+}
+
+.expanded-content .row > div:first-child {
+  flex: 0 0 66.666667%;
+  max-width: 66.666667%;
+}
+
+.expanded-content .row > div:last-child {
+  flex: 0 0 33.333333%;
+  max-width: 33.333333%;
+}
+
+.issue-details-content {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 12px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+}
+
+.issue-details-content p {
+  margin-bottom: 8px;
+}
+
+.issue-details-content p:last-child {
+  margin-bottom: 0;
+}
+
+.issue-details-content ul,
+.issue-details-content ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.issue-details-content li {
+  margin: 4px 0;
+}
+
+.issue-details-content code {
+  background: #e9ecef;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85em;
+}
+
+.issue-details-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+
+/* Metadata */
+.metadata-list {
+  font-size: 0.85rem;
+}
+
+.metadata-item {
+  display: flex;
+  padding: 6px 0;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.metadata-item:last-child {
+  border-bottom: none;
+}
+
+.metadata-label {
+  font-weight: 600;
+  color: #6c757d;
+  min-width: 100px;
+  text-transform: capitalize;
+}
+
+.metadata-value {
+  color: #495057;
+  flex: 1;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .table {
+    font-size: 0.8rem;
+  }
+  
+  .table th,
+  .table td {
+    padding: 8px 4px;
+  }
+  
+  .issue-title-cell {
+    max-width: 200px;
+  }
+}
+
+/* Comments Section */
+.comments-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.comment-item {
+  transition: all 0.2s ease;
+}
+
+.comment-item:hover {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.comment-body {
+  color: #495057;
+  line-height: 1.5;
+}
+
+.comment-body p {
+  margin-bottom: 8px;
+}
+
+.comment-body p:last-child {
+  margin-bottom: 0;
+}
+
+.comment-body ul,
+.comment-body ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.comment-body li {
+  margin: 4px 0;
+}
+
+.comment-body code {
+  background: #e9ecef;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.comment-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+
+/* Image Modal */
+.image-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  cursor: zoom-out;
+}
+
+.image-modal-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.image-modal-content img {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.image-modal-caption {
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 4px;
+  color: #333;
+  font-size: 14px;
+  text-align: center;
+  max-width: 600px;
+}
+
+.image-modal-close {
+  position: absolute;
+  top: -40px;
+  right: 0;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  color: #333;
+  transition: all 0.2s ease;
+}
+
+.image-modal-close:hover {
+  background: #fff;
+  transform: scale(1.1);
+}
+
+/* Make images in issue details clickable */
+.issue-details-content img,
+.comment-body img {
+  cursor: zoom-in;
+  transition: opacity 0.2s ease;
+}
+
+.issue-details-content img:hover,
+.comment-body img:hover {
+  opacity: 0.9;
+}
+
+/* Professional Comment Styles for Table View */
+.comments-list-table {
+  max-height: 350px;
+  overflow-y: auto;
+  padding: 4px;
+  margin-top: 8px;
+}
+
+.comments-list-table::-webkit-scrollbar {
+  width: 6px;
+}
+
+.comments-list-table::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 3px;
+}
+
+.comments-list-table::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.comments-list-table::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.comment-box-table {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.comment-box-table:hover {
+  border-color: #d1d5db;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.comment-box-table:last-child {
+  margin-bottom: 0;
+}
+
+.reply-preview-table {
+  background: #f3f4f6;
+  border-left: 3px solid #3b82f6;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-bottom: 10px;
+  border-radius: 3px;
+}
+
+.reply-preview-table strong {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.comment-author-table {
+  font-size: 0.9rem;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.comment-time-table {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.comment-body-table {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #374151;
+}
+
+.comment-body-table p {
+  margin-bottom: 6px;
+}
+
+.comment-body-table p:last-child {
+  margin-bottom: 0;
+}
+
+.comment-body-table ul,
+.comment-body-table ol {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+
+.comment-body-table li {
+  margin: 3px 0;
+}
+
+.comment-body-table code {
+  background: #f3f4f6;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85em;
+}
+
+.comment-body-table img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 6px 0;
+  cursor: zoom-in;
+}
