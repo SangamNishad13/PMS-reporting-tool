@@ -11,7 +11,7 @@
         } else {
             var rows = list.querySelectorAll('.issues-page-row');
         }
-    } catch (e) { if (typeof window.showToast === 'function') { showToast('Issue script error: ' + e, 'danger'); } else { console.error(e); } }
+    } catch (e) { if (typeof window.showToast === 'function') { showToast('Issue script error: ' + e, 'danger'); } }
 
     // Check if we're on a page that needs issues functionality
     // Allow execution on detail pages even without #issues or #issuesSubTabs
@@ -81,6 +81,7 @@
     var liveIssueSyncTimer = null;
     var liveIssueSyncInFlight = false;
     var LIVE_ISSUE_SYNC_INTERVAL_MS = 5000;
+    var liveIssueSyncDisabledUntil = 0; // Timestamp to temporarily disable sync after saves
     var issuePresenceTimer = null;
     var issuePresenceIssueId = null;
     var issuePresenceSessionToken = null;
@@ -105,9 +106,6 @@
     function issueNotify(message, type) {
         if (typeof window.showToast === 'function') {
             showToast(String(message || ''), type || 'info');
-        } else {
-            if ((type || '').toLowerCase() === 'danger') console.error(message);
-            else console.log(message);
         }
     }
 
@@ -197,9 +195,7 @@
         } catch (e) { }
     }
 
-    // Expose issueData for debug if needed, or keep private? 
-    // view_core.js might need it? No, view_core is generic.
-    // We might need to expose some functions to window if view.php calls them inline (unlikely, we are extracting everything).
+    // Expose issueData for external access if needed
 
     function ensurePageStore(store, pageId) {
         if (!store[pageId]) store[pageId] = { final: [], review: [] };
@@ -1437,7 +1433,6 @@
                 }
             } catch (e) {
                 // Silently handle any errors
-                console.log('Auto-formatting error:', e);
             }
         });
     }
@@ -2509,20 +2504,10 @@
                         // First check if it's directly on the issue object
                         if (issue[f.field_key] !== undefined) {
                             val = issue[f.field_key];
-                            if (f.field_key === 'environments') {
-                                console.log('DEBUG: Found environments directly on issue:', val);
-                            }
                         }
                         // Then check in the metadata object
                         else if (issue.metadata && issue.metadata[f.field_key] !== undefined) {
                             val = issue.metadata[f.field_key];
-                            if (f.field_key === 'environments') {
-                                console.log('DEBUG: Found environments in metadata object:', val);
-                            }
-                        } else {
-                            if (f.field_key === 'environments') {
-                                console.log('DEBUG: environments not found. Issue object:', issue);
-                            }
                         }
                     } else if (draftData && draftData.dynamic_fields && draftData.dynamic_fields[f.field_key] !== undefined) {
                         val = draftData.dynamic_fields[f.field_key];
@@ -2938,6 +2923,96 @@
         updateGroupedUrls();
     }
 
+    // Helper functions for badges
+    function getSeverityBadge(s) {
+        if (!s || s === 'N/A') return '<span class="badge bg-secondary">N/A</span>';
+        s = String(s).toLowerCase();
+        var colors = {
+            'critical': 'danger',
+            'high': 'warning',
+            'medium': 'info',
+            'low': 'success',
+            'major': 'warning',
+            'minor': 'info'
+        };
+        var color = colors[s] || 'secondary';
+        return '<span class="badge bg-' + color + '">' + escapeHtml(s.toUpperCase()) + '</span>';
+    }
+
+    function getPriorityBadge(p) {
+        if (!p || p === 'N/A') return '<span class="badge bg-secondary">N/A</span>';
+        p = String(p).toLowerCase();
+        var colors = {
+            'urgent': 'danger',
+            'critical': 'danger',
+            'high': 'warning',
+            'medium': 'info',
+            'low': 'success'
+        };
+        var color = colors[p] || 'secondary';
+        return '<span class="badge bg-' + color + '">' + escapeHtml(p.toUpperCase()) + '</span>';
+    }
+
+    function getStatusBadge(statusId, statusLabel) {
+        if (!statusId) return '<span class="badge bg-secondary">N/A</span>';
+        // statusId can be either numeric ID or status key string
+        if (ProjectConfig.issueStatuses) {
+            var found = ProjectConfig.issueStatuses.find(function (s) {
+                // Try matching by ID first (numeric comparison)
+                if (s.id == statusId) return true;
+                // Fallback to matching by name (case-insensitive)
+                if (s.name && String(s.name).toLowerCase() === String(statusId).toLowerCase()) return true;
+                return false;
+            });
+            if (found) {
+                var color = found.color || '#6c757d';
+                var name = statusLabel || found.name || 'Unknown';
+                // If color is a hex code, use inline style; otherwise use Bootstrap class
+                if (color.startsWith('#')) {
+                    return '<span class="badge" style="background-color: ' + color + '; color: white;">' + escapeHtml(name) + '</span>';
+                } else {
+                    return '<span class="badge bg-' + color + '">' + escapeHtml(name) + '</span>';
+                }
+            }
+        }
+        return '<span class="badge bg-secondary">' + escapeHtml(String(statusId)) + '</span>';
+    }
+
+    function getQaBadge(q) {
+        if (!q || q === 'pending' || q === 'N/A') return '<span class="badge bg-secondary">N/A</span>';
+        q = String(q).toLowerCase();
+        if (q === 'pass' || q === 'passed') return '<span class="badge bg-success">PASS</span>';
+        if (q === 'fail' || q === 'failed') return '<span class="badge bg-danger">FAIL</span>';
+        return '<span class="badge bg-warning">' + escapeHtml(q.toUpperCase()) + '</span>';
+    }
+
+    function getClientReadyBadge(clientReady) {
+        if (clientReady == 1) return '<span class="badge bg-success">Yes</span>';
+        return '<span class="badge bg-secondary">No</span>';
+    }
+
+    function generateIssueDetailsContent(issue) {
+        // Generate the details content for expanded row with proper image handling
+        var details = decorateIssueImages(issue.details || '');
+        if (!details) {
+            details = '<p class="text-muted">No details provided.</p>';
+        }
+        
+        return '<div class="issue-details-content">' +
+            '<div class="mb-3">' + details + '</div>' +
+            '<div class="row g-2 small text-muted">' +
+            '<div class="col-md-6"><strong>URL:</strong> ' + escapeHtml(issue.url || 'N/A') + '</div>' +
+            '<div class="col-md-6"><strong>Environment:</strong> ' + escapeHtml(issue.environment || 'N/A') + '</div>' +
+            '</div>' +
+            '</div>';
+    }
+
+    function stripHtml(html) {
+        var tmp = document.createElement('div');
+        tmp.innerHTML = html || '';
+        return tmp.textContent || tmp.innerText || '';
+    }
+
     function renderFinalIssues() {
         var tbody = document.getElementById('finalIssuesBody');
         if (!tbody) return;
@@ -2980,69 +3055,6 @@
             updateIssueTabCounts();
             return;
         }
-
-        // Helper functions for badges
-        var getSeverityBadge = function (s) {
-            if (!s || s === 'N/A') return '<span class="badge bg-secondary">N/A</span>';
-            s = String(s).toLowerCase();
-            var colors = {
-                'critical': 'danger',
-                'high': 'warning',
-                'medium': 'info',
-                'low': 'success',
-                'major': 'warning',
-                'minor': 'info'
-            };
-            var color = colors[s] || 'secondary';
-            return '<span class="badge bg-' + color + '">' + escapeHtml(s.toUpperCase()) + '</span>';
-        };
-
-        var getPriorityBadge = function (p) {
-            if (!p || p === 'N/A') return '<span class="badge bg-secondary">N/A</span>';
-            p = String(p).toLowerCase();
-            var colors = {
-                'urgent': 'danger',
-                'critical': 'danger',
-                'high': 'warning',
-                'medium': 'info',
-                'low': 'success'
-            };
-            var color = colors[p] || 'secondary';
-            return '<span class="badge bg-' + color + '">' + escapeHtml(p.toUpperCase()) + '</span>';
-        };
-
-        var getStatusBadge = function (statusId) {
-            if (!statusId) return '<span class="badge bg-secondary">N/A</span>';
-            // statusId can be either numeric ID or status key string
-            if (ProjectConfig.issueStatuses) {
-                var found = ProjectConfig.issueStatuses.find(function (s) {
-                    // Try matching by ID first (numeric comparison)
-                    if (s.id == statusId) return true;
-                    // Fallback to matching by name (case-insensitive)
-                    if (s.name && String(s.name).toLowerCase() === String(statusId).toLowerCase()) return true;
-                    return false;
-                });
-                if (found) {
-                    var color = found.color || '#6c757d';
-                    var name = found.name || 'Unknown';
-                    // If color is a hex code, use inline style; otherwise use Bootstrap class
-                    if (color.startsWith('#')) {
-                        return '<span class="badge" style="background-color: ' + color + '; color: white;">' + escapeHtml(name) + '</span>';
-                    } else {
-                        return '<span class="badge bg-' + color + '">' + escapeHtml(name) + '</span>';
-                    }
-                }
-            }
-            return '<span class="badge bg-secondary">' + escapeHtml(String(statusId)) + '</span>';
-        };
-
-        var getQaBadge = function (q) {
-            if (!q || q === 'pending' || q === 'N/A') return '<span class="badge bg-secondary">N/A</span>';
-            q = String(q).toLowerCase();
-            if (q === 'pass' || q === 'passed') return '<span class="badge bg-success">PASS</span>';
-            if (q === 'fail' || q === 'failed') return '<span class="badge bg-danger">FAIL</span>';
-            return '<span class="badge bg-warning">' + escapeHtml(q.toUpperCase()) + '</span>';
-        };
 
         var stripHtml = function (html) {
             var tmp = document.createElement('div');
@@ -3194,7 +3206,7 @@
                 '<h6 class="fw-bold mb-3"><i class="fas fa-file-alt me-2"></i>Issue Details</h6>' +
                 '<div class="card">' +
                 '<div class="card-body issue-content">' +
-                (issue.details || '<p class="text-muted">No details provided.</p>') +
+                (decorateIssueImages(issue.details) || '<p class="text-muted">No details provided.</p>') +
                 '</div>' +
                 '</div>' +
                 '</div>' +
@@ -3451,6 +3463,22 @@
                         bsModal.show();
                     }
                 });
+            });
+            
+            // Also ensure issue-image-thumb class images work
+            document.querySelectorAll('#finalIssuesBody .issue-image-thumb').forEach(function (img) {
+                img.style.cursor = 'pointer';
+                // Remove any existing click handlers to avoid duplicates
+                img.removeEventListener('click', img._imageClickHandler);
+                
+                img._imageClickHandler = function (e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    var src = this.getAttribute('src');
+                    if (src) openIssueImageModal(src);
+                };
+                
+                img.addEventListener('click', img._imageClickHandler);
             });
 
             // Add event listeners for grouped URLs collapse with manual toggle
@@ -3732,6 +3760,519 @@
             '</div>';
     }
 
+    function updateSingleIssueRow(issueId, issueDataObj) {
+        // Find the existing row in the table
+        var tbody = document.getElementById('finalIssuesBody');
+        if (!tbody) return;
+        
+        // Find the issue data
+        var issue = null;
+        if (issueData.selectedPageId && issueData.pages[issueData.selectedPageId].final) {
+            issue = issueData.pages[issueData.selectedPageId].final.find(function(i) {
+                return String(i.id) === String(issueId);
+            });
+        }
+        
+        if (!issue) {
+            // If issue not found, fall back to full re-render
+            renderFinalIssues();
+            return;
+        }
+        
+        // Find existing rows (main row and details row)
+        var existingMainRow = null;
+        var existingDetailsRow = null;
+        var allRows = tbody.querySelectorAll('tr');
+        
+        for (var i = 0; i < allRows.length; i++) {
+            var row = allRows[i];
+            // Check if this is the main row by looking for edit button with matching data-id
+            var editBtn = row.querySelector('.final-edit[data-id="' + issueId + '"]');
+            if (editBtn) {
+                existingMainRow = row;
+                // The next row should be the details row
+                if (i + 1 < allRows.length) {
+                    var nextRow = allRows[i + 1];
+                    if (nextRow.id === 'issue-details-' + issueId) {
+                        existingDetailsRow = nextRow;
+                    }
+                }
+                break;
+            }
+        }
+        
+        if (!existingMainRow) {
+            // If row not found, fall back to full re-render
+            renderFinalIssues();
+            return;
+        }
+        
+        // Check if details row was expanded
+        var wasExpanded = existingDetailsRow && existingDetailsRow.classList.contains('show');
+
+            // Generate new row HTML using the same logic as renderFinalIssues
+            var stripHtml = function (html) {
+                var tmp = document.createElement('div');
+                tmp.innerHTML = html || '';
+                return tmp.textContent || tmp.innerText || '';
+            };
+
+            // Extract values and handle arrays OR stringified arrays
+            var severity = issue.severity || 'N/A';
+            if (typeof severity === 'string' && severity.startsWith('[')) {
+                try {
+                    var parsed = JSON.parse(severity);
+                    if (Array.isArray(parsed)) {
+                        severity = parsed[0] || 'N/A';
+                    }
+                } catch (e) { }
+            } else if (Array.isArray(severity)) {
+                severity = severity[0] || 'N/A';
+            }
+
+            var priority = issue.priority || 'N/A';
+            if (typeof priority === 'string' && priority.startsWith('[')) {
+                try {
+                    var parsed = JSON.parse(priority);
+                    if (Array.isArray(parsed)) {
+                        priority = parsed[0] || 'N/A';
+                    }
+                } catch (e) { }
+            } else if (Array.isArray(priority)) {
+                priority = priority[0] || 'N/A';
+            }
+
+            var status = issue.status || 'open';
+            var statusId = issue.status_id || null;
+            var qaStatusHtml = getReporterQaStatusHtml(issue);
+
+            // Handle multiple reporters
+            var reportersArray = Array.isArray(issue.reporters) && issue.reporters.length > 0
+                ? issue.reporters
+                : (issue.reporter_name ? [issue.reporter_name] : []);
+
+            var reporterHtml = '';
+            if (reportersArray.length > 0) {
+                reporterHtml = reportersArray.map(function (reporterId) {
+                    var reporterName = 'Unknown';
+                    if (ProjectConfig.projectUsers) {
+                        var found = ProjectConfig.projectUsers.find(function (u) {
+                            return u.id == reporterId;
+                        });
+                        if (found) {
+                            reporterName = found.full_name;
+                        }
+                    }
+                    return '<span class="badge bg-info me-1">' + escapeHtml(reporterName) + '</span>';
+                }).join('');
+            } else {
+                reporterHtml = '<span class="text-muted">N/A</span>';
+            }
+
+            var qaName = issue.qa_name || 'N/A';
+            var issueKey = issue.issue_key || 'N/A';
+            var pageCount = (issue.pages && issue.pages.length) || 1;
+            var titlePreview = stripHtml(issue.details).substring(0, 100);
+            if (titlePreview && stripHtml(issue.details).length > 100) titlePreview += '...';
+            var uniqueId = 'issue-details-' + issue.id;
+            var testerDeleteBlocked = !!(isTesterRole && issue.can_tester_delete === false);
+            var deleteTitle = testerDeleteBlocked
+                ? 'Testers cannot delete this issue because it has comments or QA status is set on an Open issue.'
+                : 'Delete Issue';
+
+            // Create new main row HTML
+            var mainRowHtml = '';
+
+            // Checkbox column - hide for client
+            if (userRole !== 'client') {
+                mainRowHtml += '<td class="checkbox-cell"><input type="checkbox" class="final-select" value="' + issue.id + '"' + (testerDeleteBlocked ? ' disabled' : '') + '></td>';
+            }
+
+            mainRowHtml += '<td><span class="badge bg-primary">' + escapeHtml(issueKey) + '</span></td>' +
+                '<td style="min-width: 250px; max-width: 400px;">' +
+                '<div class="d-flex align-items-center">' +
+                '<button class="btn btn-link p-0 me-2 text-muted chevron-toggle-btn" ' +
+                'data-collapse-target="#' + uniqueId + '" ' +
+                'aria-label="Expand details for ' + escapeHtml(issueKey) + ': ' + escapeHtml(issue.title) + '" ' +
+                'style="border: none; background: none; font-size: 1rem;">' +
+                '<i class="fas fa-chevron-' + (wasExpanded ? 'down' : 'right') + ' chevron-icon"></i>' +
+                '</button>' +
+                '<div style="cursor: pointer;" class="issue-title-click" data-issue-id="' + issue.id + '">' +
+                (issue.common_title ?
+                    '<div class="fw-bold">' + escapeHtml(issue.common_title) + '</div>' +
+                    '<div class="small text-muted">' + escapeHtml(issue.title) + '</div>'
+                    :
+                    '<div class="fw-bold">' + escapeHtml(issue.title) + '</div>' +
+                    (titlePreview ? '<div class="small text-muted">' + escapeHtml(titlePreview) + '</div>' : '')
+                ) +
+                '</div>' +
+                '</div>' +
+                '</td>' +
+                '<td>' + getSeverityBadge(severity) + '</td>' +
+                '<td>' + getPriorityBadge(priority) + '</td>' +
+                '<td>' + getStatusBadge(statusId) + '</td>';
+
+            // QA Status, Reporter, QA Name, Client Ready columns - hide for client
+            if (userRole !== 'client') {
+                mainRowHtml += '<td>' + qaStatusHtml + '</td>' +
+                    '<td>' + reporterHtml + '</td>' +
+                    '<td>' +
+                    (qaName !== 'N/A' ?
+                        '<span class="badge bg-success">' + escapeHtml(qaName) + '</span>' :
+                        '<span class="text-muted">N/A</span>') +
+                    '</td>' +
+                    '<td>' +
+                    (issue.client_ready == 1 ?
+                        '<span class="badge bg-success"><i class="fas fa-check"></i> Yes</span>' :
+                        '<span class="badge bg-secondary"><i class="fas fa-times"></i> No</span>') +
+                    '</td>';
+            }
+
+            mainRowHtml += '<td>' +
+                '<span class="badge bg-secondary">' + pageCount + ' page(s)</span>' +
+                '</td>';
+
+            // Actions column - hide for client
+            if (userRole !== 'client') {
+                mainRowHtml += '<td class="action-buttons-cell">' +
+                    '<button class="btn btn-sm btn-outline-primary me-1 final-edit" data-id="' + issue.id + '" type="button" title="Edit Issue">' +
+                    '<i class="fas fa-edit"></i>' +
+                    '</button>' +
+                    '<button class="btn btn-sm btn-outline-danger final-delete" data-id="' + issue.id + '" type="button" title="' + escapeAttr(deleteTitle) + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
+                    '<i class="fas fa-trash"></i>' +
+                    '</button>' +
+                    '</td>';
+            }
+
+            // Update the main row content
+            existingMainRow.innerHTML = mainRowHtml;
+            existingMainRow.className = 'align-middle issue-expandable-row';
+            existingMainRow.setAttribute('data-collapse-target', '#' + uniqueId);
+            existingMainRow.style.cursor = 'pointer';
+
+            // Create new details row HTML
+            var detailsRowHtml = '<td colspan="11" class="p-0 border-0">' +
+                '<div class="bg-light p-4 border-top">' +
+                '<div class="row g-3">' +
+                '<div class="col-md-8">' +
+                '<h6 class="fw-bold mb-3"><i class="fas fa-file-alt me-2"></i>Issue Details</h6>' +
+                '<div class="card">' +
+                '<div class="card-body issue-content">' +
+                (decorateIssueImages(issue.details) || '<p class="text-muted">No details provided.</p>') +
+                '</div>' +
+                '</div>' +
+                '</div>' +
+                '<div class="col-md-4">' +
+                '<h6 class="fw-bold mb-3"><i class="fas fa-info-circle me-2"></i>Metadata</h6>' +
+                '<div class="card">' +
+                '<div class="card-body">' +
+                '<div class="mb-2"><strong>Issue Key:</strong><br>' +
+                '<span class="badge bg-primary">' + escapeHtml(issueKey) + '</span>' +
+                '</div>' +
+                '<div class="mb-2"><strong>Status:</strong><br>' + getStatusBadge(statusId) + '</div>' +
+                (userRole !== 'client' ? '<div class="mb-2"><strong>QA Status:</strong><br>' + qaStatusHtml + '</div>' : '') +
+                '<div class="mb-2"><strong>Severity:</strong><br>' +
+                '<span class="badge bg-warning text-dark">' + escapeHtml((severity || 'N/A').toUpperCase()) + '</span>' +
+                '</div>' +
+                '<div class="mb-2"><strong>Priority:</strong><br>' +
+                '<span class="badge bg-info text-dark">' + escapeHtml((priority || 'N/A').toUpperCase()) + '</span>' +
+                '</div>' +
+                (userRole !== 'client' ? '<div class="mb-2"><strong>Reporter(s):</strong><br>' +
+                (reportersArray.length > 0 ? reportersArray.map(function (reporterId) {
+                    var reporterName = 'Unknown';
+                    if (ProjectConfig.projectUsers) {
+                        var found = ProjectConfig.projectUsers.find(function (u) { return u.id == reporterId; });
+                        if (found) reporterName = found.full_name;
+                    }
+                    return escapeHtml(reporterName);
+                }).join(', ') : (issue.reporter_name ? escapeHtml(issue.reporter_name) : '<span class="text-muted">N/A</span>')) +
+                '</div>' : '') +
+                (userRole !== 'client' ? '<div class="mb-2"><strong>QA Name:</strong><br>' + escapeHtml(qaName) + '</div>' : '') +
+                (function () {
+                    // Pages section with names
+                    var pagesHtml = '<div class="mb-2"><strong>Pages:</strong> ';
+                    if (issue.pages && issue.pages.length > 0) {
+                        var pageNames = issue.pages.map(function (pageId) {
+                            return getPageName(pageId);
+                        });
+                        pagesHtml += '<span class="badge bg-secondary">' + pageNames.length + '</span><br>';
+                        pagesHtml += '<small class="text-muted">' + pageNames.join(', ') + '</small>';
+                    } else {
+                        pagesHtml += '<span class="text-muted">N/A</span>';
+                    }
+                    pagesHtml += '</div>';
+
+                    // Grouped URLs section with expand/collapse
+                    var urlsHtml = '';
+                    if (issue.grouped_urls && issue.grouped_urls.length > 0) {
+                        var urlsId = 'urls-' + issue.id;
+                        urlsHtml += '<div class="mb-2">';
+                        urlsHtml += '<strong>Grouped URLs:</strong> ';
+                        urlsHtml += '<span class="badge bg-info">' + issue.grouped_urls.length + '</span> ';
+                        urlsHtml += '<button class="btn btn-xs btn-link p-0 grouped-urls-toggle" data-bs-toggle="collapse" data-bs-target="#' + urlsId + '" aria-expanded="false">';
+                        urlsHtml += '<i class="fas fa-chevron-down transition-transform"></i>';
+                        urlsHtml += '</button>';
+                        urlsHtml += '<div class="mt-2" id="' + urlsId + '" style="display: none;">';
+                        urlsHtml += '<div class="small p-2 border rounded bg-light" style="max-height: 150px; overflow-y: auto;">';
+
+                        var urlsFound = 0;
+                        issue.grouped_urls.forEach(function (urlString) {
+                            var urlData = (ProjectConfig.groupedUrls || []).find(function (u) {
+                                return u.url === urlString || u.normalized_url === urlString;
+                            });
+
+                            var displayUrl = urlData ? urlData.url : urlString;
+
+                            if (displayUrl) {
+                                urlsFound++;
+                                urlsHtml += '<div class="mb-1">';
+                                urlsHtml += '<a href="' + escapeHtml(displayUrl) + '" target="_blank" class="text-decoration-none">';
+                                urlsHtml += '<i class="fas fa-external-link-alt me-1 text-primary"></i>';
+                                urlsHtml += '<span class="text-primary">' + escapeHtml(displayUrl) + '</span>';
+                                urlsHtml += '</a>';
+                                urlsHtml += '</div>';
+                            }
+                        });
+
+                        if (urlsFound === 0) {
+                            urlsHtml += '<div class="text-muted">No URL data available</div>';
+                        }
+
+                        urlsHtml += '</div></div></div>';
+                    }
+
+                    return pagesHtml + urlsHtml;
+                })() +
+                (function () {
+                    var metaHtml = '';
+                    if (typeof issueMetadataFields !== 'undefined') {
+                        issueMetadataFields.forEach(function (f) {
+                            if (f.field_key === 'severity' || f.field_key === 'priority') return;
+
+                            var value = issue[f.field_key];
+                            if (value && value.length > 0) {
+                                var displayValue = Array.isArray(value) ? value.join(', ') : value;
+                                metaHtml += '<div class="mb-2"><strong>' + escapeHtml(f.field_label) + ':</strong> ' + escapeHtml(displayValue) + '</div>';
+                            }
+                        });
+                    }
+                    if (userRole !== 'client') {
+                        if (issue.created_at) {
+                            metaHtml += '<div class="mb-2"><strong>Created:</strong><br><small class="text-muted">' + new Date(issue.created_at).toLocaleString() + '</small></div>';
+                        }
+                        if (issue.updated_at) {
+                            metaHtml += '<div class="mb-2"><strong>Updated:</strong><br><small class="text-muted">' + new Date(issue.updated_at).toLocaleString() + '</small></div>';
+                        }
+                    }
+                    return metaHtml;
+                })() +
+                '</div>' +
+                '</div>' +
+                '</div>' +
+                '</div>' +
+                '</div>' +
+                '</td>';
+
+            // Update or create details row
+            if (existingDetailsRow) {
+                existingDetailsRow.innerHTML = detailsRowHtml;
+                // Restore expanded state
+                if (wasExpanded) {
+                    existingDetailsRow.classList.add('show');
+                } else {
+                    existingDetailsRow.classList.remove('show');
+                }
+            } else {
+                // Create new details row
+                var newDetailsRow = document.createElement('tr');
+                newDetailsRow.className = 'collapse' + (wasExpanded ? ' show' : '');
+                newDetailsRow.id = uniqueId;
+                newDetailsRow.innerHTML = detailsRowHtml;
+                existingMainRow.parentNode.insertBefore(newDetailsRow, existingMainRow.nextSibling);
+            }
+
+            // Re-attach event handlers for the updated row
+            attachRowEventHandlers(existingMainRow);
+
+            // Update issue tab counts
+            updateIssueTabCounts();
+        }
+
+        // Helper function to attach event handlers to a specific row
+        function attachRowEventHandlers(mainRow) {
+            // Chevron toggle button
+            var chevronBtn = mainRow.querySelector('.chevron-toggle-btn');
+            if (chevronBtn) {
+                chevronBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    toggleIssueRow(this);
+                });
+
+                chevronBtn.addEventListener('keydown', function (e) {
+                    if (e.keyCode === 13 || e.keyCode === 32) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleIssueRow(this);
+                    }
+                });
+            }
+
+            // Issue title click
+            var titleEl = mainRow.querySelector('.issue-title-click');
+            if (titleEl) {
+                titleEl.addEventListener('click', function (e) {
+                    e.stopPropagation();
+
+                    if (userRole === 'client') {
+                        var row = this.closest('tr');
+                        if (row) {
+                            var chevronBtn = row.querySelector('.chevron-toggle-btn');
+                            if (chevronBtn) {
+                                toggleIssueRow(chevronBtn);
+                            }
+                        }
+                    } else {
+                        var issueId = this.getAttribute('data-issue-id');
+                        if (issueId && issueData.selectedPageId) {
+                            var issue = issueData.pages[issueData.selectedPageId].final.find(function (i) {
+                                return String(i.id) === String(issueId);
+                            });
+                            if (issue) openFinalEditor(issue);
+                        }
+                    }
+                });
+            }
+
+            // Row click handler
+            mainRow.addEventListener('click', function (e) {
+                if (e.target.closest('button') ||
+                    e.target.closest('input') ||
+                    e.target.closest('select') ||
+                    e.target.closest('.action-buttons-cell') ||
+                    e.target.closest('.checkbox-cell') ||
+                    e.target.closest('.issue-title-click')) {
+                    return;
+                }
+
+                var chevronBtn = this.querySelector('.chevron-toggle-btn');
+                if (chevronBtn) {
+                    toggleIssueRow(chevronBtn);
+                }
+            });
+
+            // Helper function to toggle issue row expansion (local version)
+            function toggleIssueRow(btn) {
+                var targetId = btn.getAttribute('data-collapse-target');
+                if (targetId) {
+                    var collapseEl = document.querySelector(targetId);
+                    var chevronIcon = btn.querySelector('.chevron-icon');
+
+                    if (collapseEl) {
+                        var isExpanded = collapseEl.classList.contains('show');
+
+                        if (isExpanded) {
+                            collapseEl.classList.remove('show');
+                            if (chevronIcon) chevronIcon.className = 'fas fa-chevron-right chevron-icon';
+                        } else {
+                            collapseEl.classList.add('show');
+                            if (chevronIcon) chevronIcon.className = 'fas fa-chevron-down chevron-icon';
+                        }
+                    }
+                }
+            }
+
+            // Add handlers for images and grouped URLs in details row
+            setTimeout(function () {
+                var detailsRow = mainRow.nextElementSibling;
+                if (detailsRow && detailsRow.classList.contains('collapse')) {
+                    // Image click handlers
+                    detailsRow.querySelectorAll('img').forEach(function (img) {
+                        img.style.cursor = 'pointer';
+                        img.addEventListener('click', function (e) {
+                            e.stopPropagation();
+                            var imgSrc = this.src;
+                            var imgAlt = this.alt || '';
+
+                            var modal = document.getElementById('issueImageModal');
+                            var previewImg = document.getElementById('issueImagePreview');
+                            var altTextDiv = document.getElementById('issueImageAltText');
+                            var altTextContent = document.getElementById('issueImageAltTextContent');
+
+                            if (modal && previewImg) {
+                                previewImg.src = imgSrc;
+                                previewImg.alt = imgAlt;
+
+                                if (imgAlt && altTextDiv && altTextContent) {
+                                    altTextContent.textContent = imgAlt;
+                                    altTextDiv.style.display = 'block';
+                                } else if (altTextDiv) {
+                                    altTextDiv.style.display = 'none';
+                                }
+
+                                var bsModal = new bootstrap.Modal(modal);
+                                bsModal.show();
+                            }
+                        });
+                    });
+
+                    detailsRow.querySelectorAll('.issue-image-thumb').forEach(function (img) {
+                        img.style.cursor = 'pointer';
+                        img.removeEventListener('click', img._imageClickHandler);
+
+                        img._imageClickHandler = function (e) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            var src = this.getAttribute('src');
+                            if (src) openIssueImageModal(src);
+                        };
+
+                        img.addEventListener('click', img._imageClickHandler);
+                    });
+
+                    // Grouped URLs toggle handlers
+                    detailsRow.querySelectorAll('.grouped-urls-toggle').forEach(function (toggleBtn) {
+                        toggleBtn.addEventListener('click', function (e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+
+                            var targetId = this.getAttribute('data-bs-target');
+                            if (targetId) {
+                                var collapseEl = document.querySelector(targetId);
+                                var chevron = this.querySelector('i');
+
+                                if (collapseEl) {
+                                    var isHidden = collapseEl.style.display === 'none';
+
+                                    if (isHidden) {
+                                        collapseEl.style.display = 'block';
+                                        if (chevron) {
+                                            chevron.classList.remove('fa-chevron-down');
+                                            chevron.classList.add('fa-chevron-up');
+                                        }
+                                        this.setAttribute('aria-expanded', 'true');
+                                    } else {
+                                        collapseEl.style.display = 'none';
+                                        if (chevron) {
+                                            chevron.classList.remove('fa-chevron-up');
+                                            chevron.classList.add('fa-chevron-down');
+                                        }
+                                        this.setAttribute('aria-expanded', 'false');
+                                    }
+                                }
+                            }
+                        });
+                    });
+                }
+            }, 100);
+        }
+
+    
+    function addNewIssueRow(issueDataObj) {
+        // For new issues, just re-render the table
+        // The new issue will appear at the top due to the unshift() in the save function
+        renderFinalIssues();
+    }
+
     function renderCommonIssues() {
         var tbody = document.getElementById('commonIssuesBody');
         if (!tbody) return;
@@ -3949,7 +4490,7 @@
                 '<h6 class="fw-bold mb-3"><i class="fas fa-file-alt me-2"></i>Description</h6>' +
                 '<div class="card">' +
                 '<div class="card-body">' +
-                (it.description || actualIssue && actualIssue.details || '<p class="text-muted">No description provided.</p>') +
+                (decorateIssueImages(it.description) || actualIssue && decorateIssueImages(actualIssue.details) || '<p class="text-muted">No description provided.</p>') +
                 '</div>' +
                 '</div>' +
                 '</div>' +
@@ -4044,7 +4585,6 @@
                                         if (newChevronIcon) newChevronIcon.className = 'fas fa-chevron-down chevron-icon';
                                     }
                                 }).catch(function (err) {
-                                    console.error('Failed to load issue data:', err);
                                     // Expand anyway with basic info
                                     collapseEl.classList.add('show');
                                     if (chevronIcon) chevronIcon.className = 'fas fa-chevron-down chevron-icon';
@@ -4292,6 +4832,10 @@
 
     async function runLiveIssueSync() {
         if (document.hidden || liveIssueSyncInFlight || isIssueEditorOpen()) return;
+        
+        // Skip sync if temporarily disabled after a save operation
+        if (Date.now() < liveIssueSyncDisabledUntil) return;
+        
         var tasks = [];
         if (issueData.selectedPageId) {
             // Do not refresh Final Issues while any row is expanded; prevents auto-collapse.
@@ -4375,7 +4919,26 @@
     }
 
     function extractAltText(html) { if (!html) return ''; var matches = []; var re = /<img[^>]*alt=['"]([^'"]*)['"][^>]*>/gi; var m; while ((m = re.exec(html)) !== null) { if (m[1] && matches.indexOf(m[1]) === -1) matches.push(m[1]); } return matches.join(' | '); }
-    function decorateIssueImages(html) { if (!html) return ''; return String(html).replace(/<img\b([^>]*)>/gi, function (_, attrs) { if (/class\s*=/.test(attrs)) { return '<img' + attrs.replace(/class\s*=(["\'])([^"\']*)\1/, 'class="$2 issue-image-thumb"') + '>'; } return '<img class="issue-image-thumb"' + attrs + '>'; }); }
+    function decorateIssueImages(html) { 
+        if (!html) return ''; 
+        return String(html).replace(/<img\b([^>]*)>/gi, function (_, attrs) { 
+            let newAttrs = attrs;
+            
+            // Add issue-image-thumb class
+            if (/class\s*=/.test(attrs)) { 
+                newAttrs = attrs.replace(/class\s*=(["\'])([^"\']*)\1/, 'class="$2 issue-image-thumb"'); 
+            } else {
+                newAttrs = 'class="issue-image-thumb" ' + attrs;
+            }
+            
+            // Add lazy loading if not present
+            if (!/loading\s*=/.test(newAttrs)) {
+                newAttrs += ' loading="lazy"';
+            }
+            
+            return '<img ' + newAttrs + '>'; 
+        }); 
+    }
     function openIssueImageModal(src) {
         var m = document.getElementById('issueImageModal');
         var i = document.getElementById('issueImagePreview');
@@ -5070,17 +5633,13 @@
         fetch(issueTemplatesApi + '?action=metadata_options&project_type=' + encodeURIComponent(projectType), { credentials: 'same-origin' })
             .then(function (res) { return res.json(); })
             .then(function (res) {
-                console.log('Metadata API Response:', res);
                 if (res && res.fields) { 
-                    console.log('Metadata fields loaded:', res.fields.length);
                     issueMetadataFields = res.fields; 
                     applyMetadataOptions(res.fields); 
-                } else {
-                    console.warn('No metadata fields returned from API');
                 }
             })
             .catch(function(err) {
-                console.error('Failed to load metadata options:', err);
+                // Silently handle metadata loading errors
             });
     }
 
@@ -5097,6 +5656,18 @@
             issueNotify('Please select at least one page before saving the issue.', 'warning');
             return;
         }
+        
+        // Prevent multiple clicks and show loading state
+        var saveBtn = document.getElementById('finalIssueSaveBtn');
+        if (saveBtn && saveBtn.disabled) {
+            return; // Already saving
+        }
+        
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Saving...';
+        }
+        
         var editId = document.getElementById('finalIssueEditId').value;
         var expectedUpdatedAt = '';
         var expectedUpdatedAtEl = document.getElementById('finalIssueExpectedUpdatedAt');
@@ -5140,7 +5711,15 @@
             });
         }
 
-        if (!data.title) { issueNotify('Issue title is required.', 'warning'); return; }
+        if (!data.title) { 
+            // Reset button state
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Issue';
+            }
+            issueNotify('Issue title is required.', 'warning'); 
+            return; 
+        }
 
         // Get client_ready checkbox value
         var clientReadyCheckbox = document.getElementById('finalIssueClientReady');
@@ -5181,7 +5760,18 @@
                 }
             });
 
-            var res = await fetch(issuesApiBase, { method: 'POST', body: fd, credentials: 'same-origin' });
+            // Add timeout to prevent long waits
+            var controller = new AbortController();
+            var timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            
+            var res = await fetch(issuesApiBase, { 
+                method: 'POST', 
+                body: fd, 
+                credentials: 'same-origin',
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
             var json = await res.json();
 
             if (!json || json.error) {
@@ -5210,19 +5800,16 @@
                     silent: true
                 });
                 if (!pendingCommentSaved) {
+                    // Reset button state
+                    if (saveBtn) {
+                        saveBtn.disabled = false;
+                        saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Issue';
+                    }
                     issueNotify('Issue saved, but comment could not be saved. Please click "Add Comment" and try again.', 'warning');
                     return;
                 }
             }
 
-            renderFinalIssues();
-            updateSelectionButtons();
-            showFinalIssuesTab();
-
-            if (!editId && issueData.comments['new']) {
-                issueData.comments[String(json.id)] = issueData.comments['new'];
-                delete issueData.comments['new'];
-            }
             if (!editId) await deleteDraft();
             stopDraftAutosave();
             issueData.initialFormState = null;
@@ -5231,14 +5818,72 @@
             // Close modal immediately for better UX
             hideEditors();
             
+            // Reset save button state
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Issue';
+            }
+            
             // Show success message after modal closes
             setTimeout(function() {
-                issueNotify(editId ? 'Issue updated' : 'Issue created', 'success');
+                issueNotify(editId ? 'Issue updated successfully' : 'Issue created successfully', 'success');
             }, 100);
             
-            // Optimistic update - data is already updated in the store
-            // No server reload needed
-            renderFinalIssues();
+            // Optimized update: only update specific row instead of full table reload
+            if (editId) {
+                // First update the issue data in memory with the latest data from server
+                if (issueData.selectedPageId && issueData.pages[issueData.selectedPageId].final) {
+                    var issueIndex = issueData.pages[issueData.selectedPageId].final.findIndex(function(i) {
+                        return String(i.id) === String(savedIssueId);
+                    });
+                    if (issueIndex !== -1 && json.issue) {
+                        // Update the issue data with fresh data from server
+                        var updatedIssue = {
+                            id: String(json.issue.id),
+                            issue_key: json.issue.issue_key || '',
+                            title: json.issue.title || 'Issue',
+                            details: json.issue.description || '',
+                            status: json.issue.status || 'open',
+                            status_id: json.issue.status_id || null,
+                            qa_status: Array.isArray(json.issue.qa_status) ? json.issue.qa_status : (json.issue.qa_status ? [json.issue.qa_status] : []),
+                            severity: json.issue.severity || 'medium',
+                            priority: json.issue.priority || 'medium',
+                            pages: json.issue.pages || [],
+                            grouped_urls: json.issue.grouped_urls || [],
+                            reporter_name: json.issue.reporter_name || null,
+                            qa_name: json.issue.qa_name || null,
+                            page_id: json.issue.page_id || issueData.selectedPageId,
+                            client_ready: json.issue.client_ready || 0,
+                            environments: json.issue.environments || [],
+                            usersaffected: json.issue.usersaffected || [],
+                            wcagsuccesscriteria: json.issue.wcagsuccesscriteria || [],
+                            wcagsuccesscriterianame: json.issue.wcagsuccesscriterianame || [],
+                            wcagsuccesscriterialevel: json.issue.wcagsuccesscriterialevel || [],
+                            gigw30: json.issue.gigw30 || [],
+                            is17802: json.issue.is17802 || [],
+                            common_title: json.issue.common_title || '',
+                            reporters: json.issue.reporters || [],
+                            reporter_qa_status_map: json.issue.reporter_qa_status_map || {},
+                            has_comments: !!json.issue.has_comments,
+                            can_tester_delete: (json.issue.can_tester_delete !== false),
+                            created_at: json.issue.created_at || null,
+                            updated_at: json.issue.updated_at || null,
+                            latest_history_id: (json.issue.latest_history_id != null ? Number(json.issue.latest_history_id) : 0)
+                        };
+                        issueData.pages[issueData.selectedPageId].final[issueIndex] = updatedIssue;
+                    }
+                }
+                
+                // Update existing issue row
+                updateSingleIssueRow(savedIssueId, payload);
+            } else {
+                // For new issues, add to top of table without full reload
+                addNewIssueRow(payload);
+            }
+            
+            // Temporarily disable live sync to prevent immediate table reload
+            liveIssueSyncDisabledUntil = Date.now() + 10000; // Disable for 10 seconds
+            
             updateSelectionButtons();
             showFinalIssuesTab();
 
@@ -5247,13 +5892,26 @@
                 delete issueData.comments['new'];
             }
             
-            dispatchIssuesChanged({
-                action: editId ? 'update' : 'create',
-                type: 'final',
-                issue_id: String(editId || json.id || ''),
-                page_id: String(selectedPageId || '')
-            });
+            // Don't dispatch issues changed event since we're doing manual row updates
+            // dispatchIssuesChanged({
+            //     action: editId ? 'update' : 'create',
+            //     type: 'final',
+            //     issue_id: String(editId || json.id || ''),
+            //     page_id: String(selectedPageId || '')
+            // });
         } catch (e) {
+            // Reset button state on error
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Issue';
+            }
+            
+            // Handle timeout errors
+            if (e.name === 'AbortError') {
+                issueNotify('Save request timed out. Please check your connection and try again.', 'danger');
+                return;
+            }
+            
             if (String(e.message || '').toLowerCase().indexOf('modified by another user') !== -1) {
                 var conflictMsg = 'Latest data has been loaded. Please review and save again.';
                 await loadFinalIssues(selectedPageId);
@@ -6284,7 +6942,6 @@
                         updateSelectionButtons();
                         
                     } catch (error) {
-                        console.error('Bulk client ready error:', error);
                         showToast('Error', error.message || 'Failed to mark issues as Client Ready', 'error');
                     }
                 })();
@@ -6342,7 +6999,7 @@
                                             openFinalEditor(finalIssue);
                                         }
                                     }).catch(function (error) {
-                                        console.error('Error loading issues:', error);
+                                        // Silently handle error
                                     });
                                 } else {
                                     var finalIssue = issueData.pages[firstPageId].final.find(function (x) {

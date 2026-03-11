@@ -366,6 +366,58 @@ let autoRefreshTimer = null;
 let autoRefreshInFlight = false;
 let loadIssuesDebounceTimer = null;
 
+// Fallback decorateIssueImages function if not loaded from view_issues.js
+function decorateIssueImages(html) {
+    if (!html) return '';
+    return String(html).replace(/<img\b([^>]*)>/gi, function (_, attrs) {
+        // Add issue-image-thumb class
+        let newAttrs = attrs;
+        if (/class\s*=/.test(attrs)) {
+            newAttrs = attrs.replace(/class\s*=(["\'])([^"\']*)\1/, 'class="$2 issue-image-thumb"');
+        } else {
+            newAttrs = 'class="issue-image-thumb" ' + attrs;
+        }
+        
+        // Add lazy loading if not present
+        if (!/loading\s*=/.test(newAttrs)) {
+            newAttrs += ' loading="lazy"';
+        }
+        
+        // Ensure images have proper styling and error handling
+        if (!/style\s*=/.test(newAttrs)) {
+            newAttrs += ' style="max-width: 100%; height: auto; cursor: pointer;"';
+        }
+        
+        return '<img ' + newAttrs + '>';
+    });
+}
+
+// Fallback openIssueImageModal function
+function openIssueImageModal(src) {
+    var modal = document.getElementById('issueImageModal');
+    var previewImg = document.getElementById('issueImagePreview');
+    
+    if (modal && previewImg) {
+        previewImg.src = src;
+        previewImg.onerror = function() {
+            this.alt = 'Failed to load image: ' + src;
+            this.style.border = '2px solid #dc3545';
+            this.style.padding = '20px';
+            this.style.backgroundColor = '#f8d7da';
+        };
+        previewImg.onload = function() {
+            this.style.border = '';
+            this.style.padding = '';
+            this.style.backgroundColor = '';
+        };
+        var bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    } else {
+        // Fallback - open in new tab
+        window.open(src, '_blank');
+    }
+}
+
 // Load all issues with debouncing
 function loadIssues(options) {
     const opts = options || {};
@@ -392,27 +444,57 @@ function loadIssues(options) {
     });
 }
 
-function performLoadIssues(preserveFilters, silentErrors) {
-    return fetch(`${baseDir}/api/issues.php?action=get_all&project_id=${projectId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                allIssues = data.issues;
-                if (preserveFilters) {
-                    applyFilters();
-                } else {
-                    filteredIssues = allIssues;
-                    updateCounts();
-                    renderIssues();
-                }
+function performLoadIssues(preserveFilters, silentErrors, retryCount = 0) {
+    const maxRetries = 3;
+    
+    // Add timeout and retry logic
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    return fetch(`${baseDir}/api/issues.php?action=get_all&project_id=${projectId}`, {
+        signal: controller.signal,
+        headers: {
+            'Cache-Control': 'no-cache'
+        }
+    })
+    .then(response => {
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            allIssues = data.issues;
+            if (preserveFilters) {
+                applyFilters();
             } else {
-                if (!silentErrors) showError('Failed to load issues');
+                filteredIssues = allIssues;
+                updateCounts();
+                renderIssues();
             }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            if (!silentErrors) showError('Error loading issues');
-        });
+        } else {
+            throw new Error(data.message || 'Failed to load issues');
+        }
+    })
+    .catch(error => {
+        clearTimeout(timeoutId);
+        
+        // Retry logic for connection issues
+        if (retryCount < maxRetries && (error.name === 'AbortError' || error.message.includes('Failed to fetch') || error.message.includes('CONNECTION_RESET'))) {
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    performLoadIssues(preserveFilters, true, retryCount + 1).then(resolve);
+                }, Math.pow(2, retryCount) * 1000); // Exponential backoff: 1s, 2s, 4s
+            });
+        }
+        
+        if (!silentErrors) {
+            showError('Failed to load issues: ' + error.message);
+        }
+        throw error;
+    });
 }
 
 function startIssuesAutoRefresh() {
@@ -499,8 +581,8 @@ function renderIssues() {
                         <div class="col-md-8">
                             <h6 class="fw-bold mb-3"><i class="fas fa-file-alt me-2"></i>Issue Details</h6>
                             <div class="card">
-                                <div class="card-body">
-                                    ${issue.description || '<p class="text-muted">No details provided.</p>'}
+                                <div class="card-body issue-content">
+                                    ${decorateIssueImages(issue.description || '') || '<p class="text-muted">No details provided.</p>'}
                                 </div>
                             </div>
                         </div>
@@ -706,6 +788,11 @@ function attachEventListeners() {
                         chevron.classList.remove('fa-chevron-right');
                         chevron.classList.add('fa-chevron-down');
                     }
+                    
+                    // Re-attach image handlers after expanding (in case they weren't attached)
+                    setTimeout(() => {
+                        attachImageHandlers();
+                    }, 100);
                 } else {
                     // Collapse
                     detailsRow.style.display = 'none';
@@ -717,6 +804,83 @@ function attachEventListeners() {
             }
         });
     });
+    
+    // Attach image handlers
+    attachImageHandlers();
+}
+
+// Separate function for image handlers with throttling
+function attachImageHandlers() {
+    // Image click handlers for issue images with throttling
+    const images = document.querySelectorAll('#issuesTableBody img, #issuesTableBody .issue-image-thumb');
+    
+    // Process images in batches to avoid overwhelming the server
+    let imageIndex = 0;
+    const batchSize = 10;
+    
+    function processBatch() {
+        const batch = Array.from(images).slice(imageIndex, imageIndex + batchSize);
+        
+        batch.forEach(img => {
+            img.style.cursor = 'pointer';
+            
+            // Remove existing handler to avoid duplicates
+            if (img._imageClickHandler) {
+                img.removeEventListener('click', img._imageClickHandler);
+            }
+            
+            img._imageClickHandler = function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                
+                var src = this.getAttribute('src');
+                if (src && typeof openIssueImageModal === 'function') {
+                    openIssueImageModal(src);
+                } else if (src) {
+                    // Fallback if openIssueImageModal is not available
+                    window.open(src, '_blank');
+                }
+            };
+            
+            img.addEventListener('click', img._imageClickHandler);
+            
+            // Add lazy loading attribute if not present
+            if (!img.hasAttribute('loading')) {
+                img.setAttribute('loading', 'lazy');
+            }
+            
+            // Add error handling for broken images
+            if (!img._errorHandlerAttached) {
+                img.onerror = function() {
+                    this.style.border = '2px solid #dc3545';
+                    this.style.backgroundColor = '#f8d7da';
+                    this.title = 'Image failed to load: ' + this.src;
+                    this.alt = 'Failed to load image';
+                };
+                
+                // Add load success handler
+                img.onload = function() {
+                    this.style.border = '';
+                    this.style.backgroundColor = '';
+                    this.title = 'Click to view full size';
+                };
+                
+                img._errorHandlerAttached = true;
+            }
+        });
+        
+        imageIndex += batchSize;
+        
+        // Process next batch after a small delay
+        if (imageIndex < images.length) {
+            setTimeout(processBatch, 50);
+        }
+    }
+    
+    // Start processing batches
+    if (images.length > 0) {
+        processBatch();
+    }
 }
 
 // Edit issue - open modal
@@ -770,7 +934,6 @@ function editIssue(issueId) {
     if (typeof openFinalEditor === 'function') {
         openFinalEditor(issue);
     } else {
-        console.error('openFinalEditor function not found');
         showError('Issue editor not loaded. Please refresh the page.');
     }
 }
@@ -866,7 +1029,6 @@ function performDelete(issueId) {
         }
     })
     .catch(error => {
-        console.error('Error:', error);
         showError('Error deleting issue');
     });
 }
@@ -942,12 +1104,10 @@ function getBootstrapColor(colorName) {
 
 function showSuccess(message) {
     if (typeof showToast === 'function') showToast(message, 'success');
-    else console.log(message);
 }
 
 function showError(message) {
     if (typeof showToast === 'function') showToast(message, 'danger');
-    else console.error(message);
 }
 
 // Event listeners
@@ -983,9 +1143,26 @@ document.addEventListener('pms:issues-changed', function () {
     loadIssues({ preserveFilters: true, silentErrors: true });
 });
 
-// Initial load
-loadIssues({ immediate: true });
-startIssuesAutoRefresh();
+// Initial load - wait for view_issues.js to load
+function initializeAllIssuesPage() {
+    // Check if decorateIssueImages is available
+    if (typeof decorateIssueImages === 'function') {
+        loadIssues({ immediate: true });
+        startIssuesAutoRefresh();
+    } else {
+        setTimeout(initializeAllIssuesPage, 100);
+    }
+}
+
+// Start initialization
+initializeAllIssuesPage();
+
+// Also attach image handlers on DOM ready as a fallback
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(() => {
+        attachImageHandlers();
+    }, 500);
+});
 
 // Handle Add Issue button - open finalIssueModal for new issue
 document.getElementById('addIssueBtn').addEventListener('click', function() {
@@ -999,7 +1176,6 @@ document.getElementById('addIssueBtn').addEventListener('click', function() {
     if (typeof openFinalEditor === 'function') {
         openFinalEditor(null);
     } else {
-        console.error('openFinalEditor function not found');
         showError('Issue editor not loaded. Please refresh the page.');
     }
 });
@@ -1155,7 +1331,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         loadIssues({ preserveFilters: true, silentErrors: true, immediate: true });
                         return;
                     }
-                    console.error('Save error:', e);
                     showError('Unable to save issue: ' + e.message);
                 }
             });
@@ -1207,7 +1382,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 })
                 .catch(err => {
-                    console.error('Error loading template:', err);
                     showError('Failed to load template sections. Please try again.');
                 });
             });

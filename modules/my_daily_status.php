@@ -1786,7 +1786,7 @@ include __DIR__ . '/../includes/header.php';
                         
                         <div class="col-md-2 mt-2">
                             <label>Hours</label>
-                            <input type="number" id="logHoursInput" name="hours_spent" class="form-control" step="0.25" min="0.25" max="24" required <?php echo $isPastDateReadonly ? 'disabled' : ''; ?> >
+                            <input type="number" id="logHoursInput" name="hours_spent" class="form-control" step="0.1" min="0.1" max="24" required <?php echo $isPastDateReadonly ? 'disabled' : ''; ?> >
                         </div>
                         <div class="col-md-4 mt-2">
                             <label>Description</label>
@@ -1963,7 +1963,7 @@ include __DIR__ . '/../includes/header.php';
                         </div>
                         <div class="col-md-2">
                             <label>Hours</label>
-                            <input type="number" name="hours_spent" class="form-control" step="0.5" min="0.5" max="24" required>
+                            <input type="number" name="hours_spent" class="form-control" step="0.1" min="0.1" max="24" required>
                         </div>
                         <div class="col-md-4">
                             <label>Description</label>

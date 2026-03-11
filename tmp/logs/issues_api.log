@@ -315,3 +315,30 @@
 [05-Mar-2026 10:33:13 Asia/Kolkata] Saving metadata: key=priority, values=
 [05-Mar-2026 10:33:14 Asia/Kolkata] Issue 297 metadata: {"issue_status":["1"],"reporter_qa_status_map":["[]"],"page_ids":["621"],"grouped_urls":["https:\/\/www.samcomf.com\/","https:\/\/www.samcomf.com\/career","https:\/\/www.samcomf.com\/career-open-positions","https:\/\/www.samcomf.com\/disclaimer"],"environments":["Chrome\/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"]}
 [05-Mar-2026 10:33:21 Asia/Kolkata] Issue 297 metadata: {"issue_status":["1"],"reporter_qa_status_map":["[]"],"page_ids":["621"],"grouped_urls":["https:\/\/www.samcomf.com\/","https:\/\/www.samcomf.com\/career","https:\/\/www.samcomf.com\/career-open-positions","https:\/\/www.samcomf.com\/disclaimer"],"environments":["Chrome\/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"]}
+[09-Mar-2026 15:53:50 Asia/Kolkata] issues api: title=Accordion not programmatically determined, pageId=621
+[09-Mar-2026 15:53:50 Asia/Kolkata] Received metadata JSON: {"environments":["Chrome/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterianame":["Non-text Content"],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"],"priority":["Low"]}
+[09-Mar-2026 15:53:50 Asia/Kolkata] Metadata is array with 9 keys: environments, usersaffected, wcagsuccesscriteria, wcagsuccesscriterianame, wcagsuccesscriterialevel, gigw30, is17802, severity, priority
+[09-Mar-2026 15:53:50 Asia/Kolkata] Saving metadata: key=environments, values=Chrome/JAWs
+[09-Mar-2026 15:53:50 Asia/Kolkata] Saving metadata: key=usersaffected, values=Visual Impairment
+[09-Mar-2026 15:53:50 Asia/Kolkata] Saving metadata: key=wcagsuccesscriteria, values=4.1.2
+[09-Mar-2026 15:53:50 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterianame, values=Non-text Content
+[09-Mar-2026 15:53:50 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterialevel, values=A
+[09-Mar-2026 15:53:50 Asia/Kolkata] Saving metadata: key=gigw30, values=5.2.49
+[09-Mar-2026 15:53:50 Asia/Kolkata] Saving metadata: key=is17802, values=9.4.1.2
+[09-Mar-2026 15:53:50 Asia/Kolkata] Saving metadata: key=severity, values=Major
+[09-Mar-2026 15:53:50 Asia/Kolkata] Saving metadata: key=priority, values=Low
+[09-Mar-2026 16:16:02 Asia/Kolkata] issues api: title=Accordion not programmatically determined, pageId=621
+[09-Mar-2026 16:16:02 Asia/Kolkata] Received metadata JSON: {"environments":["Chrome/JAWs"],"usersaffected":["Visual Impairment"],"wcagsuccesscriteria":["4.1.2"],"wcagsuccesscriterianame":["Non-text Content"],"wcagsuccesscriterialevel":["A"],"gigw30":["5.2.49"],"is17802":["9.4.1.2"],"severity":["Major"],"priority":["Low"]}
+[09-Mar-2026 16:16:02 Asia/Kolkata] Metadata is array with 9 keys: environments, usersaffected, wcagsuccesscriteria, wcagsuccesscriterianame, wcagsuccesscriterialevel, gigw30, is17802, severity, priority
+[09-Mar-2026 16:16:02 Asia/Kolkata] Saving metadata: key=environments, values=Chrome/JAWs
+[09-Mar-2026 16:16:02 Asia/Kolkata] Saving metadata: key=usersaffected, values=Visual Impairment
+[09-Mar-2026 16:16:02 Asia/Kolkata] Saving metadata: key=wcagsuccesscriteria, values=4.1.2
+[09-Mar-2026 16:16:02 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterianame, values=Non-text Content
+[09-Mar-2026 16:16:02 Asia/Kolkata] Saving metadata: key=wcagsuccesscriterialevel, values=A
+[09-Mar-2026 16:16:02 Asia/Kolkata] Saving metadata: key=gigw30, values=5.2.49
+[09-Mar-2026 16:16:02 Asia/Kolkata] Saving metadata: key=is17802, values=9.4.1.2
+[09-Mar-2026 16:16:02 Asia/Kolkata] Saving metadata: key=severity, values=Major
+[09-Mar-2026 16:16:02 Asia/Kolkata] Saving metadata: key=priority, values=Low
+[10-Mar-2026 09:59:54 Asia/Kolkata] issues api: title=Accordion not programmatically determined, pageId=621
+[10-Mar-2026 09:59:59 Asia/Kolkata] issues api: title=Accordion not programmatically determined, pageId=621
+[10-Mar-2026 10:00:08 Asia/Kolkata] issues api: title=Accordion not programmatically determined, pageId=621

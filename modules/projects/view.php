@@ -16,9 +16,6 @@ $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'] ?? '';
 
-// Debug output
-error_log("Project View - User ID: $userId, Role: $userRole, Project ID: $projectId");
-
 // Redirect client users directly to issues page
 if ($userRole === 'client' && $projectId) {
     header('Location: ' . $baseDir . '/modules/projects/issues.php?project_id=' . $projectId);
@@ -158,12 +155,8 @@ $unreadChatCount = 0;
 try {
     $unreadChatCount = getUnreadChatCount($db, $_SESSION['user_id'], $projectId);
 } catch (Exception $e) {
-    error_log('Error getting unread count: ' . $e->getMessage());
     $unreadChatCount = 0;
 }
-
-// Debug: Uncomment to see unread count
-echo "<!-- Debug: Unread count for user " . $_SESSION['user_id'] . " in project $projectId: $unreadChatCount -->";
 
 // Fetch QA statuses from master table
 $qaStatusesStmt = $db->query("SELECT id, status_key, status_label, badge_color FROM qa_status_master WHERE is_active = 1 ORDER BY display_order ASC, status_label ASC");

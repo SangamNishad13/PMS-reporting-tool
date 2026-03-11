@@ -71,7 +71,7 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
     }
     ?>
     <link rel="icon" type="image/png" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/storage/favicon.png?v=20260225v1">
-    <?php $assetVersion = '20260225v3'; ?>
+    <?php $assetVersion = '20260311v12'; ?>
     <link href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/css/style.css?v=<?php echo $assetVersion; ?>" rel="stylesheet">
     <style>
     .alert-dismissible .btn-close {

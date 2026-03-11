@@ -206,24 +206,37 @@ try {
             $senderName = trim((string)($_SESSION['full_name'] ?? 'A user'));
             $baseDir = getBaseDir();
             $pageIdForIssue = 0;
+            $issueKey = '';
             try {
-                $pageStmt = $db->prepare("SELECT page_id FROM issues WHERE id = ? AND project_id = ? LIMIT 1");
+                $pageStmt = $db->prepare("SELECT page_id, issue_key FROM issues WHERE id = ? AND project_id = ? LIMIT 1");
                 $pageStmt->execute([(int)$issueId, (int)$projectId]);
-                $pageIdForIssue = (int)($pageStmt->fetchColumn() ?: 0);
+                $issueData = $pageStmt->fetch(PDO::FETCH_ASSOC);
+                if ($issueData) {
+                    $pageIdForIssue = (int)($issueData['page_id'] ?: 0);
+                    $issueKey = $issueData['issue_key'] ?: '';
+                }
             } catch (Exception $e) {
                 $pageIdForIssue = 0;
+                $issueKey = '';
             }
             if ($pageIdForIssue > 0) {
-                $link = $baseDir . '/modules/projects/issues_page_detail.php?project_id=' . (int)$projectId . '&page_id=' . $pageIdForIssue;
+                $link = $baseDir . '/modules/projects/issues_page_detail.php?project_id=' . (int)$projectId . '&page_id=' . $pageIdForIssue . '&issue_id=' . (int)$issueId;
             } else {
-                $link = $baseDir . '/modules/projects/issues.php?project_id=' . (int)$projectId;
+                $link = $baseDir . '/modules/projects/issues.php?project_id=' . (int)$projectId . '&issue_id=' . (int)$issueId;
             }
+            
+            $notificationMsg = $senderName . ' mentioned you in an issue comment';
+            if ($issueKey) {
+                $notificationMsg .= ' (' . $issueKey . ')';
+            }
+            $notificationMsg .= '.';
+            
             foreach ($notifyUserIds as $targetUserId) {
                 createNotification(
                     $db,
                     (int)$targetUserId,
                     'mention',
-                    $senderName . ' mentioned you in an issue comment.',
+                    $notificationMsg,
                     $link
                 );
             }

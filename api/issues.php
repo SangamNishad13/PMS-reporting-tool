@@ -674,6 +674,35 @@ if (!hasProjectAccess($db, $userId, $projectId)) {
 }
 $canUpdateQaStatus = hasIssueQaStatusUpdateAccess($db, $userId, $projectId);
 
+// Handle image deletion
+if ($method === 'POST' && $action === 'delete_image') {
+    $imagePath = $_POST['image_path'] ?? '';
+    if (!$imagePath) {
+        jsonError('image_path is required', 400);
+    }
+    
+    // Security: Only allow deletion of files in assets/uploads/
+    if (strpos($imagePath, '/assets/uploads/') === false) {
+        jsonError('Invalid image path', 400);
+    }
+    
+    // Convert to absolute path
+    $basePath = dirname(__DIR__);
+    $fullPath = $basePath . $imagePath;
+    
+    // Check if file exists and delete it
+    if (file_exists($fullPath)) {
+        if (@unlink($fullPath)) {
+            jsonResponse(['success' => true, 'message' => 'Image deleted']);
+        } else {
+            jsonError('Failed to delete image file', 500);
+        }
+    } else {
+        // File doesn't exist, consider it already deleted
+        jsonResponse(['success' => true, 'message' => 'Image already deleted']);
+    }
+}
+
 try {
     if ($method === 'GET' && $action === 'list') {
         $pageId = (int)($_GET['page_id'] ?? 0);
@@ -1448,22 +1477,15 @@ try {
         // Handle dynamic metadata from POST for both create and update
         if (isset($_POST['metadata'])) {
             $metadata = json_decode($_POST['metadata'], true);
-            error_log('Received metadata JSON: ' . $_POST['metadata']);
             if (is_array($metadata)) {
-                error_log('Metadata is array with ' . count($metadata) . ' keys: ' . implode(', ', array_keys($metadata)));
                 foreach ($metadata as $key => $value) {
                     if ($action === 'update') {
                         handleMetaHistory($db, $id, $userId, $key, $value, $oldMeta);
                     }
                     $valueArray = is_array($value) ? $value : [$value];
-                    error_log("Saving metadata: key=$key, values=" . implode(',', $valueArray));
                     replaceMeta($db, $id, $key, $valueArray);
                 }
-            } else {
-                error_log('Metadata is not an array after json_decode');
             }
-        } else {
-            error_log('No metadata in POST');
         }
 
         if ($commonTitle && count($pageIds) > 1) {

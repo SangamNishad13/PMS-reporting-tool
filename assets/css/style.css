@@ -743,3 +743,60 @@ label {
     line-height: 1.42857143 !important;
     color: #000 !important;
 }
+
+/* Issue Image Styles */
+.issue-image-thumb {
+    max-width: 100%;
+    height: auto;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s ease;
+    box-shadow: var(--shadow-sm);
+    display: inline-block;
+    margin: 0.25rem;
+}
+
+.issue-image-thumb:hover {
+    transform: scale(1.02);
+    box-shadow: var(--shadow-md);
+}
+
+.issue-content img {
+    max-width: 100%;
+    height: auto;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    margin: 0.5rem 0;
+    display: inline-block;
+}
+
+.issue-content .issue-image-thumb {
+    max-width: 200px;
+    max-height: 150px;
+    object-fit: cover;
+}
+
+.editable-issue-image {
+    max-width: 100%;
+    height: auto;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+}
+
+/* Issue Image Modal */
+#issueImageModal .modal-body {
+    text-align: center;
+}
+
+#issueImagePreview {
+    max-width: 100%;
+    max-height: 80vh;
+    object-fit: contain;
+}
+
+#issueImagePreview {
+    max-width: 100%;
+    max-height: 80vh;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+}

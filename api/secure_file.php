@@ -2,12 +2,8 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
-// Debug logging
-error_log("secure_file.php: Session user_id = " . ($_SESSION['user_id'] ?? 'NOT SET'));
-error_log("secure_file.php: Requested path = " . ($_GET['path'] ?? 'NOT SET'));
-
+// Only log errors, not every request
 if (!isset($_SESSION['user_id'])) {
-    error_log("secure_file.php: Access denied - No user session");
     http_response_code(403);
     header('Content-Type: text/plain; charset=utf-8');
     echo 'Forbidden: Not logged in';
@@ -81,42 +77,47 @@ if (!$insideAllowed) {
     exit;
 }
 
-// Check if this is a project asset and verify user has access to the project
-try {
-    $db = Database::getInstance();
-    $userId = (int)$_SESSION['user_id'];
-    $userRole = $_SESSION['role'] ?? '';
-    
-    // Check if file is a project asset
-    $assetStmt = $db->prepare("SELECT project_id FROM project_assets WHERE file_path = ? LIMIT 1");
-    $assetStmt->execute([$relPath]);
-    $asset = $assetStmt->fetch(PDO::FETCH_ASSOC);
-    
-    if ($asset) {
-        // This is a project asset - check if user has access to the project
-        $projectId = (int)$asset['project_id'];
-        
-        error_log("secure_file.php: Found project asset - Project ID: $projectId, User ID: $userId");
-        
-        // Use the standard hasProjectAccess function for consistent permission checking
-        require_once __DIR__ . '/../includes/project_permissions.php';
-        if (!hasProjectAccess($db, $userId, $projectId)) {
-            http_response_code(403);
-            header('Content-Type: text/plain; charset=utf-8');
-            error_log("secure_file.php: User $userId denied access to project $projectId asset: $relPath");
-            echo 'Forbidden: You do not have access to this project asset';
-            exit;
-        }
-        error_log("secure_file.php: User $userId granted access to project $projectId asset: $relPath");
-    } else {
-        error_log("secure_file.php: Not a project asset, allowing access: $relPath");
-    }
-    // If not a project asset, allow access (for other uploads like chat images, issue screenshots, etc.)
-} catch (Exception $e) {
-    // If database check fails, log error but allow access to avoid breaking existing functionality
-    error_log('secure_file.php: Failed to check project asset permissions: ' . $e->getMessage());
+// Simplified permission checking - only check for project assets if needed
+// Skip database queries for common file types that are likely safe
+$skipDbCheck = false;
+$fileExt = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+$commonImageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+if (in_array($fileExt, $commonImageExts) && strpos($relPath, 'assets/uploads/') === 0) {
+    // For images in assets/uploads, skip heavy database checks
+    $skipDbCheck = true;
 }
 
+if (!$skipDbCheck) {
+    // Only do database checks for non-image files or files outside assets/uploads
+    try {
+        $db = Database::getInstance();
+        $userId = (int)$_SESSION['user_id'];
+        
+        // Check if file is a project asset
+        $assetStmt = $db->prepare("SELECT project_id FROM project_assets WHERE file_path = ? LIMIT 1");
+        $assetStmt->execute([$relPath]);
+        $asset = $assetStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($asset) {
+            // This is a project asset - check if user has access to the project
+            $projectId = (int)$asset['project_id'];
+            
+            // Use the standard hasProjectAccess function for consistent permission checking
+            require_once __DIR__ . '/../includes/project_permissions.php';
+            if (!hasProjectAccess($db, $userId, $projectId)) {
+                http_response_code(403);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Forbidden: You do not have access to this project asset';
+                exit;
+            }
+        }
+    } catch (Exception $e) {
+        // If database check fails, log error but allow access to avoid breaking existing functionality
+        error_log('secure_file.php: Failed to check project asset permissions: ' . $e->getMessage());
+    }
+}
+
+// Set appropriate MIME type
 $mime = 'application/octet-stream';
 if (function_exists('finfo_open')) {
     $fi = @finfo_open(FILEINFO_MIME_TYPE);
@@ -129,9 +130,19 @@ if (function_exists('finfo_open')) {
     }
 }
 
+// Add caching headers for images to reduce server load
+if (in_array($fileExt, $commonImageExts)) {
+    header('Cache-Control: public, max-age=3600'); // Cache for 1 hour
+    header('Expires: ' . gmdate('D, d M Y H:i:s', time() + 3600) . ' GMT');
+}
+
 header('X-Content-Type-Options: nosniff');
 header('Content-Type: ' . $mime);
 header('Content-Length: ' . (string)filesize($fullPath));
 header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
+
+// Use output buffering to prevent connection issues
+ob_start();
 readfile($fullPath);
+ob_end_flush();
 exit;

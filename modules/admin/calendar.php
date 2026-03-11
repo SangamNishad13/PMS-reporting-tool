@@ -211,9 +211,16 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                     if ($statusFilterAllows('not_updated')) {
                         $title = $u['full_name'] . ' (Not updated)';
                         if ($userHours > 0) $title .= ' — ' . $userHours . 'h';
+                        
+                        // Truncate long titles for better display
+                        $displayTitle = $title;
+                        if (strlen($title) > 25) {
+                            $displayTitle = substr($title, 0, 22) . '...';
+                        }
+                        
                         $color = $userHours > 0 && $userHours < 8 ? '#ff4d4f' : '#6c757d';
                         $events[] = [
-                            'title' => $title,
+                            'title' => $displayTitle,
                             'start' => $d,
                             'color' => $color,
                             'description' => '',
@@ -223,7 +230,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                                 'statusType' => 'not_updated',
                                 'total_hours' => $userHours,
                                 'user_id' => $u['id'],
-                                'user_full_name' => $u['full_name']
+                                'user_full_name' => $u['full_name'],
+                                'fullTitle' => $title // Store full title for tooltip/modal
                             ]
                         ];
                     }
@@ -236,10 +244,17 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                     $title = $st['full_name'] . ' (' . $statusLabelFn($stType) . ')';
                     $userHours = $hours_map[$u['id']][$d] ?? 0;
                     if ($userHours > 0) $title .= ' — ' . $userHours . 'h';
+                    
+                    // Truncate long titles for better display
+                    $displayTitle = $title;
+                    if (strlen($title) > 25) {
+                        $displayTitle = substr($title, 0, 22) . '...';
+                    }
+                    
                     $color = $statusColor($stType);
                     if ($userHours > 0 && $userHours < 8) $color = '#ff4d4f';
                     $events[] = [
-                        'title' => $title,
+                        'title' => $displayTitle,
                         'start' => $d,
                         'color' => $color,
                         'description' => $st['notes'] ?? '',
@@ -249,7 +264,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                             'statusType' => $stType,
                             'total_hours' => $userHours,
                             'user_id' => $st['user_id'] ?? $u['id'],
-                            'user_full_name' => $st['full_name'] ?? $u['full_name']
+                            'user_full_name' => $st['full_name'] ?? $u['full_name'],
+                            'fullTitle' => $title // Store full title for tooltip/modal
                         ]
                     ];
                 }
@@ -297,198 +313,550 @@ $allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND 
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js'></script>
 
 <style>
-    /* Compact Calendar Tweaks */
+    /* Modern Calendar UI/UX Improvements */
+    .calendar-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+    
+    .calendar-header h2 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    
+    .calendar-header p {
+        opacity: 0.9;
+        font-size: 1.1rem;
+    }
+    
+    .calendar-controls {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        border: 1px solid rgba(0,0,0,0.05);
+        margin-bottom: 1.5rem;
+    }
+    
+    .calendar-legend {
+        background: white;
+        border-radius: 12px;
+        padding: 1rem 1.5rem;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        border: 1px solid rgba(0,0,0,0.05);
+        margin-bottom: 1.5rem;
+    }
+    
+    .calendar-container {
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        border: 1px solid rgba(0,0,0,0.05);
+        position: relative;
+        min-height: 600px;
+    }
+    
+    /* Day view specific container */
+    .fc-dayGridDay-view .calendar-container {
+        min-height: 700px;
+        overflow-y: auto;
+        max-height: 90vh;
+    }
+    
+    .fc-dayGridDay-view #calendar {
+        min-height: 650px;
+        padding: 1rem 2rem !important;
+    }
+    
+    /* Ensure day view content is fully visible */
+    .fc-dayGridDay-view .fc-daygrid {
+        min-height: 600px;
+    }
+    
+    .fc-dayGridDay-view .fc-scrollgrid {
+        height: auto !important;
+        min-height: 600px;
+    }
+    
+    .fc-dayGridDay-view .fc-scrollgrid-section-body {
+        height: auto !important;
+    }
+    
+    /* Enhanced Form Controls */
+    .form-select {
+        border-radius: 8px;
+        border: 2px solid #e9ecef;
+        padding: 0.75rem 1rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .form-select:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+    }
+    
+    /* Modern Button Styles */
+    .btn-outline-primary {
+        border: 2px solid #667eea;
+        color: #667eea;
+        font-weight: 600;
+        border-radius: 8px;
+        padding: 0.75rem 1.5rem;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-outline-primary:hover {
+        background: #667eea;
+        border-color: #667eea;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+    
+    /* Status Filter Buttons */
+    .status-filter-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .btn-check + .btn {
+        border-radius: 20px;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        font-size: 0.875rem;
+        transition: all 0.3s ease;
+        border-width: 2px;
+    }
+    
+    .btn-check:checked + .btn {
+        transform: scale(1.05);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    
+    /* Calendar Enhancements */
     .fc-event {
         cursor: pointer;
         border: none !important;
-        border-radius: 4px;
+        border-radius: 8px;
         font-size: 0.8em;
-        padding: 2px 4px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    }
-    .fc-daygrid-event-dot {
-        border-width: 5px;
-    }
-    .fc-toolbar-title {
-        font-size: 1.25rem !important;
-        font-weight: 600;
-    }
-    .fc-button-primary {
-        background-color: var(--primary) !important;
-        border-color: var(--primary) !important;
-    }
-    .fc-button-primary:hover {
-        background-color: var(--primary-dark) !important;
-        border-color: var(--primary-dark) !important;
-    }
-    .fc-today-button {
-        opacity: 0.8;
-    }
-    /* Day Detail Card inside calendar */
-    .fc-day-detail {
-        background: var(--bg-surface);
-        border: 1px solid var(--border-subtle);
-        border-radius: 6px;
-        padding: 8px;
-        margin-bottom: 4px;
-        box-shadow: var(--shadow-sm);
-    }
-    .fc-day-detail-title {
-        font-weight: 600;
-        font-size: 0.85rem;
-        margin-bottom: 4px;
-        color: var(--text-main);
-    }
-    .badge-status {
-        font-size: 0.7rem;
-        padding: 2px 6px;
-    }
-    .btn-check + .btn::after {
-        content: "";
-        display: none;
-        margin-left: 6px;
-        font-weight: 700;
-        line-height: 1;
-    }
-    .btn-check:checked + .btn::after {
-        content: "\2713";
-        display: inline-block;
-    }
-    .calendar-legend {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px 16px;
-    }
-    .legend-item {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 0.85rem;
-        color: #495057;
-    }
-    .legend-dot {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        border: 1px solid rgba(0, 0, 0, 0.15);
-        display: inline-block;
-        flex: 0 0 12px;
-    }
-    /* Keep Summernote fully contained inside admin edit modal columns */
-    #adminEditModal .modal-body {
-        overflow-x: hidden;
-    }
-    #adminEditModal .note-editor.note-frame {
-        width: 100%;
+        padding: 4px 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: all 0.2s ease;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
         max-width: 100%;
     }
-    #adminEditModal .note-editor .note-toolbar {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.25rem;
+    
+    .fc-event:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        z-index: 10;
+        position: relative;
     }
-    #adminEditModal .note-editor .note-toolbar > .note-btn-group {
-        float: none;
-        margin-right: 0;
+    
+    .fc-event-title {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
-    #adminEditModal .note-editor .note-editing-area,
-    #adminEditModal .note-editor .note-statusbar {
+    
+    /* Limit events per day to prevent overflow in month view only */
+    .fc-dayGridMonth-view .fc-daygrid-day-events {
+        max-height: 120px;
         overflow: hidden;
     }
-    #adminEditModal .note-editor .note-editable {
-        word-break: break-word;
+    
+    /* Allow full height in day view */
+    .fc-dayGridDay-view .fc-daygrid-day-events {
+        max-height: none !important;
+        overflow: visible !important;
     }
-    /* In readonly mode hide controls to avoid toolbar overflow and keep clean view */
-    #adminEditModal.admin-editor-readonly .note-toolbar,
-    #adminEditModal.admin-editor-readonly .note-statusbar {
-        display: none;
+    
+    /* Better day view styling */
+    .fc-dayGridDay-view .fc-daygrid-day {
+        min-height: 600px !important;
+        padding: 1rem !important;
+    }
+    
+    .fc-dayGridDay-view .fc-event {
+        margin-bottom: 0.5rem !important;
+        padding: 0.75rem !important;
+        font-size: 0.9rem !important;
+        line-height: 1.4 !important;
+    }
+    
+    .fc-daygrid-more-link {
+        background: #f8f9fa !important;
+        border: 1px solid #dee2e6 !important;
+        color: #6c757d !important;
+        font-size: 0.75rem !important;
+        padding: 2px 6px !important;
+        border-radius: 4px !important;
+        font-weight: 600 !important;
+    }
+    
+    .fc-daygrid-more-link:hover {
+        background: #e9ecef !important;
+        color: #495057 !important;
+    }
+    
+    .fc-toolbar-title {
+        font-size: 1.5rem !important;
+        font-weight: 700 !important;
+        color: #2d3748;
+    }
+    
+    .fc-button-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        padding: 0.5rem 1rem !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .fc-button-primary:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3) !important;
+    }
+    
+    .fc-today-button {
+        background: #48bb78 !important;
+        border: none !important;
+    }
+    
+    .fc-today-button:hover {
+        background: #38a169 !important;
+    }
+    
+    /* Legend Improvements */
+    .legend-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.9rem;
+        color: #4a5568;
+        font-weight: 500;
+        padding: 0.5rem;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+    
+    .legend-item:hover {
+        background: #f7fafc;
+        transform: translateX(2px);
+    }
+    
+    .legend-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.8);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        flex-shrink: 0;
+    }
+    
+    /* Loading States */
+    .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 16px;
+        z-index: 1000;
+    }
+    
+    .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #e2e8f0;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    /* Responsive Improvements */
+    @media (max-width: 768px) {
+        .calendar-header {
+            padding: 1.5rem;
+            text-align: center;
+        }
+        
+        .calendar-header h2 {
+            font-size: 1.5rem;
+        }
+        
+        .calendar-controls {
+            padding: 1rem;
+        }
+        
+        .status-filter-group {
+            justify-content: center;
+        }
+        
+        .legend-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    /* Animation for smooth transitions */
+    .calendar-container {
+        animation: fadeInUp 0.6s ease-out;
+    }
+    
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    /* Day Detail Cards (for day view) */
+    .fc-day-detail {
+        background: white;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        transition: all 0.2s ease;
+    }
+    
+    .fc-day-detail:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transform: translateY(-1px);
+    }
+    
+    .fc-day-detail-title {
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+        color: #2d3748;
+    }
+    
+    .badge-status {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        margin-right: 0.25rem;
+        border-radius: 4px;
+    }
+    
+    /* Fix FullCalendar Popover Positioning */
+    .fc-popover {
+        z-index: 1050 !important;
+        max-width: 300px !important;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.15) !important;
+        border: 1px solid #e9ecef !important;
+        border-radius: 8px !important;
+        overflow: hidden !important;
+    }
+    
+    .fc-more-popover {
+        z-index: 1050 !important;
+        max-width: 320px !important;
+        max-height: 400px !important;
+        overflow-y: auto !important;
+    }
+    
+    .fc-popover-header {
+        background: #f8f9fa !important;
+        border-bottom: 1px solid #e9ecef !important;
+        padding: 0.75rem 1rem !important;
+        font-weight: 600 !important;
+        color: #495057 !important;
+    }
+    
+    .fc-popover-body {
+        padding: 0.5rem !important;
+        max-height: 300px !important;
+        overflow-y: auto !important;
+    }
+    
+    .fc-popover .fc-event {
+        margin-bottom: 0.25rem !important;
+        border-radius: 6px !important;
+        font-size: 0.8rem !important;
+        padding: 0.4rem 0.6rem !important;
+    }
+    
+    /* Ensure popover stays within viewport */
+    .calendar-container {
+        position: relative;
+        overflow: visible !important;
+    }
+    
+    /* Fix popover positioning for edge cases */
+    .fc-popover.fc-popover-start {
+        transform: translateX(0) !important;
+    }
+    
+    .fc-popover.fc-popover-end {
+        transform: translateX(-100%) !important;
+    }
+    
+    /* Custom scrollbar for popover */
+    .fc-popover-body::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .fc-popover-body::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 3px;
+    }
+    
+    .fc-popover-body::-webkit-scrollbar-thumb {
+        background: #c1c1c1;
+        border-radius: 3px;
+    }
+    
+    .fc-popover-body::-webkit-scrollbar-thumb:hover {
+        background: #a8a8a8;
     }
 </style>
 
 <div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h2>Team Availability</h2>
-            <p class="text-muted mb-0">Overview of resource production hours and status.</p>
-        </div>
-        <div>
-            <a href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/production_logs.php" class="btn btn-outline-primary">
-                <i class="fas fa-list me-1"></i> Production Logs
-            </a>
+    <!-- Modern Header -->
+    <div class="calendar-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2><i class="fas fa-calendar-alt me-3"></i>Team Availability</h2>
+                <p class="mb-0">Real-time overview of resource production hours and availability status</p>
+            </div>
+            <div>
+                <a href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/production_logs.php" class="btn btn-outline-light btn-lg">
+                    <i class="fas fa-list me-2"></i>Production Logs
+                </a>
+            </div>
         </div>
     </div>
 
-    <div class="card mb-4">
-        <div class="card-body py-3">
-            <div class="row g-3 align-items-center">
-                <div class="col-md-3">
-                    <label class="form-label small text-muted mb-1">View Scope</label>
-                    <select id="userSelect" class="form-select form-select-sm">
-                        <option value="">Individual Users</option>
-                        <option value="all">All Users (Consolidated)</option>
-                        <?php foreach ($allUsers as $au): ?>
-                            <option value="<?php echo $au['id']; ?>" <?php echo ($selectedUser && $selectedUser == $au['id']) ? 'selected' : ''; ?>><?php echo htmlspecialchars($au['full_name'], ENT_QUOTES, 'UTF-8'); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-9">
-                    <label class="form-label small text-muted mb-1">Filter Status</label>
-                    <div class="d-flex flex-wrap gap-2">
-                        <div class="btn-group" role="group">
-                            <?php foreach ($availabilityFilterOptions as $statusKey => $meta): ?>
-                                <?php
-                                $inputId = 'filter_' . preg_replace('/[^a-z0-9_]+/i', '_', $statusKey);
-                                $badgeColor = strtolower((string)($meta['badge_color'] ?? 'secondary'));
-                                $outlineClass = in_array($badgeColor, ['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'dark'], true)
-                                    ? $badgeColor
-                                    : 'secondary';
-                                ?>
-                                <input type="checkbox" class="btn-check status-filter-check" id="<?php echo htmlspecialchars($inputId, ENT_QUOTES, 'UTF-8'); ?>" value="<?php echo htmlspecialchars($statusKey, ENT_QUOTES, 'UTF-8'); ?>" checked autocomplete="off">
-                                <label class="btn btn-outline-<?php echo htmlspecialchars($outlineClass, ENT_QUOTES, 'UTF-8'); ?> btn-sm" for="<?php echo htmlspecialchars($inputId, ENT_QUOTES, 'UTF-8'); ?>">
-                                    <?php echo htmlspecialchars((string)($meta['status_label'] ?? ucwords(str_replace('_', ' ', $statusKey))), ENT_QUOTES, 'UTF-8'); ?>
-                                </label>
-                            <?php endforeach; ?>
-                        </div>
-                        
-                        <div class="vr mx-1"></div>
-                        
-                        <div class="btn-group" role="group">
-                            <input type="checkbox" class="btn-check" id="filterEditRequests" checked autocomplete="off" onchange="if(window.__adminCalendarToggleEditRequests){window.__adminCalendarToggleEditRequests();}">
-                            <label class="btn btn-outline-info btn-sm" for="filterEditRequests">
-                                <i class="fas fa-bell me-1"></i> Edit Requests
-                            </label>
-                        </div>
-                    </div>
+    <!-- Enhanced Controls -->
+    <div class="calendar-controls">
+        <div class="row g-4 align-items-end">
+            <div class="col-lg-3">
+                <label class="form-label fw-semibold text-dark mb-2">
+                    <i class="fas fa-users me-2 text-primary"></i>View Scope
+                </label>
+                <select id="userSelect" class="form-select">
+                    <option value="">👤 Individual Users</option>
+                    <option value="all">👥 All Users (Consolidated)</option>
+                    <?php foreach ($allUsers as $au): ?>
+                        <option value="<?php echo $au['id']; ?>" <?php echo ($selectedUser && $selectedUser == $au['id']) ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($au['full_name'], ENT_QUOTES, 'UTF-8'); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-lg-9">
+                <label class="form-label fw-semibold text-dark mb-2">
+                    <i class="fas fa-filter me-2 text-primary"></i>Status Filters
+                </label>
+                <div class="status-filter-group">
+                    <?php foreach ($availabilityFilterOptions as $statusKey => $meta): ?>
+                        <?php
+                        $inputId = 'filter_' . preg_replace('/[^a-z0-9_]+/i', '_', $statusKey);
+                        $badgeColor = strtolower((string)($meta['badge_color'] ?? 'secondary'));
+                        $outlineClass = in_array($badgeColor, ['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'dark'], true)
+                            ? $badgeColor
+                            : 'secondary';
+                        ?>
+                        <input type="checkbox" class="btn-check status-filter-check" id="<?php echo htmlspecialchars($inputId, ENT_QUOTES, 'UTF-8'); ?>" value="<?php echo htmlspecialchars($statusKey, ENT_QUOTES, 'UTF-8'); ?>" checked autocomplete="off">
+                        <label class="btn btn-outline-<?php echo htmlspecialchars($outlineClass, ENT_QUOTES, 'UTF-8'); ?>" for="<?php echo htmlspecialchars($inputId, ENT_QUOTES, 'UTF-8'); ?>">
+                            <?php echo htmlspecialchars((string)($meta['status_label'] ?? ucwords(str_replace('_', ' ', $statusKey))), ENT_QUOTES, 'UTF-8'); ?>
+                        </label>
+                    <?php endforeach; ?>
+                    
+                    <div class="vr mx-2"></div>
+                    
+                    <input type="checkbox" class="btn-check" id="filterEditRequests" checked autocomplete="off" onchange="if(window.__adminCalendarToggleEditRequests){window.__adminCalendarToggleEditRequests();}">
+                    <label class="btn btn-outline-info" for="filterEditRequests">
+                        <i class="fas fa-bell me-2"></i>Edit Requests
+                    </label>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="card mb-3">
-        <div class="card-body py-2">
-            <div class="small fw-semibold text-muted mb-2">Calendar Legend</div>
-            <div class="calendar-legend">
-                <?php foreach ($availabilityFilterOptions as $statusKey => $meta): ?>
-                    <?php
-                    $badgeColor = strtolower((string)($meta['badge_color'] ?? 'secondary'));
-                    $legendColor = $badgeToHex[$badgeColor] ?? '#6c757d';
-                    ?>
-                    <span class="legend-item"><span class="legend-dot" style="background:<?php echo htmlspecialchars($legendColor, ENT_QUOTES, 'UTF-8'); ?>"></span><?php echo htmlspecialchars((string)($meta['status_label'] ?? ucwords(str_replace('_', ' ', $statusKey))), ENT_QUOTES, 'UTF-8'); ?></span>
-                <?php endforeach; ?>
-                <span class="legend-item"><span class="legend-dot" style="background:#ff4d4f"></span>Under 8h Logged</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#17a2b8"></span>Edit/Delete Request: Pending</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#28a745"></span>Edit/Delete Request: Approved</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#dc3545"></span>Edit/Delete Request: Rejected</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#343a40"></span>Edit/Delete Request: Used</span>
+    <!-- Enhanced Legend -->
+    <div class="calendar-legend">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h6 class="fw-bold text-dark mb-0">
+                <i class="fas fa-info-circle me-2 text-primary"></i>Status Legend
+            </h6>
+            <small class="text-muted">Click on calendar events for detailed information</small>
+        </div>
+        <div class="legend-grid">
+            <?php foreach ($availabilityFilterOptions as $statusKey => $meta): ?>
+                <?php
+                $badgeColor = strtolower((string)($meta['badge_color'] ?? 'secondary'));
+                $legendColor = $badgeToHex[$badgeColor] ?? '#6c757d';
+                ?>
+                <div class="legend-item">
+                    <span class="legend-dot" style="background:<?php echo htmlspecialchars($legendColor, ENT_QUOTES, 'UTF-8'); ?>"></span>
+                    <span><?php echo htmlspecialchars((string)($meta['status_label'] ?? ucwords(str_replace('_', ' ', $statusKey))), ENT_QUOTES, 'UTF-8'); ?></span>
+                </div>
+            <?php endforeach; ?>
+            <div class="legend-item">
+                <span class="legend-dot" style="background:#ff4d4f"></span>
+                <span>Under 8h Logged</span>
+            </div>
+            <div class="legend-item">
+                <span class="legend-dot" style="background:#17a2b8"></span>
+                <span>Edit Request: Pending</span>
+            </div>
+            <div class="legend-item">
+                <span class="legend-dot" style="background:#28a745"></span>
+                <span>Edit Request: Approved</span>
+            </div>
+            <div class="legend-item">
+                <span class="legend-dot" style="background:#dc3545"></span>
+                <span>Edit Request: Rejected</span>
+            </div>
+            <div class="legend-item">
+                <span class="legend-dot" style="background:#343a40"></span>
+                <span>Edit Request: Used</span>
             </div>
         </div>
     </div>
 
-    <!-- Calendar Container -->
-    <div class="card">
-        <div class="card-body p-0">
-            <div id="calendar" class="p-3"></div>
+    <!-- Enhanced Calendar Container -->
+    <div class="calendar-container position-relative">
+        <div id="calendar-loading" class="loading-overlay" style="display: none;">
+            <div class="text-center">
+                <div class="loading-spinner mb-3"></div>
+                <div class="fw-semibold text-muted">Loading calendar data...</div>
+            </div>
         </div>
+        <div id="calendar" class="p-4"></div>
     </div>
 </div>
 
@@ -593,32 +961,92 @@ document.addEventListener('DOMContentLoaded', function() {
     function getEventsUrl() {
         var userId = getSelectedUserId();
         var url = '<?php echo $_SERVER["PHP_SELF"]; ?>?action=get_events' + (userId ? '&user_id=' + encodeURIComponent(userId) : '');
-        console.log('Calendar: Fetching events from:', url);
+
         return url;
     }
 
     // Refresh only the main events source
     function refreshMainEvents() {
-        console.log('Calendar: Refreshing main events...');
+        // Show loading overlay
+        document.getElementById('calendar-loading').style.display = 'flex';
+
         var source = window.calendar.getEventSourceById('mainEvents');
         if (source) {
-            console.log('Calendar: Removing existing source');
             source.remove();
         }
-        console.log('Calendar: Adding new event source');
+
         window.calendar.addEventSource({
             id: 'mainEvents',
             url: getEventsUrl(),
             success: function(events) {
-                console.log('Calendar: Loaded', events.length, 'events');
+                // Hide loading overlay
+                document.getElementById('calendar-loading').style.display = 'none';
+                
                 if (events.length === 0) {
-                    console.warn('Calendar: No events returned from server');
+                    // Show empty state message
+                    showEmptyState();
                 }
             },
             failure: function(error) {
+                // Hide loading overlay
+                document.getElementById('calendar-loading').style.display = 'none';
                 console.error('Calendar: Failed to load events:', error);
+                showErrorState();
             }
         });
+    }
+    
+    function showEmptyState() {
+        // You can add a toast or notification here
+        if (typeof showToast === 'function') {
+            showToast('No events found for the selected filters', 'info');
+        }
+    }
+    
+    function showErrorState() {
+        if (typeof showToast === 'function') {
+            showToast('Failed to load calendar events. Please try again.', 'danger');
+        }
+    }
+    
+    // Function to adjust popover position to prevent overflow
+    function adjustPopoverPosition(popover, dayEl) {
+        if (!popover || !dayEl) return;
+        
+        var calendarContainer = document.querySelector('.calendar-container');
+        if (!calendarContainer) return;
+        
+        var containerRect = calendarContainer.getBoundingClientRect();
+        var popoverRect = popover.getBoundingClientRect();
+        var dayRect = dayEl.getBoundingClientRect();
+        
+        // Check if popover overflows right edge
+        if (popoverRect.right > containerRect.right) {
+            var overflowRight = popoverRect.right - containerRect.right;
+            var currentLeft = parseInt(popover.style.left) || 0;
+            popover.style.left = (currentLeft - overflowRight - 20) + 'px';
+        }
+        
+        // Check if popover overflows left edge
+        if (popoverRect.left < containerRect.left) {
+            var overflowLeft = containerRect.left - popoverRect.left;
+            var currentLeft = parseInt(popover.style.left) || 0;
+            popover.style.left = (currentLeft + overflowLeft + 20) + 'px';
+        }
+        
+        // Check if popover overflows bottom edge
+        if (popoverRect.bottom > containerRect.bottom) {
+            var overflowBottom = popoverRect.bottom - containerRect.bottom;
+            var currentTop = parseInt(popover.style.top) || 0;
+            popover.style.top = (currentTop - overflowBottom - 20) + 'px';
+        }
+        
+        // Check if popover overflows top edge
+        if (popoverRect.top < containerRect.top) {
+            var overflowTop = containerRect.top - popoverRect.top;
+            var currentTop = parseInt(popover.style.top) || 0;
+            popover.style.top = (currentTop + overflowTop + 20) + 'px';
+        }
     }
 
     // Edit requests source definition
@@ -745,11 +1173,22 @@ document.addEventListener('DOMContentLoaded', function() {
         initialView: defaultView,
         dayMaxEventRows: false,
         views: {
-            dayGridMonth: { dayMaxEventRows: 2 },
+            dayGridMonth: { dayMaxEventRows: 4 },
             dayGridDay: { dayMaxEventRows: false, dayHeaderFormat: { weekday: 'short', day: 'numeric', month: 'short' } }
         },
-        moreLinkClick: 'popover',
-        moreLinkText: 'more',
+        moreLinkClick: function(info) {
+            // Custom popover positioning to prevent overflow
+            var popover = info.view.calendar.el.querySelector('.fc-popover');
+            if (popover) {
+                setTimeout(function() {
+                    adjustPopoverPosition(popover, info.dayEl);
+                }, 10);
+            }
+            return 'popover';
+        },
+        moreLinkText: function(num) {
+            return '+' + num + ' more';
+        },
         headerToolbar: {
             left: 'prev,next today',
             center: 'title',
@@ -812,6 +1251,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 var el = info.el || (info.elms && info.elms[0]);
                 if (el && info.event && info.event.extendedProps) {
                     var props = info.event.extendedProps || {};
+                    
+                    // Add tooltip for truncated titles
+                    if (props.fullTitle && props.fullTitle !== info.event.title) {
+                        el.setAttribute('title', props.fullTitle);
+                        el.setAttribute('data-bs-toggle', 'tooltip');
+                        el.setAttribute('data-bs-placement', 'top');
+                        
+                        // Initialize Bootstrap tooltip
+                        if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+                            new bootstrap.Tooltip(el);
+                        }
+                    }
+                    
                     if (isEditRequestEvent(info.event)) {
                         el.classList.add('fc-edit-request-event');
                         var toggleEl = document.getElementById('filterEditRequests');
@@ -835,6 +1287,28 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         eventsSet: function() {
             applyStatusFilterToRenderedEvents();
+        },
+        viewDidMount: function(info) {
+            // Adjust container based on view type
+            var container = document.querySelector('.calendar-container');
+            if (container) {
+                if (info.view.type === 'dayGridDay') {
+                    container.style.minHeight = '700px';
+                    container.style.maxHeight = '90vh';
+                    container.style.overflowY = 'auto';
+                } else {
+                    container.style.minHeight = '600px';
+                    container.style.maxHeight = 'none';
+                    container.style.overflowY = 'hidden';
+                }
+            }
+            
+            // Force calendar to recalculate size
+            setTimeout(function() {
+                if (window.calendar && typeof window.calendar.updateSize === 'function') {
+                    window.calendar.updateSize();
+                }
+            }, 100);
         },
         eventClick: function(info) {
             // Handle Edit Request Click
@@ -883,6 +1357,24 @@ document.addEventListener('DOMContentLoaded', function() {
             // Add initial event sources
             refreshMainEvents();
             toggleEditRequestsOverlay();
+            
+            // Watch for popover creation and adjust positioning
+            var observer = new MutationObserver(function(mutations) {
+                mutations.forEach(function(mutation) {
+                    mutation.addedNodes.forEach(function(node) {
+                        if (node.nodeType === 1 && node.classList && node.classList.contains('fc-popover')) {
+                            setTimeout(function() {
+                                adjustPopoverPosition(node);
+                            }, 50);
+                        }
+                    });
+                });
+            });
+            
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
             
             // Force one more update after a short delay to catch any layout shifts
             setTimeout(function() {

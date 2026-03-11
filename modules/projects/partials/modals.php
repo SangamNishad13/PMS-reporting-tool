@@ -638,21 +638,18 @@ document.addEventListener('DOMContentLoaded', function() {
             var errEl = document.getElementById('addUniqueError');
             if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
             btn.disabled = true;
-            // Debug: log request URL and payload to console
+            
             var _createUrl = baseDir + '/api/project_pages.php?action=create_unique';
             var _payload = { project_id: projectId, name: name, canonical_url: canonical, page_number: pageNumber };
-            try { console.info('Add Unique -> POST', _createUrl, _payload); } catch (e) {}
-
+            
             fetch(_createUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(_payload),
                 credentials: 'same-origin'
             }).then(function(r){ return r.json(); }).then(function(j){
-                try { console.info('Add Unique response', j); } catch (e) {}
                 btn.disabled = false;
                 if (j && j.success) {
-                    try { if (!j.page_number_label) console.warn('create_unique: missing page_number_label in response', j); } catch (e) {}
                     // Insert new unique row into the Unique Pages table without reloading
                     try {
                         // local escapeHtml fallback
