@@ -425,10 +425,12 @@ include __DIR__ . '/../../includes/header.php';
                                 <?php echo (int)($issuePageSummary['issues_count'] ?? 0); ?>
                             </span>
                         </div>
+                        <?php if ($userRole !== 'client'): ?>
                         <div>
                             <span class="text-muted">Prod Hours:</span>
                             <strong><?php echo number_format((float)($issuePageSummary['production_hours'] ?? 0), 2); ?></strong>
                         </div>
+                        <?php endif; ?>
                         <?php if (!empty($groupedUrls)): ?>
                         <div>
                             <button class="btn btn-xs btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#pageUrlsList">
@@ -1985,6 +1987,7 @@ document.addEventListener('pms:issues-changed', function () {
 })();
 </script>
 
+<?php if ($userRole !== 'client'): ?>
 <!-- Floating Project Chat (bottom-right) -->
 <style>
 .chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1060; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
@@ -2054,5 +2057,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
+<?php endif; ?>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

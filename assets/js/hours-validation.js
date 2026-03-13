@@ -109,19 +109,19 @@ class HoursValidator {
         container.innerHTML = `
             <div class="row text-center">
                 <div class="col-3">
-                    <h6 class="text-primary">${totalHours.toFixed(1)}h</h6>
+                    <h6 class="text-primary">${totalHours.toFixed(2)}h</h6>
                     <small class="text-muted">Total</small>
                 </div>
                 <div class="col-3">
-                    <h6 class="text-info">${allocatedHours.toFixed(1)}h</h6>
+                    <h6 class="text-info">${allocatedHours.toFixed(2)}h</h6>
                     <small class="text-muted">Allocated</small>
                 </div>
                 <div class="col-3">
-                    <h6 class="text-success">${utilizedHours.toFixed(1)}h</h6>
+                    <h6 class="text-success">${utilizedHours.toFixed(2)}h</h6>
                     <small class="text-muted">Utilized</small>
                 </div>
                 <div class="col-3">
-                    <h6 class="text-warning">${availableHours.toFixed(1)}h</h6>
+                    <h6 class="text-warning">${availableHours.toFixed(2)}h</h6>
                     <small class="text-muted">Available</small>
                 </div>
             </div>
@@ -165,7 +165,7 @@ class HoursValidator {
                 
                 if (validation.valid) {
                     const remaining = validation.available_hours - hours;
-                    validationMessage.textContent = `Valid. ${remaining.toFixed(1)}h will remain available`;
+                    validationMessage.textContent = `Valid. ${remaining.toFixed(2)}h will remain available`;
                     validationMessage.className = 'text-success';
                     hoursInput.setCustomValidity('');
                 } else {

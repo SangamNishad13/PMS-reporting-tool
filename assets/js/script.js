@@ -39,16 +39,39 @@ function confirmForm(formId, message = "Are you sure?") {
 }
 
 // Initialize tooltips
-$(function () {
-    $('[data-bs-toggle="tooltip"]').tooltip();
+document.addEventListener('DOMContentLoaded', function () {
+    // Check if jQuery is available
+    if (typeof $ !== 'undefined') {
+        $('[data-bs-toggle="tooltip"]').tooltip();
+    } else {
+        // Fallback to vanilla JS tooltip initialization
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        if (typeof bootstrap !== 'undefined') {
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        }
+    }
 });
 
 // Auto-hide only alerts that explicitly opt-in with `alert-auto` class
 // Persistent informational alerts (e.g. "No projects") should NOT include this class.
-$(document).ready(function () {
+document.addEventListener('DOMContentLoaded', function () {
     setTimeout(function () {
-        $('.alert.alert-auto').fadeOut('slow');
-    }, 5000);
+        if (typeof $ !== 'undefined') {
+            $('.alert.alert-auto').fadeOut('slow');
+        } else {
+            // Fallback to vanilla JS
+            const alerts = document.querySelectorAll('.alert.alert-auto');
+            alerts.forEach(function (alert) {
+                alert.style.transition = 'opacity 0.5s';
+                alert.style.opacity = '0';
+                setTimeout(function () {
+                    alert.style.display = 'none';
+                }, 500);
+            });
+        }
+    }, 3000);
 });
 
 // File upload preview
@@ -56,7 +79,12 @@ function previewFile(input, previewId) {
     if (input.files && input.files[0]) {
         var reader = new FileReader();
         reader.onload = function (e) {
-            $('#' + previewId).attr('src', e.target.result);
+            if (typeof $ !== 'undefined') {
+                $('#' + previewId).attr('src', e.target.result);
+            } else {
+                const img = document.getElementById(previewId);
+                if (img) img.src = e.target.result;
+            }
         }
         reader.readAsDataURL(input.files[0]);
     }
@@ -74,18 +102,26 @@ function validateForm(formId) {
 
 // AJAX status update
 function updateStatus(elementId, url, data) {
-    $.ajax({
-        url: url,
-        type: 'POST',
-        data: data,
-        success: function (response) {
-            $('#' + elementId).html(response);
-            showToast('Status updated successfully!', 'success');
-        },
-        error: function () {
-            showToast('Error updating status!', 'error');
-        }
-    });
+    if (typeof $ !== 'undefined') {
+        $.ajax({
+            url: url,
+            type: 'POST',
+            data: data,
+            success: function (response) {
+                $('#' + elementId).html(response);
+                if (typeof showToast === 'function') {
+                    showToast('Status updated successfully!', 'success');
+                }
+            },
+            error: function () {
+                if (typeof showToast === 'function') {
+                    showToast('Error updating status!', 'error');
+                }
+            }
+        });
+    } else {
+        console.warn('jQuery not available for AJAX status update');
+    }
 }
 
 // Toast notifications - uses global showToast() from header.php
@@ -94,72 +130,94 @@ function updateStatus(elementId, url, data) {
 
 // Initialize DataTables with common settings
 function initDataTable(tableId) {
-    return $(tableId).DataTable({
-        "pageLength": 25,
-        "order": [[0, "desc"]],
-        "language": {
-            "search": "Filter:",
-            "lengthMenu": "Show _MENU_ entries",
-            "info": "Showing _START_ to _END_ of _TOTAL_ entries"
-        }
-    });
+    if (typeof $ !== 'undefined' && $.fn.DataTable) {
+        return $(tableId).DataTable({
+            "pageLength": 25,
+            "order": [[0, "desc"]],
+            "language": {
+                "search": "Filter:",
+                "lengthMenu": "Show _MENU_ entries",
+                "info": "Showing _START_ to _END_ of _TOTAL_ entries"
+            }
+        });
+    } else {
+        console.warn('DataTables not available');
+        return null;
+    }
 }
 
 // Real-time updates (for chat, notifications)
 function startRealTimeUpdates() {
-    setInterval(function () {
-        // Check for new messages/updates
-        $.get('/api/check-updates', function (data) {
-            if (data.new_messages > 0) {
-                updateNotificationBadge(data.new_messages);
-            }
-        });
-    }, 30000); // Every 30 seconds
+    if (typeof $ !== 'undefined') {
+        setInterval(function () {
+            // Check for new messages/updates
+            $.get('/api/check-updates', function (data) {
+                if (data.new_messages > 0) {
+                    updateNotificationBadge(data.new_messages);
+                }
+            });
+        }, 30000); // Every 30 seconds
+    }
 }
 
 function updateNotificationBadge(count) {
-    $('#notificationBadge').text(count).show();
+    if (typeof $ !== 'undefined') {
+        $('#notificationBadge').text(count).show();
+    } else {
+        const badge = document.getElementById('notificationBadge');
+        if (badge) {
+            badge.textContent = count;
+        }
+    }
 }
 
 // Date picker initialization
 function initDatePickers() {
-    $('.datepicker').datepicker({
-        format: 'yyyy-mm-dd',
-        autoclose: true,
-        todayHighlight: true
-    });
+    if (typeof $ !== 'undefined' && $.fn.datepicker) {
+        $('.datepicker').datepicker({
+            format: 'yyyy-mm-dd',
+            autoclose: true,
+            todayHighlight: true
+        });
+    }
 }
 
 // Multi-select enhancements
 function initMultiSelect() {
-    $('.multi-select').select2({
-        theme: 'bootstrap-5',
-        width: '100%'
-    });
+    if (typeof $ !== 'undefined' && $.fn.select2) {
+        $('.multi-select').select2({
+            theme: 'bootstrap-5',
+            width: '100%'
+        });
+    }
 }
 
 // Initialize everything when document is ready
-$(document).ready(function () {
-    // Initialize DataTables
-    $('.dataTable').each(function () {
-        if (!$.fn.DataTable.isDataTable(this)) {
-            initDataTable(this);
-        }
-    });
+document.addEventListener('DOMContentLoaded', function () {
+    if (typeof $ !== 'undefined') {
+        $(document).ready(function () {
+            // Initialize DataTables
+            $('.dataTable').each(function () {
+                if (!$.fn.DataTable.isDataTable(this)) {
+                    initDataTable(this);
+                }
+            });
 
-    // Initialize date pickers
-    if ($('.datepicker').length) {
-        initDatePickers();
-    }
+            // Initialize date pickers
+            if ($('.datepicker').length) {
+                initDatePickers();
+            }
 
-    // Initialize multi-select
-    if ($('.multi-select').length) {
-        initMultiSelect();
-    }
+            // Initialize multi-select
+            if ($('.multi-select').length) {
+                initMultiSelect();
+            }
 
-    // Start real-time updates if user is logged in
-    if (typeof userId !== 'undefined') {
-        startRealTimeUpdates();
+            // Start real-time updates if user is logged in
+            if (typeof userId !== 'undefined') {
+                startRealTimeUpdates();
+            }
+        });
     }
 });
 

@@ -1,0 +1,179 @@
+/* Header Styling Fixes - Client Interface */
+
+/* Primary navbar styling */
+.navbar {
+    background-color: #0755C6 !important;
+    background: #0755C6 !important;
+}
+
+.navbar-dark .navbar-brand,
+.navbar-dark .navbar-brand:hover,
+.navbar-dark .navbar-brand:focus {
+    color: white !important;
+    text-decoration: none !important;
+}
+
+.navbar-dark .navbar-nav .nav-link {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.navbar-dark .navbar-nav .nav-link:hover,
+.navbar-dark .navbar-nav .nav-link:focus {
+    color: white !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    border-radius: 4px !important;
+}
+
+.navbar-dark .navbar-nav .dropdown-toggle::after {
+    border-top-color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.navbar-dark .navbar-toggler {
+    border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.navbar-dark .navbar-toggler-icon {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 0.8%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") !important;
+}
+
+/* Logo styling */
+.brand-logo {
+    max-height: 32px !important;
+    width: auto !important;
+    filter: brightness(1.1) !important;
+}
+
+/* Force all navbar text to be white */
+.navbar * {
+    color: white !important;
+}
+
+/* Override for dropdown menus (should not be white) */
+.navbar .dropdown-menu,
+.navbar .dropdown-menu * {
+    color: initial !important;
+}
+
+.navbar .dropdown-item {
+    color: #212529 !important;
+}
+
+.navbar .dropdown-item:hover {
+    background-color: #f8f9fa !important;
+    color: #2563eb !important;
+}
+
+.navbar .text-muted {
+    color: #6c757d !important;
+}
+
+.navbar .text-danger {
+    color: #dc3545 !important;
+}
+
+/* Dropdown menu styling - scoped to navbar */
+.navbar .dropdown-menu {
+    border: none !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+    border-radius: 8px !important;
+}
+
+.navbar .dropdown-item {
+    padding: 8px 16px !important;
+    transition: all 0.2s ease !important;
+}
+
+.navbar .dropdown-item:hover {
+    background-color: #f8f9fa !important;
+    color: #2563eb !important;
+}
+
+/* User profile dropdown */
+.navbar-nav .dropdown-menu-end {
+    right: 0 !important;
+    left: auto !important;
+}
+
+/* Notification badge */
+.badge.bg-danger {
+    background-color: #dc3545 !important;
+}
+
+/* Mobile responsive fixes */
+@media (max-width: 991px) {
+    .navbar-collapse {
+        background-color: rgba(7, 85, 198, 0.95) !important;
+        margin-top: 10px !important;
+        border-radius: 8px !important;
+        padding: 15px !important;
+    }
+
+    .navbar-nav .nav-link {
+        padding: 8px 12px !important;
+        margin: 2px 0 !important;
+        border-radius: 4px !important;
+    }
+}
+
+/* Ensure consistent header across all client pages */
+header nav.navbar,
+header .navbar,
+nav.navbar {
+    background-color: #0755C6 !important;
+    background: #0755C6 !important;
+}
+
+/* Brand link specific styling */
+.navbar .navbar-brand {
+    color: white !important;
+    text-decoration: none !important;
+    font-weight: 600 !important;
+}
+
+.navbar .navbar-brand:hover,
+.navbar .navbar-brand:focus {
+    color: white !important;
+    text-decoration: none !important;
+}
+
+/* Navigation links */
+.navbar .nav-link {
+    color: rgba(255, 255, 255, 0.9) !important;
+    background-color: transparent !important;
+    transition: all 0.2s ease !important;
+}
+
+.navbar .nav-link:hover,
+.navbar .nav-link:focus {
+    color: white !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    border-radius: 4px !important;
+}
+
+/* Ensure icons in navbar are visible */
+.navbar .fas,
+.navbar .far {
+    color: inherit !important;
+}
+
+/* Fix for user avatar circle */
+.navbar .rounded-circle {
+    border: 2px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Additional specificity for stubborn elements */
+html body .navbar {
+    background-color: #0755C6 !important;
+}
+
+html body .navbar .navbar-brand {
+    color: white !important;
+}
+
+html body .navbar .nav-link {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html body .navbar .nav-link:hover {
+    color: white !important;
+}

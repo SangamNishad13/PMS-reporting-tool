@@ -1,0 +1,22 @@
+[13-Mar-2026 18:14:20 Asia/Kolkata] [PMS Debug] Request: /PMS/client/dashboard
+[13-Mar-2026 18:14:20 Asia/Kolkata] [PMS Debug] Session: {"user_id":20,"role":"client","username":"sangamnishad13@gmail.com","is_client":true,"can_manage_issue_config":false,"can_manage_devices":false,"force_reset":false}
+[13-Mar-2026 18:14:20 Asia/Kolkata] [PMS Debug] client_user_id not set
+[13-Mar-2026 18:14:20 Asia/Kolkata] [PMS Debug] Bridging session for user_id: 20
+[13-Mar-2026 18:15:19 Asia/Kolkata] [PMS Debug] Request: /PMS/client/dashboard
+[13-Mar-2026 18:15:19 Asia/Kolkata] [PMS Debug] Session: {"user_id":20,"role":"client","username":"sangamnishad13@gmail.com","is_client":true,"can_manage_issue_config":false,"can_manage_devices":false,"force_reset":false}
+[13-Mar-2026 18:15:19 Asia/Kolkata] [PMS Debug] Final Match Path: /PMS/client/dashboard
+[13-Mar-2026 18:15:19 Asia/Kolkata] [PMS Debug] client_user_id not set
+[13-Mar-2026 18:15:19 Asia/Kolkata] [PMS Debug] Bridging session for user_id: 20
+[13-Mar-2026 18:15:59 Asia/Kolkata] [PMS Debug] Request: /PMS/client/dashboard
+[13-Mar-2026 18:15:59 Asia/Kolkata] [PMS Debug] Session: {"user_id":20,"role":"client","username":"sangamnishad13@gmail.com","is_client":true,"can_manage_issue_config":false,"can_manage_devices":false,"force_reset":false}
+[13-Mar-2026 18:15:59 Asia/Kolkata] [PMS Debug] Detected BaseDir: '.'
+[13-Mar-2026 18:15:59 Asia/Kolkata] [PMS Debug] Final Match Path: /PMS/client/dashboard
+[13-Mar-2026 18:15:59 Asia/Kolkata] [PMS Debug] client_user_id not set
+[13-Mar-2026 18:15:59 Asia/Kolkata] [PMS Debug] Bridging session for user_id: 20
+[13-Mar-2026 18:16:03 Asia/Kolkata] [PMS Debug] Request: /PMS/client/dashboard
+[13-Mar-2026 18:16:03 Asia/Kolkata] [PMS Debug] Session: {"created":1773405247,"csrf_token":"5f470ed884df522b610f1d953fdfd8ba7d4212a782829a05328b22b00ab5c987","user_id":20,"username":"","email":"sangamnishad13@gmail.com","full_name":"Sangam Nishad Client","role":"client","can_manage_issue_config":false,"can_manage_devices":false,"force_reset":false,"login_time":1773405259,"last_activity":1773405709,"rate_limit_client_request_anonymous":[1773405260],"client_user_id":20,"client_role":"client","is_client":true,"rate_limit_client_request_20":[1773405708]}
+[13-Mar-2026 18:16:03 Asia/Kolkata] [PMS Debug] Detected BaseDir: '/PMS'
+[13-Mar-2026 18:16:03 Asia/Kolkata] [PMS Debug] Path after BaseDir subtraction: '/client/dashboard'
+[13-Mar-2026 18:16:03 Asia/Kolkata] [PMS Debug] Path after BasePath subtraction: '/dashboard'
+[13-Mar-2026 18:16:03 Asia/Kolkata] [PMS Debug] Final Match Path: /dashboard
+[13-Mar-2026 18:16:03 Asia/Kolkata] Redis extension not available. Caching will be disabled.

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Project Access Granted</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #007bff; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+        .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 5px 5px; }
+        .button { display: inline-block; background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+        .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 14px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>New Project Access Granted</h1>
+    </div>
+    <div class="content">
+        <p>Dear {client_name},</p>
+        
+        <p>You have been granted access to a new project in the Athenaeum Client Analytics System:</p>
+        
+        <p><strong>Project:</strong> {project_name}</p>
+        <p><strong>Granted by:</strong> {admin_name}</p>
+        <p><strong>Access Date:</strong> {access_date}</p>
+        
+        <p>You can now view analytics reports, export data, and track accessibility compliance for this project.</p>
+        
+        <a href="{access_url}" class="button">Access Your Dashboard</a>
+        
+        <p>If you have any questions or need assistance, please contact our support team.</p>
+        
+        <p>Best regards,<br>
+        The Athenaeum Team</p>
+    </div>
+    <div class="footer">
+        <p>This is an automated message from the Athenaeum Project Management System.</p>
+        <p>For support, contact: {support_email}</p>
+    </div>
+</body>
+</html>

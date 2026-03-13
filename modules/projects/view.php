@@ -1505,8 +1505,9 @@ include __DIR__ . '/../../includes/header.php';
                 method: 'GET',
                 dataType: 'json',
                 success: function(response) {
-                    // Messages marked as read successfully
-                    console.log('Chat messages marked as read');
+                    if (response.success) {
+                    // Success silently
+                }
                 },
                 error: function() {
                     console.error('Failed to mark messages as read');

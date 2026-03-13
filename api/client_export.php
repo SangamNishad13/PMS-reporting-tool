@@ -13,7 +13,14 @@ $projectId = isset($_GET['project_id']) ? intval($_GET['project_id']) : null;
 $format = isset($_GET['format']) ? $_GET['format'] : 'pdf';
 
 if (!$clientId) {
-    die('Client ID required');
+    // If no client_id, try to get from user session if they are a client
+    if ($_SESSION['role'] === 'client') {
+        // We'll need to look up their assigned project's client_id
+        // but for now, let's just die if not provided to avoid ambiguity
+        die('Client ID required');
+    } else {
+        die('Client ID required');
+    }
 }
 
 // Get client info
@@ -32,9 +39,11 @@ $params = $projectId ? [$clientId, $projectId] : [$clientId];
 $data = fetchDashboardData($db, $clientId, $projectId);
 
 if ($format === 'excel') {
-    exportToExcel($data, $client['name']);
+    $displayClientName = ($_SESSION['role'] ?? '') === 'client' ? '' : $client['name'];
+    exportToExcel($data, $displayClientName);
 } else {
-    exportToPDF($data, $client['name']);
+    $displayClientName = ($_SESSION['role'] ?? '') === 'client' ? '' : $client['name'];
+    exportToPDF($data, $displayClientName);
 }
 
 function fetchDashboardData($db, $clientId, $projectId) {
@@ -145,92 +154,228 @@ function fetchDashboardData($db, $clientId, $projectId) {
 }
 
 function exportToExcel($data, $clientName) {
-    header('Content-Type: application/vnd.ms-excel');
-    header('Content-Disposition: attachment; filename="' . sanitizeFilename($clientName) . '_Dashboard_' . date('Y-m-d') . '.xls"');
+    ob_clean();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . sanitizeFilename($clientName) . '_Dashboard_' . date('Y-m-d') . '.csv"');
     
-    echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';
-    echo '<head><meta charset="UTF-8"></head>';
-    echo '<body>';
+    $output = fopen('php://output', 'w');
     
     // Summary
-    echo '<h2>' . htmlspecialchars($clientName) . ' - Dashboard Report</h2>';
-    echo '<p>Generated: ' . date('Y-m-d H:i:s') . '</p>';
+    fputcsv($output, [$clientName . ' - Dashboard Report']);
+    fputcsv($output, ['Generated:', date('Y-m-d H:i:s')]);
+    fputcsv($output, []);
     
-    echo '<h3>Summary Statistics</h3>';
-    echo '<table border="1">';
-    echo '<tr><th>Metric</th><th>Value</th></tr>';
-    echo '<tr><td>Total Issues</td><td>' . $data['summary']['total_issues'] . '</td></tr>';
-    echo '<tr><td>Blocker Issues</td><td>' . $data['summary']['blocker_issues'] . '</td></tr>';
-    echo '<tr><td>Open Issues</td><td>' . $data['summary']['open_issues'] . '</td></tr>';
-    echo '<tr><td>Resolved Issues</td><td>' . $data['summary']['resolved_issues'] . '</td></tr>';
+    fputcsv($output, ['Summary Statistics']);
+    fputcsv($output, ['Metric', 'Value']);
+    fputcsv($output, ['Total Issues', $data['summary']['total_issues']]);
+    fputcsv($output, ['Blocker Issues', $data['summary']['blocker_issues']]);
+    fputcsv($output, ['Open Issues', $data['summary']['open_issues']]);
+    fputcsv($output, ['Resolved Issues', $data['summary']['resolved_issues']]);
     $compliance = $data['summary']['total_issues'] > 0 ? 
         round(($data['summary']['resolved_issues'] / $data['summary']['total_issues']) * 100, 1) : 100;
-    echo '<tr><td>Compliance Score</td><td>' . $compliance . '%</td></tr>';
-    echo '</table><br>';
+    fputcsv($output, ['Compliance Score', $compliance . '%']);
+    fputcsv($output, []);
     
     // Severity
-    echo '<h3>Issues by Severity</h3>';
-    echo '<table border="1">';
-    echo '<tr><th>Severity</th><th>Count</th></tr>';
+    fputcsv($output, ['Issues by Severity']);
+    fputcsv($output, ['Severity', 'Count']);
     foreach ($data['severity'] as $row) {
-        echo '<tr><td>' . ucfirst($row['severity']) . '</td><td>' . $row['count'] . '</td></tr>';
+        fputcsv($output, [ucfirst($row['severity']), $row['count']]);
     }
-    echo '</table><br>';
+    fputcsv($output, []);
     
     // Common Issues
-    echo '<h3>Most Common Issues</h3>';
-    echo '<table border="1">';
-    echo '<tr><th>Issue Title</th><th>Severity</th><th>Occurrences</th></tr>';
+    fputcsv($output, ['Most Common Issues']);
+    fputcsv($output, ['Issue Title', 'Severity', 'Occurrences']);
     foreach ($data['commonIssues'] as $row) {
-        echo '<tr><td>' . htmlspecialchars($row['title']) . '</td><td>' . ucfirst($row['severity']) . '</td><td>' . $row['count'] . '</td></tr>';
+        fputcsv($output, [$row['title'], ucfirst($row['severity']), $row['count']]);
     }
-    echo '</table><br>';
+    fputcsv($output, []);
     
     // Top Blockers
-    echo '<h3>Top Blocker Issues</h3>';
-    echo '<table border="1">';
-    echo '<tr><th>Issue Key</th><th>Title</th><th>Status</th><th>Page</th></tr>';
+    fputcsv($output, ['Top Blocker Issues']);
+    fputcsv($output, ['Issue Key', 'Title', 'Status', 'Page']);
     foreach ($data['topBlockers'] as $row) {
-        echo '<tr><td>' . htmlspecialchars($row['issue_key']) . '</td><td>' . htmlspecialchars($row['title']) . '</td><td>' . $row['status'] . '</td><td>' . ($row['page_name'] ?: 'N/A') . '</td></tr>';
+        fputcsv($output, [$row['issue_key'], $row['title'], $row['status'], $row['page_name'] ?: 'N/A']);
     }
-    echo '</table><br>';
+    fputcsv($output, []);
     
     // Top Pages
-    echo '<h3>Top Pages with Most Issues</h3>';
-    echo '<table border="1">';
-    echo '<tr><th>Page Name</th><th>Project</th><th>Issue Count</th></tr>';
+    fputcsv($output, ['Top Pages with Most Issues']);
+    fputcsv($output, ['Page Name', 'Project', 'Issue Count']);
     foreach ($data['topPages'] as $row) {
-        echo '<tr><td>' . htmlspecialchars($row['page_name']) . '</td><td>' . htmlspecialchars($row['project_title']) . '</td><td>' . $row['issue_count'] . '</td></tr>';
+        fputcsv($output, [$row['page_name'], $row['project_title'], $row['issue_count']]);
     }
-    echo '</table><br>';
+    fputcsv($output, []);
     
     // Top Comments
-    echo '<h3>Most Commented Issues</h3>';
-    echo '<table border="1">';
-    echo '<tr><th>Issue Key</th><th>Title</th><th>Status</th><th>Comments</th></tr>';
+    fputcsv($output, ['Most Commented Issues']);
+    fputcsv($output, ['Issue Key', 'Title', 'Status', 'Comments']);
     foreach ($data['topComments'] as $row) {
-        echo '<tr><td>' . htmlspecialchars($row['issue_key']) . '</td><td>' . htmlspecialchars($row['title']) . '</td><td>' . $row['status'] . '</td><td>' . $row['comment_count'] . '</td></tr>';
+        fputcsv($output, [$row['issue_key'], $row['title'], $row['status'], $row['comment_count']]);
     }
-    echo '</table>';
     
-    echo '</body></html>';
+    fclose($output);
+    exit;
 }
 
 function exportToPDF($data, $clientName) {
-    // Simple HTML to PDF conversion
-    header('Content-Type: application/pdf');
-    header('Content-Disposition: attachment; filename="' . sanitizeFilename($clientName) . '_Dashboard_' . date('Y-m-d') . '.pdf"');
-    
-    // For a proper PDF, you would use a library like TCPDF or mPDF
-    // This is a simplified version that outputs HTML
-    // You should install a PDF library for production use
-    
-    echo "PDF export requires a PDF library like TCPDF or mPDF to be installed.\n";
-    echo "For now, please use Excel export or install a PDF library.\n\n";
-    echo "Client: " . $clientName . "\n";
-    echo "Total Issues: " . $data['summary']['total_issues'] . "\n";
-    echo "Blocker Issues: " . $data['summary']['blocker_issues'] . "\n";
-    echo "Open Issues: " . $data['summary']['open_issues'] . "\n";
+    ob_clean();
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title><?php echo htmlspecialchars($clientName); ?> - Dashboard Report</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 1000px; margin: 0 auto; padding: 40px; }
+            .header { border-bottom: 2px solid #2563eb; margin-bottom: 30px; padding-bottom: 10px; }
+            h1 { color: #2563eb; margin: 0; }
+            .meta { color: #666; margin-bottom: 30px; }
+            .section { margin-bottom: 40px; page-break-inside: avoid; }
+            h2 { border-left: 4px solid #2563eb; padding-left: 10px; background: #f8fafc; padding-top: 5px; padding-bottom: 5px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; }
+            th { background-color: #f1f5f9; font-weight: 600; }
+            .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
+            .stat-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; }
+            .stat-value { font-size: 24px; font-weight: bold; color: #2563eb; }
+            .stat-label { font-size: 12px; color: #64748b; text-transform: uppercase; }
+            @media print {
+                .no-print { display: none; }
+                body { padding: 0; }
+                button { display: none; }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="no-print" style="margin-bottom: 20px;">
+            <button onclick="window.print()" style="padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer;">Print to PDF</button>
+            <button onclick="window.close()" style="padding: 10px 20px; background: #64748b; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">Close</button>
+        </div>
+
+        <div class="header">
+            <h1>Accessibility Dashboard Report</h1>
+            <div class="meta">
+                <?php if (($_SESSION['role'] ?? '') !== 'client'): ?>
+                    <strong>Client:</strong> <?php echo htmlspecialchars($clientName); ?><br>
+                <?php endif; ?>
+                <strong>Generated:</strong> <?php echo date('F j, Y, g:i a'); ?>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Executive Summary</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value"><?php echo $data['summary']['total_issues']; ?></div>
+                    <div class="stat-label">Total Issues</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value"><?php echo $data['summary']['blocker_issues']; ?></div>
+                    <div class="stat-label">Blockers</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value"><?php echo $data['summary']['open_issues']; ?></div>
+                    <div class="stat-label">Active Issues</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">
+                        <?php 
+                        $compliance = $data['summary']['total_issues'] > 0 ? 
+                            round(($data['summary']['resolved_issues'] / $data['summary']['total_issues']) * 100, 1) : 100;
+                        echo $compliance . '%';
+                        ?>
+                    </div>
+                    <div class="stat-label">Compliance Score</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Issue Severity Distribution</h2>
+            <table>
+                <thead>
+                    <tr><th>Severity Level</th><th>Issue Count</th></tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($data['severity'] as $row): ?>
+                    <tr>
+                        <td><strong><?php echo ucfirst($row['severity']); ?></strong></td>
+                        <td><?php echo $row['count']; ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Most Common Issues</h2>
+            <table>
+                <thead>
+                    <tr><th>Issue Type</th><th>Severity</th><th>Occurrences</th></tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($data['commonIssues'] as $row): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($row['title']); ?></td>
+                        <td><?php echo ucfirst($row['severity']); ?></td>
+                        <td><?php echo $row['count']; ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Top Blocker Issues</h2>
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Title</th><th>Status</th><th>Location</th></tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($data['topBlockers'] as $row): ?>
+                    <tr>
+                        <td><code><?php echo htmlspecialchars($row['issue_key']); ?></code></td>
+                        <td><?php echo htmlspecialchars($row['title']); ?></td>
+                        <td><?php echo htmlspecialchars($row['status']); ?></td>
+                        <td><?php echo htmlspecialchars($row['page_name'] ?: 'Global/Unknown'); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Page Complexity Analysis</h2>
+            <table>
+                <thead>
+                    <tr><th>Page Name</th><th>Project</th><th>Issue Concentration</th></tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($data['topPages'] as $row): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($row['page_name']); ?></td>
+                        <td><?php echo htmlspecialchars($row['project_title']); ?></td>
+                        <td><?php echo $row['issue_count']; ?> issues</td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <script>
+            // Auto-trigger print after a short delay to allow rendering
+            window.onload = function() {
+                setTimeout(function() {
+                    // window.print();
+                }, 500);
+            };
+        </script>
+    </body>
+    </html>
+    <?php
+    exit;
 }
 
 function sanitizeFilename($filename) {

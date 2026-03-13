@@ -61,6 +61,7 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
@@ -73,6 +74,8 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
     <link rel="icon" type="image/png" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/storage/favicon.png?v=20260225v1">
     <?php $assetVersion = '20260311v12'; ?>
     <link href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/css/style.css?v=<?php echo $assetVersion; ?>" rel="stylesheet">
+    <link href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/css/dashboard.css?v=<?php echo $assetVersion; ?>" rel="stylesheet">
+    <link href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/css/header-fix.css?v=<?php echo $assetVersion; ?>" rel="stylesheet">
     <style>
     .alert-dismissible .btn-close {
         position: relative !important;
@@ -113,6 +116,8 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
     </style>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/chart-manager.js?v=<?php echo $assetVersion; ?>"></script>
+    <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/dashboard.js?v=<?php echo $assetVersion; ?>"></script>
     <?php $summernoteHelperPath = __DIR__ . '/../assets/js/summernote_image_helper.js'; ?>
     <?php if (file_exists($summernoteHelperPath)): ?>
     <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/summernote_image_helper.js?v=<?php echo $assetVersion; ?>"></script>
@@ -283,12 +288,12 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
     <a href="#main-content" class="sr-only skip">Skip to main content</a>
     <!-- Compact Navbar -->
     <header>
-        <nav class="navbar navbar-expand-lg navbar-dark sticky-top" style="background-color: #0755C6 !important; background-color: var(--primary) !important;">
+        <nav class="navbar navbar-expand-lg navbar-dark sticky-top" style="background-color: #0755C6 !important;">
             <div class="container-fluid">
                 <!-- Brand -->
-                <a class="navbar-brand d-flex align-items-center gap-2 me-4" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/" aria-label="PMS Home">
-                    <img src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/storage/SIS-Logo-3.png" alt="SIS Logo" class="brand-logo">
-                    <span class="tracking-tight">PMS</span>
+                <a class="navbar-brand d-flex align-items-center gap-2 me-4" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/" aria-label="PMS Home" style="color: white !important;">
+                    <img src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/storage/SIS-Logo-3.png" alt="SIS Logo" class="brand-logo" style="max-height: 32px; width: auto;">
+                    <span class="tracking-tight" style="color: white !important; font-weight: 600;">PMS</span>
                 </a>
 
                 <!-- Mobile Toggle -->
@@ -384,11 +389,13 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
 
                             <!-- Dashboard -->
                             <li class="nav-item">
-                                <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/<?php echo htmlspecialchars($moduleDir, ENT_QUOTES, 'UTF-8'); ?>/dashboard.php">
+                                <?php 
+                                $dashboardLink = ($role === 'client') ? "$baseDir/client/dashboard" : "$baseDir/modules/$moduleDir/dashboard.php";
+                                ?>
+                                <a class="nav-link text-white" href="<?php echo htmlspecialchars($dashboardLink, ENT_QUOTES, 'UTF-8'); ?>">
                                     <i class="fas fa-home me-1 opacity-50"></i> Dashboard
                                 </a>
                             </li>
-
                             <!-- Common Workspace Menus (All Users except Client) -->
                             <?php if ($_SESSION['role'] !== 'client'): ?>
                             <li class="nav-item dropdown">

@@ -78,7 +78,7 @@ include __DIR__ . '/../../includes/header.php';
                         
                         <div class="mb-3">
                                <label class="form-label">Hours Spent</label>
-                               <input type="number" name="hours_spent" class="form-control" step="0.25" min="0" placeholder="Optional">
+                               <input type="number" name="hours_spent" class="form-control" step="0.01" min="0" placeholder="Optional">
                         </div>
                         
                         <div class="d-flex justify-content-between">

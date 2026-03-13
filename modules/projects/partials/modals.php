@@ -100,7 +100,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Planned Hours</label>
-                        <input type="number" name="planned_hours" class="form-control" min="0" step="0.5" placeholder="e.g., 40">
+                        <input type="number" name="planned_hours" class="form-control" min="0" step="0.01" placeholder="e.g., 40.00">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Status</label>
@@ -252,7 +252,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Planned Hours</label>
-                        <input type="number" name="planned_hours" id="edit_planned_hours" class="form-control" min="0" step="0.5" placeholder="e.g., 40">
+                        <input type="number" name="planned_hours" id="edit_planned_hours" class="form-control" min="0" step="0.01" placeholder="e.g., 40.00">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Status</label>

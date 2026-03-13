@@ -484,7 +484,7 @@ include __DIR__ . '/../../includes/header.php';
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Hours to Allocate</label>
-                        <input type="number" name="hours" id="hours-input" class="form-control" step="0.5" min="0" max="0" required>
+                        <input type="number" name="hours" id="hours-input" class="form-control" step="0.01" min="0" max="0" required>
                         <div class="form-text">
                             <span id="hours-validation" class="text-muted">Select a project first</span>
                         </div>
@@ -524,7 +524,7 @@ include __DIR__ . '/../../includes/header.php';
                     </div>
                     <div class="mb-3">
                         <label class="form-label">New Hours</label>
-                        <input type="number" name="new_hours" id="edit_new_hours" class="form-control" step="0.5" min="0" required>
+                        <input type="number" name="new_hours" id="edit_new_hours" class="form-control" step="0.01" min="0" required>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Reason for Change</label>
@@ -619,7 +619,7 @@ function updateAvailableHours(selectElement) {
                     hoursValidation.textContent = 'No hours available in this project';
                     hoursValidation.className = 'text-danger';
                 } else {
-                    hoursValidation.textContent = `Maximum ${availableHours.toFixed(1)} hours available`;
+                    hoursValidation.textContent = `Maximum ${availableHours.toFixed(2)} hours available`;
                     hoursValidation.className = 'text-success';
                 }
             })
@@ -651,11 +651,11 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (currentValue > maxHours && maxHours > 0) {
                 this.setCustomValidity(`Cannot exceed ${maxHours} hours`);
-                validation.textContent = `Cannot exceed ${maxHours.toFixed(1)} hours`;
+                validation.textContent = `Cannot exceed ${maxHours.toFixed(2)} hours`;
                 validation.className = 'text-danger';
             } else if (maxHours > 0) {
                 this.setCustomValidity('');
-                validation.textContent = `${(maxHours - currentValue).toFixed(1)} hours will remain available`;
+                validation.textContent = `${(maxHours - currentValue).toFixed(2)} hours will remain available`;
                 validation.className = 'text-info';
             }
         });

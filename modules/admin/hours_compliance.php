@@ -207,7 +207,7 @@ include '../../includes/header.php';
                     
                     <div class="mb-3">
                         <label class="form-label">Minimum Hours Required</label>
-                        <input type="number" step="0.5" class="form-control" id="minimumHours" name="minimum_hours" required>
+                        <input type="number" step="0.01" class="form-control" id="minimumHours" name="minimum_hours" required>
                         <small class="text-muted">Minimum hours users must log per day</small>
                     </div>
                     

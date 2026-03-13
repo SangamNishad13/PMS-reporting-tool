@@ -1387,9 +1387,14 @@ try {
             $stmt->execute([$issueId, $userId, "meta:$key", $oldVal, $newVal]);
         }
 
+        // For update operations, check if QA status is actually being changed
+        // NOTE: Must initialize before the history logging block below uses it.
+        $isActuallyUpdatingQaStatus = false;
+
         if ($action === 'update') {
             handleMetaHistory($db, $id, $userId, 'issue_status', $_POST['issue_status'] ?? '', $oldMeta);
-            if ($canUpdateQaStatus) {
+            // Only track QA status history if user has permission and is actually updating QA status
+            if ($canUpdateQaStatus && $isActuallyUpdatingQaStatus) {
                 handleMetaHistory($db, $id, $userId, 'qa_status', $_POST['qa_status'] ?? '', $oldMeta);
                 handleMetaHistory($db, $id, $userId, 'reporter_qa_status_map', $_POST['reporter_qa_status_map'] ?? '', $oldMeta);
             }
@@ -1426,10 +1431,51 @@ try {
         $reporterQaStatusMapInput = parseReporterQaStatusMapInput($_POST['reporter_qa_status_map'] ?? null);
         $reporterQaStatusMap = normalizeReporterQaStatusMap($reporterQaStatusMapInput, $reporters, $validQaStatusKeys);
 
-        if (!$canUpdateQaStatus && (!empty($qaStatusInput) || !empty($reporterQaStatusMap))) {
+        // For update operations, check if QA status is actually being changed
+        $isActuallyUpdatingQaStatus = false;
+        
+        // If user doesn't have QA permission, don't check for QA status changes at all
+        if (!$canUpdateQaStatus) {
+            $isActuallyUpdatingQaStatus = false;
+        } else if ($action === 'update' && $id > 0) {
+            // Get existing QA status values for comparison
+            $existingQaStatusStmt = $db->prepare("SELECT meta_value FROM issue_metadata WHERE issue_id = ? AND meta_key = 'qa_status'");
+            $existingQaStatusStmt->execute([$id]);
+            $existingQaStatusValues = $existingQaStatusStmt->fetchAll(PDO::FETCH_COLUMN);
+            
+            $existingQaStatusNormalized = array_values(array_filter(array_map(static function($v) {
+                return strtolower(trim((string)$v));
+            }, $existingQaStatusValues), static function($v) {
+                return $v !== '';
+            }));
+            
+            // Get existing reporter QA status map
+            $existingReporterQaMapStmt = $db->prepare("SELECT meta_value FROM issue_metadata WHERE issue_id = ? AND meta_key = 'reporter_qa_status_map'");
+            $existingReporterQaMapStmt->execute([$id]);
+            $existingReporterQaMapValues = $existingReporterQaMapStmt->fetchAll(PDO::FETCH_COLUMN);
+            $existingReporterQaMap = [];
+            if (!empty($existingReporterQaMapValues)) {
+                $existingReporterQaMap = parseReporterQaStatusMapFromMetaValues($existingReporterQaMapValues);
+            }
+            
+            // Compare current values with new values to see if they're actually changing
+            sort($qaStatusInput);
+            sort($existingQaStatusNormalized);
+            $qaStatusChanged = (json_encode($qaStatusInput) !== json_encode($existingQaStatusNormalized));
+            $reporterQaMapChanged = (json_encode($reporterQaStatusMap) !== json_encode($existingReporterQaMap));
+            
+            $isActuallyUpdatingQaStatus = $qaStatusChanged || $reporterQaMapChanged;
+        } else {
+            // For create operations, check if QA status data is being provided
+            $isActuallyUpdatingQaStatus = !empty($qaStatusInput) || !empty($reporterQaStatusMap);
+        }
+
+        // Only check QA permissions if user is actually trying to change QA status
+        if (!$canUpdateQaStatus && $isActuallyUpdatingQaStatus) {
             jsonError('You do not have permission to update QA status for this project.', 403);
         }
-        if ($canUpdateQaStatus) {
+        // Only process QA status updates if user has permission and is actually updating QA status
+        if ($canUpdateQaStatus && $isActuallyUpdatingQaStatus) {
             if (empty($reporterQaStatusMap) && !empty($qaStatusInput) && !empty($reporters)) {
                 // Backward-compatible behavior: if only global QA status is sent, apply selected statuses to all selected reporters.
                 $defaultStatuses = array_values(array_unique(array_filter(array_map(static function($v){
@@ -1503,7 +1549,188 @@ try {
             $db->prepare("DELETE FROM common_issues WHERE issue_id = ?")->execute([$id]);
         }
 
-        jsonResponse(['success' => true, 'id' => $id, 'issue_key' => $issueKey]);
+        // Fetch the updated issue data to return to client
+        $sql = "SELECT DISTINCT i.*, 
+                       s.name as status_name,
+                       s.color as status_color,
+                       reporter.full_name as reporter_name
+                FROM issues i
+                LEFT JOIN issue_statuses s ON i.status_id = s.id
+                LEFT JOIN users reporter ON i.reporter_id = reporter.id
+                WHERE i.id = ? AND i.project_id = ?";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$id, $projectId]);
+        $issueData = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$issueData) {
+            jsonResponse(['success' => true, 'id' => $id, 'issue_key' => $issueKey]);
+        }
+        
+        // Fetch metadata for this issue
+        $metaStmt = $db->prepare("SELECT meta_key, meta_value FROM issue_metadata WHERE issue_id = ?");
+        $metaStmt->execute([$id]);
+        $meta = [];
+        while ($m = $metaStmt->fetch(PDO::FETCH_ASSOC)) {
+            if (!isset($meta[$m['meta_key']])) {
+                $meta[$m['meta_key']] = [];
+            }
+            $meta[$m['meta_key']][] = $m['meta_value'];
+        }
+        
+        // Fetch page info
+        $pageStmt = $db->prepare("
+            SELECT pp.id, pp.page_name, pp.page_number
+            FROM issue_pages ip
+            INNER JOIN project_pages pp ON ip.page_id = pp.id
+            WHERE ip.issue_id = ?
+        ");
+        $pageStmt->execute([$id]);
+        $pages = [];
+        $pageIds = [];
+        while ($p = $pageStmt->fetch(PDO::FETCH_ASSOC)) {
+            $pages[] = [
+                'id' => (int)$p['id'],
+                'name' => $p['page_name'],
+                'number' => $p['page_number']
+            ];
+            $pageIds[] = (int)$p['id'];
+        }
+        
+        // If no pages from issue_pages, try metadata
+        if (empty($pages) && isset($meta['page_ids'])) {
+            $metaPageIds = $meta['page_ids'];
+            if (is_array($metaPageIds)) {
+                $pageIds = array_values(array_filter(array_map('intval', $metaPageIds)));
+            } else {
+                $decoded = json_decode($metaPageIds, true);
+                if (is_array($decoded)) {
+                    $pageIds = array_values(array_filter(array_map('intval', $decoded)));
+                } else {
+                    $pageIds = array_values(array_filter(array_map('intval', array_map('trim', explode(',', $metaPageIds)))));
+                }
+            }
+        }
+        
+        // Get reporter QA status map
+        $reporterQaStatusByIssue = loadReporterQaStatusMapByIssueIds($db, [$id]);
+        $reporterQaStatusMap = $reporterQaStatusByIssue[$id] ?? [];
+        if (empty($reporterQaStatusMap) && isset($meta['reporter_qa_status_map'])) {
+            $reporterQaStatusMap = parseReporterQaStatusMapFromMetaValues($meta['reporter_qa_status_map']);
+        }
+        
+        // Get all reporters
+        $reporterIds = [];
+        if (!empty($issueData['reporter_id'])) {
+            $reporterIds[] = (int)$issueData['reporter_id'];
+        }
+        
+        if (isset($meta['reporter_ids'])) {
+            $reporterIdsData = $meta['reporter_ids'];
+            if (is_array($reporterIdsData)) {
+                $additionalReporterIds = array_values(array_filter(array_map('intval', $reporterIdsData)));
+            } else {
+                $decoded = json_decode($reporterIdsData, true);
+                if (is_array($decoded)) {
+                    $additionalReporterIds = array_values(array_filter(array_map('intval', $decoded)));
+                } else {
+                    $additionalReporterIds = array_values(array_filter(array_map('intval', array_map('trim', explode(',', $reporterIdsData)))));
+                }
+            }
+            $reporterIds = array_unique(array_merge($reporterIds, $additionalReporterIds));
+        }
+        
+        // Get QA status keys
+        $qaStatusKeys = [];
+        if (!empty($reporterQaStatusMap)) {
+            foreach ($reporterQaStatusMap as $statusValues) {
+                $vals = is_array($statusValues) ? $statusValues : [$statusValues];
+                foreach ($vals as $statusKey) {
+                    $key = strtolower(trim((string)$statusKey));
+                    if ($key !== '') $qaStatusKeys[] = $key;
+                }
+            }
+            $qaStatusKeys = array_values(array_unique($qaStatusKeys));
+        }
+        if (empty($qaStatusKeys) && isset($meta['qa_status'])) {
+            $qaStatusData = $meta['qa_status'];
+            if (is_array($qaStatusData)) {
+                if (count($qaStatusData) === 1 && is_string($qaStatusData[0]) && $qaStatusData[0][0] === '[') {
+                    $decoded = json_decode($qaStatusData[0], true);
+                    $qaStatusKeys = is_array($decoded) ? $decoded : $qaStatusData;
+                } else {
+                    $qaStatusKeys = $qaStatusData;
+                }
+            } else {
+                $decoded = json_decode($qaStatusData, true);
+                if (is_array($decoded)) {
+                    $qaStatusKeys = $decoded;
+                } else {
+                    $qaStatusKeys = array_filter(array_map('trim', explode(',', $qaStatusData)));
+                }
+            }
+        }
+        
+        // Check if issue has comments
+        $commentStmt = $db->prepare("SELECT COUNT(*) FROM issue_comments WHERE issue_id = ?");
+        $commentStmt->execute([$id]);
+        $hasComments = $commentStmt->fetchColumn() > 0;
+        
+        // Check if tester can delete (for UI purposes)
+        $canTesterDelete = true;
+        if ($isTesterRole) {
+            $blockedIds = getTesterBlockedIssueIdsForDelete($db, $projectId, [$id]);
+            $canTesterDelete = empty($blockedIds);
+        }
+        
+        // Get latest history ID for conflict detection
+        $historyStmt = $db->prepare("SELECT MAX(id) FROM issue_history WHERE issue_id = ?");
+        $historyStmt->execute([$id]);
+        $latestHistoryId = (int)$historyStmt->fetchColumn();
+        
+        $updatedIssue = [
+            'id' => (int)$issueData['id'],
+            'issue_key' => $issueData['issue_key'] ?? '',
+            'title' => $issueData['title'],
+            'description' => $issueData['description'],
+            'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : '',
+            'status' => $issueData['status_name'] ?? 'open',
+            'status_id' => (int)$issueData['status_id'],
+            'qa_status' => $qaStatusKeys,
+            'severity' => isset($meta['severity']) ? (is_array($meta['severity']) ? $meta['severity'][0] : $meta['severity']) : 'medium',
+            'priority' => isset($meta['priority']) ? (is_array($meta['priority']) ? $meta['priority'][0] : $meta['priority']) : 'medium',
+            'pages' => $pageIds,
+            'grouped_urls' => isset($meta['grouped_urls']) && is_array($meta['grouped_urls']) ? $meta['grouped_urls'] : [],
+            'reporter_name' => $issueData['reporter_name'],
+            'qa_name' => null, // Will be populated by frontend if needed
+            'page_id' => !empty($pageIds) ? $pageIds[0] : null,
+            'client_ready' => (int)($issueData['client_ready'] ?? 0),
+            'environments' => isset($meta['environments']) && is_array($meta['environments']) ? $meta['environments'] : [],
+            'usersaffected' => isset($meta['usersaffected']) && is_array($meta['usersaffected']) ? $meta['usersaffected'] : [],
+            'wcagsuccesscriteria' => isset($meta['wcagsuccesscriteria']) && is_array($meta['wcagsuccesscriteria']) ? $meta['wcagsuccesscriteria'] : [],
+            'wcagsuccesscriterianame' => isset($meta['wcagsuccesscriterianame']) && is_array($meta['wcagsuccesscriterianame']) ? $meta['wcagsuccesscriterianame'] : [],
+            'wcagsuccesscriterialevel' => isset($meta['wcagsuccesscriterialevel']) && is_array($meta['wcagsuccesscriterialevel']) ? $meta['wcagsuccesscriterialevel'] : [],
+            'gigw30' => isset($meta['gigw30']) && is_array($meta['gigw30']) ? $meta['gigw30'] : [],
+            'is17802' => isset($meta['is17802']) && is_array($meta['is17802']) ? $meta['is17802'] : [],
+            'reporters' => $reporterIds,
+            'reporter_qa_status_map' => $reporterQaStatusMap,
+            'has_comments' => $hasComments,
+            'can_tester_delete' => $canTesterDelete,
+            'created_at' => $issueData['created_at'],
+            'updated_at' => $issueData['updated_at'],
+            'latest_history_id' => $latestHistoryId
+        ];
+        
+        // Add custom metadata fields
+        if (isset($meta)) {
+            foreach ($meta as $key => $values) {
+                if (!isset($updatedIssue[$key])) {
+                    $updatedIssue[$key] = is_array($values) && count($values) === 1 ? $values[0] : $values;
+                }
+            }
+        }
+
+        jsonResponse(['success' => true, 'id' => $id, 'issue_key' => $issueKey, 'issue' => $updatedIssue]);
     }
 
     if ($method === 'POST' && $action === 'bulk_client_ready') {

@@ -172,7 +172,7 @@ include __DIR__ . '/../../includes/header.php';
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Total Hours (optional)</label>
                                 <input type="number" name="total_hours" class="form-control" 
-                                       step="0.1" min="0" placeholder="e.g., 40.5">
+                                       step="0.01" min="0" placeholder="e.g., 40.50">
                             </div>
                             
                             <div class="col-md-12 mb-3">

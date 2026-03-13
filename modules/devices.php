@@ -509,8 +509,6 @@ function getDeviceIcon(type) {
 function notify(message, variant) {
     if (typeof showToast === 'function') {
         showToast(message, variant || 'info');
-    } else {
-        console.log((variant || 'info') + ': ' + message);
     }
 }
 

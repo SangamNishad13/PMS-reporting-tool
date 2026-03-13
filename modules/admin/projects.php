@@ -367,7 +367,7 @@ include __DIR__ . '/../../includes/header.php';
                         </div>
                         <div class="col-md-6 mb-3 single-project-fields">
                             <label>Total Hours (optional)</label>
-                            <input type="number" name="total_hours" class="form-control" step="0.1" min="0">
+                            <input type="number" name="total_hours" class="form-control" step="0.01" min="0">
                         </div>
                         <div class="col-12 mb-3 single-project-fields">
                             <label>Description</label>
@@ -462,7 +462,7 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Total Hours (optional)</label>
-                    <input type="number" name="child_total_hours[]" class="form-control" step="0.1" min="0">
+                    <input type="number" name="child_total_hours[]" class="form-control" step="0.01" min="0">
                 </div>
             </div>
         `;

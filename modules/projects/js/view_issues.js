@@ -5677,16 +5677,25 @@
         if (titleInput) {
             titleVal = titleInput.value.trim();
         }
+        var qaStatusValue = jQuery('#finalIssueQaStatus').val() || [];
+        var reporterQaMap = getReporterQaStatusMapFromUi();
+        
+        // If user doesn't have QA permission, don't send QA status data at all
+        if (!canUpdateIssueQaStatus) {
+            qaStatusValue = [];
+            reporterQaMap = {};
+        }
+        
         var data = {
             title: titleVal,
             details: jQuery('#finalIssueDetails').summernote('code'),
             status: document.getElementById('finalIssueStatus').value,
-            qa_status: [],
+            qa_status: qaStatusValue,
             priority: document.getElementById('finalIssueField_priority') ? document.getElementById('finalIssueField_priority').value : 'medium',
             pages: jQuery('#finalIssuePages').val() || [],
             grouped_urls: normalizeGroupedUrlsSelection(jQuery('#finalIssueGroupedUrls').val() || []),
             reporters: jQuery('#finalIssueReporters').val() || [],
-            reporter_qa_status_map: getReporterQaStatusMapFromUi(),
+            reporter_qa_status_map: reporterQaMap,
             common_title: document.getElementById('finalIssueCommonTitle').value.trim()
         };
 
@@ -5871,11 +5880,14 @@
                             latest_history_id: (json.issue.latest_history_id != null ? Number(json.issue.latest_history_id) : 0)
                         };
                         issueData.pages[issueData.selectedPageId].final[issueIndex] = updatedIssue;
+                        
+                        // Update existing issue row with fresh server data
+                        updateSingleIssueRow(savedIssueId, updatedIssue);
                     }
+                } else {
+                    // Fallback: update with payload if server data not available
+                    updateSingleIssueRow(savedIssueId, payload);
                 }
-                
-                // Update existing issue row
-                updateSingleIssueRow(savedIssueId, payload);
             } else {
                 // For new issues, add to top of table without full reload
                 addNewIssueRow(payload);

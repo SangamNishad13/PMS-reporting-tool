@@ -236,7 +236,7 @@
 
                     <div class="col-md-2">
                         <label class="form-label">Hours</label>
-                        <input type="number" id="logHoursInput" name="hours" class="form-control" step="0.25" min="0.25" placeholder="e.g., 1.5" required>
+                        <input type="number" id="logHoursInput" name="hours" class="form-control" step="0.01" min="0.01" placeholder="e.g., 1.50" required>
                     </div>
 
                     <div class="col-md-4">

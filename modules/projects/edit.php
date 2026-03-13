@@ -278,7 +278,7 @@ try {
                                 <div class="col-md-6 mb-3">
                                     <label for="total_hours" class="form-label">Total Hours</label>
                                     <input type="number" id="total_hours" name="total_hours" 
-                                           class="form-control" step="0.5" min="0"
+                                           class="form-control" step="0.01" min="0"
                                            value="<?php echo htmlspecialchars($project['total_hours'] ?? ''); ?>">
                                 </div>
                                 

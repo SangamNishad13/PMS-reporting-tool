@@ -6,4 +6,4 @@ const server = http.createServer((req, res) => {
   res.end('Node app running');
 });
 
-server.listen(port, () => console.log(`Node app listening on ${port}`));
+server.listen(port);

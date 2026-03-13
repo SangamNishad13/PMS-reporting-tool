@@ -1786,7 +1786,7 @@ include __DIR__ . '/../includes/header.php';
                         
                         <div class="col-md-2 mt-2">
                             <label>Hours</label>
-                            <input type="number" id="logHoursInput" name="hours_spent" class="form-control" step="0.1" min="0.1" max="24" required <?php echo $isPastDateReadonly ? 'disabled' : ''; ?> >
+                            <input type="number" id="logHoursInput" name="hours_spent" class="form-control" step="0.01" min="0.01" max="24" required <?php echo $isPastDateReadonly ? 'disabled' : ''; ?> >
                         </div>
                         <div class="col-md-4 mt-2">
                             <label>Description</label>
@@ -1963,7 +1963,7 @@ include __DIR__ . '/../includes/header.php';
                         </div>
                         <div class="col-md-2">
                             <label>Hours</label>
-                            <input type="number" name="hours_spent" class="form-control" step="0.1" min="0.1" max="24" required>
+                            <input type="number" name="hours_spent" class="form-control" step="0.01" min="0.01" max="24" required>
                         </div>
                         <div class="col-md-4">
                             <label>Description</label>
@@ -2831,7 +2831,7 @@ function ensureEditRequestModal() {
         '          <div class="col-12" id="reqEditPageTestingWrap" style="display:none;"><div class="row g-2"><div class="col-md-4"><label class="form-label">Page/Screen</label><select class="form-select" id="reqEditPage"></select></div><div class="col-md-4"><label class="form-label">Environment</label><select class="form-select" id="reqEditEnvironment"></select></div><div class="col-md-4"><label class="form-label">Testing Type</label><select class="form-select" id="reqEditTestingType"><option value="at_testing">AT Testing</option><option value="ft_testing">FT Testing</option><option value="regression">Regression</option></select></div><div class="col-md-6" id="reqEditIssueWrap" style="display:none;"><label class="form-label">Issue (optional)</label><select class="form-select" id="reqEditIssue"></select></div></div></div>' +
         '          <div class="col-12" id="reqEditPhaseWrap" style="display:none;"><div class="row g-2"><div class="col-md-6"><label class="form-label">Project Phase</label><select class="form-select" id="reqEditPhase"></select></div><div class="col-md-6"><label class="form-label">Phase Activity</label><select class="form-select" id="reqEditPhaseActivity"><option value="scoping">Scoping & Analysis</option><option value="setup">Setup & Configuration</option><option value="testing">Testing Activities</option><option value="review">Review & Documentation</option><option value="training">Training & Knowledge Transfer</option><option value="reporting">Reporting & VPAT</option></select></div></div></div>' +
         '          <div class="col-12" id="reqEditGenericWrap" style="display:none;"><div class="row g-2"><div class="col-md-6"><label class="form-label">Task Category</label><select class="form-select" id="reqEditGenericCategory"></select></div><div class="col-md-6"><label class="form-label">Task Details</label><input type="text" class="form-control" id="reqEditGenericDetail" placeholder="Specific task details"></div></div></div>' +
-        '          <div class="col-md-4"><label class="form-label">Hours</label><input type="number" step="0.25" min="0.25" max="24" class="form-control" id="reqEditHours"></div>' +
+        '          <div class="col-md-4"><label class="form-label">Hours</label><input type="number" step="0.01" min="0.01" max="24" class="form-control" id="reqEditHours"></div>' +
         '          <div class="col-md-8"><label class="form-label">Description</label><input type="text" class="form-control" id="reqEditDesc"></div>' +
         '          <div class="col-12"><div class="small text-muted">Admin approval is required. This will send an edit request.</div></div>' +
         '        </div>' +

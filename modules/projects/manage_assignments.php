@@ -1403,7 +1403,7 @@ include __DIR__ . '/../../includes/header.php';
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Allocated Hours</label>
-                                        <input type="number" name="hours_allocated" class="form-control" value="0" step="0.5" max="<?php echo $availableForAllocation; ?>" id="hoursInput">
+                                        <input type="number" name="hours_allocated" class="form-control" value="0" step="0.01" max="<?php echo $availableForAllocation; ?>" id="hoursInput">
                                         <small class="text-muted">
                                             Max: <?php echo $availableForAllocation; ?> hours available for allocation
                                         </small>
@@ -2599,7 +2599,7 @@ function toggleRowDetails(pageId, context = 'main') {
 
                     <div class="mb-3">
                         <label for="editMemberNewHours" class="form-label">New Hours</label>
-                        <input type="number" step="0.5" min="0" class="form-control" id="editMemberNewHours" name="new_hours" required>
+                        <input type="number" step="0.01" min="0" class="form-control" id="editMemberNewHours" name="new_hours" required>
                         <small class="text-muted d-block mt-1" id="editMemberHoursHint"></small>
                     </div>
                 </div>

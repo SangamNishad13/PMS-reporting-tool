@@ -583,7 +583,7 @@ $canEditFuture = true;
                                             </div>
                                             <div class="col-md-6">
                                                 <label class="form-label">Hours</label>
-                                                <input type="number" id="logHoursInput" step="0.25" min="0.25" class="form-control" required>
+                                                <input type="number" id="logHoursInput" step="0.01" min="0.01" class="form-control" required>
                                             </div>
                                             <div class="col-md-6">
                                                 <label class="form-label">Description</label>

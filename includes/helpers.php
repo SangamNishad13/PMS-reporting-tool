@@ -376,7 +376,8 @@ function getModuleDirectory($role) {
         'super_admin' => 'admin',
         'admin' => 'admin',
         'project_lead' => 'project_lead',
-        'qa' => 'qa'
+        'qa' => 'qa',
+        'client' => 'client'
     ];
     
     return $roleMapping[$role] ?? $role;

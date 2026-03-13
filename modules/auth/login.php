@@ -15,8 +15,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['logout']) && $_GET['log
 // If already logged in, redirect to dashboard
 if ($auth->isLoggedIn()) {
     $role = $_SESSION['role'];
-    $moduleDir = getModuleDirectory($role);
-    redirect("/modules/{$moduleDir}/dashboard.php");
+    
+    if ($role === 'client') {
+        redirect("/client/dashboard");
+    } else {
+        $moduleDir = getModuleDirectory($role);
+        redirect("/modules/{$moduleDir}/dashboard.php");
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -32,8 +37,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($auth->login($username, $password)) {
             // Redirect based on role with proper mapping
             $role = $_SESSION['role'];
-            $moduleDir = getModuleDirectory($role);
-            redirect("/modules/{$moduleDir}/dashboard.php");
+            
+            // Special handling for client users - redirect to new client router
+            if ($role === 'client') {
+                redirect("/client/dashboard");
+            } else {
+                $moduleDir = getModuleDirectory($role);
+                redirect("/modules/{$moduleDir}/dashboard.php");
+            }
         } else {
             $error = "Invalid username or password";
         }

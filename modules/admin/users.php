@@ -894,6 +894,7 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                                                     <option value="qa" <?php echo $user['role'] === 'qa' ? 'selected' : ''; ?>>QA</option>
                                                     <option value="at_tester" <?php echo $user['role'] === 'at_tester' ? 'selected' : ''; ?>>AT Tester</option>
                                                     <option value="ft_tester" <?php echo $user['role'] === 'ft_tester' ? 'selected' : ''; ?>>FT Tester</option>
+                                                    <option value="client" <?php echo $user['role'] === 'client' ? 'selected' : ''; ?>>Client</option>
                                                 </select>
                                             </div>
                                             <div class="mb-3 form-check">
@@ -1109,6 +1110,7 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                             <option value="qa">QA</option>
                             <option value="at_tester">AT Tester</option>
                             <option value="ft_tester">FT Tester</option>
+                            <option value="client">Client</option>
                         </select>
                     </div>
                     <div class="mb-3 form-check">

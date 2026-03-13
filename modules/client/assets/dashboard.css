@@ -1,0 +1,283 @@
+/**
+ * Client Dashboard Styles
+ * 
+ * Additional styles for client dashboard components
+ */
+
+/* Dashboard Layout */
+.dashboard-container {
+    min-height: calc(100vh - 200px);
+}
+
+/* Enhanced Card Animations */
+.dashboard-widget,
+.summary-card,
+.project-card,
+.action-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dashboard-widget:hover,
+.summary-card:hover,
+.project-card:hover,
+.action-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.12);
+}
+
+/* Loading States */
+.loading-skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Enhanced Buttons */
+.btn-enhanced {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.btn-enhanced::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transition: left 0.5s;
+}
+
+.btn-enhanced:hover::before {
+    left: 100%;
+}
+
+/* Responsive Grid Enhancements */
+@media (max-width: 1400px) {
+    .analytics-widgets-grid {
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    }
+}
+
+@media (max-width: 1200px) {
+    .analytics-widgets-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    .dashboard-header-section,
+    .project-header-section,
+    .project-metrics-card,
+    .additional-navigation {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        color: #ecf0f1;
+        border-color: #34495e;
+    }
+    
+    .dashboard-title,
+    .project-title,
+    .section-title {
+        color: #ecf0f1;
+    }
+    
+    .dashboard-subtitle,
+    .text-muted {
+        color: #bdc3c7 !important;
+    }
+    
+    .summary-card,
+    .project-card,
+    .action-card,
+    .dashboard-widget {
+        background: #34495e;
+        border-color: #4a5f7a;
+        color: #ecf0f1;
+    }
+    
+    .summary-card:hover,
+    .project-card:hover,
+    .action-card:hover,
+    .dashboard-widget:hover {
+        background: #3c5a78;
+        border-color: #5dade2;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .dashboard-controls,
+    .project-actions,
+    .action-card,
+    .btn,
+    .breadcrumb {
+        display: none !important;
+    }
+    
+    .dashboard-widget,
+    .summary-card,
+    .project-card {
+        break-inside: avoid;
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+    }
+    
+    .page-title,
+    .dashboard-title,
+    .project-title {
+        color: #000 !important;
+    }
+}
+
+/* Accessibility Enhancements */
+.sr-only-focusable:focus {
+    position: static;
+    width: auto;
+    height: auto;
+    padding: 0;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+}
+
+/* Focus Indicators */
+.dashboard-widget:focus,
+.summary-card:focus,
+.project-card:focus,
+.action-card:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+    .dashboard-widget,
+    .summary-card,
+    .project-card,
+    .action-card {
+        border-width: 2px;
+        border-color: #000;
+    }
+    
+    .text-muted {
+        color: #333 !important;
+    }
+    
+    .btn {
+        border-width: 2px;
+    }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-widget,
+    .summary-card,
+    .project-card,
+    .action-card,
+    .btn-enhanced {
+        transition: none;
+    }
+    
+    .loading-skeleton {
+        animation: none;
+        background: #f0f0f0;
+    }
+    
+    .btn-enhanced::before {
+        display: none;
+    }
+}
+
+/* Custom Scrollbar */
+.widget-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.widget-content::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.widget-content::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.widget-content::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Utility Classes */
+.text-gradient {
+    background: linear-gradient(45deg, #2563eb, #3b82f6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.shadow-soft {
+    box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+}
+
+.shadow-medium {
+    box-shadow: 0 4px 25px rgba(0,0,0,0.12);
+}
+
+.shadow-strong {
+    box-shadow: 0 8px 40px rgba(0,0,0,0.16);
+}
+
+.border-gradient {
+    border: 2px solid transparent;
+    background: linear-gradient(white, white) padding-box,
+                linear-gradient(45deg, #2563eb, #3b82f6) border-box;
+}
+
+/* Animation Classes */
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+.slide-up {
+    animation: slideUp 0.5s ease-out;
+}
+
+.scale-in {
+    animation: scaleIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { 
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes scaleIn {
+    from { 
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to { 
+        opacity: 1;
+        transform: scale(1);
+    }
+}

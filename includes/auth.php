@@ -84,7 +84,8 @@ if (isset($_SESSION['user_id'])) {
             if ((int)$u['is_active'] !== 1) {
                 // user deactivated; force logout
                 session_destroy();
-                header("Location: /modules/auth/login.php");
+                require_once __DIR__ . '/helpers.php';
+                redirect("/modules/auth/login.php");
                 exit;
             }
         }

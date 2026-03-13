@@ -343,7 +343,7 @@ include __DIR__ . '/../../includes/header.php';
                                         <input type="number" 
                                                name="updates[<?php echo $assignment['id']; ?>]" 
                                                class="form-control form-control-sm hours-input" 
-                                               step="0.5" 
+                                               step="0.01" 
                                                min="<?php echo $minAllowed; ?>" 
                                                max="<?php echo $maxAllowed; ?>"
                                                placeholder="<?php echo $assignment['hours_allocated']; ?>"

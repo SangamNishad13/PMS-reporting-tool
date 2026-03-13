@@ -190,13 +190,56 @@ main,
 
 /* --- Navigation Bar (Compact) --- */
 .navbar {
-    background: #1e293b !important;
-    /* Slate 800 */
+    background: #0755C6 !important;
+    /* Client Blue - Updated for consistency */
     border-bottom: 2px solid var(--primary);
     height: 75px;
     padding-top: 2px;
     padding-bottom: 2px;
     box-shadow: var(--shadow-md);
+}
+
+/* FORCE ALL NAVBAR TEXT TO BE WHITE - SCOPED TO NAVBAR */
+html body .navbar,
+html body .navbar *:not(.dropdown-menu):not(.dropdown-menu *),
+html body nav.navbar,
+html body nav.navbar *:not(.dropdown-menu):not(.dropdown-menu *),
+html body header .navbar,
+html body header .navbar *:not(.dropdown-menu):not(.dropdown-menu *),
+html body header nav,
+html body header nav *:not(.dropdown-menu):not(.dropdown-menu *),
+body .navbar,
+body .navbar *:not(.dropdown-menu):not(.dropdown-menu *),
+body nav.navbar,
+body nav.navbar *:not(.dropdown-menu):not(.dropdown-menu *),
+body header .navbar,
+body header .navbar *:not(.dropdown-menu):not(.dropdown-menu *),
+body header nav,
+body header nav *:not(.dropdown-menu):not(.dropdown-menu *) {
+    color: white !important;
+}
+
+/* Exception for dropdown menus */
+html body .navbar .dropdown-menu,
+html body .navbar .dropdown-menu *,
+body .navbar .dropdown-menu,
+body .navbar .dropdown-menu * {
+    color: initial !important;
+}
+
+html body .navbar .dropdown-item,
+body .navbar .dropdown-item {
+    color: #212529 !important;
+}
+
+html body .navbar .text-muted,
+body .navbar .text-muted {
+    color: #6c757d !important;
+}
+
+html body .navbar .text-danger,
+body .navbar .text-danger {
+    color: #dc3545 !important;
 }
 
 .navbar.sticky-top {
@@ -225,17 +268,67 @@ main,
     display: block;
 }
 
-.nav-link {
+.navbar .nav-link {
     font-size: 0.85rem;
     font-weight: 500;
     padding: 0.2rem var(--space-sm) !important;
     border-radius: var(--radius-sm) !important;
     transition: background 0.15s;
+    color: rgba(255, 255, 255, 0.9) !important;
 }
 
-.nav-link:hover,
-.nav-link:focus {
+.navbar .nav-link:hover,
+.navbar .nav-link:focus {
     background: rgba(255, 255, 255, 0.1);
+    color: white !important;
+}
+
+/* Ensure navbar brand is white */
+.navbar-brand {
+    color: white !important;
+}
+
+.navbar-brand:hover,
+.navbar-brand:focus {
+    color: white !important;
+}
+
+/* UNIVERSAL NAVBAR STYLING - APPLY EVERYWHERE */
+html body .navbar,
+html body nav.navbar,
+html body header .navbar,
+html body header nav,
+body .navbar,
+body nav.navbar,
+body header .navbar,
+body header nav {
+    background-color: #0755C6 !important;
+    background: #0755C6 !important;
+}
+
+html body .navbar-brand,
+html body .navbar-brand:hover,
+html body .navbar-brand:focus,
+body .navbar-brand,
+body .navbar-brand:hover,
+body .navbar-brand:focus {
+    color: white !important;
+    text-decoration: none !important;
+}
+
+html body .navbar .nav-link,
+html body .navbar .navbar-nav .nav-link,
+body .navbar .nav-link,
+body .navbar .navbar-nav .nav-link {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html body .navbar .nav-link:hover,
+html body .navbar .navbar-nav .nav-link:hover,
+body .navbar .nav-link:hover,
+body .navbar .navbar-nav .nav-link:hover {
+    color: white !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 .dropdown-menu {
@@ -532,6 +625,7 @@ label {
     outline: 2px solid var(--primary);
     outline-offset: 2px;
 }
+
 /* --- Issues Tab Enhancements (Professional) --- */
 .issue-card-mini {
     background-color: var(--bg-surface);
@@ -581,8 +675,8 @@ label {
     background-color: #e9ecef !important;
 }
 
-#pageUrlsList.show ~ .card-header #urlsToggleIcon,
-#pageUrlsList.collapsing ~ .card-header #urlsToggleIcon {
+#pageUrlsList.show~.card-header #urlsToggleIcon,
+#pageUrlsList.collapsing~.card-header #urlsToggleIcon {
     transform: rotate(90deg);
 }
 
@@ -615,6 +709,7 @@ label {
 #issuesPageList .issues-page-row.table-active td:first-child {
     border-left: none;
 }
+
 /* --- Issue Content Consistency --- */
 /* Force exact same styling between Summernote editor and table view */
 /* Override all Summernote default styles to match our custom spacing */
