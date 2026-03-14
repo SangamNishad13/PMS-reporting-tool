@@ -31,7 +31,8 @@ abstract class AnalyticsEngine {
                 return null;
             }
             
-            $redis = new Redis();
+            $redisClass = 'Redis';
+            $redis = new $redisClass();
             $redis->connect('localhost', 6379);
             
             return $redis;
@@ -185,5 +186,61 @@ abstract class AnalyticsEngine {
     protected function calculateImpactScore($frequency, $spread) {
         $impactScore = ($frequency * 0.7) + ($spread * 0.3);
         return round($impactScore, 1);
+    }
+
+    protected function validateProjectAccess($clientId, $projectId) {
+        if (!$this->pdo) return true;
+        $stmt = $this->pdo->prepare("SELECT 1 FROM client_project_assignments WHERE client_user_id = ? AND project_id = ? AND is_active = 1");
+        $stmt->execute([$clientId, $projectId]);
+        return $stmt->fetch() !== false;
+    }
+
+    protected function getCachedData($cacheKey) {
+        if (!$this->redis) return null;
+        $data = $this->redis->get($cacheKey);
+        return $data ? json_decode($data, true) : null;
+    }
+
+    protected function setCachedData($cacheKey, $data, $ttl = self::CACHE_TTL) {
+        if (!$this->redis) return false;
+        return $this->redis->setex($cacheKey, $ttl, json_encode($data));
+    }
+
+    protected function getAssignedProjects($clientId) {
+        if (!$this->pdo) return [];
+        $stmt = $this->pdo->prepare("SELECT project_id FROM client_project_assignments WHERE client_user_id = ? AND is_active = 1");
+        $stmt->execute([$clientId]);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    protected function getClientReadyIssues($projectId, $filters = []) {
+        return $this->getFilteredIssues($projectId, 1);
+    }
+
+    protected function getClientReadyIssuesMultiple($projectIds, $filters = []) {
+        return $this->getFilteredIssues($projectIds, 1);
+    }
+
+    protected function getEmptyReport() {
+        return [
+            'total_issues' => 0,
+            'distribution' => [],
+            'summary' => [],
+            'impact_analysis' => [],
+            'trends' => [],
+            'generated_at' => date('Y-m-d H:i:s')
+        ];
+    }
+
+    protected function aggregateByField($data, $field) {
+        $aggregated = [];
+        foreach ($data as $item) {
+            $value = $item[$field] ?? 'unknown';
+            if (!isset($aggregated[$value])) {
+                $aggregated[$value] = [];
+            }
+            $aggregated[$value][] = $item;
+        }
+        return $aggregated;
     }
 }

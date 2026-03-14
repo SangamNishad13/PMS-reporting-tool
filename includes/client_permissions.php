@@ -217,4 +217,83 @@ function getClientsWithAccessibleProjects($db, $userId) {
         return [];
     }
 }
+/**
+ * Check if user has any client permissions at all (utility alias)
+ * 
+ * @param PDO $db Database connection
+ * @param int $userId User ID
+ * @return bool True if user has any client-level permissions
+ */
+function hasAnyClientPermissions($db, $userId) {
+    return canCreateProject($db, $userId);
+}
+
+/**
+ * Check if user has permission to create projects for a specific client
+ * 
+ * @param PDO $db Database connection
+ * @param int $userId User ID
+ * @param int $clientId Client ID
+ * @return bool True if user has permission
+ */
+function canCreateProjectForClient($db, $userId, $clientId) {
+    // Admin and super_admin always have permission
+    if (isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin', 'super_admin'])) {
+        return true;
+    }
+    
+    try {
+        $stmt = $db->prepare("
+            SELECT COUNT(*) 
+            FROM client_permissions 
+            WHERE user_id = ? 
+              AND client_id = ?
+              AND permission_type = 'create_project' 
+              AND is_active = 1
+              AND (expires_at IS NULL OR expires_at > NOW())
+        ");
+        $stmt->execute([$userId, $clientId]);
+        return $stmt->fetchColumn() > 0;
+    } catch (PDOException $e) {
+        error_log("Error checking client create project permission: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Get all client IDs for which user has specific permission
+ * 
+ * @param PDO $db Database connection
+ * @param int $userId User ID
+ * @param string $permissionType Permission type
+ * @return array Array of client IDs
+ */
+function getClientsWithPermission($db, $userId, $permissionType) {
+    // Admin and super_admin have access to all clients
+    if (isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin', 'super_admin'])) {
+        try {
+            $stmt = $db->query("SELECT id FROM clients ORDER BY name");
+            return $stmt->fetchAll(PDO::FETCH_COLUMN);
+        } catch (PDOException $e) {
+            error_log("Error getting all clients: " . $e->getMessage());
+            return [];
+        }
+    }
+    
+    try {
+        $stmt = $db->prepare("
+            SELECT DISTINCT client_id 
+            FROM client_permissions 
+            WHERE user_id = ? 
+              AND permission_type = ? 
+              AND is_active = 1
+              AND (expires_at IS NULL OR expires_at > NOW())
+        ");
+        $stmt->execute([$userId, $permissionType]);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    } catch (PDOException $e) {
+        error_log("Error getting clients with permission: " . $e->getMessage());
+        return [];
+    }
+}
 ?>

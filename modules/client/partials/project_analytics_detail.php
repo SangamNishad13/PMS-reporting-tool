@@ -83,12 +83,17 @@ $projectStats = $projectAnalytics['project_statistics'] ?? [];
                 <div class="col-lg-8">
                     <!-- Enhanced Chart with Drill-down -->
                     <div class="enhanced-chart-container">
-                        <?php echo $dashboardController->visualization->renderEnhancedChart('user_affected', $analyticsWidgets['user_affected'], [
+                        <?php 
+                        $chartData = $analyticsWidgets['user_affected']['quickChart'] ?? [];
+                        $chartOptions = [
+                            'type' => 'pie',
                             'showDataLabels' => true,
                             'enableDrillDown' => true,
                             'showTrendLine' => true,
                             'interactive' => true
-                        ]); ?>
+                        ];
+                        echo $dashboardController->visualization->renderEnhancedChart($chartData, $chartOptions); 
+                        ?>
                     </div>
                 </div>
                 <div class="col-lg-4">
@@ -207,14 +212,14 @@ $projectStats = $projectAnalytics['project_statistics'] ?? [];
                     <!-- Compliance Level Breakdown -->
                     <div class="compliance-breakdown">
                         <h5>Compliance by WCAG Level</h5>
-                        <?php echo $dashboardController->visualization->renderComplianceBreakdown($analyticsWidgets['wcag_compliance']); ?>
+                        <?php echo $dashboardController->visualization->renderComplianceBreakdown($analyticsWidgets['wcag_compliance']['quickChart'] ?? []); ?>
                     </div>
                 </div>
                 <div class="col-lg-6">
                     <!-- Compliance Trends -->
                     <div class="compliance-trends">
                         <h5>Compliance Trends</h5>
-                        <?php echo $dashboardController->visualization->renderComplianceTrends($analyticsWidgets['wcag_compliance']); ?>
+                        <?php echo $dashboardController->visualization->renderComplianceTrends($analyticsWidgets['compliance_trend']['trendData'] ?? []); ?>
                     </div>
                 </div>
             </div>
@@ -313,7 +318,7 @@ $projectStats = $projectAnalytics['project_statistics'] ?? [];
             <!-- Severity Distribution with Time Analysis -->
             <div class="severity-time-analysis">
                 <h5>Severity Distribution Over Time</h5>
-                <?php echo $dashboardController->visualization->renderSeverityTimeAnalysis($analyticsWidgets['severity_analysis']); ?>
+                <?php echo $dashboardController->visualization->renderSeverityTimeAnalysis($analyticsWidgets['severity_analysis']['quickChart'] ?? []); ?>
             </div>
             
             <!-- Resolution Time by Severity -->

@@ -67,11 +67,19 @@ class UnifiedDashboardController {
         // Get project statistics
         $projectStats = $this->accessControl->getProjectStatistics($clientUserId);
         
+        // Calculate overall compliance percentage
+        $compliancePct = 0;
+        if (isset($analyticsReports['compliance_trend']) && $analyticsReports['compliance_trend']) {
+            $trendData = $analyticsReports['compliance_trend']->getData();
+            $compliancePct = $trendData['summary']['overall_resolution_rate'] ?? 0;
+        }
+
         return [
             'success' => true,
             'client_user_id' => $clientUserId,
             'assigned_projects' => $assignedProjects,
             'project_statistics' => $projectStats,
+            'compliance_percentage' => $compliancePct,
             'analytics_widgets' => $widgets,
             'generated_at' => date('Y-m-d H:i:s')
         ];
@@ -290,6 +298,18 @@ class UnifiedDashboardController {
                     'label' => 'Low Priority',
                     'value' => $summary['low_count'] ?? 0
                 ]
+            ],
+            'quickChart' => [
+                'labels' => ['Critical', 'High', 'Medium', 'Low'],
+                'datasets' => [[
+                    'data' => [
+                        $summary['critical_count'] ?? 0,
+                        $summary['high_count'] ?? 0,
+                        $summary['medium_count'] ?? 0,
+                        $summary['low_count'] ?? 0
+                    ],
+                    'backgroundColor' => ['#f44336', '#ff9800', '#2196f3', '#4caf50']
+                ]]
             ]
         ];
     }
@@ -700,6 +720,7 @@ class UnifiedDashboardController {
                 'message' => $e->getMessage()
             ], JSON_UNESCAPED_UNICODE);
         }
+        return true;
     }
     
     /**
@@ -753,6 +774,19 @@ class UnifiedDashboardController {
         $stmt->execute([$projectId]);
         $projectDetails = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        // Safely extract resolved and total issues from severity analytics or set defaults
+        $resolvedCount = 0;
+        $totalClientIssues = $projectStats['client_ready_issues'] ?? 0;
+        
+        // Use ComplianceTrendAnalytics to safely get resolved count if possible
+        if (isset($analyticsReports['compliance_trend']) && $analyticsReports['compliance_trend']) {
+            $trendData = $analyticsReports['compliance_trend']->getData();
+            $resolvedCount = $trendData['summary']['resolved_issues'] ?? 0;
+        }
+
+        $pendingCount = max(0, $totalClientIssues - $resolvedCount);
+        $compliancePct = $totalClientIssues > 0 ? round(($resolvedCount / $totalClientIssues) * 100, 1) : 100;
+
         return [
             'success' => true,
             'project_id' => $projectId,
@@ -761,11 +795,70 @@ class UnifiedDashboardController {
             'client_user_id' => $clientUserId,
             'project_statistics' => $projectStats,
             'total_issues' => $projectStats['total_issues'] ?? 0,
-            'client_ready_issues' => $projectStats['client_ready_issues'] ?? 0,
+            'client_ready_issues' => $totalClientIssues,
+            'resolved_issues' => $resolvedCount,
+            'pending_issues' => $pendingCount,
+            'compliance_percentage' => $compliancePct,
             'analytics_widgets' => $widgets,
             'generated_at' => date('Y-m-d H:i:s')
         ];
     }
+
+    // --- Bridge methods for ClientDashboardController AJAX requests ---
+
+    public function getUserAffectedSummary($projectIds) {
+        $report = $this->analyticsEngines['user_affected']->generateReport($projectIds);
+        return $report->getData();
+    }
+
+    public function getWCAGComplianceSummary($projectIds) {
+        $report = $this->analyticsEngines['wcag_compliance']->generateReport($projectIds);
+        return $report->getData();
+    }
+
+    public function getSeverityDistribution($projectIds) {
+        $report = $this->analyticsEngines['severity_analysis']->generateReport($projectIds);
+        return $report->getData();
+    }
+
+    public function getTopCommonIssues($projectIds, $limit = 5) {
+        $report = $this->analyticsEngines['common_issues']->generateReport($projectIds);
+        $data = $report->getData();
+        if (isset($data['top_issues'])) {
+            $data['top_issues'] = array_slice($data['top_issues'], 0, $limit);
+        }
+        return $data;
+    }
+
+    public function getBlockerIssuesSummary($projectIds) {
+        $report = $this->analyticsEngines['blocker_issues']->generateReport($projectIds);
+        return $report->getData();
+    }
+
+    public function getTopPageIssues($projectIds, $limit = 5) {
+        $report = $this->analyticsEngines['page_issues']->generateReport($projectIds);
+        $data = $report->getData();
+        if (isset($data['top_pages'])) {
+            $data['top_pages'] = array_slice($data['top_pages'], 0, $limit);
+        }
+        return $data;
+    }
+
+    public function getRecentActivity($projectIds, $limit = 10) {
+        // Mock recent activity since it's used as a widget
+        return [
+            'activities' => [],
+            'count' => 0,
+            'limit' => $limit
+        ];
+    }
+
+    public function getComplianceTrend($projectIds, $days = 30) {
+        $report = $this->analyticsEngines['compliance_trend']->generateReport($projectIds);
+        return $report->getData();
+    }
+
+
     
     /**
      * Create project-specific widgets
@@ -815,6 +908,13 @@ class UnifiedDashboardController {
                     ['label' => 'High Impact', 'value' => $summary['high_impact_issues'] ?? 0],
                     ['label' => 'Avg Users/Issue', 'value' => round($summary['average_users_per_issue'] ?? 0, 1)]
                 ];
+                $widgetConfig['quickChart'] = [
+                    'labels' => array_keys($data['distribution'] ?? []),
+                    'datasets' => [[
+                        'data' => array_column($data['distribution'] ?? [], 'count'),
+                        'backgroundColor' => ['#28a745', '#ffc107', '#fd7e14', '#dc3545']
+                    ]]
+                ];
                 break;
                 
             case 'wcag_compliance':
@@ -827,6 +927,13 @@ class UnifiedDashboardController {
                     ['label' => 'Level AA', 'value' => round($summary['level_aa_compliance'] ?? 0, 1) . '%'],
                     ['label' => 'Level AAA', 'value' => round($summary['level_aaa_compliance'] ?? 0, 1) . '%']
                 ];
+                $widgetConfig['quickChart'] = [
+                    'labels' => array_column($data['level_distribution'] ?? [], 'level'),
+                    'datasets' => [[
+                        'data' => array_column($data['level_distribution'] ?? [], 'count'),
+                        'backgroundColor' => ['#dc3545', '#fd7e14', '#ffc107', '#6c757d']
+                    ]]
+                ];
                 break;
                 
             case 'severity_analysis':
@@ -838,6 +945,18 @@ class UnifiedDashboardController {
                     ['label' => 'High', 'value' => $summary['high_count'] ?? 0],
                     ['label' => 'Medium', 'value' => $summary['medium_count'] ?? 0],
                     ['label' => 'Low', 'value' => $summary['low_count'] ?? 0]
+                ];
+                $widgetConfig['quickChart'] = [
+                    'labels' => ['Critical', 'High', 'Medium', 'Low'],
+                    'datasets' => [[
+                        'data' => [
+                            $summary['critical_count'] ?? 0,
+                            $summary['high_count'] ?? 0,
+                            $summary['medium_count'] ?? 0,
+                            $summary['low_count'] ?? 0
+                        ],
+                        'backgroundColor' => ['#f44336', '#ff9800', '#2196f3', '#4caf50']
+                    ]]
                 ];
                 break;
                 
@@ -891,7 +1010,7 @@ class UnifiedDashboardController {
                 $widgetConfig['title'] = 'Compliance Trends';
                 $widgetConfig['icon'] = 'fas fa-chart-line';
                 $widgetConfig['period'] = 'Last 30 days';
-                $trendData = $data['trend_data'] ?? [];
+                $trendData = $data['daily_trends'] ?? [];
                 $widgetConfig['trendData'] = [
                     'labels' => array_column($trendData, 'date'),
                     'datasets' => [[

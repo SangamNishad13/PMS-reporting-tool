@@ -105,7 +105,8 @@ class ExcelExporter extends ExportEngine {
         }
         
         // Create new spreadsheet
-        $this->spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $spreadsheetClass = '\PhpOffice\PhpSpreadsheet\Spreadsheet';
+        $this->spreadsheet = new $spreadsheetClass();
         
         // Set document properties
         $this->setDocumentProperties($options);
@@ -1026,9 +1027,11 @@ class ExcelExporter extends ExportEngine {
         
         try {
             if ($format === 'xls') {
-                $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xls($this->spreadsheet);
+                $writerClass = '\PhpOffice\PhpSpreadsheet\Writer\Xls';
+                $writer = new $writerClass($this->spreadsheet);
             } else {
-                $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($this->spreadsheet);
+                $writerClass = '\PhpOffice\PhpSpreadsheet\Writer\Xlsx';
+                $writer = new $writerClass($this->spreadsheet);
             }
             
             $writer->save($filePath);

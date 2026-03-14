@@ -504,4 +504,12 @@ class ExportEngine {
             ];
         }
     }
+
+    /**
+     * Bridge method for generating export (simplified call from controller)
+     */
+    public function generateExport($exportType, $reportType, $projectIds, $options = []) {
+        $userId = $_SESSION['client_user_id'] ?? ($_SESSION['user_id'] ?? 0);
+        return $this->createExportRequest($userId, $exportType, $reportType, $projectIds, $options);
+    }
 }

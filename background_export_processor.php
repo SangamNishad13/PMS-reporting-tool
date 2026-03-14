@@ -22,7 +22,7 @@ try {
     
     // Get pending export requests
     echo "1. Checking for pending export requests...\n";
-    $pendingRequests = $exportRequest->getPendingExportRequests(5);
+    $pendingRequests = $exportRequest->getPendingRequests(5);
     
     if (empty($pendingRequests)) {
         echo "✓ No pending export requests found\n";
@@ -41,7 +41,7 @@ try {
         
         try {
             // Update status to processing
-            $exportRequest->updateExportStatus($request['id'], ExportRequest::STATUS_PROCESSING);
+            $exportRequest->updateStatus($request['id'], ExportRequest::STATUS_PROCESSING);
             echo "   ✓ Status updated to processing\n";
             
             // Simulate export generation (in real implementation, this would call ExportEngine)
@@ -68,7 +68,7 @@ try {
                 echo "   ✓ Export file generated: $filename\n";
                 
                 // Update status to completed
-                $exportRequest->updateExportStatus($request['id'], ExportRequest::STATUS_COMPLETED, $filePath);
+                $exportRequest->updateStatus($request['id'], ExportRequest::STATUS_COMPLETED, $filePath);
                 echo "   ✓ Status updated to completed\n";
                 
                 // In a real implementation, you would send notification email here
@@ -82,7 +82,7 @@ try {
             echo "   ✗ Export failed: " . $e->getMessage() . "\n";
             
             // Update status to failed
-            $exportRequest->updateExportStatus(
+            $exportRequest->updateStatus(
                 $request['id'], 
                 ExportRequest::STATUS_FAILED, 
                 null, 

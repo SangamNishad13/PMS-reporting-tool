@@ -102,113 +102,29 @@ require_once __DIR__ . '/../../header.php';
             </div>
         </div>
 
-        <!-- Detailed Analytics Grid -->
-        <div class="row g-4">
-            <!-- User Affected Analytics -->
-            <div class="col-lg-6">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-header bg-transparent border-0">
-                        <h5 class="card-title mb-0">
-                            <i class="fas fa-users text-primary me-2"></i>
-                            Users Affected Analysis
-                        </h5>
-                    </div>
-                    <div class="card-body" id="widget-user_affected_project">
-                        <div class="text-center mb-3">
-                            <canvas id="projectUserAffectedChart" width="400" height="300"></canvas>
-                        </div>
-                        <div class="widget-summary text-center text-muted small"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- WCAG Compliance Breakdown -->
-            <div class="col-lg-6">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-header bg-transparent border-0">
-                        <h5 class="card-title mb-0">
-                            <i class="fas fa-check-circle text-success me-2"></i>
-                            WCAG Compliance Breakdown
-                        </h5>
-                    </div>
-                    <div class="card-body" id="widget-wcag_compliance_project">
-                        <div class="text-center mb-3">
-                            <canvas id="projectWcagChart" width="400" height="300"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Severity Distribution -->
-            <div class="col-lg-6">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-header bg-transparent border-0">
-                        <h5 class="card-title mb-0">
-                            <i class="fas fa-exclamation-triangle text-warning me-2"></i>
-                            Issue Severity Distribution
-                        </h5>
-                    </div>
-                    <div class="card-body" id="widget-severity_project">
-                        <div class="text-center mb-3">
-                            <canvas id="projectSeverityChart" width="400" height="300"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Page Issues Detailed -->
-            <div class="col-lg-6">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-header bg-transparent border-0">
-                        <h5 class="card-title mb-0">
-                            <i class="fas fa-file-alt text-secondary me-2"></i>
-                            Page Issues Analysis
-                        </h5>
-                    </div>
-                    <div class="card-body" id="widget-page_issues_project">
-                        <div class="widget-table">
-                            <!-- Table will be populated by JavaScript -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Common Issues for Project -->
-            <div class="col-12">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-transparent border-0">
-                        <h5 class="card-title mb-0">
-                            <i class="fas fa-list text-info me-2"></i>
-                            Most Common Issues
-                        </h5>
-                    </div>
-                    <div class="card-body" id="widget-common_issues_project">
-                        <div class="widget-table">
-                            <!-- Table will be populated by JavaScript -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Compliance Trend for Project -->
-            <div class="col-12">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-transparent border-0">
-                        <h5 class="card-title mb-0">
-                            <i class="fas fa-chart-line text-success me-2"></i>
-                            Compliance Trend (Last 30 Days)
-                        </h5>
-                    </div>
-                    <div class="card-body" id="widget-compliance_trend_project">
-                        <div class="text-center mb-3">
-                            <canvas id="projectComplianceTrendChart" width="800" height="300"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <!-- Detailed Analytics Dashboard -->
+        <?php
+        // Map local variables to what dashboard_widgets.php expects
+        $dashboardData = $projectAnalytics;
+        
+        // Add chart CSS
+        if ($dashboardController && isset($dashboardController->visualization)) {
+            echo $dashboardController->visualization->getVisualizationCSS();
+        }
+        
+        // Include the exact same widgets grid used on the unified dashboard
+        include __DIR__ . '/../../../modules/client/partials/dashboard_widgets.php';
+        ?>
     </div>
 </div>
+
+<!-- Chart.js and Dashboard Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<?php 
+if ($dashboardController && isset($dashboardController->visualization)) {
+    echo $dashboardController->visualization->getVisualizationJS(); 
+}
+?>
 
 <?php 
 require_once __DIR__ . '/../../footer.php';

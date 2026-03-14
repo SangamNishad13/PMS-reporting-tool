@@ -13,6 +13,7 @@ require_once __DIR__ . '/../../config/database.php';
  * - Integration with ExportEngine base class
  * 
  * Requirements: 14.5, 15.5, 18.3
+ * Last updated: 2026-03-14
  */
 class ExportRequest {
     
@@ -143,7 +144,7 @@ class ExportRequest {
         
         return $requestId;
     }
-    
+
     /**
      * Update export request status
      * 
@@ -323,6 +324,7 @@ class ExportRequest {
         
         return $row['count'] > 0;
     }
+
     
     /**
      * Clean up expired export files and requests
@@ -567,5 +569,46 @@ class ExportRequest {
         }
         
         return $stats;
+    }
+
+    /**
+     * Bridge methods and aliases for ClientExportController
+     */
+    public function createRequest($userId, $exportType, $reportType, $projectIds, $options = []) {
+        return $this->createExportRequest($userId, $exportType, $reportType, $projectIds, $options);
+    }
+
+    public function updateStatus($requestId, $status, $filePath = null, $errorMessage = null) {
+        return $this->updateExportStatus($requestId, $status, $filePath, $errorMessage);
+    }
+
+    public function getRequest($requestId) {
+        return $this->getExportRequest($requestId);
+    }
+
+    public function getUserRequests($userId, $limit = 50, $offset = 0) {
+        return $this->getUserExportRequests($userId, $limit, $offset);
+    }
+
+    public function getUserRequestCount($userId) {
+        $sql = "SELECT COUNT(*) as count FROM export_requests WHERE user_id = ?";
+        $stmt = $this->db->prepare($sql);
+        if ($stmt && $stmt->execute([$userId])) {
+            $row = $stmt->fetch();
+            return (int)$row['count'];
+        }
+        return 0;
+    }
+
+    public function getPendingRequests($limit = 10) {
+        return $this->getPendingExportRequests($limit);
+    }
+
+    public function completeRequest($requestId, $filePath) {
+        return $this->updateExportStatus($requestId, self::STATUS_COMPLETED, $filePath);
+    }
+
+    public function failRequest($requestId, $errorMessage) {
+        return $this->updateExportStatus($requestId, self::STATUS_FAILED, null, $errorMessage);
     }
 }

@@ -127,6 +127,7 @@ class ClientDashboardController {
             
         } catch (Exception $e) {
             error_log("Project view error: " . $e->getMessage());
+            file_put_contents(__DIR__ . '/../../debug_error.txt', date('Y-m-d H:i:s') . "\n" . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n\n", FILE_APPEND);
             $this->renderError("Unable to load project analytics. Please try again later.");
         }
     }
@@ -275,6 +276,7 @@ class ClientDashboardController {
         $pageTitle = "Analytics Dashboard";
         $csrfToken = $this->securityValidator->generateCSRFToken();
         $baseDir = getBaseDir();
+        $dashboardController = $this->dashboardController;
         
         include __DIR__ . '/../templates/client/dashboard.php';
     }
@@ -286,6 +288,7 @@ class ClientDashboardController {
         $pageTitle = "Project Analytics - " . $projectAnalytics['project_name'];
         $csrfToken = $this->securityValidator->generateCSRFToken();
         $baseDir = getBaseDir();
+        $dashboardController = $this->dashboardController;
         
         include __DIR__ . '/../templates/client/project_view.php';
     }

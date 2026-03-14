@@ -1,4 +1,19 @@
 <?php
+// Define LOG_LOCAL0 if not defined (e.g. on Windows)
+if (!defined('LOG_LOCAL0')) {
+    define('LOG_LOCAL0', 128); // Standard value for LOG_LOCAL0
+}
+
+/**
+ * System Logger
+ */
+if (class_exists('Redis')) {
+    // Redis related logging or caching config...
+}
+// Define LOG_LOCAL0 if not defined (e.g. on Windows)
+if (!defined('LOG_LOCAL0')) {
+    define('LOG_LOCAL0', 128); // Standard value for LOG_LOCAL0
+}
 /**
  * Production Configuration for Client Reporting and Analytics System
  * 

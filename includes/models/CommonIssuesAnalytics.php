@@ -316,17 +316,23 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
         // Base score from frequency and spread
         $baseScore = ($frequency * 0.6) + ($pageCount * 0.4);
         
-        // Severity multiplier
+        // Severity multiplier - weights based on actual DB severity values
+        $severityMultiplierMap = [
+            'blocker'  => 2.5,
+            'critical' => 2.0,
+            'major'    => 1.5,
+            'minor'    => 1.0,
+            'low'      => 0.5,
+        ];
         $severityMultiplier = 1.0;
         $totalSeverities = array_sum($severities);
         
         if ($totalSeverities > 0) {
-            $criticalWeight = ($severities['Critical'] ?? 0) / $totalSeverities * 2.0;
-            $highWeight = ($severities['High'] ?? 0) / $totalSeverities * 1.5;
-            $mediumWeight = ($severities['Medium'] ?? 0) / $totalSeverities * 1.0;
-            $lowWeight = ($severities['Low'] ?? 0) / $totalSeverities * 0.5;
-            
-            $severityMultiplier = $criticalWeight + $highWeight + $mediumWeight + $lowWeight;
+            $severityMultiplier = 0;
+            foreach ($severities as $severity => $count) {
+                $multiplier = $severityMultiplierMap[strtolower($severity)] ?? 1.0;
+                $severityMultiplier += ($count / $totalSeverities) * $multiplier;
+            }
         }
         
         return round($baseScore * $severityMultiplier, 1);
@@ -339,12 +345,19 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
      * @return float
      */
     private function calculateAverageSeverityWeight($severities) {
-        $weights = ['Critical' => 4, 'High' => 3, 'Medium' => 2, 'Low' => 1];
+        // Weights based on actual DB severity enum values
+        $weights = [
+            'blocker'  => 5,
+            'critical' => 4,
+            'major'    => 3,
+            'minor'    => 2,
+            'low'      => 1,
+        ];
         $totalWeight = 0;
         $totalCount = 0;
         
         foreach ($severities as $severity => $count) {
-            $weight = $weights[$severity] ?? 2;
+            $weight = $weights[strtolower($severity)] ?? 2;
             $totalWeight += $weight * $count;
             $totalCount += $count;
         }
@@ -566,24 +579,23 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
      * @return array
      */
     private function analyzeSeverityDistribution($commonIssues) {
-        $distribution = ['Critical' => 0, 'High' => 0, 'Medium' => 0, 'Low' => 0];
+        $distribution = [];
         
         foreach ($commonIssues as $issue) {
             foreach ($issue['severity_breakdown'] as $severity => $count) {
-                $distribution[$severity] += $count;
+                $distribution[$severity] = ($distribution[$severity] ?? 0) + $count;
             }
         }
         
         $total = array_sum($distribution);
+        $percentages = [];
+        foreach ($distribution as $severity => $count) {
+            $percentages[$severity] = $this->calculatePercentage($count, $total);
+        }
         
         return [
             'counts' => $distribution,
-            'percentages' => [
-                'Critical' => $this->calculatePercentage($distribution['Critical'], $total),
-                'High' => $this->calculatePercentage($distribution['High'], $total),
-                'Medium' => $this->calculatePercentage($distribution['Medium'], $total),
-                'Low' => $this->calculatePercentage($distribution['Low'], $total)
-            ]
+            'percentages' => $percentages
         ];
     }
     

@@ -94,6 +94,7 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
                 'current_compliance_score' => $currentMetrics['compliance_score'],
                 'trend_direction' => $trendPatterns['overall_direction'],
                 'overall_resolution_rate' => $currentMetrics['resolution_rate'],
+                'resolved_issues' => $currentMetrics['resolved_issues'],
                 'total_issues_tracked' => count($issues),
                 'improvement_rate' => $trendPatterns['improvement_rate'],
                 'forecast_next_month' => $forecast['next_month_score']
@@ -129,13 +130,13 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
                     'resolved_issues' => 0,
                     'total_issues' => 0,
                     'compliance_score' => 0,
-                    'severity_breakdown' => ['Critical' => 0, 'High' => 0, 'Medium' => 0, 'Low' => 0]
+                    'severity_breakdown' => []
                 ];
             }
             
             $dailyData[$date]['new_issues']++;
             $severity = $issue['severity'] ?? 'Medium';
-            $dailyData[$date]['severity_breakdown'][$severity]++;
+            $dailyData[$date]['severity_breakdown'][$severity] = ($dailyData[$date]['severity_breakdown'][$severity] ?? 0) + 1;
             
             // Track resolved issues by resolution date
             if (in_array($issue['status'] ?? 'Open', ['Resolved', 'Closed']) && !empty($issue['resolved_at'])) {
@@ -233,7 +234,7 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
                     'resolved_issues' => 0,
                     'compliance_score' => 0,
                     'resolution_rate' => 0,
-                    'severity_distribution' => ['Critical' => 0, 'High' => 0, 'Medium' => 0, 'Low' => 0],
+                    'severity_distribution' => [],
                     'wcag_level_distribution' => ['A' => 0, 'AA' => 0, 'AAA' => 0, 'Unknown' => 0]
                 ];
             }
@@ -241,7 +242,7 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
             $monthlyData[$month]['new_issues']++;
             
             $severity = $issue['severity'] ?? 'Medium';
-            $monthlyData[$month]['severity_distribution'][$severity]++;
+            $monthlyData[$month]['severity_distribution'][$severity] = ($monthlyData[$month]['severity_distribution'][$severity] ?? 0) + 1;
             
             $wcagLevel = $this->extractWCAGLevel($issue);
             $monthlyData[$month]['wcag_level_distribution'][$wcagLevel]++;
@@ -584,12 +585,22 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
     private function calculateSeverityAdjustment($severityDistribution, $totalIssues) {
         if ($totalIssues === 0) return 0;
         
-        // Penalty for high severity issues
-        $criticalPenalty = ($severityDistribution['Critical'] / $totalIssues) * -10;
-        $highPenalty = ($severityDistribution['High'] / $totalIssues) * -5;
-        $lowBonus = ($severityDistribution['Low'] / $totalIssues) * 2;
+        // Penalty map based on actual DB severity enum values
+        $penaltyMap = [
+            'blocker'  => -15,
+            'critical' => -10,
+            'major'    => -5,
+            'minor'    => -2,
+            'low'      => 2,   // bonus for low severity issues
+        ];
         
-        return $criticalPenalty + $highPenalty + $lowBonus;
+        $adjustment = 0;
+        foreach ($severityDistribution as $severity => $count) {
+            $penalty = $penaltyMap[strtolower($severity)] ?? -3;
+            $adjustment += ($count / $totalIssues) * $penalty;
+        }
+        
+        return $adjustment;
     }
     
     /**

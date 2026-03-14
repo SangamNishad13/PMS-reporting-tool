@@ -89,4 +89,70 @@ class AnalyticsReport {
         
         return array_slice($issues, 0, $limit);
     }
+    
+    /**
+     * Factory method to create a new report instance
+     * 
+     * @param string $type
+     * @param array $projectIds
+     * @param int $clientId
+     * @param array $data
+     * @return AnalyticsReport
+     */
+    public static function create($type, $projectIds, $clientId, $data) {
+        return new self([
+            'type' => $type,
+            'data' => $data,
+            'metadata' => [
+                'project_ids' => $projectIds,
+                'client_id' => $clientId,
+                'generated_at' => date('Y-m-d H:i:s')
+            ]
+        ]);
+    }
+
+    /**
+     * Save the report to the database
+     * 
+     * @return bool Success status
+     * @throws Exception If database error occurs
+     */
+    public function save() {
+        require_once __DIR__ . '/../../config/database.php';
+        try {
+            $db = Database::getInstance();
+            
+            $projectIds = $this->metadata['project_ids'] ?? [];
+            $userId = $this->metadata['client_id'] ?? 0;
+            
+            // Generate a unique cache key based on report parameters and current time
+            $cacheKey = md5($this->type . implode(',', $projectIds) . $userId . microtime());
+            
+            $sql = "INSERT INTO analytics_reports (
+                        report_type, project_ids, generated_by_user_id, 
+                        report_data, chart_config, cache_key, expires_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)";
+            
+            $stmt = $db->prepare($sql);
+            if (!$stmt) {
+                throw new Exception("Failed to prepare analytics report save statement");
+            }
+            
+            // Expiration time: 24 hours from now
+            $expiresAt = date('Y-m-d H:i:s', time() + 86400);
+            
+            return $stmt->execute([
+                $this->type,
+                json_encode($projectIds),
+                $userId,
+                json_encode($this->data),
+                json_encode($this->visualizationConfig),
+                $cacheKey,
+                $expiresAt
+            ]);
+        } catch (Exception $e) {
+            error_log("Failed to save analytics report: " . $e->getMessage());
+            return false;
+        }
+    }
 }

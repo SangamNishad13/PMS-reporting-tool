@@ -24,7 +24,7 @@ class ProductionCacheConfig {
                 'read_timeout' => 10.0,
                 'persistent' => true,
                 'prefix' => 'pms_prod_',
-                'serializer' => class_exists('Redis') ? Redis::SERIALIZER_JSON : null,
+                'serializer' => class_exists('Redis') ? (defined('Redis::SERIALIZER_JSON') ? constant('Redis::SERIALIZER_JSON') : 1) : null,
             ],
             
             // Cache TTL settings optimized for production
@@ -194,7 +194,8 @@ class ProductionCacheConfig {
         
         // Set Redis configuration
         if (class_exists('Redis')) {
-            $redis = new Redis();
+            $redisClass = 'Redis';
+            $redis = new $redisClass();
             try {
                 $redis->connect(
                     $config['redis']['host'],

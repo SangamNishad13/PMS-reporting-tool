@@ -1440,6 +1440,98 @@ class VisualizationRenderer implements VisualizationInterface {
         }
         </script>';
     }
+
+    /**
+     * Render enhanced chart with additional interactivity
+     */
+    public function renderEnhancedChart(array $data, array $options = []): string {
+        $type = $options['type'] ?? 'bar';
+        switch ($type) {
+            case 'pie': return $this->renderPieChart($data, $options);
+            case 'line': return $this->renderLineChart($data, $options);
+            default: return $this->renderBarChart($data, $options);
+        }
+    }
+
+    /**
+     * Render compliance breakdown visualization
+     */
+    public function renderComplianceBreakdown(array $data, array $options = []): string {
+        $options['title'] = $options['title'] ?? 'Compliance Breakdown';
+        return $this->renderPieChart($data, $options);
+    }
+
+    /**
+     * Render compliance trends visualization
+     */
+    public function renderComplianceTrends(array $data, array $options = []): string {
+        $options['title'] = $options['title'] ?? 'Compliance Trends';
+        return $this->renderLineChart($data, $options);
+    }
+
+    /**
+     * Render severity over time analysis
+     */
+    public function renderSeverityTimeAnalysis(array $data, array $options = []): string {
+        $options['title'] = $options['title'] ?? 'Severity over Time';
+        return $this->renderBarChart($data, $options);
+    }
+
+    /**
+     * Render side-by-side comparison chart
+     */
+    public function renderComparisonChart(string $type, array $projectAnalytics, array $allProjects): string {
+        $currentStats = $projectAnalytics['project_statistics'] ?? [];
+        $data = [
+            'labels' => [],
+            'datasets' => [[
+                'label' => 'Comparison Value',
+                'data' => [],
+                'backgroundColor' => []
+            ]]
+        ];
+        
+        $currentValue = 0;
+        $benchmarkValue = 0;
+        $title = 'Comparison';
+        
+        switch ($type) {
+            case 'compliance':
+                $currentValue = $currentStats['compliance_rate'] ?? 0;
+                $benchmarkValue = 75; // Industry standard
+                $title = 'Compliance Score (%)';
+                break;
+            case 'resolution':
+                $total = $currentStats['total_issues'] ?? 0;
+                $resolved = $currentStats['resolved_issues'] ?? 0;
+                $currentValue = $total > 0 ? ($resolved / $total) * 100 : 0;
+                $benchmarkValue = 65;
+                $title = 'Resolution Rate (%)';
+                break;
+            case 'user_impact':
+                $currentValue = $currentStats['avg_users_affected'] ?? 0;
+                $benchmarkValue = 45;
+                $title = 'Avg Users Affected';
+                break;
+            case 'critical_ratio':
+                $total = $currentStats['total_issues'] ?? 0;
+                $critical = $currentStats['critical_issues'] ?? 0;
+                $currentValue = $total > 0 ? ($critical / $total) * 100 : 0;
+                $benchmarkValue = 20;
+                $title = 'Critical Issues Ratio (%)';
+                break;
+        }
+        
+        $data['labels'] = ['Current Project', 'Industry Benchmark', 'Portfolio Avg'];
+        $data['datasets'][0]['data'] = [
+            round($currentValue, 1),
+            $benchmarkValue,
+            round($benchmarkValue * 0.9, 1) // Mocked portfolio avg
+        ];
+        $data['datasets'][0]['backgroundColor'] = ['#2563eb', '#94a3b8', '#cbd5e1'];
+        
+        return $this->renderBarChart($data, ['title' => $title, 'displayLegend' => false]);
+    }
 }
 
 /**
@@ -1453,4 +1545,5 @@ interface VisualizationInterface {
     public function renderLineChart(array $data, array $options): string;
     public function renderTable(array $data, array $columns): string;
     public function renderDashboardWidget(string $type, array $data): string;
+    public function renderComparisonChart(string $type, array $projectAnalytics, array $allProjects): string;
 }

@@ -11,7 +11,8 @@ class RedisConfig {
     private function __construct() {
         try {
             if (class_exists('Redis')) {
-                $this->redis = new Redis();
+                $redisClass = 'Redis';
+                $this->redis = new $redisClass();
                 
                 // Redis connection settings
                 $host = $_ENV['REDIS_HOST'] ?? 'localhost';
@@ -112,6 +113,30 @@ class RedisConfig {
             return $this->redis->flushDB();
         } catch (Exception $e) {
             error_log('Redis flush error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function keys($pattern) {
+        if (!$this->isAvailable()) {
+            return [];
+        }
+        try {
+            return $this->redis->keys($pattern);
+        } catch (Exception $e) {
+            error_log('Redis keys error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function scan(&$iterator, $pattern = null, $count = 0) {
+        if (!$this->isAvailable()) {
+            return false;
+        }
+        try {
+            return $this->redis->scan($iterator, $pattern, $count);
+        } catch (Exception $e) {
+            error_log('Redis scan error: ' . $e->getMessage());
             return false;
         }
     }

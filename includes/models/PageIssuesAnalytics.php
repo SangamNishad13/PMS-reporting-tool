@@ -239,15 +239,22 @@ class PageIssuesAnalytics extends AnalyticsEngine {
     private function calculatePageSeverityScore($severityCounts, $totalIssues) {
         if ($totalIssues === 0) return 0;
         
-        $weights = ['Critical' => 4, 'High' => 3, 'Medium' => 2, 'Low' => 1];
+        // Weights based on actual DB severity enum values
+        $weights = [
+            'blocker'  => 5,
+            'critical' => 4,
+            'major'    => 3,
+            'minor'    => 2,
+            'low'      => 1,
+        ];
         $weightedScore = 0;
         
         foreach ($severityCounts as $severity => $count) {
-            $weight = $weights[$severity] ?? 2;
+            $weight = $weights[strtolower($severity)] ?? 2;
             $weightedScore += $weight * $count;
         }
         
-        $maxPossibleScore = $totalIssues * 4;
+        $maxPossibleScore = $totalIssues * 5; // max weight is 5 (blocker)
         return round(($weightedScore / $maxPossibleScore) * 100, 1);
     }
     
@@ -557,24 +564,23 @@ class PageIssuesAnalytics extends AnalyticsEngine {
      * @return array
      */
     private function analyzePageSeverityDistribution($pageMetrics) {
-        $totalSeverities = ['Critical' => 0, 'High' => 0, 'Medium' => 0, 'Low' => 0];
+        $totalSeverities = [];
         
         foreach ($pageMetrics as $page) {
             foreach ($page['severity_breakdown'] as $severity => $count) {
-                $totalSeverities[$severity] += $count;
+                $totalSeverities[$severity] = ($totalSeverities[$severity] ?? 0) + $count;
             }
         }
         
         $total = array_sum($totalSeverities);
+        $percentages = [];
+        foreach ($totalSeverities as $severity => $count) {
+            $percentages[$severity] = $this->calculatePercentage($count, $total);
+        }
         
         return [
             'counts' => $totalSeverities,
-            'percentages' => [
-                'Critical' => $this->calculatePercentage($totalSeverities['Critical'], $total),
-                'High' => $this->calculatePercentage($totalSeverities['High'], $total),
-                'Medium' => $this->calculatePercentage($totalSeverities['Medium'], $total),
-                'Low' => $this->calculatePercentage($totalSeverities['Low'], $total)
-            ]
+            'percentages' => $percentages
         ];
     }
     

@@ -111,6 +111,7 @@ try {
 
 // Handle Create Client User
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_client_user'])) {
+    $username = sanitizeInput($_POST['username']);
     $fullName = sanitizeInput($_POST['full_name']);
     $email = sanitizeInput($_POST['email']);
     $clientId = intval($_POST['client_id']);
@@ -118,19 +119,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_client_user'])
     $grantViewAccess = isset($_POST['grant_view_access']) ? 1 : 0;
     
     try {
-        // Check if email already exists
-        $stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
-        $stmt->execute([$email]);
+        // Check if email or username already exists
+        $stmt = $db->prepare("SELECT id FROM users WHERE email = ? OR username = ?");
+        $stmt->execute([$email, $username]);
         if ($stmt->fetch()) {
-            $_SESSION['error'] = "Email already exists.";
+            $_SESSION['error'] = "Email or Username already exists.";
         } else {
             // Create user
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
             $stmt = $db->prepare("
-                INSERT INTO users (full_name, email, password, role, client_id, created_at) 
-                VALUES (?, ?, ?, 'client', ?, NOW())
+                INSERT INTO users (username, full_name, email, password, role, client_id, created_at) 
+                VALUES (?, ?, ?, ?, 'client', ?, NOW())
             ");
-            $stmt->execute([$fullName, $email, $hashedPassword, $clientId]);
+            $stmt->execute([$username, $fullName, $email, $hashedPassword, $clientId]);
             $userId = $db->lastInsertId();
             
             // Grant view_project permission if checked
@@ -192,6 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_client_user'])
 // Handle Update Client User
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_client_user'])) {
     $userId = intval($_POST['user_id']);
+    $username = sanitizeInput($_POST['username']);
     $fullName = sanitizeInput($_POST['full_name']);
     $email = sanitizeInput($_POST['email']);
     $clientId = intval($_POST['client_id']);
@@ -200,10 +202,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_client_user'])
     try {
         $stmt = $db->prepare("
             UPDATE users 
-            SET full_name = ?, email = ?, client_id = ?, is_active = ?
+            SET username = ?, full_name = ?, email = ?, client_id = ?, is_active = ?
             WHERE id = ? AND role = 'client'
         ");
-        $stmt->execute([$fullName, $email, $clientId, $isActive, $userId]);
+        $stmt->execute([$username, $fullName, $email, $clientId, $isActive, $userId]);
         
         $_SESSION['success'] = "Client user updated successfully!";
         redirect("/modules/admin/client_users.php");
@@ -262,6 +264,7 @@ try {
     $query = "
         SELECT 
             u.id,
+            u.username,
             u.full_name,
             u.email,
             u.client_id,
@@ -307,6 +310,7 @@ include __DIR__ . '/../../includes/header.php';
                 <table class="table table-striped" id="clientUsersTable">
                     <thead>
                         <tr>
+                            <th>Username</th>
                             <th>Name</th>
                             <th>Email</th>
                             <th>Client</th>
@@ -320,7 +324,8 @@ include __DIR__ . '/../../includes/header.php';
                     <tbody>
                         <?php foreach ($clientUsers as $user): ?>
                         <tr>
-                            <td><strong><?php echo htmlspecialchars($user['full_name']); ?></strong></td>
+                            <td><strong><?php echo htmlspecialchars($user['username'] ?? ''); ?></strong></td>
+                            <td><?php echo htmlspecialchars($user['full_name']); ?></td>
                             <td><?php echo htmlspecialchars($user['email']); ?></td>
                             <td>
                                 <?php if ($user['client_name']): ?>
@@ -388,6 +393,10 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
+                        <label class="form-label">Username <span class="text-danger">*</span></label>
+                        <input type="text" name="username" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">Full Name <span class="text-danger">*</span></label>
                         <input type="text" name="full_name" class="form-control" required>
                     </div>
@@ -438,6 +447,10 @@ include __DIR__ . '/../../includes/header.php';
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Username <span class="text-danger">*</span></label>
+                        <input type="text" name="username" id="edit_username" class="form-control" required>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label">Full Name <span class="text-danger">*</span></label>
                         <input type="text" name="full_name" id="edit_full_name" class="form-control" required>
@@ -510,6 +523,7 @@ $(document).ready(function() {
 
 function editUser(user) {
     document.getElementById('edit_user_id').value = user.id;
+    document.getElementById('edit_username').value = user.username || '';
     document.getElementById('edit_full_name').value = user.full_name;
     document.getElementById('edit_email').value = user.email;
     document.getElementById('edit_client_id').value = user.client_id || '';

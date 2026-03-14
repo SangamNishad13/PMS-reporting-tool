@@ -1250,88 +1250,109 @@ try {
         $typeId = getDefaultTypeId($db, $projectId);
         if (!$typeId) jsonError('Issue types are not configured.', 500);
         $issueKey = '';
-        $severity = $_POST['severity'] ?? 'major';
         $commonTitle = trim($_POST['common_title'] ?? '');
         $clientReady = (int)($_POST['client_ready'] ?? 0);
 
-        if ($action === 'create') {
-            $stmt = $db->prepare("INSERT INTO issues (project_id, issue_key, title, description, type_id, priority_id, status_id, reporter_id, page_id, severity, is_final, common_issue_title, client_ready) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
-            $created = false;
-            for ($attempt = 0; $attempt < 5; $attempt++) {
-                $issueKey = getIssueKey($db, $projectId);
-                try {
-                    $stmt->execute([$projectId, $issueKey, $title, $description, $typeId, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady]);
-                    $id = (int)$db->lastInsertId();
-                    $created = true;
-                    break;
-                } catch (PDOException $pe) {
-                    // Retry only on unique issue_key race/collision.
-                    $isDuplicate = ((int)($pe->errorInfo[1] ?? 0) === 1062);
-                    $isIssueKeyDup = stripos((string)$pe->getMessage(), 'issue_key') !== false;
-                    if (!($isDuplicate && $isIssueKeyDup)) {
-                        throw $pe;
+        try {
+            $db->beginTransaction();
+
+            if ($action === 'create') {
+                $stmt = $db->prepare("INSERT INTO issues (project_id, issue_key, title, description, type_id, priority_id, status_id, reporter_id, page_id, severity, is_final, common_issue_title, client_ready) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
+                $created = false;
+                for ($attempt = 0; $attempt < 5; $attempt++) {
+                    $issueKey = getIssueKey($db, $projectId);
+                    try {
+                        $stmt->execute([$projectId, $issueKey, $title, $description, $typeId, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady]);
+                        $id = (int)$db->lastInsertId();
+                        $created = true;
+                        break;
+                    } catch (PDOException $pe) {
+                        // Retry only on unique issue_key race/collision.
+                        $isDuplicate = ((int)($pe->errorInfo[1] ?? 0) === 1062);
+                        $isIssueKeyDup = stripos((string)$pe->getMessage(), 'issue_key') !== false;
+                        if (!($isDuplicate && $isIssueKeyDup)) {
+                            throw $pe;
+                        }
                     }
                 }
-            }
-            if (!$created) {
-                throw new RuntimeException('Unable to generate a unique issue key. Please retry.');
-            }
-        } else {
-            if (!$id) jsonError('id is required', 400);
-            
-            // --- HISTORY LOGGING ---
-            // Fetch current state
-            $oldStmt = $db->prepare("SELECT * FROM issues WHERE id = ?");
-            $oldStmt->execute([$id]);
-            $oldIssue = $oldStmt->fetch(PDO::FETCH_ASSOC);
-            if (!$oldIssue) jsonError('Issue not found', 404);
+                if (!$created) {
+                    throw new RuntimeException('Unable to generate a unique issue key. Please retry.');
+                }
+            } else {
+                if (!$id) jsonError('id is required', 400);
+                
+                // --- HISTORY LOGGING ---
+                // Fetch current state
+                $oldStmt = $db->prepare("SELECT * FROM issues WHERE id = ? FOR UPDATE");
+                $oldStmt->execute([$id]);
+                $oldIssue = $oldStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$oldIssue) jsonError('Issue not found', 404);
 
-            if ($expectedUpdatedAt !== '' && !empty($oldIssue['updated_at']) && $expectedUpdatedAt !== (string)$oldIssue['updated_at']) {
-                jsonResponse([
-                    'error' => 'This issue was modified by another user. Please reload latest data and try again.',
-                    'conflict' => true,
-                    'current_updated_at' => (string)$oldIssue['updated_at']
-                ], 409);
-            }
-
-            if ($expectedHistoryId !== null) {
-                $histStmt = $db->prepare("SELECT COALESCE(MAX(id), 0) FROM issue_history WHERE issue_id = ?");
-                $histStmt->execute([$id]);
-                $currentHistoryId = (int)$histStmt->fetchColumn();
-                if ($currentHistoryId !== $expectedHistoryId) {
+                if ($expectedUpdatedAt !== '' && !empty($oldIssue['updated_at']) && $expectedUpdatedAt !== (string)$oldIssue['updated_at']) {
+                    $db->rollBack();
                     jsonResponse([
                         'error' => 'This issue was modified by another user. Please reload latest data and try again.',
                         'conflict' => true,
-                        'current_history_id' => $currentHistoryId
+                        'current_updated_at' => (string)$oldIssue['updated_at']
                     ], 409);
                 }
+
+                if ($expectedHistoryId !== null) {
+                    $histStmt = $db->prepare("SELECT COALESCE(MAX(id), 0) FROM issue_history WHERE issue_id = ?");
+                    $histStmt->execute([$id]);
+                    $currentHistoryId = (int)$histStmt->fetchColumn();
+                    if ($currentHistoryId !== $expectedHistoryId) {
+                        $db->rollBack();
+                        jsonResponse([
+                            'error' => 'This issue was modified by another user. Please reload latest data and try again.',
+                            'conflict' => true,
+                            'current_history_id' => $currentHistoryId
+                        ], 409);
+                    }
+                }
+
+                $oldMetaStmt = $db->prepare("SELECT meta_key, meta_value FROM issue_metadata WHERE issue_id = ? ORDER BY id ASC");
+                $oldMetaStmt->execute([$id]);
+                $oldMeta = [];
+                while ($m = $oldMetaStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $k = (string)$m['meta_key'];
+                    if (!isset($oldMeta[$k])) $oldMeta[$k] = [];
+                    $oldMeta[$k][] = (string)$m['meta_value'];
+                }
+
+                // DETECT CHANGES
+                $hasChanged = false;
+                if ($oldIssue['title'] !== $title) $hasChanged = true;
+                if ($oldIssue['description'] !== $description) $hasChanged = true;
+                if ((int)$oldIssue['priority_id'] !== (int)$priorityId) $hasChanged = true;
+                if ((int)$oldIssue['status_id'] !== (int)$statusId) $hasChanged = true;
+                if ((int)$oldIssue['reporter_id'] !== (int)$reporterId) $hasChanged = true;
+                if ($oldIssue['page_id'] != ($pageId ?: null)) $hasChanged = true;
+                if ($oldIssue['severity'] !== $severity) $hasChanged = true;
+                if ($oldIssue['common_issue_title'] !== ($commonTitle ?: null)) $hasChanged = true;
+                if ((int)($oldIssue['client_ready'] ?? 0) !== $clientReady) $hasChanged = true;
+
+                function logHistory($db, $issueId, $userId, $field, $oldVal, $newVal) {
+                    if ($oldVal === $newVal) return;
+                    $stmt = $db->prepare("INSERT INTO issue_history (issue_id, user_id, field_name, old_value, new_value) VALUES (?, ?, ?, ?, ?)");
+                    $stmt->execute([$issueId, $userId, $field, $oldVal, $newVal]);
+                }
+
+                logHistory($db, $id, $userId, 'title', $oldIssue['title'], $title);
+                logHistory($db, $id, $userId, 'description', $oldIssue['description'], $description);
+                logHistory($db, $id, $userId, 'severity', $oldIssue['severity'], $severity);
+                logHistory($db, $id, $userId, 'common_issue_title', $oldIssue['common_issue_title'], $commonTitle ?: null);
+                logHistory($db, $id, $userId, 'client_ready', $oldIssue['client_ready'] ?? 0, $clientReady);
+                // More fields could be logged if needed (status, priority etc)
+
+                if ($hasChanged) {
+                    $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
+                } else {
+                    // Update potentially changed fields but DON'T bump updated_at if they didn't change (prevents false conflicts)
+                    $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ? WHERE id = ? AND project_id = ?");
+                }
+                $stmt->execute([$title, $description, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady, $id, $projectId]);
             }
-
-            $oldMetaStmt = $db->prepare("SELECT meta_key, meta_value FROM issue_metadata WHERE issue_id = ? ORDER BY id ASC");
-            $oldMetaStmt->execute([$id]);
-            $oldMeta = [];
-            while ($m = $oldMetaStmt->fetch(PDO::FETCH_ASSOC)) {
-                $k = (string)$m['meta_key'];
-                if (!isset($oldMeta[$k])) $oldMeta[$k] = [];
-                $oldMeta[$k][] = (string)$m['meta_value'];
-            }
-
-            function logHistory($db, $issueId, $userId, $field, $oldVal, $newVal) {
-                if ($oldVal === $newVal) return;
-                $stmt = $db->prepare("INSERT INTO issue_history (issue_id, user_id, field_name, old_value, new_value) VALUES (?, ?, ?, ?, ?)");
-                $stmt->execute([$issueId, $userId, $field, $oldVal, $newVal]);
-            }
-
-            logHistory($db, $id, $userId, 'title', $oldIssue['title'], $title);
-            logHistory($db, $id, $userId, 'description', $oldIssue['description'], $description);
-            logHistory($db, $id, $userId, 'severity', $oldIssue['severity'], $severity);
-            logHistory($db, $id, $userId, 'common_issue_title', $oldIssue['common_issue_title'], $commonTitle ?: null);
-            logHistory($db, $id, $userId, 'client_ready', $oldIssue['client_ready'] ?? 0, $clientReady);
-            // More fields could be logged if needed (status, priority etc)
-
-            $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
-            $stmt->execute([$title, $description, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady, $id, $projectId]);
-        }
 
         function normalizeHistoryMetaValues($values, $allowCsv = false) {
             $out = [];
@@ -1548,6 +1569,12 @@ try {
         } else {
             $db->prepare("DELETE FROM common_issues WHERE issue_id = ?")->execute([$id]);
         }
+
+        $db->commit();
+    } catch (Exception $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        jsonError($e->getMessage(), 500);
+    }
 
         // Fetch the updated issue data to return to client
         $sql = "SELECT DISTINCT i.*, 

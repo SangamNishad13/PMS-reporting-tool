@@ -3,7 +3,7 @@
  * Daily Hours Compliance Checker
  * 
  * This script should be run via cron job every 5 minutes or at specific times
- * Example cron: */5 * * * * php /path/to/cron/check_daily_hours.php
+ * Example cron: * / 5 * * * * php /path/to/cron/check_daily_hours.php
  * 
  * Or run at specific time: 30 18 * * * php /path/to/cron/check_daily_hours.php
  */

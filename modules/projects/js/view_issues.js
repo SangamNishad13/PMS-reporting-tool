@@ -5781,14 +5781,43 @@
             });
             
             clearTimeout(timeoutId);
-            var json = await res.json();
-
-            if (!json || json.error) {
-                throw new Error(json && json.error ? json.error : 'Save failed');
+            
+            var json = null;
+            try {
+                var text = await res.text();
+                json = text ? JSON.parse(text) : null;
+            } catch (pE) {
+                console.error('Failed to parse JSON response', pE);
             }
 
-            if (!json.success) {
-                throw new Error('Save failed - server returned unsuccessful response');
+            if (res.status === 409 || (json && json.conflict)) {
+                var conflictMsg = (json && json.error) ? json.error : 'This issue was modified by another user. Please review and save again.';
+                await loadFinalIssues(selectedPageId);
+                var freshList = (issueData.pages[selectedPageId] && issueData.pages[selectedPageId].final) ? issueData.pages[selectedPageId].final : [];
+                var freshIssue = freshList.find(function (it) { return String(it.id) === String(editId); });
+                
+                // Reset button state
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Issue';
+                }
+
+                showIssueConflictDialog(conflictMsg, function () {
+                    if (freshIssue) {
+                        var modalEl = document.getElementById('finalIssueModal');
+                        var isOpen = !!(modalEl && modalEl.classList.contains('show'));
+                        openFinalEditor(freshIssue, { skipShow: isOpen });
+                    }
+                });
+                return;
+            }
+
+            if (!res.ok) {
+                throw new Error(json && json.error ? json.error : 'Server returned error ' + res.status);
+            }
+
+            if (!json || !json.success) {
+                throw new Error(json && json.error ? json.error : 'Save failed');
             }
 
             var store = issueData.pages;

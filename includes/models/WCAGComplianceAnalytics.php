@@ -78,10 +78,10 @@ class WCAGComplianceAnalytics extends AnalyticsEngine {
         ];
         
         $severityByLevel = [
-            'A' => ['Critical' => 0, 'High' => 0, 'Medium' => 0, 'Low' => 0],
-            'AA' => ['Critical' => 0, 'High' => 0, 'Medium' => 0, 'Low' => 0],
-            'AAA' => ['Critical' => 0, 'High' => 0, 'Medium' => 0, 'Low' => 0],
-            'Unknown' => ['Critical' => 0, 'High' => 0, 'Medium' => 0, 'Low' => 0]
+            'A' => [],
+            'AA' => [],
+            'AAA' => [],
+            'Unknown' => []
         ];
         
         $commonViolations = [];
@@ -93,7 +93,7 @@ class WCAGComplianceAnalytics extends AnalyticsEngine {
             $page = $issue['page_url'] ?? 'Unknown';
             
             $levelCounts[$wcagLevel]++;
-            $severityByLevel[$wcagLevel][$severity]++;
+            $severityByLevel[$wcagLevel][$severity] = ($severityByLevel[$wcagLevel][$severity] ?? 0) + 1;
             
             // Track common violations
             $violationType = $this->categorizeViolation($issue);

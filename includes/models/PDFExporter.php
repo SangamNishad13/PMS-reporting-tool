@@ -121,7 +121,8 @@ class PDFExporter extends ExportEngine {
         $unit = 'mm';
         $format = $options['format'] ?? 'A4';
         
-        $this->tcpdf = new TCPDF($orientation, $unit, $format, true, 'UTF-8', false);
+        $tcpdfClass = 'TCPDF';
+        $this->tcpdf = new $tcpdfClass($orientation, $unit, $format, true, 'UTF-8', false);
         
         // Set document information
         $this->tcpdf->SetCreator('Analytics Reporting System');

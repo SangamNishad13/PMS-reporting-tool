@@ -10,7 +10,7 @@ $totalProjects = $projectStats['total_projects'] ?? 0;
 $clientReadyIssues = $projectStats['client_ready_issues'] ?? 0;
 // For client view, client-ready issues ARE the total issues
 $totalIssues = $clientReadyIssues; // Hide internal total count from client
-$readyPercentage = $totalIssues > 0 ? 100 : 0; // Always 100% since we only show client-ready issues
+$compliancePercentage = $dashboardData['compliance_percentage'] ?? 0;
 ?>
 
 <div class="row mb-4">
@@ -58,16 +58,16 @@ $readyPercentage = $totalIssues > 0 ? 100 : 0; // Always 100% since we only show
                 <div class="summary-icon mb-3">
                     <i class="fas fa-percentage fa-2x text-info"></i>
                 </div>
-                <h3 class="summary-value text-info"><?php echo $readyPercentage; ?>%</h3>
-                <p class="summary-label mb-2">Processing Status</p>
-                <small class="text-muted">Issues processing completion</small>
+                <h3 class="summary-value text-info"><?php echo $compliancePercentage; ?>%</h3>
+                <p class="summary-label mb-2">Compliance Percentage</p>
+                <small class="text-muted">Total issues resolved vs open</small>
                 
                 <!-- Progress Bar -->
                 <div class="progress mt-2" style="height: 6px;">
                     <div class="progress-bar bg-info" 
-                         style="width: <?php echo $readyPercentage; ?>%"
+                         style="width: <?php echo $compliancePercentage; ?>%"
                          role="progressbar" 
-                         aria-valuenow="<?php echo $readyPercentage; ?>" 
+                         aria-valuenow="<?php echo $compliancePercentage; ?>" 
                          aria-valuemin="0" 
                          aria-valuemax="100">
                     </div>

@@ -49,7 +49,8 @@ include __DIR__ . '/../../includes/header.php';
                     <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $projectId; ?>">
                         <?php echo htmlspecialchars($project['title']); ?>
                     </a></li>
-                    <?php endif; ?>
+                    <?php
+endif; ?>
                     <li class="breadcrumb-item active">Accessibility Report</li>
                 </ol>
             </nav>
@@ -68,7 +69,8 @@ include __DIR__ . '/../../includes/header.php';
                         Project: <strong><?php echo htmlspecialchars($project['title']); ?></strong>
                         <?php if ($_SESSION['role'] !== 'client' && $project['client_name']): ?>
                             | Client: <strong><?php echo htmlspecialchars($project['client_name']); ?></strong>
-                        <?php endif; ?>
+                        <?php
+endif; ?>
                     </p>
                 </div>
                 <?php if ($_SESSION['role'] !== 'client'): ?>
@@ -77,7 +79,8 @@ include __DIR__ . '/../../includes/header.php';
                         <i class="fas fa-arrow-left me-1"></i> Back to Project
                     </a>
                 </div>
-                <?php endif; ?>
+                <?php
+endif; ?>
             </div>
         </div>
     </div>
@@ -120,7 +123,7 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
             </div>
         </div>
-        
+        <?php if ($userRole !== 'client'): ?>
         <!-- Export Issues Card -->
         <div class="col-md-6">
             <div class="card h-100 border-success">
@@ -139,7 +142,8 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
             </div>
         </div>
-        
+        <?php
+endif; ?>
         <!-- All Issues Card -->
         <div class="col-md-6">
             <div class="card h-100 border-warning">
@@ -162,6 +166,7 @@ include __DIR__ . '/../../includes/header.php';
 </div>
 
 <!-- Floating Project Chat (bottom-right) -->
+ <?php if ($_SESSION['role'] !== 'client'): ?>
 <style>
 .chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1060; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
 .chat-launcher i { font-size: 1.1rem; }
@@ -230,5 +235,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
+<?php
+endif; ?>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

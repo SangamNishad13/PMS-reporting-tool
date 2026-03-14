@@ -191,31 +191,44 @@ class AdminAssignmentController {
             $notifyClient = ($validation['data']['notify_client'] ?? 'no') === 'yes';
             
             // Revoke project access
-            $result = $this->assignmentManager->revokeProjectAccess(
-                $clientUserId,
-                $projectIds,
-                $_SESSION['user_id'],
-                $notifyClient
-            );
+            $revokedCount = 0;
+            $errors = [];
             
-            if ($result['success']) {
+            foreach ($projectIds as $projectId) {
+                $revResult = $this->assignmentManager->revokeProjectAccess(
+                    $clientUserId,
+                    $projectId,
+                    $_SESSION['user_id'],
+                    $notifyClient ? 'Revoked by admin' : ''
+                );
+                
+                if ($revResult['success']) {
+                    $revokedCount++;
+                } else {
+                    $errors[] = "Project $projectId: " . $revResult['error'];
+                }
+            }
+            
+            if ($revokedCount > 0) {
                 // Log admin action
                 $this->auditLogger->logAdminActivity(
                     $_SESSION['user_id'],
                     'project_revocation',
-                    "Revoked projects " . implode(',', $projectIds) . " from client user $clientUserId",
+                    "Revoked $revokedCount projects from client user $clientUserId",
                     $clientUserId
                 );
                 
                 echo json_encode([
                     'success' => true,
-                    'message' => 'Project access revoked successfully',
-                    'revoked_count' => count($projectIds)
+                    'message' => "Project access revoked successfully ($revokedCount projects)",
+                    'revoked_count' => $revokedCount,
+                    'errors' => $errors
                 ]);
             } else {
                 echo json_encode([
                     'success' => false,
-                    'error' => $result['error']
+                    'error' => 'Failed to revoke any projects',
+                    'details' => $errors
                 ]);
             }
             

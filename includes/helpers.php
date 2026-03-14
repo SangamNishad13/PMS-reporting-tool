@@ -41,7 +41,7 @@ function hasTesterPrivileges() {
  * 
  * @param mixed $data The data to sanitize
  * @param bool $allowHtml Whether to allow HTML (default: false)
- * @return string Sanitized string
+ * @return string|array Sanitized string or array of strings
  */
 function sanitizeInput($data, $allowHtml = false) {
     if (is_array($data)) {
@@ -217,6 +217,11 @@ function createNotification($db, $userId, $type, $message, $link = null) {
         // Best-effort email mirror for in-app notifications.
         // Never block primary request flow if email transport is failing.
         try {
+            // Unblock session for other requests while sending email
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                session_write_close();
+            }
+
             $settings = @include(__DIR__ . '/../config/settings.php');
             $userStmt = $db->prepare("SELECT full_name, email FROM users WHERE id = ? AND is_active = 1 LIMIT 1");
             $userStmt->execute([$userId]);

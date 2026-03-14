@@ -371,11 +371,11 @@ try {
                         <div class="mt-3">
                             <h6>Quick Actions:</h6>
                             <div class="d-grid gap-2">
-                                <a href="<?php echo $base_path; ?>/modules/chat/project_chat.php" class="btn btn-outline-primary">
+                                <a href="<?php echo $baseDir; ?>/modules/chat/project_chat.php" class="btn btn-outline-primary">
                                     <i class="fas fa-comments"></i> General Chat
                                 </a>
                                 <?php if ($project): ?>
-                                <a href="<?php echo $base_path; ?>/modules/projects/view.php?id=<?php echo $project['id']; ?>" 
+                                <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $project['id']; ?>" 
                                    class="btn btn-outline-secondary">
                                     <i class="fas fa-arrow-left"></i> Back to Project
                                 </a>
