@@ -158,13 +158,7 @@ class VisualizationRenderer implements VisualizationInterface {
                         ]
                     ],
                     'tooltip' => [
-                        'callbacks' => [
-                            'label' => 'function(context) { 
-                                var total = context.dataset.data.reduce((a,b) => a+b, 0);
-                                var percentage = Math.round((context.parsed / total) * 100);
-                                return context.label + ": " + context.parsed + " (" + percentage + "%)";
-                            }'
-                        ]
+                        'mode' => 'index'
                     ]
                 ],
                 'accessibility' => [
@@ -352,11 +346,8 @@ class VisualizationRenderer implements VisualizationInterface {
         
         $html .= '</div>';
         
-        // Add Chart.js initialization script
-        $configJson = json_encode($config, JSON_UNESCAPED_SLASHES);
-        
-        // Convert quoted "function(...) { ... }" strings back to actual JS functions
-        $configJson = preg_replace('/"function\s*\(([^)]*)\)\s*\{([\s\S]*?)\}"/', 'function($1){$2}', $configJson);
+        // Generate chart config JSON (safe - no raw JS functions)
+        $configJson = json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         
         $html .= '<script>';
         $html .= 'document.addEventListener("DOMContentLoaded", function() {';
