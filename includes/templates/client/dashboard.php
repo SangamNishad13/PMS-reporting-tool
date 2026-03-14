@@ -47,8 +47,6 @@ require_once __DIR__ . '/../../header.php';
 // Chart.js and Dashboard Scripts 
 ?>
 
-<!-- Chart.js and Dashboard Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <?php 
 try {
     if (isset($dashboardController->visualization) && method_exists($dashboardController->visualization, 'getVisualizationJS')) {

@@ -129,8 +129,6 @@ try {
     <?php endif; ?>
 </div>
 
-<!-- Chart.js and Dashboard Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <?php 
 try {
     if (isset($dashboardController->visualization) && method_exists($dashboardController->visualization, 'getVisualizationJS')) {
@@ -147,6 +145,11 @@ initializeDashboard();
 
 function initializeDashboard() {
     
+    // Set actualClientId in global scope for dashboard.js
+    window.actualClientId = '<?php echo $actualClientId; ?>';
+    window.selectedProjectId = '<?php echo $selectedProjectId ?? ""; ?>';
+    window.baseUrl = '<?php echo $baseDir; ?>';
+
     // Add any missing functionality here
     const buttons = document.querySelectorAll('.btn');
     buttons.forEach(button => {
@@ -162,57 +165,6 @@ function initializeDashboard() {
             });
         }
     });
-}
-
-// Export functions
-function exportDashboard(format) {
-    const clientId = '<?php echo $actualClientId; ?>';
-    const projectId = '<?php echo $selectedProjectId ?? ""; ?>';
-    const baseUrl = '<?php echo $baseDir; ?>/api/client_export.php';
-    
-    if (!clientId || clientId === '0') {
-        alert('Cannot export: Client information not found.');
-        return;
-    }
-    
-    // Provide visual feedback
-    const btn = event ? event.target.closest('.btn') : null;
-    let originalHtml = '';
-    if (btn) {
-        originalHtml = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-        btn.disabled = true;
-    }
-    
-    // Construct final URL
-    let exportUrl = `${baseUrl}?client_id=${clientId}&format=${format}`;
-    if (projectId) {
-        exportUrl += `&project_id=${projectId}`;
-    }
-    
-    if (format === 'pdf') {
-        window.open(exportUrl, '_blank');
-        // Reset button state since we didn't redirect away
-        setTimeout(() => {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = originalHtml;
-            }
-        }, 2000);
-    } else {
-        window.location.href = exportUrl;
-        // Reset button state after a delay in case the browser stays on the same page
-        setTimeout(() => {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = originalHtml;
-            }
-        }, 2000);
-    }
-}
-
-function refreshDashboard() {
-    window.location.reload();
 }
 </script>
 

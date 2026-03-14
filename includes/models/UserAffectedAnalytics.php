@@ -468,7 +468,7 @@ class UserAffectedAnalytics extends AnalyticsEngine {
      * 
      * @return array Empty report data
      */
-    private function getEmptyReport() {
+    protected function getEmptyReport() {
         return [
             'project_ids' => [],
             'total_issues' => 0,

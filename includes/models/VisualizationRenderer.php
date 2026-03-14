@@ -354,6 +354,10 @@ class VisualizationRenderer implements VisualizationInterface {
         
         // Add Chart.js initialization script
         $configJson = json_encode($config, JSON_UNESCAPED_SLASHES);
+        
+        // Convert quoted "function(...) { ... }" strings back to actual JS functions
+        $configJson = preg_replace('/"function\s*\(([^)]*)\)\s*\{([\s\S]*?)\}"/', 'function($1){$2}', $configJson);
+        
         $html .= '<script>';
         $html .= 'document.addEventListener("DOMContentLoaded", function() {';
         $html .= '  if (typeof Chart !== "undefined") {';
