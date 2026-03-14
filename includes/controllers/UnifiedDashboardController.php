@@ -67,11 +67,16 @@ class UnifiedDashboardController {
         // Get project statistics
         $projectStats = $this->accessControl->getProjectStatistics($clientUserId);
         
-        // Calculate overall compliance percentage
+        // Calculate overall compliance percentage from WCAG compliance score
         $compliancePct = 0;
-        if (isset($analyticsReports['compliance_trend']) && $analyticsReports['compliance_trend']) {
+        if (isset($analyticsReports['wcag_compliance']) && $analyticsReports['wcag_compliance']) {
+            $wcagData = $analyticsReports['wcag_compliance']->getData();
+            $compliancePct = round($wcagData['summary']['overall_compliance_score'] ?? 0, 1);
+        }
+        // Fallback to resolution rate if WCAG data not available
+        if ($compliancePct == 0 && isset($analyticsReports['compliance_trend']) && $analyticsReports['compliance_trend']) {
             $trendData = $analyticsReports['compliance_trend']->getData();
-            $compliancePct = $trendData['summary']['overall_resolution_rate'] ?? 0;
+            $compliancePct = round($trendData['summary']['overall_resolution_rate'] ?? 0, 1);
         }
 
         return [
@@ -252,17 +257,16 @@ class UnifiedDashboardController {
                 [
                     'label' => 'Level AA',
                     'value' => round($summary['level_aa_compliance'] ?? 0, 1) . '%'
-                ],
-                [
-                    'label' => 'Level AAA',
-                    'value' => round($summary['level_aaa_compliance'] ?? 0, 1) . '%'
                 ]
             ],
             'quickChart' => [
-                'labels' => array_column($data['level_distribution'] ?? [], 'level'),
+                'labels' => ['Level A', 'Level AA'],
                 'datasets' => [[
-                    'data' => array_column($data['level_distribution'] ?? [], 'count'),
-                    'backgroundColor' => ['#dc3545', '#fd7e14', '#ffc107', '#6c757d']
+                    'data' => [
+                        round($summary['level_a_compliance'] ?? 0, 1),
+                        round($summary['level_aa_compliance'] ?? 0, 1)
+                    ],
+                    'backgroundColor' => ['#2563eb', '#16a34a']
                 ]]
             ]
         ];
@@ -283,19 +287,19 @@ class UnifiedDashboardController {
             'drillDownUrl' => '/PMS/modules/client/dashboard_unified.php?type=severity_analysis&projects=' . implode(',', $projectIds),
             'summary' => [
                 [
-                    'label' => 'Critical Issues',
+                    'label' => 'Critical Severity',
                     'value' => $summary['critical_count'] ?? 0
                 ],
                 [
-                    'label' => 'High Priority',
+                    'label' => 'High Severity',
                     'value' => $summary['high_count'] ?? 0
                 ],
                 [
-                    'label' => 'Medium Priority',
+                    'label' => 'Medium Severity',
                     'value' => $summary['medium_count'] ?? 0
                 ],
                 [
-                    'label' => 'Low Priority',
+                    'label' => 'Low Severity',
                     'value' => $summary['low_count'] ?? 0
                 ]
             ],
