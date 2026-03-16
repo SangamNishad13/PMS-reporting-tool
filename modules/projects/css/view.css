@@ -306,6 +306,7 @@
     font-size: 1.05rem;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
@@ -589,11 +590,6 @@
     /* max-height: 600px; */
     /* overflow-y: auto; */
     padding-bottom: 20px;
-}
-
-#projectTabsContent .table-responsive {
-    /* max-height: 400px; */
-    /* overflow-y: auto; */
 }
 
 /* Sticky Headers for Tables */
