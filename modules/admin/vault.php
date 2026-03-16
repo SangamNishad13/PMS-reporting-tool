@@ -161,7 +161,7 @@ include '../../includes/header.php';
                         <div class="col-md-4">
                             <select class="form-select" id="filterTodoPriority" onchange="filterTodos()">
                                 <option value="">All Priorities</option>
-                                <option value="Urgent">Urgent</option>
+                                <option value="Critical">Critical</option>
                                 <option value="High">High</option>
                                 <option value="Medium">Medium</option>
                                 <option value="Low">Low</option>
@@ -251,7 +251,7 @@ include '../../includes/header.php';
 .todo-item:hover {
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
-.todo-item.urgent { border-left-color: #dc3545; background: #fff5f5; }
+.todo-item.critical { border-left-color: #dc3545; background: #fff5f5; }
 .todo-item.high { border-left-color: #fd7e14; background: #fff8f0; }
 .todo-item.medium { border-left-color: #ffc107; background: #fffbf0; }
 .todo-item.low { border-left-color: #28a745; background: #f0fff4; }

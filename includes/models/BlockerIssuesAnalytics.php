@@ -150,7 +150,7 @@ class BlockerIssuesAnalytics extends AnalyticsEngine {
         
         // Check explicit blocker indicators
         $blockerKeywords = [
-            'blocker', 'blocking', 'blocks', 'critical', 'urgent', 'showstopper',
+            'blocker', 'blocking', 'blocks', 'critical', 'showstopper',
             'prevents', 'cannot', 'unable', 'broken', 'fails', 'error',
             'inaccessible', 'unusable', 'non-functional'
         ];
@@ -164,7 +164,7 @@ class BlockerIssuesAnalytics extends AnalyticsEngine {
         }
         
         // Check severity-based criteria
-        if (in_array($severity, ['critical', 'blocker', 'urgent'])) {
+        if (in_array($severity, ['critical', 'blocker'])) {
             return true;
         }
         
@@ -257,7 +257,7 @@ class BlockerIssuesAnalytics extends AnalyticsEngine {
         $content = strtolower(($issue['title'] ?? '') . ' ' . ($issue['description'] ?? ''));
         
         // Critical urgency indicators
-        $criticalIndicators = ['critical', 'urgent', 'immediate', 'showstopper', 'emergency'];
+        $criticalIndicators = ['critical', 'immediate', 'showstopper', 'emergency'];
         foreach ($criticalIndicators as $indicator) {
             if (strpos($content . ' ' . $severity . ' ' . $priority, $indicator) !== false) {
                 return 'Critical';

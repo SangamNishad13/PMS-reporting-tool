@@ -459,7 +459,7 @@ class PDFExporter extends ExportEngine {
             $metrics[] = [
                 'name' => 'Critical Issues',
                 'value' => $critical,
-                'status' => $critical > 0 ? 'Urgent' : 'Good'
+                'status' => $critical > 0 ? 'Critical' : 'Good'
             ];
         }
         

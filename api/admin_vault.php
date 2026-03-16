@@ -183,7 +183,7 @@ try {
                         ELSE 4 
                     END,
                     CASE priority 
-                        WHEN 'Urgent' THEN 1 
+                        WHEN 'Critical' THEN 1 
                         WHEN 'High' THEN 2 
                         WHEN 'Medium' THEN 3 
                         ELSE 4 

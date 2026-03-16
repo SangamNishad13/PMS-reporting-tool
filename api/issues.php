@@ -109,6 +109,13 @@ function ensureIssueReporterQaStatusTable($db) {
     static $isReady = null;
     if ($isReady !== null) return $isReady;
     try {
+        // Check if table exists first to avoid implicit commit from CREATE TABLE
+        $exists = $db->query("SHOW TABLES LIKE 'issue_reporter_qa_status'")->fetchColumn();
+        if ($exists) {
+            $isReady = true;
+            return true;
+        }
+
         $db->exec("
             CREATE TABLE IF NOT EXISTS issue_reporter_qa_status (
                 id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -340,8 +347,11 @@ function ensureIssuePresenceTable($db) {
     static $isReady = null;
     if ($isReady !== null) return $isReady;
     try {
-        $isReady = (bool)$db->query("SHOW TABLES LIKE " . $db->quote('issue_active_editors'))->fetchColumn();
-        if (!$isReady) {
+        // Check if table exists first to avoid implicit commit from CREATE TABLE
+        $exists = $db->query("SHOW TABLES LIKE 'issue_active_editors'")->fetchColumn();
+        if ($exists) {
+            $isReady = true;
+        } else {
             $db->exec("
                 CREATE TABLE IF NOT EXISTS issue_active_editors (
                     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -355,7 +365,7 @@ function ensureIssuePresenceTable($db) {
                     KEY idx_issue_active_issue (project_id, issue_id, last_seen)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ");
-            $isReady = (bool)$db->query("SHOW TABLES LIKE " . $db->quote('issue_active_editors'))->fetchColumn();
+            $isReady = (bool)$db->query("SHOW TABLES LIKE 'issue_active_editors'")->fetchColumn();
         }
         if ($isReady) {
             $cols = [];
@@ -529,8 +539,11 @@ function ensureIssuePresenceSessionsTable($db) {
     static $isReady = null;
     if ($isReady !== null) return $isReady;
     try {
-        $isReady = (bool)$db->query("SHOW TABLES LIKE " . $db->quote('issue_presence_sessions'))->fetchColumn();
-        if (!$isReady) {
+        // Check if table exists first to avoid implicit commit from CREATE TABLE
+        $exists = $db->query("SHOW TABLES LIKE 'issue_presence_sessions'")->fetchColumn();
+        if ($exists) {
+            $isReady = true;
+        } else {
             $db->exec("
                 CREATE TABLE IF NOT EXISTS issue_presence_sessions (
                     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -549,7 +562,7 @@ function ensureIssuePresenceSessionsTable($db) {
                     KEY idx_issue_presence_open (closed_at, last_seen)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ");
-            $isReady = (bool)$db->query("SHOW TABLES LIKE " . $db->quote('issue_presence_sessions'))->fetchColumn();
+            $isReady = (bool)$db->query("SHOW TABLES LIKE 'issue_presence_sessions'")->fetchColumn();
         }
         if ($isReady) {
             $cols = [];
@@ -1252,9 +1265,12 @@ try {
         $issueKey = '';
         $commonTitle = trim($_POST['common_title'] ?? '');
         $clientReady = (int)($_POST['client_ready'] ?? 0);
+        $severity = trim($_POST['severity'] ?? 'medium');
 
         try {
-            $db->beginTransaction();
+            if (!$db->inTransaction()) {
+                $db->beginTransaction();
+            }
 
             if ($action === 'create') {
                 $stmt = $db->prepare("INSERT INTO issues (project_id, issue_key, title, description, type_id, priority_id, status_id, reporter_id, page_id, severity, is_final, common_issue_title, client_ready) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
@@ -1279,17 +1295,23 @@ try {
                     throw new RuntimeException('Unable to generate a unique issue key. Please retry.');
                 }
             } else {
-                if (!$id) jsonError('id is required', 400);
+                if (!$id) {
+                    if ($db->inTransaction()) $db->rollBack();
+                    jsonError('id is required', 400);
+                }
                 
                 // --- HISTORY LOGGING ---
                 // Fetch current state
                 $oldStmt = $db->prepare("SELECT * FROM issues WHERE id = ? FOR UPDATE");
                 $oldStmt->execute([$id]);
                 $oldIssue = $oldStmt->fetch(PDO::FETCH_ASSOC);
-                if (!$oldIssue) jsonError('Issue not found', 404);
+                if (!$oldIssue) {
+                    if ($db->inTransaction()) $db->rollBack();
+                    jsonError('Issue not found', 404);
+                }
 
                 if ($expectedUpdatedAt !== '' && !empty($oldIssue['updated_at']) && $expectedUpdatedAt !== (string)$oldIssue['updated_at']) {
-                    $db->rollBack();
+                    if ($db->inTransaction()) $db->rollBack();
                     jsonResponse([
                         'error' => 'This issue was modified by another user. Please reload latest data and try again.',
                         'conflict' => true,
@@ -1302,7 +1324,7 @@ try {
                     $histStmt->execute([$id]);
                     $currentHistoryId = (int)$histStmt->fetchColumn();
                     if ($currentHistoryId !== $expectedHistoryId) {
-                        $db->rollBack();
+                        if ($db->inTransaction()) $db->rollBack();
                         jsonResponse([
                             'error' => 'This issue was modified by another user. Please reload latest data and try again.',
                             'conflict' => true,

@@ -743,7 +743,7 @@ function showTodoModal(todo = null) {
                                             <option value="Low" ${isEdit && todo.priority === 'Low' ? 'selected' : ''}>Low</option>
                                             <option value="Medium" ${isEdit && todo.priority === 'Medium' ? 'selected' : (!isEdit ? 'selected' : '')}>Medium</option>
                                             <option value="High" ${isEdit && todo.priority === 'High' ? 'selected' : ''}>High</option>
-                                            <option value="Urgent" ${isEdit && todo.priority === 'Urgent' ? 'selected' : ''}>Urgent</option>
+                                            <option value="Critical" ${isEdit && todo.priority === 'Critical' ? 'selected' : ''}>Critical</option>
                                         </select>
                                     </div>
                                 </div>
@@ -768,7 +768,7 @@ function showTodoModal(todo = null) {
                             
                             <div class="mb-3">
                                 <label class="form-label"><i class="fas fa-tags"></i> Tags</label>
-                                <input type="text" class="form-control" name="tags" value="${isEdit && todo.tags ? escapeHtml(todo.tags) : ''}" placeholder="urgent, client, review">
+                                <input type="text" class="form-control" name="tags" value="${isEdit && todo.tags ? escapeHtml(todo.tags) : ''}" placeholder="critical, client, review">
                             </div>
                         </form>
                     </div>

@@ -45,24 +45,53 @@ if ($hasQaStatusMaster) {
                         u.full_name,
                         u.username,
                         u.role,
-                        COUNT(irqs.id) AS total_comments,
                         COUNT(DISTINCT i.id) AS total_issues,
+                        COUNT(DISTINCT CASE 
+                            WHEN irqs.qa_status_key IS NOT NULL 
+                            AND irqs.qa_status_key != '' 
+                            AND TRIM(irqs.qa_status_key) != ''
+                            AND COALESCE(qsm.error_points, 0) > 0 
+                            THEN i.id 
+                        END) AS issues_with_changes,
+                        COUNT(DISTINCT CASE 
+                            WHEN irqs.qa_status_key IS NULL 
+                            OR irqs.qa_status_key = '' 
+                            OR TRIM(irqs.qa_status_key) = '' 
+                            THEN i.id 
+                        END) AS issues_pending_qa,
+                        COUNT(DISTINCT irqs.id) AS total_comments,
                         SUM(COALESCE(qsm.error_points, 0)) AS total_error_points,
                         AVG(COALESCE(qsm.error_points, 0)) AS avg_error_points,
-                        SUM(CASE WHEN qsm.severity_level = '1' THEN 1 ELSE 0 END) AS minor_issues,
-                        SUM(CASE WHEN qsm.severity_level = '2' THEN 1 ELSE 0 END) AS moderate_issues,
-                        SUM(CASE WHEN qsm.severity_level = '3' THEN 1 ELSE 0 END) AS major_issues,
-                        MAX(irqs.updated_at) AS last_activity_date
-                    FROM issues i
-                    INNER JOIN issue_reporter_qa_status irqs ON irqs.issue_id = i.id
-                    INNER JOIN users u ON u.id = irqs.reporter_user_id
-                    INNER JOIN qa_status_master qsm
+                        MAX(COALESCE(irqs.updated_at, i.updated_at)) AS last_activity_date
+                    FROM users u
+                    LEFT JOIN (
+                        -- Get all issues where user is involved (main reporter OR additional reporter)
+                        SELECT DISTINCT i.id, i.project_id, i.updated_at, u_rel.user_id
+                        FROM issues i
+                        CROSS JOIN (
+                            -- Get main reporters
+                            SELECT i2.id as issue_id, i2.reporter_id as user_id
+                            FROM issues i2
+                            WHERE i2.project_id = ?
+                            
+                            UNION DISTINCT
+                            
+                            -- Get additional reporters from QA status table
+                            SELECT irqs2.issue_id, irqs2.reporter_user_id as user_id
+                            FROM issue_reporter_qa_status irqs2
+                            INNER JOIN issues i3 ON i3.id = irqs2.issue_id
+                            WHERE i3.project_id = ?
+                        ) u_rel ON u_rel.issue_id = i.id
+                        WHERE i.project_id = ?
+                    ) i ON i.user_id = u.id
+                    LEFT JOIN issue_reporter_qa_status irqs ON irqs.issue_id = i.id AND irqs.reporter_user_id = u.id
+                    LEFT JOIN qa_status_master qsm
                         ON FIND_IN_SET(
-                            LOWER(TRIM(qsm.status_key)),
+                            LOWER(TRIM(qsm.status_key)) COLLATE utf8mb4_general_ci,
                             REPLACE(
                                 REPLACE(
                                     REPLACE(
-                                        REPLACE(LOWER(TRIM(irqs.qa_status_key)), ' ', ''),
+                                        REPLACE(LOWER(TRIM(COALESCE(irqs.qa_status_key, ''))) COLLATE utf8mb4_general_ci, ' ', ''),
                                         '[', ''
                                     ),
                                     ']', ''
@@ -71,14 +100,15 @@ if ($hasQaStatusMaster) {
                             )
                         ) > 0
                        AND qsm.is_active = 1
-                    WHERE i.project_id = ?
-                      AND u.role NOT IN ('admin', 'super_admin')
+                    WHERE u.role NOT IN ('admin', 'super_admin')
+                      AND i.id IS NOT NULL
                     GROUP BY u.id, u.full_name, u.username, u.role
+                    HAVING COUNT(DISTINCT i.id) > 0
                     ORDER BY total_error_points DESC, total_comments DESC";
 
         try {
             $perfStmt = $db->prepare($perfSql);
-            $perfStmt->execute([$projectId]);
+            $perfStmt->execute([$projectId, $projectId, $projectId]);
             $performanceData = $perfStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Exception $e) {
             error_log('tab_performance reporter-level query failed: ' . $e->getMessage());
@@ -93,21 +123,20 @@ if ($hasQaStatusMaster) {
                         u.full_name,
                         u.username,
                         u.role,
-                        COUNT(im.id) AS total_comments,
+                        COUNT(DISTINCT im.id) AS total_comments,
                         COUNT(DISTINCT i.id) AS total_issues,
+                        COUNT(DISTINCT CASE WHEN im.meta_value IS NOT NULL AND im.meta_value != '' AND COALESCE(qsm.error_points, 0) > 0 THEN i.id END) AS issues_with_changes,
+                        COUNT(DISTINCT CASE WHEN (im.meta_value IS NULL OR im.meta_value = '') THEN i.id END) AS issues_pending_qa,
                         SUM(COALESCE(qsm.error_points, 0)) AS total_error_points,
                         AVG(COALESCE(qsm.error_points, 0)) AS avg_error_points,
-                        SUM(CASE WHEN qsm.severity_level = '1' THEN 1 ELSE 0 END) AS minor_issues,
-                        SUM(CASE WHEN qsm.severity_level = '2' THEN 1 ELSE 0 END) AS moderate_issues,
-                        SUM(CASE WHEN qsm.severity_level = '3' THEN 1 ELSE 0 END) AS major_issues,
                         MAX(i.updated_at) AS last_activity_date
                     FROM issues i
                     INNER JOIN users u ON i.reporter_id = u.id
-                    INNER JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'qa_status'
-                    INNER JOIN qa_status_master qsm
+                    LEFT JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'qa_status'
+                    LEFT JOIN qa_status_master qsm
                         ON (
-                            LOWER(TRIM(qsm.status_key)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
-                            OR LOWER(TRIM(qsm.status_label)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
+                            LOWER(TRIM(qsm.status_key)) COLLATE utf8mb4_general_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_general_ci
+                            OR LOWER(TRIM(qsm.status_label)) COLLATE utf8mb4_general_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_general_ci
                         )
                        AND qsm.is_active = 1
                     WHERE i.project_id = ?
@@ -133,15 +162,14 @@ if ($hasQaStatusMaster) {
                         u.role,
                         COUNT(DISTINCT uqp.id) as total_comments,
                         COUNT(DISTINCT uqp.issue_id) as total_issues,
+                        COUNT(DISTINCT CASE WHEN uqp.qa_status_id IS NOT NULL AND COALESCE(qsm.error_points, 0) > 0 THEN uqp.issue_id END) as issues_with_changes,
+                        COUNT(DISTINCT CASE WHEN uqp.qa_status_id IS NULL THEN uqp.issue_id END) as issues_pending_qa,
                         SUM(uqp.error_points) as total_error_points,
                         AVG(uqp.error_points) as avg_error_points,
-                        SUM(CASE WHEN qsm.severity_level = '1' THEN 1 ELSE 0 END) as minor_issues,
-                        SUM(CASE WHEN qsm.severity_level = '2' THEN 1 ELSE 0 END) as moderate_issues,
-                        SUM(CASE WHEN qsm.severity_level = '3' THEN 1 ELSE 0 END) as major_issues,
                         MAX(uqp.comment_date) as last_activity_date
                     FROM user_qa_performance uqp
                     JOIN users u ON uqp.user_id = u.id
-                    JOIN qa_status_master qsm ON uqp.qa_status_id = qsm.id
+                    LEFT JOIN qa_status_master qsm ON uqp.qa_status_id = qsm.id
                     WHERE uqp.project_id = ?
                     AND u.role NOT IN ('admin', 'super_admin')
                     GROUP BY u.id, u.full_name, u.username, u.role
@@ -156,39 +184,122 @@ if ($hasQaStatusMaster) {
         }
     }
     
-    // Calculate error rate and performance score for each user
+    // Calculate performance score for each user (without error rate dependency)
     foreach ($performanceData as &$data) {
         $totalComments = (int)$data['total_comments'];
-        $totalPoints = (float)$data['total_error_points'];
+        $totalIssues = (int)$data['total_issues'];
+        $issuesWithChanges = (int)($data['issues_with_changes'] ?? 0);
+        $totalErrorPoints = (float)($data['total_error_points'] ?? 0);
         
-        $data['error_rate'] = $totalComments > 0 ? round($totalPoints / $totalComments, 2) : 0;
-        $data['performance_score'] = max(0, round(100 - ($data['error_rate'] * 33.33), 1));
+        // Ensure issues_with_changes and issues_pending_qa have default values
+        if (!isset($data['issues_with_changes'])) {
+            $data['issues_with_changes'] = 0;
+        }
+        if (!isset($data['issues_pending_qa'])) {
+            $data['issues_pending_qa'] = 0;
+        }
         
-        if ($data['performance_score'] >= 90) {
-            $data['grade'] = 'A+';
-            $data['grade_color'] = 'success';
-        } elseif ($data['performance_score'] >= 80) {
-            $data['grade'] = 'A';
-            $data['grade_color'] = 'success';
-        } elseif ($data['performance_score'] >= 70) {
-            $data['grade'] = 'B';
-            $data['grade_color'] = 'info';
-        } elseif ($data['performance_score'] >= 60) {
-            $data['grade'] = 'C';
-            $data['grade_color'] = 'warning';
+        $evaluatedIssues = max(0, $totalIssues - (int)$data['issues_pending_qa']);
+        
+        // Calculate error rate (average error points per issue)
+        $data['error_rate'] = $evaluatedIssues > 0 ? round($totalErrorPoints / $evaluatedIssues, 2) : 0;
+        
+        // Calculate performance score based on quality ratio
+        $qualityRatio = $evaluatedIssues > 0 ? (($evaluatedIssues - $issuesWithChanges) / $evaluatedIssues) : 1;
+        
+        if ($evaluatedIssues == 0) {
+            $data['performance_score'] = 0;
+            $data['grade'] = 'N/A';
+            $data['grade_color'] = 'secondary';
+            $data['performance_display'] = 'N/A';
         } else {
-            $data['grade'] = 'D';
-            $data['grade_color'] = 'danger';
+            $data['performance_score'] = max(0, round($qualityRatio * 100, 1));
+            $data['performance_display'] = $data['performance_score'] . '%';
+            
+            if ($data['performance_score'] >= 90) {
+                $data['grade'] = 'A+';
+                $data['grade_color'] = 'success';
+            } elseif ($data['performance_score'] >= 80) {
+                $data['grade'] = 'A';
+                $data['grade_color'] = 'success';
+            } elseif ($data['performance_score'] >= 70) {
+                $data['grade'] = 'B';
+                $data['grade_color'] = 'info';
+            } elseif ($data['performance_score'] >= 60) {
+                $data['grade'] = 'C';
+                $data['grade_color'] = 'warning';
+            } else {
+                $data['grade'] = 'D';
+                $data['grade_color'] = 'danger';
+            }
         }
     }
     unset($data);
     
-    // Calculate project statistics
+    // Sort by performance score (best first)
+    usort($performanceData, function($a, $b) {
+        if ($a['performance_score'] == $b['performance_score']) {
+            return $a['error_rate'] <=> $b['error_rate']; // Lower error rate is better
+        }
+        return $b['performance_score'] <=> $a['performance_score']; // Higher score is better
+    });
+    
+    // Calculate project statistics correctly using DB to avoid cross-user duplication
     if (!empty($performanceData)) {
         $projectStats['total_resources'] = count($performanceData);
-        $projectStats['total_comments'] = array_sum(array_column($performanceData, 'total_comments'));
-        $projectStats['total_issues'] = array_sum(array_column($performanceData, 'total_issues'));
-        $projectStats['avg_error_rate'] = round(array_sum(array_column($performanceData, 'error_rate')) / count($performanceData), 2);
+        
+        try {
+            // Get accurate project-wide distinct counts
+            // An issue is only considered "Reviewed" if NO reporters on that issue are pending QA
+            $projStatsSql = "
+                SELECT 
+                    COUNT(DISTINCT i.id) as true_total_issues,
+                    COUNT(DISTINCT CASE 
+                        WHEN NOT EXISTS (
+                            -- Check if there are any pending reporters for this issue
+                            SELECT 1 FROM issue_reporter_qa_status irqs_sub 
+                            WHERE irqs_sub.issue_id = i.id 
+                            AND (irqs_sub.qa_status_key IS NULL OR irqs_sub.qa_status_key = '' OR TRIM(irqs_sub.qa_status_key) = '')
+                        ) 
+                        AND EXISTS (
+                            -- Check if there is at least one reviewed reporter for this issue
+                            SELECT 1 FROM issue_reporter_qa_status irqs_sub2
+                            WHERE irqs_sub2.issue_id = i.id
+                            AND irqs_sub2.qa_status_key IS NOT NULL 
+                            AND irqs_sub2.qa_status_key != '' 
+                            AND TRIM(irqs_sub2.qa_status_key) != ''
+                        )
+                        THEN i.id 
+                    END) AS true_issues_reviewed,
+                    COUNT(DISTINCT irqs.id) AS true_total_comments
+                FROM issues i
+                LEFT JOIN issue_reporter_qa_status irqs ON irqs.issue_id = i.id
+                WHERE i.project_id = ?
+            ";
+            $statStmt = $db->prepare($projStatsSql);
+            $statStmt->execute([$projectId]);
+            $trueStats = $statStmt->fetch(PDO::FETCH_ASSOC);
+            
+            $projectStats['total_issues'] = (int)$trueStats['true_total_issues'];
+            $projectStats['issues_reviewed'] = (int)$trueStats['true_issues_reviewed'];
+            $projectStats['total_comments'] = (int)$trueStats['true_total_comments'];
+        } catch (Exception $e) {
+            // Fallback (might have duplicates)
+            $projectStats['total_comments'] = array_sum(array_column($performanceData, 'total_comments'));
+            $projectStats['total_issues'] = array_sum(array_column($performanceData, 'total_issues'));
+            $projectStats['issues_reviewed'] = array_sum(array_column($performanceData, 'issues_with_changes'));
+        }
+        
+        // Calculate project average error rate based on the users
+        $totalErrorRate = 0;
+        $validUsers = 0;
+        foreach ($performanceData as $d) {
+            if (isset($d['error_rate'])) {
+                $totalErrorRate += (float)$d['error_rate'];
+                $validUsers++;
+            }
+        }
+        $projectStats['avg_error_rate'] = $validUsers > 0 ? round($totalErrorRate / $validUsers, 2) : 0;
         $projectStats['avg_error_rate_percent'] = round(min(100, ($projectStats['avg_error_rate'] / 3) * 100), 1);
     }
 }
@@ -242,7 +353,7 @@ if ($hasQaStatusMaster) {
                 <div class="card border-secondary">
                     <div class="card-body text-center">
                         <i class="fas fa-bug fa-2x text-secondary mb-2"></i>
-                        <h4 class="mb-0"><?php echo $projectStats['total_issues']; ?></h4>
+                        <h4 class="mb-0"><?php echo $projectStats['issues_reviewed']; ?></h4>
                         <small class="text-muted">Issues Reviewed</small>
                     </div>
                 </div>
@@ -267,84 +378,110 @@ if ($hasQaStatusMaster) {
             </div>
         </div>
 
-        <!-- Performance Table -->
-        <div class="card">
-            <div class="card-header bg-light">
-                <h6 class="mb-0"><i class="fas fa-table"></i> Resource Performance Summary</h6>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-striped mb-0">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>Resource</th>
-                                <th>Role</th>
-                                <th class="text-center">Grade</th>
-                                <th class="text-center">Performance</th>
-                                <th class="text-center">Error Rate</th>
-                                <th class="text-center">Comments</th>
-                                <th class="text-center">Issues</th>
-                                <th class="text-center">Minor</th>
-                                <th class="text-center">Moderate</th>
-                                <th class="text-center">Major</th>
-                                <th>Last Activity</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($performanceData as $data): ?>
-                            <tr>
-                                <td>
-                                    <strong><?php echo htmlspecialchars($data['full_name']); ?></strong><br>
-                                    <small class="text-muted">@<?php echo htmlspecialchars($data['username']); ?></small>
-                                </td>
-                                <td>
-                                    <span class="badge bg-secondary">
-                                        <?php echo ucfirst(str_replace('_', ' ', $data['role'])); ?>
-                                    </span>
-                                </td>
-                                <td class="text-center">
-                                    <span class="badge bg-<?php echo $data['grade_color']; ?> fs-6">
-                                        <?php echo $data['grade']; ?>
-                                    </span>
-                                </td>
-                                <td class="text-center">
-                                    <div class="progress" style="height: 20px; min-width: 100px;">
-                                        <div class="progress-bar bg-<?php echo $data['grade_color']; ?>" 
-                                             style="width: <?php echo $data['performance_score']; ?>%"
-                                             title="<?php echo $data['performance_score']; ?>%">
-                                            <small><strong><?php echo $data['performance_score']; ?>%</strong></small>
-                                        </div>
+        <!-- Performance Cards -->
+        <div class="row">
+            <?php foreach ($performanceData as $data): ?>
+            <div class="col-lg-6 col-xl-4 mb-4">
+                <div class="card h-100 performance-card" data-user-id="<?php echo $data['user_id']; ?>">
+                    <div class="card-header bg-gradient-primary text-white">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-0 text-white" style="font-size: 0.9rem;"><?php echo htmlspecialchars($data['full_name']); ?></h6>
+                                <small class="text-white-50" style="font-size: 0.75rem;">@<?php echo htmlspecialchars($data['username']); ?></small>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-<?php echo $data['grade_color']; ?> fs-6 mb-1" style="font-size: 0.8rem !important;"><?php echo $data['grade']; ?></span>
+                                <div class="small text-white-50" style="font-size: 0.7rem;"><?php echo ucfirst(str_replace('_', ' ', $data['role'])); ?></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card-body">
+                        <!-- Performance Content (shown by default) -->
+                        <div class="performance-content" id="performance-content-<?php echo $data['user_id']; ?>">
+                            <!-- Performance Score -->
+                            <div class="text-center mb-2">
+                                <div class="position-relative d-inline-block">
+                                    <svg width="70" height="70" class="performance-circle">
+                                        <circle cx="35" cy="35" r="30" fill="none" stroke="#e9ecef" stroke-width="5"/>
+                                        <circle cx="35" cy="35" r="30" fill="none" 
+                                                stroke="<?php echo $data['grade_color'] == 'success' ? '#28a745' : ($data['grade_color'] == 'info' ? '#17a2b8' : ($data['grade_color'] == 'warning' ? '#ffc107' : '#dc3545')); ?>" 
+                                                stroke-width="5" 
+                                                stroke-dasharray="<?php echo 2 * 3.14159 * 30; ?>" 
+                                                stroke-dashoffset="<?php echo 2 * 3.14159 * 30 * (1 - $data['performance_score'] / 100); ?>"
+                                                transform="rotate(-90 35 35)"
+                                                class="performance-progress"/>
+                                    </svg>
+                                    <div class="position-absolute top-50 start-50 translate-middle text-center">
+                                        <div class="h6 mb-0 text-<?php echo $data['grade_color']; ?>" style="font-size: 0.9rem;"><?php echo $data['performance_display'] ?? $data['performance_score'] . '%'; ?></div>
                                     </div>
-                                </td>
-                                <td class="text-center">
-                                    <span class="badge bg-<?php echo $data['error_rate'] > 2 ? 'danger' : ($data['error_rate'] > 1 ? 'warning' : 'success'); ?>">
-                                        <?php echo $data['error_rate']; ?> / 3
-                                    </span>
-                                </td>
-                                <td class="text-center">
-                                    <span class="badge bg-info"><?php echo $data['total_comments']; ?></span>
-                                </td>
-                                <td class="text-center">
-                                    <span class="badge bg-primary"><?php echo $data['total_issues']; ?></span>
-                                </td>
-                                <td class="text-center">
-                                    <span class="badge bg-info"><?php echo $data['minor_issues']; ?></span>
-                                </td>
-                                <td class="text-center">
-                                    <span class="badge bg-warning text-dark"><?php echo $data['moderate_issues']; ?></span>
-                                </td>
-                                <td class="text-center">
-                                    <span class="badge bg-danger"><?php echo $data['major_issues']; ?></span>
-                                </td>
-                                <td>
-                                    <small><?php echo $data['last_activity_date'] ? date('M d, Y', strtotime($data['last_activity_date'])) : '—'; ?></small>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                                </div>
+                            </div>
+                            
+                            <!-- Stats Grid -->
+                            <div class="row g-2 mb-2">
+                                <div class="col-6">
+                                    <div class="bg-light rounded p-2 text-center">
+                                        <div class="h6 mb-0 text-primary" style="font-size: 0.9rem;"><?php echo $data['total_issues']; ?></div>
+                                        <small class="text-muted" style="font-size: 0.7rem;">Total Issues</small>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="bg-light rounded p-2 text-center">
+                                        <div class="h6 mb-0 text-info" style="font-size: 0.9rem;"><?php echo $data['total_comments']; ?></div>
+                                        <small class="text-muted" style="font-size: 0.7rem;">Comments</small>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="bg-light rounded p-2 text-center">
+                                        <div class="h6 mb-0 text-warning" style="font-size: 0.9rem;"><?php echo $data['issues_with_changes']; ?></div>
+                                        <small class="text-muted" style="font-size: 0.7rem;">With Changes</small>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="bg-light rounded p-2 text-center">
+                                        <div class="h6 mb-0 text-secondary" style="font-size: 0.9rem;"><?php echo $data['issues_pending_qa']; ?></div>
+                                        <small class="text-muted" style="font-size: 0.7rem;">Pending QA</small>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Last Activity -->
+                            <div class="text-center mb-3">
+                                <small class="text-muted" style="font-size: 0.75rem;">
+                                    <i class="fas fa-clock"></i> 
+                                    Last Activity: <?php 
+                                        if (!empty($data['last_activity_date']) && $data['last_activity_date'] !== '0000-00-00 00:00:00') {
+                                            echo date('M d, Y', strtotime($data['last_activity_date']));
+                                        } else {
+                                            echo 'No recent activity';
+                                        }
+                                    ?>
+                                </small>
+                            </div>
+                        </div>
+                        
+                        <!-- QA Breakdown Content (hidden by default) -->
+                        <div class="qa-breakdown-content" id="qa-breakdown-content-<?php echo $data['user_id']; ?>" style="display: none;">
+                            <h6 class="mb-2 text-center" style="font-size: 0.9rem;"><i class="fas fa-chart-pie text-primary"></i> QA Status Breakdown</h6>
+                            <div id="qa-breakdown-data-<?php echo $data['user_id']; ?>" class="qa-breakdown-scroll">
+                                <div class="text-center text-muted py-4">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading breakdown...
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- View Details Button (always at bottom) -->
+                        <div class="mt-auto pt-2">
+                            <button class="btn btn-primary btn-sm w-100 view-details-btn" onclick="toggleUserDetails(<?php echo $data['user_id']; ?>)" style="font-size: 0.8rem;">
+                                <i class="fas fa-chart-pie me-1"></i> View QA Breakdown
+                                <i class="fas fa-chevron-down ms-1 details-chevron"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
+            <?php endforeach; ?>
         </div>
 
         <!-- Performance Insights -->
@@ -358,39 +495,524 @@ if ($hasQaStatusMaster) {
                         <div class="row">
                             <div class="col-md-4">
                                 <h6 class="text-success">Top Performers</h6>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // No need for row click handlers since we're using buttons now
+});
+
+function toggleUserDetails(userId) {
+    const performanceContent = document.getElementById('performance-content-' + userId);
+    const qaBreakdownContent = document.getElementById('qa-breakdown-content-' + userId);
+    const button = document.querySelector(`[onclick="toggleUserDetails(${userId})"]`);
+    
+    if (qaBreakdownContent.style.display === 'none' || qaBreakdownContent.style.display === '') {
+        // Show QA breakdown, hide performance content
+        performanceContent.style.display = 'none';
+        qaBreakdownContent.style.display = 'block';
+        button.innerHTML = '<i class="fas fa-chart-line me-1"></i> Hide QA Breakdown <i class="fas fa-chevron-up ms-1 details-chevron"></i>';
+        
+        // Load QA breakdown data if not already loaded
+        const dataDiv = document.getElementById('qa-breakdown-data-' + userId);
+        if (dataDiv.innerHTML.includes('Loading breakdown')) {
+            loadQaBreakdown(userId);
+        }
+    } else {
+        // Show performance content, hide QA breakdown
+        performanceContent.style.display = 'block';
+        qaBreakdownContent.style.display = 'none';
+        button.innerHTML = '<i class="fas fa-chart-pie me-1"></i> View QA Breakdown <i class="fas fa-chevron-down ms-1 details-chevron"></i>';
+    }
+}
+
+function loadQaBreakdown(userId) {
+    const contentDiv = document.getElementById('qa-breakdown-data-' + userId);
+    
+    // Show loading
+    contentDiv.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> Loading breakdown...</div>';
+    
+    const url = '<?php echo $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST']; ?>/PMS/api/qa_breakdown.php?project_id=<?php echo $projectId; ?>&user_id=' + userId;
+    
+    // Make AJAX call to get QA status breakdown
+    fetch(url, {
+        method: 'GET',
+        credentials: 'same-origin'
+    })
+    .then(response => response.text())
+    .then(text => {
+        try {
+            const data = JSON.parse(text);
+            
+            if (data.success && data.breakdown) {
+                let html = '';
+                let totalUniqueIssues = data.total_unique_issues || 0;
+                
+                data.breakdown.forEach(function(item) {
+                    const badgeColor = item.error_points > 0 ? 'danger' : 'success';
+                    const statusId = 'status-' + userId + '-' + item.status_key.replace(/[^a-zA-Z0-9]/g, '');
+                    
+                    html += `
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge bg-${badgeColor} me-2">${item.issue_count}</span>
+                                    <strong>${item.status_label}</strong>
+                                    <small class="text-muted ms-2">(${item.error_points} error points)</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="toggleStatusIssues('${statusId}')">
+                                    <i class="fas fa-chevron-down" id="status-icon-${statusId}"></i>
+                                </button>
+                            </div>
+                            <div class="collapse" id="${statusId}">
+                                <div class="bg-white border rounded p-2 issues-container">
+                    `;
+                    
+                    if (item.issues && item.issues.length > 0) {
+                        item.issues.forEach(function(issue) {
+                            html += `
+                                <div class="d-flex justify-content-between align-items-center py-1 px-2 mb-1 bg-light rounded issue-item-new" 
+                                     style="cursor: pointer;" onclick="openIssueDetail(${issue.id}, ${issue.page_id || 0})">
+                                    <div>
+                                        <small class="text-primary fw-bold">${issue.issue_key || '#' + issue.id}</small>
+                                        <div class="small">${issue.title}</div>
+                                    </div>
+                                    <i class="fas fa-external-link-alt text-muted small"></i>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        html += '<div class="text-muted text-center py-2">No issues found</div>';
+                    }
+                    
+                    html += `
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                if (html === '') {
+                    html = '<div class="text-center text-muted py-4">No QA status data found</div>';
+                } else {
+                    html = `<div class="mb-3 text-center"><small class="text-muted">Total Issues: ${totalUniqueIssues}</small></div>` + html;
+                }
+                
+                contentDiv.innerHTML = html;
+            } else {
+                contentDiv.innerHTML = '<div class="text-center text-danger py-4">Failed to load breakdown data</div>';
+            }
+        } catch (e) {
+            console.error('JSON parse error:', e);
+            contentDiv.innerHTML = '<div class="text-center text-danger py-4">Invalid response format</div>';
+        }
+    })
+    .catch(error => {
+        console.error('Error loading QA breakdown:', error);
+        contentDiv.innerHTML = '<div class="text-center text-danger py-4">Network error</div>';
+    });
+}
+
+function toggleStatusIssues(statusId) {
+    const issuesList = document.getElementById(statusId);
+    const icon = document.getElementById('status-icon-' + statusId);
+    
+    if (issuesList.classList.contains('show')) {
+        issuesList.classList.remove('show');
+        icon.className = 'fas fa-chevron-down';
+    } else {
+        issuesList.classList.add('show');
+        icon.className = 'fas fa-chevron-up';
+    }
+}
+
+function openIssueDetail(issueId, pageId) {
+    // Redirect to issues_page_detail.php with expanded view for this issue
+    if (pageId && pageId > 0) {
+        const issuesUrl = '<?php echo $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST']; ?>/PMS/modules/projects/issues_page_detail.php?project_id=<?php echo $projectId; ?>&page_id=' + pageId + '&expand=' + issueId;
+        window.open(issuesUrl, '_blank');
+    } else {
+        // Fallback to main issues page if no page_id
+        const issuesUrl = '<?php echo $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST']; ?>/PMS/modules/projects/view.php?id=<?php echo $projectId; ?>&tab=issues&expand=' + issueId;
+        window.open(issuesUrl, '_blank');
+    }
+}
+</script>
+
+<style>
+#performance .performance-card {
+    transition: all 0.3s ease;
+    border: 2px solid #e9ecef;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    height: 480px !important;
+    max-height: 480px !important;
+    overflow: hidden;
+    border-radius: 12px;
+    background: #ffffff;
+}
+
+#performance .performance-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 35px rgba(0,0,0,0.15);
+    border-color: #007bff;
+}
+
+#performance .performance-card .card-body {
+    height: calc(100% - 60px) !important;
+    max-height: calc(100% - 60px) !important;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+    padding: 1rem;
+}
+
+#performance .bg-gradient-primary {
+    background: linear-gradient(135deg, #0056b3 0%, #007bff 50%, #0d6efd 100%);
+    box-shadow: 0 3px 15px rgba(0,123,255,0.4);
+    border-bottom: 3px solid rgba(255,255,255,0.2);
+}
+
+#performance .bg-gradient-primary .text-white {
+    color: #ffffff !important;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+#performance .bg-gradient-primary .text-white-50 {
+    color: rgba(255,255,255,0.9) !important;
+    font-weight: 500;
+}
+
+#performance .performance-circle {
+    transform: rotate(-90deg);
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+
+#performance .performance-progress {
+    transition: stroke-dashoffset 1s ease-in-out;
+}
+
+#performance .view-details-btn {
+    transition: all 0.3s ease;
+    border: 2px solid #007bff !important;
+    background: #ffffff !important;
+    color: #007bff !important;
+    font-weight: 600;
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,123,255,0.15);
+    text-transform: uppercase;
+    font-size: 0.8rem !important;
+    letter-spacing: 0.5px;
+}
+
+#performance .view-details-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,123,255,0.25);
+    background: #007bff !important;
+    color: #ffffff !important;
+    border-color: #0056b3 !important;
+}
+
+#performance .details-chevron {
+    transition: transform 0.2s ease;
+}
+
+/* Performance and QA content containers */
+#performance .performance-content,
+#performance .qa-breakdown-content {
+    flex: 1;
+    overflow: hidden;
+    max-height: calc(100% - 70px) !important;
+    transition: opacity 0.3s ease;
+}
+
+#performance .qa-breakdown-content {
+    display: flex;
+    flex-direction: column;
+}
+
+#performance .qa-breakdown-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 5px;
+    max-height: calc(100% - 50px) !important;
+}
+
+/* Enhanced stats grid with better contrast */
+#performance .bg-light {
+    background-color: #ffffff !important;
+    border: 2px solid #e9ecef;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+#performance .bg-light:hover {
+    background-color: #f8f9fa !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-color: #007bff;
+}
+
+#performance .bg-light .h6 {
+    color: #212529 !important;
+    font-weight: 800;
+    font-size: 1.1rem;
+}
+
+#performance .bg-light .text-primary {
+    color: #0056b3 !important;
+    font-weight: 900;
+}
+
+#performance .bg-light .text-info {
+    color: #0c5460 !important;
+    font-weight: 900;
+}
+
+#performance .bg-light .text-warning {
+    color: #664d03 !important;
+    font-weight: 900;
+}
+
+#performance .bg-light .text-secondary {
+    color: #495057 !important;
+    font-weight: 900;
+}
+
+#performance .bg-light small {
+    color: #495057 !important;
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+#performance .issue-item-new:hover {
+    background-color: #e3f2fd !important;
+    transform: translateX(3px);
+    transition: all 0.2s ease;
+    border-color: #007bff !important;
+}
+
+/* Issues container with controlled height */
+#performance .issues-container {
+    max-height: 120px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6 !important;
+    background-color: #ffffff;
+}
+
+#performance .issues-container::-webkit-scrollbar {
+    width: 4px;
+}
+
+#performance .issues-container::-webkit-scrollbar-track {
+    background: #f8f9fa;
+    border-radius: 2px;
+}
+
+#performance .issues-container::-webkit-scrollbar-thumb {
+    background: #007bff;
+    border-radius: 2px;
+}
+
+#performance .issues-container::-webkit-scrollbar-thumb:hover {
+    background: #0056b3;
+}
+
+/* Custom scrollbar for QA breakdown */
+#performance .qa-breakdown-scroll::-webkit-scrollbar {
+    width: 5px;
+}
+
+#performance .qa-breakdown-scroll::-webkit-scrollbar-track {
+    background: #f8f9fa;
+    border-radius: 3px;
+}
+
+#performance .qa-breakdown-scroll::-webkit-scrollbar-thumb {
+    background: #007bff;
+    border-radius: 3px;
+}
+
+#performance .qa-breakdown-scroll::-webkit-scrollbar-thumb:hover {
+    background: #0056b3;
+}
+
+/* Enhanced badges with better contrast */
+#performance .badge.bg-danger {
+    background-color: #dc3545 !important;
+    color: white !important;
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(220,53,69,0.3);
+}
+
+#performance .badge.bg-success {
+    background-color: #198754 !important;
+    color: white !important;
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(25,135,84,0.3);
+}
+
+#performance .badge.bg-warning {
+    background-color: #ffc107 !important;
+    color: #212529 !important;
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(255,193,7,0.3);
+}
+
+#performance .badge.bg-info {
+    background-color: #0dcaf0 !important;
+    color: #212529 !important;
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(13,202,240,0.3);
+}
+
+/* QA Status items with better styling */
+#performance .mb-3 .d-flex {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    padding: 1rem;
+    transition: all 0.2s ease;
+    margin-bottom: 0.75rem;
+}
+
+#performance .mb-3 .d-flex:hover {
+    border-color: #007bff;
+    box-shadow: 0 4px 12px rgba(0,123,255,0.2);
+    transform: translateY(-2px);
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+}
+
+#performance .mb-3 .d-flex strong {
+    color: #212529 !important;
+    font-weight: 700;
+}
+
+#performance .mb-3 .d-flex .text-muted {
+    color: #495057 !important;
+    font-weight: 600;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    #performance .performance-card {
+        height: 440px !important;
+        max-height: 440px !important;
+        margin-bottom: 1rem;
+    }
+    
+    #performance .performance-card .card-body {
+        height: calc(100% - 60px) !important;
+        max-height: calc(100% - 60px) !important;
+        padding: 0.8rem;
+    }
+    
+    #performance .col-lg-6.col-xl-4 {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+}
+
+/* Ensure smooth transitions */
+#performance .collapse {
+    transition: all 0.3s ease;
+}
+
+#performance .collapse.show {
+    animation: slideDown 0.3s ease;
+}
+
+/* Content fade transitions */
+#performance .performance-content,
+#performance .qa-breakdown-content {
+    opacity: 1;
+    transition: opacity 0.3s ease;
+}
+
+#performance .performance-content[style*="display: none"],
+#performance .qa-breakdown-content[style*="display: none"] {
+    opacity: 0;
+}
+
+/* Card header improvements */
+#performance .card-header {
+    border-bottom: none;
+    border-radius: 12px 12px 0 0 !important;
+}
+
+/* Better text contrast */
+#performance .text-muted {
+    color: #495057 !important;
+    font-weight: 600;
+}
+
+#performance .small.text-muted {
+    color: #343a40 !important;
+    font-weight: 600;
+}
+
+#performance .text-white-50 {
+    color: rgba(255,255,255,0.8) !important;
+    font-weight: 500;
+}
+</style>
                                 <ul class="list-unstyled">
                                     <?php
-                                    $topPerformers = array_slice($performanceData, 0, 3);
-                                    usort($topPerformers, function($a, $b) {
-                                        return $b['performance_score'] - $a['performance_score'];
+                                    // Top performers: performance score >= 80% and not in other categories
+                                    $topPerformers = array_filter($performanceData, function($d) {
+                                        return $d['performance_score'] >= 80 && $d['error_rate'] <= 1.5;
                                     });
-                                    foreach ($topPerformers as $performer):
-                                        if ($performer['performance_score'] >= 70):
+                                    foreach (array_slice($topPerformers, 0, 5) as $performer):
                                     ?>
                                     <li class="mb-1">
                                         <i class="fas fa-trophy text-warning"></i>
                                         <strong><?php echo htmlspecialchars($performer['full_name']); ?></strong>
-                                        - <?php echo $performer['performance_score']; ?>% (<?php echo $performer['grade']; ?>)
+                                        - <?php echo $performer['performance_display'] ?? $performer['performance_score'] . '%'; ?> (<?php echo $performer['grade']; ?>)
                                     </li>
-                                    <?php 
-                                        endif;
-                                    endforeach; 
-                                    ?>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($topPerformers)): ?>
+                                    <li class="text-muted"><i class="fas fa-info-circle text-info"></i> No top performers yet!</li>
+                                    <?php endif; ?>
                                 </ul>
                             </div>
                             <div class="col-md-4">
                                 <h6 class="text-warning">Needs Attention</h6>
                                 <ul class="list-unstyled">
                                     <?php
+                                    // Needs attention: performance score < 80% but error rate <= 1.5
                                     $needsAttention = array_filter($performanceData, function($d) {
-                                        return $d['performance_score'] < 70;
+                                        return $d['performance_score'] < 80 && $d['error_rate'] <= 1.5;
                                     });
-                                    foreach (array_slice($needsAttention, 0, 3) as $resource):
+                                    foreach (array_slice($needsAttention, 0, 5) as $resource):
                                     ?>
                                     <li class="mb-1">
                                         <i class="fas fa-exclamation-circle text-warning"></i>
                                         <strong><?php echo htmlspecialchars($resource['full_name']); ?></strong>
-                                        - <?php echo $resource['performance_score']; ?>% (<?php echo $resource['grade']; ?>)
+                                        - <?php echo $resource['performance_display'] ?? $resource['performance_score'] . '%'; ?> (<?php echo $resource['grade']; ?>)
                                     </li>
                                     <?php endforeach; ?>
                                     <?php if (empty($needsAttention)): ?>

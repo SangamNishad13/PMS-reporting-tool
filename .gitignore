@@ -7,3 +7,7 @@ assets/uploads/automated_findings/
 
 # Local Node dependencies (tooling)
 tools/accessibility/node_modules/
+
+# Runtime logs
+tmp/logs/*.log
+api/*.log

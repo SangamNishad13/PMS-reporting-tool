@@ -1531,6 +1531,20 @@ document.addEventListener('pms:issues-changed', function () {
             var res = await fetch(url, { credentials: 'same-origin' });
             var json = await res.json();
             var rows = (json && json.success && Array.isArray(json.findings)) ? json.findings : [];
+            
+            // Sync with global issueData for tab count updates
+            if (window.issueData) {
+                var pid = String(projectId);
+                var pgid = String(pageId);
+                if (!window.issueData.pages) window.issueData.pages = {};
+                if (!window.issueData.pages[pgid]) window.issueData.pages[pgid] = {};
+                window.issueData.pages[pgid].needsReview = rows;
+                
+                if (typeof window.updateIssueTabCounts === 'function') {
+                    window.updateIssueTabCounts();
+                }
+            }
+
             if (badge) badge.textContent = String(rows.length);
             if (!rows.length) {
                 tbody.innerHTML = '<tr><td colspan="14" class="text-muted text-center py-4">No automated findings in needs review.</td></tr>';

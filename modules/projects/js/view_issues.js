@@ -69,6 +69,12 @@
         if (pageIdFromQuery && !issueData.selectedPageId) {
             issueData.selectedPageId = String(pageIdFromQuery);
         }
+        
+        // Handle expand parameter to auto-expand specific issue
+        var expandIssueId = qp.get('expand');
+        if (expandIssueId) {
+            window.expandIssueId = expandIssueId;
+        }
     } catch (e) { }
 
     // Expose issueData globally for external access
@@ -786,7 +792,7 @@
                 if (e.which === 13) { e.preventDefault(); confirmImageAltText(); }
             });
         }
-        jQuery('#imageAltTextInput').val(currentAlt);
+        jQuery('#imageAltTextInput').val(currentAlt || 'Screenshot showing [element] with [accessibility issue]');
         var modal = new bootstrap.Modal($modal[0]);
         modal.show();
         $modal.one('shown.bs.modal', function () { jQuery('#imageAltTextInput').focus(); });
@@ -2943,7 +2949,7 @@
         if (!p || p === 'N/A') return '<span class="badge bg-secondary">N/A</span>';
         p = String(p).toLowerCase();
         var colors = {
-            'urgent': 'danger',
+            'critical': 'danger',
             'critical': 'danger',
             'high': 'warning',
             'medium': 'info',
@@ -3434,53 +3440,49 @@
             });
         }
 
+        // Auto-expand issue from URL parameter
+        if (window.expandIssueId) {
+            var expandIssueId = window.expandIssueId;
+            var detailsRow = document.getElementById('issue-details-' + expandIssueId);
+            if (detailsRow) {
+                detailsRow.classList.add('show');
+                var chevronIcon = document.querySelector('#finalIssuesBody [data-collapse-target="#issue-details-' + expandIssueId + '"] .chevron-icon');
+                if (chevronIcon) chevronIcon.className = 'fas fa-chevron-down chevron-icon';
+                
+                // Scroll to the expanded issue
+                setTimeout(function() {
+                    var mainRow = document.querySelector('#finalIssuesBody [data-collapse-target="#issue-details-' + expandIssueId + '"]');
+                    if (mainRow) {
+                        mainRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 100);
+            }
+            // Clear the expand parameter after use
+            window.expandIssueId = null;
+        }
+
+        // Update tab counts after rendering
+        updateIssueTabCounts();
+
         // Add click handlers for images in expanded details
         setTimeout(function () {
+            // Define the handler once for both types of image selection
+            var commonImageClickHandler = function (e) {
+                e.stopPropagation();
+                e.preventDefault();
+                var src = this.getAttribute('src') || this.src;
+                var alt = this.getAttribute('alt') || this.alt || '';
+                if (src) {
+                    openIssueImageModal(src, alt);
+                }
+            };
+
+            // Use a broader selector that covers all images within the container
+            // and apply logic consistently
             document.querySelectorAll('#finalIssuesBody img').forEach(function (img) {
                 img.style.cursor = 'pointer';
-                img.addEventListener('click', function (e) {
-                    e.stopPropagation(); // Prevent row collapse
-                    var imgSrc = this.src;
-                    var imgAlt = this.alt || '';
-
-                    var modal = document.getElementById('issueImageModal');
-                    var previewImg = document.getElementById('issueImagePreview');
-                    var altTextDiv = document.getElementById('issueImageAltText');
-                    var altTextContent = document.getElementById('issueImageAltTextContent');
-
-                    if (modal && previewImg) {
-                        previewImg.src = imgSrc;
-                        previewImg.alt = imgAlt;
-
-                        if (imgAlt && altTextDiv && altTextContent) {
-                            altTextContent.textContent = imgAlt;
-                            altTextDiv.style.display = 'block';
-                        } else if (altTextDiv) {
-                            altTextDiv.style.display = 'none';
-                        }
-
-                        var bsModal = new bootstrap.Modal(modal);
-                        bsModal.show();
-                    }
-                });
             });
             
-            // Also ensure issue-image-thumb class images work
-            document.querySelectorAll('#finalIssuesBody .issue-image-thumb').forEach(function (img) {
-                img.style.cursor = 'pointer';
-                // Remove any existing click handlers to avoid duplicates
-                img.removeEventListener('click', img._imageClickHandler);
-                
-                img._imageClickHandler = function (e) {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    var src = this.getAttribute('src');
-                    if (src) openIssueImageModal(src);
-                };
-                
-                img.addEventListener('click', img._imageClickHandler);
-            });
-
             // Add event listeners for grouped URLs collapse with manual toggle
             document.querySelectorAll('#finalIssuesBody .grouped-urls-toggle').forEach(function (toggleBtn) {
                 toggleBtn.addEventListener('click', function (e) {
@@ -3577,12 +3579,21 @@
     function updateIssueTabCounts() {
         var finalCount = 0;
         var reviewCount = 0;
-        if (issueData.selectedPageId && issueData.pages[issueData.selectedPageId]) {
-            finalCount = (issueData.pages[issueData.selectedPageId].final || []).length;
-            reviewCount = groupReviewItems(issueData.pages[issueData.selectedPageId].review || []).length;
+        var selectedId = String(issueData.selectedPageId || "");
+        if (selectedId && issueData.pages[selectedId]) {
+            finalCount = (issueData.pages[selectedId].final || []).length;
+            reviewCount = groupReviewItems(issueData.pages[selectedId].review || []).length;
+            
+            // If needsReview exists in data, prefer it for the "Needs Review" tab if it's not and-on from automated scan
+            // However, the "Needs Review" tab in issues_page_detail often shows automated scan results.
+            // Let's ensure we don't zero out the badge if we have data.
+            var nrItems = issueData.pages[selectedId].needsReview || [];
+            if (nrItems.length > 0 && reviewCount === 0) {
+                 reviewCount = nrItems.length;
+            }
         }
         var finalBadge = document.getElementById('finalIssuesCountBadge');
-        var reviewBadge = document.getElementById('reviewIssuesCountBadge');
+        var reviewBadge = document.getElementById('needsReviewCountBadge');
         if (finalBadge) finalBadge.textContent = String(finalCount);
         if (reviewBadge) reviewBadge.textContent = String(reviewCount);
     }
@@ -4883,6 +4894,20 @@
         if (finalMarkClientReady) finalMarkClientReady.disabled = !finalChecked || !canEdit();
     }
 
+    // Global image click delegation for image previews
+    document.addEventListener('click', function(e) {
+        var target = e.target;
+        if (target.tagName === 'IMG' && (target.classList.contains('issue-image-thumb') || target.closest('#finalIssuesBody') || target.closest('.message-content'))) {
+            var src = target.getAttribute('src') || target.src;
+            var alt = target.getAttribute('alt') || target.alt || '';
+            if (src) {
+                e.preventDefault();
+                e.stopPropagation();
+                openIssueImageModal(src, alt);
+            }
+        }
+    });
+
     function getPageName(id) { var p = (pages || []).find(function (x) { return String(x.id) === String(id); }); return p ? p.page_name : id; }
     function escapeHtml(str) { if (str === null || str === undefined) return ''; return String(str).replace(/[&<>"']/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[m]); }); }
     function stripHtml(html) { if (!html) return ''; var tmp = document.createElement('div'); tmp.innerHTML = html; return tmp.textContent || tmp.innerText || ''; }
@@ -4939,12 +4964,40 @@
             return '<img ' + newAttrs + '>'; 
         }); 
     }
-    function openIssueImageModal(src) {
+    function openIssueImageModal(src, alt) {
         var m = document.getElementById('issueImageModal');
         var i = document.getElementById('issueImagePreview');
         if (!m || !i) return;
+        
         i.src = src || '';
-        new bootstrap.Modal(m).show();
+        i.alt = alt || '';
+        
+        var altTextDiv = document.getElementById('issueImageAltText');
+        var altTextContent = document.getElementById('issueImageAltTextContent');
+        if (altTextDiv && altTextContent) {
+            if (alt && alt.trim()) {
+                altTextContent.textContent = alt;
+                altTextDiv.style.display = 'block';
+            } else {
+                altTextDiv.style.display = 'none';
+            }
+        }
+        
+        var modalInstance = bootstrap.Modal.getOrCreateInstance(m);
+        
+        // Add one-time listener to clean up any potential backdrop issues
+        m.addEventListener('hidden.bs.modal', function () {
+            // Bootstrap should handle this, but if multiple modals were stacked, 
+            // ensure the backdrop is truly gone.
+            if (!document.querySelector('.modal.show')) {
+                document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+                document.body.classList.remove('modal-open');
+                document.body.style.overflow = '';
+                document.body.style.paddingRight = '';
+            }
+        }, { once: true });
+        
+        modalInstance.show();
     }
 
     function renderIssueComments(issueId) {
@@ -5867,63 +5920,49 @@
                 issueNotify(editId ? 'Issue updated successfully' : 'Issue created successfully', 'success');
             }, 100);
             
-            // Optimized update: only update specific row instead of full table reload
+            // Optimized update: just update the data and refresh the display
             if (editId) {
-                // First update the issue data in memory with the latest data from server
+                // Update the issue data in memory
                 if (issueData.selectedPageId && issueData.pages[issueData.selectedPageId].final) {
                     var issueIndex = issueData.pages[issueData.selectedPageId].final.findIndex(function(i) {
                         return String(i.id) === String(savedIssueId);
                     });
                     if (issueIndex !== -1 && json.issue) {
-                        // Update the issue data with fresh data from server
-                        var updatedIssue = {
-                            id: String(json.issue.id),
-                            issue_key: json.issue.issue_key || '',
-                            title: json.issue.title || 'Issue',
-                            details: json.issue.description || '',
-                            status: json.issue.status || 'open',
-                            status_id: json.issue.status_id || null,
-                            qa_status: Array.isArray(json.issue.qa_status) ? json.issue.qa_status : (json.issue.qa_status ? [json.issue.qa_status] : []),
-                            severity: json.issue.severity || 'medium',
-                            priority: json.issue.priority || 'medium',
-                            pages: json.issue.pages || [],
-                            grouped_urls: json.issue.grouped_urls || [],
-                            reporter_name: json.issue.reporter_name || null,
-                            qa_name: json.issue.qa_name || null,
-                            page_id: json.issue.page_id || issueData.selectedPageId,
-                            client_ready: json.issue.client_ready || 0,
-                            environments: json.issue.environments || [],
-                            usersaffected: json.issue.usersaffected || [],
-                            wcagsuccesscriteria: json.issue.wcagsuccesscriteria || [],
-                            wcagsuccesscriterianame: json.issue.wcagsuccesscriterianame || [],
-                            wcagsuccesscriterialevel: json.issue.wcagsuccesscriterialevel || [],
-                            gigw30: json.issue.gigw30 || [],
-                            is17802: json.issue.is17802 || [],
-                            common_title: json.issue.common_title || '',
-                            reporters: json.issue.reporters || [],
-                            reporter_qa_status_map: json.issue.reporter_qa_status_map || {},
-                            has_comments: !!json.issue.has_comments,
-                            can_tester_delete: (json.issue.can_tester_delete !== false),
-                            created_at: json.issue.created_at || null,
-                            updated_at: json.issue.updated_at || null,
-                            latest_history_id: (json.issue.latest_history_id != null ? Number(json.issue.latest_history_id) : 0)
-                        };
-                        issueData.pages[issueData.selectedPageId].final[issueIndex] = updatedIssue;
-                        
-                        // Update existing issue row with fresh server data
-                        updateSingleIssueRow(savedIssueId, updatedIssue);
+                        // Update with fresh server data
+                        issueData.pages[issueData.selectedPageId].final[issueIndex] = json.issue;
                     }
-                } else {
-                    // Fallback: update with payload if server data not available
-                    updateSingleIssueRow(savedIssueId, payload);
+                }
+                
+                // Simple DOM update: just update the specific row's text content
+                var existingRow = document.querySelector('#finalIssuesBody .final-edit[data-id="' + savedIssueId + '"]');
+                if (existingRow) {
+                    var row = existingRow.closest('tr');
+                    if (row && json.issue) {
+                        // Update key fields in the row without full re-render
+                        var titleCell = row.querySelector('.issue-title');
+                        if (titleCell) titleCell.textContent = json.issue.title || 'Issue';
+                        
+                        var statusCell = row.querySelector('.issue-status');
+                        if (statusCell) statusCell.textContent = json.issue.status || 'open';
+                        
+                        // Add a subtle flash effect to show the row was updated
+                        row.style.backgroundColor = '#d4edda';
+                        setTimeout(function() {
+                            row.style.backgroundColor = '';
+                        }, 1000);
+                    }
                 }
             } else {
-                // For new issues, add to top of table without full reload
-                addNewIssueRow(payload);
+                // For new issues, just add to the data and let the next refresh show it
+                if (json.issue) {
+                    var list = issueData.pages[selectedPageId].final || [];
+                    list.unshift(json.issue);
+                    issueData.pages[selectedPageId].final = list;
+                }
             }
             
-            // Temporarily disable live sync to prevent immediate table reload
-            liveIssueSyncDisabledUntil = Date.now() + 10000; // Disable for 10 seconds
+            // Temporarily disable live sync for 500ms to prevent overwriting our manual update
+            liveIssueSyncDisabledUntil = Date.now() + 500;
             
             updateSelectionButtons();
             showFinalIssuesTab();
@@ -7157,4 +7196,5 @@
     window.updateEditingState = updateEditingState;
     window.loadCommonIssues = loadCommonIssues;
     window.openFinalEditor = openFinalEditor;
+    window.updateIssueTabCounts = updateIssueTabCounts;
 })(); // IIFE invocation - this actually executes the function

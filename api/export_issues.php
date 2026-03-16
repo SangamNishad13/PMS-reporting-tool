@@ -814,14 +814,20 @@ function normalizeExcelCellHtml($html) {
 
     // Keep formatting tags but flatten block tags so content stays in one cell row.
     $html = preg_replace('/<\\s*br\\s*\\/?>/i', '<br>', $html);
+    
+    // Handle list items before stripping tags: insert bullet point and ensure it reflects as a new line
+    // Use the HTML entity or a direct bullet character that Excel handles well in HTML imports.
+    $html = preg_replace('/<li\\b[^>]*>/i', '&#8226; ', $html);
+    $html = preg_replace('/<\\/li>/i', '<br>', $html);
+
     // Remove empty wrapper blocks that produce blank first line in Excel.
     $html = preg_replace('/<(p|div)\\b[^>]*>\\s*(?:&nbsp;|\\s|<br>)*<\\/\\1>/i', '', $html);
     // Remove leading empty inline wrappers.
     $html = preg_replace('/^(?:\\s|&nbsp;|<span\\b[^>]*>\\s*<\\/span>|<font\\b[^>]*>\\s*<\\/font>|<strong>\\s*<\\/strong>|<em>\\s*<\\/em>|<u>\\s*<\\/u>|<b>\\s*<\\/b>|<i>\\s*<\\/i>|<br>)+/i', '', $html);
     // Remove orphan leading closing tags before block normalization.
     $html = preg_replace('/^(?:\\s*<\\/(?:p|div|li|ul|ol|h[1-6]|pre|blockquote)>)+/i', '', $html);
-    $html = preg_replace('/<\\/(p|div|li|ul|ol|h[1-6]|pre|blockquote)>/i', '<br>', $html);
-    $html = preg_replace('/<(p|div|li|ul|ol|h[1-6]|pre|blockquote)\\b[^>]*>/i', '', $html);
+    $html = preg_replace('/<\\/(p|div|ul|ol|h[1-6]|pre|blockquote)>/i', '<br>', $html);
+    $html = preg_replace('/<(p|div|ul|ol|h[1-6]|pre|blockquote)\\b[^>]*>/i', '', $html);
 
     // Remove duplicate breaks and trim leading/trailing breaks.
     $html = preg_replace('/(?:<br>\\s*){3,}/i', '<br><br>', $html);

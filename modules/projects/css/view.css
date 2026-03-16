@@ -237,7 +237,7 @@
 }
 
 .issue-card[data-priority="high"],
-.issue-card[data-priority="urgent"],
+.issue-card[data-priority="critical"],
 .issue-card[data-priority="critical"] {
     border-left: none;
     /* using before element */
@@ -247,7 +247,7 @@
     background: #fd7e14;
 }
 
-.issue-card[data-priority="urgent"]::before {
+.issue-card[data-priority="critical"]::before {
     background: #dc3545;
 }
 

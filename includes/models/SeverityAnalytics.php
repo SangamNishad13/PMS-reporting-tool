@@ -184,7 +184,6 @@ class SeverityAnalytics extends AnalyticsEngine {
         $mapping = [
             'critical' => 'Critical',
             'blocker' => 'Critical',
-            'urgent' => 'Critical',
             'high' => 'High',
             'major' => 'High',
             'important' => 'High',
