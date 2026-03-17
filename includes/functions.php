@@ -304,15 +304,15 @@ function rewrite_upload_urls_to_secure($html) {
         }
 
         $rel = null;
-        $posUploads = strpos($path, '/uploads/');
-        $posAssets = strpos($path, '/assets/uploads/');
+        $posUploads = strpos($path, 'uploads/');
+        $posAssets = strpos($path, 'assets/uploads/');
 
         if ($posUploads !== false) {
-            $rel = ltrim(substr($path, $posUploads + 1), '/');
+            $rel = ltrim(substr($path, $posUploads), '/');
         } elseif ($posAssets !== false) {
-            $rel = ltrim(substr($path, $posAssets + 1), '/');
+            $rel = ltrim(substr($path, $posAssets), '/');
         } else {
-            $pathTrim = ltrim($path, '/');
+            $pathTrim = ltrim(str_replace('\\', '/', $path), '/');
             if (strpos($pathTrim, 'uploads/') === 0 || strpos($pathTrim, 'assets/uploads/') === 0) {
                 $rel = $pathTrim;
             }

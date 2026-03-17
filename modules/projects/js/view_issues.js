@@ -106,7 +106,13 @@
         document.body.classList.remove('modal-open');
         document.body.style.removeProperty('overflow');
         document.body.style.removeProperty('padding-right');
+        document.body.removeAttribute('aria-hidden'); // Ensure body is not hidden
         document.querySelectorAll('.modal-backdrop').forEach(function (el) { el.remove(); });
+        
+        // Remove any stale ARIA hidden attributes from common layouts
+        document.querySelectorAll('.main-wrapper, .page-wrapper').forEach(function(el) {
+            el.removeAttribute('aria-hidden');
+        });
     }
 
     function issueNotify(message, type) {
@@ -2290,13 +2296,22 @@
     }
 
     function hideEditors() {
-        ['finalIssueModal', 'commonIssueModal'].forEach(function (id) {
+        ['finalIssueModal', 'commonIssueModal', 'urlSelectionModal', 'draftConfirmModal'].forEach(function (id) {
             var el = document.getElementById(id);
             if (!el) return;
+            
+            // Ensure focus is moved out of the modal before hiding to avoid ARIA warnings
+            if (el.contains(document.activeElement)) {
+                document.activeElement.blur();
+            }
+
             var inst = bootstrap.Modal.getInstance(el);
             if (inst) inst.hide();
+            
+            // Cleanup aria-hidden immediately if element exists
+            el.setAttribute('aria-hidden', 'true');
         });
-        setTimeout(cleanupModalOverlayState, 250);
+        setTimeout(cleanupModalOverlayState, 300);
     }
 
     function toggleFinalIssueFields(enable) {
@@ -5877,7 +5892,8 @@
             ensurePageStore(store, selectedPageId);
             var pagesArr = (data.pages && data.pages.length) ? data.pages : [selectedPageId];
 
-            var payload = Object.assign({ id: String(editId || json.id || ''), issue_key: String(json.issue_key || '') }, data);
+            // Use the updated issue data from server response, not form data
+            var payload = json.issue || Object.assign({ id: String(editId || json.id || ''), issue_key: String(json.issue_key || '') }, data);
             var list = store[selectedPageId].final || [];
             var idx = list.findIndex(function (it) { return String(it.id) === String(payload.id); });
             if (idx >= 0) list[idx] = payload; else list.unshift(payload);
@@ -5927,9 +5943,9 @@
                     var issueIndex = issueData.pages[issueData.selectedPageId].final.findIndex(function(i) {
                         return String(i.id) === String(savedIssueId);
                     });
-                    if (issueIndex !== -1 && json.issue) {
+                    if (issueIndex !== -1 && (json.issue || payload)) {
                         // Update with fresh server data
-                        issueData.pages[issueData.selectedPageId].final[issueIndex] = json.issue;
+                        issueData.pages[issueData.selectedPageId].final[issueIndex] = json.issue || payload;
                     }
                 }
                 
@@ -5937,13 +5953,14 @@
                 var existingRow = document.querySelector('#finalIssuesBody .final-edit[data-id="' + savedIssueId + '"]');
                 if (existingRow) {
                     var row = existingRow.closest('tr');
-                    if (row && json.issue) {
+                    if (row && (json.issue || payload)) {
+                        var issueToUpdate = json.issue || payload;
                         // Update key fields in the row without full re-render
                         var titleCell = row.querySelector('.issue-title');
-                        if (titleCell) titleCell.textContent = json.issue.title || 'Issue';
+                        if (titleCell) titleCell.textContent = issueToUpdate.title || 'Issue';
                         
                         var statusCell = row.querySelector('.issue-status');
-                        if (statusCell) statusCell.textContent = json.issue.status || 'open';
+                        if (statusCell) statusCell.textContent = issueToUpdate.status_name || issueToUpdate.status || 'open';
                         
                         // Add a subtle flash effect to show the row was updated
                         row.style.backgroundColor = '#d4edda';
@@ -5953,10 +5970,10 @@
                     }
                 }
             } else {
-                // For new issues, just add to the data and let the next refresh show it
-                if (json.issue) {
+                // For new issues, use server response data
+                if (json.issue || payload) {
                     var list = issueData.pages[selectedPageId].final || [];
-                    list.unshift(json.issue);
+                    list.unshift(json.issue || payload);
                     issueData.pages[selectedPageId].final = list;
                 }
             }
