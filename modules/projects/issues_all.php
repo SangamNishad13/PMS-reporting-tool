@@ -1157,7 +1157,9 @@ document.getElementById('refreshBtn').addEventListener('click', function () {
 });
 
 // Reload full table whenever an issue is added, edited, or deleted
-document.addEventListener('pms:issues-changed', function () {
+document.addEventListener('pms:issues-changed', function (e) {
+    // Skip internal events — view_issues.js already reloaded internally
+    if (e.detail && e.detail.source === 'internal') return;
     loadIssues({ preserveFilters: true, silentErrors: true });
 });
 

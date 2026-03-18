@@ -199,7 +199,8 @@
 
     function dispatchIssuesChanged(detail) {
         try {
-            document.dispatchEvent(new CustomEvent('pms:issues-changed', { detail: detail || {} }));
+            var payload = Object.assign({ source: 'internal' }, detail || {});
+            document.dispatchEvent(new CustomEvent('pms:issues-changed', { detail: payload }));
         } catch (e) { }
     }
 

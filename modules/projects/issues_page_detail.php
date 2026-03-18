@@ -889,7 +889,10 @@ include __DIR__ . '/../../includes/header.php';
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js?v=20260210180000"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script>
-document.addEventListener('pms:issues-changed', function () {
+document.addEventListener('pms:issues-changed', function (e) {
+    // Skip events fired by view_issues.js itself — it already reloads internally.
+    // Only react to events coming from other pages (e.g. issues_all.php).
+    if (e.detail && e.detail.source === 'internal') return;
     if (typeof window.loadFinalIssues === 'function') {
         window.loadFinalIssues(<?php echo (int)$pageId; ?>);
     }
