@@ -63,7 +63,18 @@ function metaArray(array $meta, string $key): array {
 }
 
 function xstr(string $v): string {
+    // Strip non-printable control characters that are illegal in XML 1.0
+    // (keep tab \x09, newline \x0A, carriage return \x0D)
+    $v = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $v);
     return htmlspecialchars($v, ENT_XML1, 'UTF-8');
+}
+
+/** Build an xlsx string cell using inlineStr (t="inlineStr") which supports newlines */
+function xcell(string $col, int $row, string $val, string $style = ''): string {
+    $clean = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $val);
+    $escaped = htmlspecialchars($clean, ENT_XML1, 'UTF-8');
+    $s = $style ? ' s="' . $style . '"' : '';
+    return '<c r="' . $col . $row . '"' . $s . ' t="inlineStr"><is><t xml:space="preserve">' . $escaped . '</t></is></c>';
 }
 
 /**
@@ -86,7 +97,7 @@ function setCell(string &$xml, string $ref, string $value, bool $isNum = false):
     }
     $repl = $isNum
         ? '<c r="' . $ref . '"' . $style . '><v>' . (int)$value . '</v></c>'
-        : '<c r="' . $ref . '"' . $style . ' t="str"><v>' . xstr($value) . '</v></c>';
+        : '<c r="' . $ref . '"' . $style . ' t="inlineStr"><is><t xml:space="preserve">' . xstr($value) . '</t></is></c>';
     // Replace only the matched form (not both)
     if ($isSelfClosing) {
         $xml = preg_replace($selfClosingPat, $repl, $xml, 1);
@@ -108,7 +119,7 @@ function injectCell(string &$xml, int $rowNum, string $ref, string $value, strin
     }
     $newCell = $isNum
         ? '<c r="' . $ref . '"' . $styleAttr . '><v>' . (int)$value . '</v></c>'
-        : '<c r="' . $ref . '"' . $styleAttr . ' t="str"><v>' . xstr($value) . '</v></c>';
+        : '<c r="' . $ref . '"' . $styleAttr . ' t="inlineStr"><is><t xml:space="preserve">' . xstr($value) . '</t></is></c>';
     // Insert into existing row
     $rowPat = '/(<row\s+r="' . $rowNum . '"[^>]*>)(.*?)(<\/row>)/s';
     if (preg_match($rowPat, $xml, $rm)) {
@@ -472,10 +483,10 @@ foreach ($projectPages as $idx => $page) {
     $guPerPageStmt->execute([$projectId, $page['id']]);
     $grouped = $guPerPageStmt->fetchAll(PDO::FETCH_COLUMN);
     $rows2 .= '<row r="' . $rn . '" spans="1:4">'
-        . '<c r="A' . $rn . '" t="str"><v>' . xstr($page['page_number'] ?? '') . '</v></c>'
-        . '<c r="B' . $rn . '" t="str"><v>' . xstr($page['page_name'] ?? '') . '</v></c>'
-        . '<c r="C' . $rn . '" t="str"><v>' . xstr($page['url'] ?? '') . '</v></c>'
-        . '<c r="D' . $rn . '" t="str"><v>' . xstr(implode(', ', $grouped)) . '</v></c>'
+        . xcell('A', $rn, $page['page_number'] ?? '')
+        . xcell('B', $rn, $page['page_name'] ?? '')
+        . xcell('C', $rn, $page['url'] ?? '')
+        . xcell('D', $rn, implode(', ', $grouped))
         . '</row>';
 }
 $sh2 = str_replace('</sheetData>', $rows2 . '</sheetData>', $sh2);
@@ -493,7 +504,7 @@ clearDataRows($sh3);
 $rows3 = '';
 foreach ($allGroupedUrls as $idx => $url) {
     $rn = $idx + 2;
-    $rows3 .= '<row r="' . $rn . '" spans="1:1"><c r="A' . $rn . '" t="str"><v>' . xstr((string)$url) . '</v></c></row>';
+    $rows3 .= '<row r="' . $rn . '" spans="1:1">' . xcell('A', $rn, (string)$url) . '</row>';
 }
 // Fallback: if no </sheetData> found, rebuild sheetData entirely
 if (strpos($sh3, '</sheetData>') !== false) {
@@ -553,32 +564,29 @@ foreach ($filteredIssues as $iss) {
     $correctCode    = stripHtml($sections['correct_code']);
     $screenshotUrls = implode("\n", array_map('absoluteUrl', extractImageUrls($sections['screenshot'])));
 
-    $c = fn(string $col, string $val) =>
-        '<c r="' . $col . $rn . '" t="str"><v>' . xstr($val) . '</v></c>';
-
     $rows4 .= '<row r="' . $rn . '" spans="1:22">'
         . '<c r="A' . $rn . '"><v>' . $srNo . '</v></c>'
-        . $c('B', $issueKey)
-        . $c('C', $pageNums)
-        . $c('D', $pageNames)
-        . $c('E', $pageUrls)
-        . $c('F', $iss['title'] ?? '')
-        . $c('G', $actualResult)
-        . $c('H', $incorrectCode)
-        . $c('I', $screenshotUrls)
-        . $c('J', $recommendation)
-        . $c('K', $correctCode)
-        . $c('L', $severity)
-        . $c('M', $priority)
-        . $c('N', $usersAff)
-        . $c('O', $wcagNums)
-        . $c('P', $wcagNames)
-        . $c('Q', $wcagLevel)
-        . $c('R', $gigw)
-        . $c('S', $is17802)
-        . $c('T', $envs)
-        . $c('U', '')      // Developer's Status
-        . $c('V', '')      // Developer's Comment
+        . xcell('B', $rn, $issueKey)
+        . xcell('C', $rn, $pageNums)
+        . xcell('D', $rn, $pageNames)
+        . xcell('E', $rn, $pageUrls)
+        . xcell('F', $rn, $iss['title'] ?? '')
+        . xcell('G', $rn, $actualResult)
+        . xcell('H', $rn, $incorrectCode)
+        . xcell('I', $rn, $screenshotUrls)
+        . xcell('J', $rn, $recommendation)
+        . xcell('K', $rn, $correctCode)
+        . xcell('L', $rn, $severity)
+        . xcell('M', $rn, $priority)
+        . xcell('N', $rn, $usersAff)
+        . xcell('O', $rn, $wcagNums)
+        . xcell('P', $rn, $wcagNames)
+        . xcell('Q', $rn, $wcagLevel)
+        . xcell('R', $rn, $gigw)
+        . xcell('S', $rn, $is17802)
+        . xcell('T', $rn, $envs)
+        . xcell('U', $rn, '')
+        . xcell('V', $rn, '')
         . '</row>';
     $srNo++;
 }
