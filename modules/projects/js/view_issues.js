@@ -1967,12 +1967,16 @@
             var $modal = jQuery('#finalIssueModal');
             jQuery(rowsHost).find('.reporter-qa-status-select').each(function () {
                 var $el = jQuery(this);
+                var rid = String($el.attr('data-reporter-id') || '').trim();
+                var selectedVals = Array.isArray(map[rid]) ? map[rid] : [];
                 try { if ($el.data('select2')) $el.select2('destroy'); } catch (e) { }
                 $el.select2({
                     width: '100%',
                     closeOnSelect: false,
                     dropdownParent: $modal.length ? $modal : null
                 });
+                // Set values AFTER select2 init and trigger change so select2 reflects them
+                $el.val(selectedVals).trigger('change');
             });
         }
         container.classList.remove('d-none');

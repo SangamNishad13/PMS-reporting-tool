@@ -531,7 +531,7 @@ function loadQaBreakdown(userId) {
     // Show loading
     contentDiv.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> Loading breakdown...</div>';
     
-    const url = '<?php echo $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST']; ?>/PMS/api/qa_breakdown.php?project_id=<?php echo $projectId; ?>&user_id=' + userId;
+    const url = '<?php echo $baseDir; ?>/api/qa_breakdown.php?project_id=<?php echo $projectId; ?>&user_id=' + userId;
     
     // Make AJAX call to get QA status breakdown
     fetch(url, {
@@ -626,20 +626,11 @@ function toggleStatusIssues(statusId) {
 }
 
 function openIssueDetail(issueId, pageId) {
-    // Redirect to issues_page_detail.php with expanded view for this issue
-    const baseUrl = '<?php echo $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST']; ?>/PMS/modules/projects';
+    const baseUrl = '<?php echo $baseDir; ?>/modules/projects';
     if (pageId && pageId > 0) {
-        const issuesUrl = baseUrl + '/issues_page_detail.php?project_id=<?php echo $projectId; ?>&page_id=' + pageId + '&expand=' + issueId;
-        window.open(issuesUrl, '_blank');
+        window.open(baseUrl + '/issues_page_detail.php?project_id=<?php echo $projectId; ?>&page_id=' + pageId + '&expand=' + issueId, '_blank');
     } else {
-        // If no page_id, redirect to issues_all.php and expand the issue there
-        const issuesUrl = baseUrl + '/issues_all.php?project_id=<?php echo $projectId; ?>&expand=' + issueId;
-        window.open(issuesUrl, '_blank');
-    }
-}
-        // Fallback to main issues page if no page_id
-        const issuesUrl = '<?php echo $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST']; ?>/PMS/modules/projects/view.php?id=<?php echo $projectId; ?>&tab=issues&expand=' + issueId;
-        window.open(issuesUrl, '_blank');
+        window.open(baseUrl + '/issues_all.php?project_id=<?php echo $projectId; ?>&expand=' + issueId, '_blank');
     }
 }
 </script>
