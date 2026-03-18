@@ -63,18 +63,18 @@ function metaArray(array $meta, string $key): array {
 }
 
 function xstr(string $v): string {
-    // Strip non-printable control characters that are illegal in XML 1.0
-    // (keep tab \x09, newline \x0A, carriage return \x0D)
-    $v = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $v);
-    return htmlspecialchars($v, ENT_XML1, 'UTF-8');
+    // Strip illegal XML 1.0 characters (control chars except tab/LF/CR, and UTF-8 surrogates)
+    $v = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $v);
+    $v = preg_replace('/[\xED][\xA0-\xBF][\x80-\xBF]/', '', $v); // UTF-8 encoded surrogates
+    // Normalize CR+LF and bare CR to LF
+    $v = str_replace(["\r\n", "\r"], "\n", $v);
+    return htmlspecialchars($v, ENT_XML1 | ENT_SUBSTITUTE, 'UTF-8');
 }
 
-/** Build an xlsx string cell using inlineStr (t="inlineStr") which supports newlines */
+/** Build an xlsx inlineStr cell — supports newlines and all text content */
 function xcell(string $col, int $row, string $val, string $style = ''): string {
-    $clean = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $val);
-    $escaped = htmlspecialchars($clean, ENT_XML1, 'UTF-8');
     $s = $style ? ' s="' . $style . '"' : '';
-    return '<c r="' . $col . $row . '"' . $s . ' t="inlineStr"><is><t xml:space="preserve">' . $escaped . '</t></is></c>';
+    return '<c r="' . $col . $row . '"' . $s . ' t="inlineStr"><is><t xml:space="preserve">' . xstr($val) . '</t></is></c>';
 }
 
 /**
@@ -598,6 +598,24 @@ $zip->addFromString('xl/worksheets/sheet4.xml', $sh4);
 
 // ── stream ────────────────────────────────────────────────────────────────────
 $zip->close();
+
+// Validate all modified sheets before streaming
+$validateZip = new ZipArchive();
+$validateZip->open($tmpFile);
+$sheetNames = ['xl/worksheets/sheet1.xml','xl/worksheets/sheet2.xml','xl/worksheets/sheet3.xml','xl/worksheets/sheet4.xml'];
+foreach ($sheetNames as $sn) {
+    $content = $validateZip->getFromName($sn);
+    if ($content === false) continue;
+    libxml_use_internal_errors(true);
+    simplexml_load_string($content);
+    $xmlErrors = libxml_get_errors();
+    libxml_clear_errors();
+    if (!empty($xmlErrors)) {
+        // Log first error to PHP error log for debugging
+        error_log("export_client_report: XML error in $sn: " . trim($xmlErrors[0]->message) . " at line " . $xmlErrors[0]->line);
+    }
+}
+$validateZip->close();
 $safeTitle = trim(preg_replace('/[^a-zA-Z0-9_\- ]/', '', $project['title'] ?? 'Project')) ?: 'Project';
 $filename  = $safeTitle . ' - Accessibility Audit Report.xlsx';
 
