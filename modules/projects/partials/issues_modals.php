@@ -147,6 +147,12 @@
                                 <option value="<?php echo (int)$u['id']; ?>"><?php echo htmlspecialchars($u['full_name']); ?></option>
                             <?php endforeach; ?>
                         </select>
+                        <label class="form-label mt-2">QA Name</label>
+                        <select id="finalIssueAssignee" class="form-select form-select-sm issue-select2" multiple>
+                            <?php foreach ($projectUsers as $u): ?>
+                                <option value="<?php echo (int)$u['id']; ?>"><?php echo htmlspecialchars($u['full_name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
                         <div id="reporterQaStatusContainer" class="mt-2 d-none">
                             <label class="form-label mb-1">QA Status By Reporter</label>
                             <div id="reporterQaStatusRows" class="small border rounded p-2 bg-light"></div>

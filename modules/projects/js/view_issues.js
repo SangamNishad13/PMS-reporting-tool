@@ -97,6 +97,9 @@
     var reviewIssueBypassCloseConfirm = false;
     var finalIssueBypassCloseConfirm = false;
 
+    // Utility functions hoisted to top so they're available everywhere in this scope
+    function escapeHtml(str) { if (str === null || str === undefined) return ''; return String(str).replace(/[&<>"']/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[m]); }); }
+
     function cleanupModalOverlayState() {
         if (document.querySelectorAll('.modal.show').length > 0) return;
         document.body.classList.remove('modal-open');
@@ -2167,12 +2170,15 @@
         var titleVal = titleInput ? titleInput.value.trim() : '';
         var detailsVal = jQuery('#finalIssueDetails').summernote('code') || '';
         var statusVal = document.getElementById('finalIssueStatus').value;
-        var qaStatusVal = [];
+        var qaStatusVal = jQuery('#finalIssueQaStatus').val() || [];
         var pagesVal = jQuery('#finalIssuePages').val() || [];
         var groupedUrlsVal = normalizeGroupedUrlsSelection(jQuery('#finalIssueGroupedUrls').val() || []);
         var reportersVal = jQuery('#finalIssueReporters').val() || [];
         var reporterQaStatusMapVal = getReporterQaStatusMapFromUi();
         var commonTitleVal = document.getElementById('finalIssueCommonTitle').value;
+        var assigneeVal = jQuery('#finalIssueAssignee').val() || [];
+        var clientReadyEl = document.getElementById('finalIssueClientReady');
+        var clientReadyVal = clientReadyEl ? (clientReadyEl.checked ? '1' : '0') : '0';
         var dynamicFields = {};
         if (typeof issueMetadataFields !== 'undefined') {
             issueMetadataFields.forEach(function (f) {
@@ -2184,13 +2190,25 @@
             title: titleVal, details: detailsVal, status: statusVal, qa_status: qaStatusVal,
             pages: pagesVal, grouped_urls: groupedUrlsVal, reporters: reportersVal,
             reporter_qa_status_map: reporterQaStatusMapVal,
-            common_title: commonTitleVal, dynamic_fields: dynamicFields
+            common_title: commonTitleVal, assignee_ids: assigneeVal,
+            client_ready: clientReadyVal, dynamic_fields: dynamicFields
         };
     }
 
     function hasFormChanges() {
         if (!issueData.initialFormState) return false;
-        return JSON.stringify(captureFormState()) !== JSON.stringify(issueData.initialFormState);
+        var current = captureFormState();
+        var initial = issueData.initialFormState;
+        // Normalize Summernote output — empty editor can produce '<p><br></p>' vs ''
+        function normalizeHtml(h) {
+            var s = String(h || '').trim();
+            return (s === '<p><br></p>' || s === '<p></p>' || s === '<br>') ? '' : s;
+        }
+        if (normalizeHtml(current.details) !== normalizeHtml(initial.details)) return true;
+        // Compare everything else except details
+        var a = Object.assign({}, current, { details: '' });
+        var b = Object.assign({}, initial, { details: '' });
+        return JSON.stringify(a) !== JSON.stringify(b);
     }
 
     async function saveDraft() {
@@ -2494,6 +2512,22 @@
                 setFinalQaStatusValue(qaStatusValue);
                 jQuery('#finalIssueReporters').val(reportersValue).trigger('change');
                 refreshReporterQaStatusEditor(reporterQaStatusMapValue);
+                // Set QA Names (multi-select assignees)
+                var assigneeIds = [];
+                if (issue) {
+                    if (Array.isArray(issue.assignee_ids) && issue.assignee_ids.length) {
+                        assigneeIds = issue.assignee_ids.map(String);
+                    } else if (issue.assignee_id) {
+                        assigneeIds = [String(issue.assignee_id)];
+                    }
+                }
+                jQuery('#finalIssueAssignee').val(assigneeIds).trigger('change');
+                // Capture initial state AFTER all Select2 values are set — prevents false "unsaved changes" on edit open
+                if (issue) {
+                    setTimeout(function () {
+                        issueData.initialFormState = captureFormState();
+                    }, 150);
+                }
             }, 60);
         }
 
@@ -2568,9 +2602,12 @@
         if (issue && issue.id) loadIssueComments(String(issue.id));
 
         setTimeout(function () {
-            issueData.initialFormState = captureFormState();
-            if (!issue) startDraftAutosave();
-        }, 500);
+            // For new issues only — edit issues capture state inside applySelectValuesNow after Select2 is set
+            if (!issue) {
+                issueData.initialFormState = captureFormState();
+                startDraftAutosave();
+            }
+        }, 600);
 
         if (!skipShow && modal) {
             modal.show();
@@ -2961,7 +2998,6 @@
         if (!p || p === 'N/A') return '<span class="badge bg-secondary">N/A</span>';
         p = String(p).toLowerCase();
         var colors = {
-            'critical': 'danger',
             'critical': 'danger',
             'high': 'warning',
             'medium': 'info',
@@ -4877,39 +4913,8 @@
     });
 
     function getPageName(id) { var p = (pages || []).find(function (x) { return String(x.id) === String(id); }); return p ? p.page_name : id; }
-    function escapeHtml(str) { if (str === null || str === undefined) return ''; return String(str).replace(/[&<>"']/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[m]); }); }
-    function stripHtml(html) { if (!html) return ''; var tmp = document.createElement('div'); tmp.innerHTML = html; return tmp.textContent || tmp.innerText || ''; }
-
-    function getSeverityBadge(s) {
-        if (!s || s === 'N/A') return '<span class="badge bg-secondary">N/A</span>';
-        return '<span class="badge bg-warning text-dark">' + escapeHtml(String(s).toUpperCase()) + '</span>';
-    }
-
-    function getPriorityBadge(p) {
-        if (!p || p === 'N/A') return '<span class="badge bg-secondary">N/A</span>';
-        return '<span class="badge bg-info text-dark">' + escapeHtml(String(p).toUpperCase()) + '</span>';
-    }
-
-    function getStatusBadge(statusId) {
-        if (!statusId) return '<span class="badge bg-secondary">N/A</span>';
-        if (ProjectConfig.issueStatuses) {
-            var found = ProjectConfig.issueStatuses.find(function (s) {
-                if (s.id == statusId) return true;
-                if (s.name && String(s.name).toLowerCase() === String(statusId).toLowerCase()) return true;
-                return false;
-            });
-            if (found) {
-                var color = found.color || '#6c757d';
-                var name = found.name || 'Unknown';
-                if (color.startsWith('#')) {
-                    return '<span class="badge" style="background-color: ' + color + '; color: white;">' + escapeHtml(name) + '</span>';
-                } else {
-                    return '<span class="badge bg-' + color + '">' + escapeHtml(name) + '</span>';
-                }
-            }
-        }
-        return '<span class="badge bg-secondary">' + escapeHtml(String(statusId)) + '</span>';
-    }
+    // escapeHtml defined at top of scope
+    // stripHtml, getSeverityBadge, getPriorityBadge, getStatusBadge defined earlier in scope
 
     function extractAltText(html) { if (!html) return ''; var matches = []; var re = /<img[^>]*alt=['"]([^'"]*)['"][^>]*>/gi; var m; while ((m = re.exec(html)) !== null) { if (m[1] && matches.indexOf(m[1]) === -1) matches.push(m[1]); } return matches.join(' | '); }
     function decorateIssueImages(html) { 
@@ -5793,27 +5798,16 @@
             grouped_urls: normalizeGroupedUrlsSelection(jQuery('#finalIssueGroupedUrls').val() || []),
             reporters: jQuery('#finalIssueReporters').val() || [],
             reporter_qa_status_map: reporterQaMap,
-            common_title: document.getElementById('finalIssueCommonTitle').value.trim()
+            common_title: document.getElementById('finalIssueCommonTitle').value.trim(),
+            assignee_ids: jQuery('#finalIssueAssignee').val() || []
         };
 
-        if (typeof issueMetadataFields !== 'undefined') {
-            issueMetadataFields.forEach(function (f) {
-                var el = document.getElementById('finalIssueField_' + f.field_key);
-                if (el) {
-                    var value = jQuery(el).val();
-                    data[f.field_key] = value;
-                }
-            });
-        }
-
-        // Separate metadata fields
+        // Collect dynamic metadata fields directly into metadata object (single pass)
         var metadata = {};
         if (typeof issueMetadataFields !== 'undefined') {
             issueMetadataFields.forEach(function (f) {
-                if (data.hasOwnProperty(f.field_key)) {
-                    metadata[f.field_key] = data[f.field_key];
-                    delete data[f.field_key];
-                }
+                var el = document.getElementById('finalIssueField_' + f.field_key);
+                if (el) metadata[f.field_key] = jQuery(el).val();
             });
         }
 

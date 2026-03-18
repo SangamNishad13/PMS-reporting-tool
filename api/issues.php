@@ -81,6 +81,7 @@ function parseArrayInput($value) {
 
 function getStatusId($db, $name) {
     if (!$name) return null;
+    static $cache = [];
     $map = [
         'open' => 'Open',
         'in_progress' => 'In Progress',
@@ -88,14 +89,17 @@ function getStatusId($db, $name) {
         'closed' => 'Closed'
     ];
     $target = $map[strtolower($name)] ?? $name;
+    if (isset($cache[$target])) return $cache[$target];
     $stmt = $db->prepare("SELECT id FROM issue_statuses WHERE name = ? LIMIT 1");
     $stmt->execute([$target]);
     $id = $stmt->fetchColumn();
-    return $id ?: null;
+    $cache[$target] = $id ?: null;
+    return $cache[$target];
 }
 
 function getPriorityId($db, $name) {
     if (!$name) return null;
+    static $cache = [];
     $map = [
         'low' => 'Low',
         'medium' => 'Medium',
@@ -104,21 +108,70 @@ function getPriorityId($db, $name) {
         'critical' => 'Critical'
     ];
     $target = $map[strtolower($name)] ?? $name;
+    if (isset($cache[$target])) return $cache[$target];
     $stmt = $db->prepare("SELECT id FROM issue_priorities WHERE name = ? LIMIT 1");
     $stmt->execute([$target]);
     $id = $stmt->fetchColumn();
-    return $id ?: null;
+    $cache[$target] = $id ?: null;
+    return $cache[$target];
 }
 
 function replaceMeta($db, $issueId, $key, $values) {
     $db->prepare("DELETE FROM issue_metadata WHERE issue_id = ? AND meta_key = ?")->execute([$issueId, $key]);
     if (empty($values)) return;
-    $ins = $db->prepare("INSERT INTO issue_metadata (issue_id, meta_key, meta_value) VALUES (?, ?, ?)");
+    // Batch insert all values in a single query instead of N individual inserts
+    $rows = [];
+    $params = [];
     foreach ($values as $v) {
         $val = is_scalar($v) ? (string)$v : json_encode($v);
         if ($val === '') continue;
-        $ins->execute([$issueId, $key, $val]);
+        $rows[] = '(?, ?, ?)';
+        $params[] = $issueId;
+        $params[] = $key;
+        $params[] = $val;
     }
+    if (empty($rows)) return;
+    $db->prepare("INSERT INTO issue_metadata (issue_id, meta_key, meta_value) VALUES " . implode(',', $rows))->execute($params);
+}
+
+/**
+ * Flush all pending meta replacements in a single DELETE + batch INSERT per key.
+ * Call flushMetaBatch() after all replaceMeta calls inside a transaction.
+ */
+$_metaBatch = [];
+function queueMeta($issueId, $key, $values) {
+    global $_metaBatch;
+    $_metaBatch[] = ['issue_id' => $issueId, 'key' => $key, 'values' => $values];
+}
+function flushMetaBatch($db) {
+    global $_metaBatch;
+    if (empty($_metaBatch)) return;
+    // Group by issue_id+key, collect all rows
+    $deleteMap = [];
+    $insertRows = [];
+    $insertParams = [];
+    foreach ($_metaBatch as $item) {
+        $deleteMap[$item['issue_id']][] = $item['key'];
+        foreach ((array)$item['values'] as $v) {
+            $val = is_scalar($v) ? (string)$v : json_encode($v);
+            if ($val === '') continue;
+            $insertRows[] = '(?, ?, ?)';
+            $insertParams[] = $item['issue_id'];
+            $insertParams[] = $item['key'];
+            $insertParams[] = $val;
+        }
+    }
+    // Batch deletes grouped by issue_id
+    foreach ($deleteMap as $issueId => $keys) {
+        $ph = implode(',', array_fill(0, count($keys), '?'));
+        $db->prepare("DELETE FROM issue_metadata WHERE issue_id = ? AND meta_key IN ($ph)")
+           ->execute(array_merge([$issueId], $keys));
+    }
+    if (!empty($insertRows)) {
+        $db->prepare("INSERT INTO issue_metadata (issue_id, meta_key, meta_value) VALUES " . implode(',', $insertRows))
+           ->execute($insertParams);
+    }
+    $_metaBatch = [];
 }
 
 function ensureIssueReporterQaStatusTable($db) {
@@ -334,17 +387,11 @@ function getIssueKey($db, $projectId) {
     $proj->execute([$projectId]);
     $row = $proj->fetch(PDO::FETCH_ASSOC);
     $prefix = $row['project_code'] ?: ($row['po_number'] ?: 'PRJ');
-    // `issue_key` is globally unique, so sequence lookup must be global by prefix.
-    $stmt = $db->prepare("SELECT issue_key FROM issues WHERE issue_key LIKE ? ORDER BY id DESC LIMIT 1");
+    // Use MAX(id) filtered by prefix — faster than ORDER BY id DESC LIMIT 1 on large tables
+    $stmt = $db->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(issue_key, '-', -1) AS UNSIGNED)) FROM issues WHERE issue_key LIKE ?");
     $stmt->execute([$prefix . '-%']);
-    $last = $stmt->fetchColumn();
-    $next = 1;
-    if ($last && strpos($last, '-') !== false) {
-        $parts = explode('-', $last);
-        $num = (int)end($parts);
-        if ($num > 0) $next = $num + 1;
-    }
-    return $prefix . '-' . (string)$next;
+    $maxNum = (int)$stmt->fetchColumn();
+    return $prefix . '-' . ($maxNum + 1);
 }
 
 function getAnyStatusId($db) {
@@ -353,11 +400,16 @@ function getAnyStatusId($db) {
     return $id ? (int)$id : null;
 }
 
-function getAnyPriorityId($db) {
-    $stmt = $db->query("SELECT id FROM issue_priorities ORDER BY id ASC LIMIT 1");
-    $id = $stmt->fetchColumn();
-    return $id ? (int)$id : null;
+function columnExists($db, $table, $column) {
+    static $cache = [];
+    $key = $table . '.' . $column;
+    if (!isset($cache[$key])) {
+        $stmt = $db->query("SHOW COLUMNS FROM `$table` LIKE " . $db->quote($column));
+        $cache[$key] = $stmt && $stmt->rowCount() > 0;
+    }
+    return $cache[$key];
 }
+
 
 function ensureIssuePresenceTable($db) {
     static $isReady = null;
@@ -708,18 +760,6 @@ set_error_handler(function($severity, $message, $file, $line) {
 try {
     $db = Database::getInstance();
     
-    // Add connection logging and error handling
-    error_log("Issues API: Database connection established");
-    
-    // Set autocommit to prevent transaction issues
-    try {
-        $db->setAttribute(PDO::ATTR_AUTOCOMMIT, 1);
-        error_log("Issues API: Autocommit set successfully");
-    } catch (Exception $e) {
-        error_log("Issues API: Failed to set autocommit: " . $e->getMessage());
-    }
-    
-    // Add connection timeout and retry logic
     $db->setAttribute(PDO::ATTR_TIMEOUT, 30);
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
@@ -811,12 +851,7 @@ try {
             $sql .= " AND i.client_ready = 1";
         }
         
-        // Check if issue_key column exists before using it in ORDER BY
-        $columnCheckStmt = $db->prepare("SHOW COLUMNS FROM issues LIKE 'issue_key'");
-        $columnCheckStmt->execute();
-        $hasIssueKeyColumn = $columnCheckStmt->rowCount() > 0;
-        
-        $orderByClause = $hasIssueKeyColumn ? "ORDER BY i.issue_key ASC" : "ORDER BY i.id ASC";
+        $orderByClause = columnExists($db, 'issues', 'issue_key') ? "ORDER BY i.issue_key ASC" : "ORDER BY i.id ASC";
         $sql .= " $orderByClause";
         
         $stmt = $db->prepare($sql);
@@ -925,6 +960,8 @@ try {
                 'grouped_urls' => ($meta['grouped_urls'] ?? []),
                 'reporters' => ($meta['reporter_ids'] ?? []),
                 'reporter_name' => $i['reporter_name'] ?? null,
+                'assignee_id' => (int)($i['assignee_id'] ?? 0) ?: null,
+                'assignee_ids' => isset($meta['assignee_ids']) ? array_values(array_filter(array_map('intval', $meta['assignee_ids']), function($v){ return $v > 0; })) : ((int)($i['assignee_id'] ?? 0) ? [(int)$i['assignee_id']] : []),
                 'qa_name' => $i['qa_name'] ?? null,
                 'client_ready' => (int)($i['client_ready'] ?? 0),
                 'created_at' => $i['created_at'],
@@ -1174,6 +1211,8 @@ try {
                 'reporter_qa_status_map' => $reporterQaStatusMap,
                 'reporters' => implode(', ', $reporters),
                 'reporter_ids' => $reporterIds,
+                'assignee_id' => (int)($i['assignee_id'] ?? 0) ?: null,
+                'assignee_ids' => isset($meta['assignee_ids']) ? array_values(array_filter(array_map('intval', $meta['assignee_ids']), function($v){ return $v > 0; })) : ((int)($i['assignee_id'] ?? 0) ? [(int)$i['assignee_id']] : []),
                 'severity' => isset($meta['severity']) ? (is_array($meta['severity']) ? $meta['severity'][0] : $meta['severity']) : 'medium',
                 'priority' => isset($meta['priority']) ? (is_array($meta['priority']) ? $meta['priority'][0] : $meta['priority']) : 'medium',
                 'grouped_urls' => isset($meta['grouped_urls']) && is_array($meta['grouped_urls']) ? $meta['grouped_urls'] : [],
@@ -1321,7 +1360,7 @@ try {
         $pageId = (int)($_POST['page_id'] ?? 0);
         if (!$pageId && !empty($pageIds)) $pageId = (int)$pageIds[0];
 
-        error_log('issues api: title=' . $title . ', pageId=' . $pageId);
+        // debug: error_log('issues api: title=' . $title . ', pageId=' . $pageId);
 
         $statusId = null;
         $statusInput = $_POST['issue_status'] ?? '';
@@ -1357,6 +1396,10 @@ try {
         $commonTitle = trim($_POST['common_title'] ?? '');
         $clientReady = (int)($_POST['client_ready'] ?? 0);
         $severity = trim($_POST['severity'] ?? 'medium');
+        // assignee_ids: multi-select QA names — stored in metadata; first ID also goes to assignee_id column
+        $assigneeIdsRaw = parseArrayInput($_POST['assignee_ids'] ?? ($_POST['assignee_id'] ?? []));
+        $assigneeIds = array_values(array_filter(array_map('intval', $assigneeIdsRaw), function($v){ return $v > 0; }));
+        $assigneeId = !empty($assigneeIds) ? $assigneeIds[0] : null;
 
         try {
             if (!$db->inTransaction()) {
@@ -1364,12 +1407,12 @@ try {
             }
 
             if ($action === 'create') {
-                $stmt = $db->prepare("INSERT INTO issues (project_id, issue_key, title, description, type_id, priority_id, status_id, reporter_id, page_id, severity, is_final, common_issue_title, client_ready) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
+                $stmt = $db->prepare("INSERT INTO issues (project_id, issue_key, title, description, type_id, priority_id, status_id, reporter_id, assignee_id, page_id, severity, is_final, common_issue_title, client_ready) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
                 $created = false;
                 for ($attempt = 0; $attempt < 5; $attempt++) {
                     $issueKey = getIssueKey($db, $projectId);
                     try {
-                        $stmt->execute([$projectId, $issueKey, $title, $description, $typeId, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady]);
+                        $stmt->execute([$projectId, $issueKey, $title, $description, $typeId, $priorityId, $statusId, $reporterId, $assigneeId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady]);
                         $id = (int)$db->lastInsertId();
                         $created = true;
                         break;
@@ -1444,6 +1487,7 @@ try {
                 if ($oldIssue['severity'] !== $severity) $hasChanged = true;
                 if ($oldIssue['common_issue_title'] !== ($commonTitle ?: null)) $hasChanged = true;
                 if ((int)($oldIssue['client_ready'] ?? 0) !== $clientReady) $hasChanged = true;
+                if ((int)($oldIssue['assignee_id'] ?? 0) !== (int)($assigneeId ?? 0)) $hasChanged = true;
 
                 function logHistory($db, $issueId, $userId, $field, $oldVal, $newVal) {
                     if ($oldVal === $newVal) return;
@@ -1456,15 +1500,14 @@ try {
                 logHistory($db, $id, $userId, 'severity', $oldIssue['severity'], $severity);
                 logHistory($db, $id, $userId, 'common_issue_title', $oldIssue['common_issue_title'], $commonTitle ?: null);
                 logHistory($db, $id, $userId, 'client_ready', $oldIssue['client_ready'] ?? 0, $clientReady);
-                // More fields could be logged if needed (status, priority etc)
+                logHistory($db, $id, $userId, 'assignee_id', $oldIssue['assignee_id'] ?? null, $assigneeId);
 
                 if ($hasChanged) {
-                    $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
+                    $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
                 } else {
-                    // Update potentially changed fields but DON'T bump updated_at if they didn't change (prevents false conflicts)
-                    $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ? WHERE id = ? AND project_id = ?");
+                    $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ? WHERE id = ? AND project_id = ?");
                 }
-                $stmt->execute([$title, $description, $priorityId, $statusId, $reporterId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady, $id, $projectId]);
+                $stmt->execute([$title, $description, $priorityId, $statusId, $reporterId, $assigneeId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady, $id, $projectId]);
             }
 
         function normalizeHistoryMetaValues($values, $allowCsv = false) {
@@ -1640,21 +1683,10 @@ try {
         replaceMeta($db, $id, 'page_ids', $pageIds);
         replaceMeta($db, $id, 'grouped_urls', parseArrayInput($_POST['grouped_urls'] ?? []));
         replaceMeta($db, $id, 'reporter_ids', $reporters);
+        replaceMeta($db, $id, 'assignee_ids', $assigneeIds);
         replaceMeta($db, $id, 'common_title', [trim($_POST['common_title'] ?? '')]);
-        
-        // Update issue_pages junction table
-        if (!empty($pageIds)) {
-            // Delete existing entries
-            $db->prepare("DELETE FROM issue_pages WHERE issue_id = ?")->execute([$id]);
-            
-            // Insert new entries
-            $insertPageStmt = $db->prepare("INSERT INTO issue_pages (issue_id, page_id) VALUES (?, ?)");
-            foreach ($pageIds as $pid) {
-                $insertPageStmt->execute([$id, (int)$pid]);
-            }
-        }
 
-        // Handle dynamic metadata from POST for both create and update
+        // Handle dynamic metadata (admin-created custom fields) — all go through same replaceMeta batch
         if (isset($_POST['metadata'])) {
             $metadata = json_decode($_POST['metadata'], true);
             if (is_array($metadata)) {
@@ -1668,6 +1700,15 @@ try {
             }
         }
 
+        // Batch insert issue_pages (single query instead of N individual inserts)
+        $db->prepare("DELETE FROM issue_pages WHERE issue_id = ?")->execute([$id]);
+        if (!empty($pageIds)) {
+            $pageRows = implode(',', array_fill(0, count($pageIds), '(?, ?)'));
+            $pageParams = [];
+            foreach ($pageIds as $pid) { $pageParams[] = $id; $pageParams[] = (int)$pid; }
+            $db->prepare("INSERT INTO issue_pages (issue_id, page_id) VALUES $pageRows")->execute($pageParams);
+        }
+
         if ($commonTitle && count($pageIds) > 1) {
             $stmt = $db->prepare("SELECT id FROM common_issues WHERE issue_id = ? LIMIT 1");
             $stmt->execute([$id]);
@@ -1676,12 +1717,7 @@ try {
                 $up = $db->prepare("UPDATE common_issues SET title = ?, updated_at = NOW() WHERE id = ?");
                 $up->execute([$commonTitle, $cid]);
             } else {
-                // Check if created_by column exists before using it
-                $columnCheckStmt = $db->prepare("SHOW COLUMNS FROM common_issues LIKE 'created_by'");
-                $columnCheckStmt->execute();
-                $hasCreatedByColumn = $columnCheckStmt->rowCount() > 0;
-                
-                if ($hasCreatedByColumn) {
+                if (columnExists($db, 'common_issues', 'created_by')) {
                     $ins = $db->prepare("INSERT INTO common_issues (project_id, issue_id, title, created_by) VALUES (?, ?, ?, ?)");
                     $ins->execute([$projectId, $id, $commonTitle, $userId]);
                 } else {
@@ -1852,7 +1888,9 @@ try {
             'pages' => $pageIds,
             'grouped_urls' => isset($meta['grouped_urls']) && is_array($meta['grouped_urls']) ? $meta['grouped_urls'] : [],
             'reporter_name' => $issueData['reporter_name'],
-            'qa_name' => null, // Will be populated by frontend if needed
+            'qa_name' => $issueData['qa_name'] ?? null,
+            'assignee_id' => (int)($issueData['assignee_id'] ?? 0) ?: null,
+            'assignee_ids' => isset($meta['assignee_ids']) ? array_values(array_filter(array_map('intval', $meta['assignee_ids']), function($v){ return $v > 0; })) : ((int)($issueData['assignee_id'] ?? 0) ? [(int)$issueData['assignee_id']] : []),
             'page_id' => !empty($pageIds) ? $pageIds[0] : null,
             'client_ready' => (int)($issueData['client_ready'] ?? 0),
             'environments' => isset($meta['environments']) && is_array($meta['environments']) ? $meta['environments'] : [],
@@ -1914,8 +1952,8 @@ try {
         $idsRaw = $_POST['ids'] ?? '';
         $ids = is_array($idsRaw) ? $idsRaw : array_filter(array_map('intval', explode(',', $idsRaw)));
         if (empty($ids)) jsonError('ids required', 400);
-        $htmlBlocksForCleanup = collectIssueDeleteHtmlBlocks($db, $projectId, $ids);
 
+        // Permission check BEFORE fetching HTML blocks (avoid wasted work on 403)
         if ($isTesterRole) {
             $blockedIds = getTesterBlockedIssueIdsForDelete($db, $projectId, $ids);
             if (!empty($blockedIds)) {
@@ -1925,6 +1963,8 @@ try {
                 ], 403);
             }
         }
+
+        $htmlBlocksForCleanup = collectIssueDeleteHtmlBlocks($db, $projectId, $ids);
 
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $params = array_merge($ids, [$projectId]);
@@ -1956,12 +1996,7 @@ try {
     }
 
     if ($method === 'GET' && $action === 'common_list') {
-        // Check if issue_key column exists before using it in ORDER BY
-        $columnCheckStmt = $db->prepare("SHOW COLUMNS FROM issues LIKE 'issue_key'");
-        $columnCheckStmt->execute();
-        $hasIssueKeyColumn = $columnCheckStmt->rowCount() > 0;
-        
-        $orderByClause = $hasIssueKeyColumn ? "ORDER BY i.issue_key ASC" : "ORDER BY i.id ASC";
+        $orderByClause = columnExists($db, 'issues', 'issue_key') ? "ORDER BY i.issue_key ASC" : "ORDER BY i.id ASC";
         
         $stmt = $db->prepare("
             SELECT ci.id as common_id, ci.title as common_title, i.*, s.name AS status_name
@@ -2035,12 +2070,7 @@ try {
             $stmt->execute([$projectId, $issueKey, $title, $description, $typeId, $priorityId, $statusId, $userId, $severity, $title]);
             $issueId = (int)$db->lastInsertId();
             
-            // Check if created_by column exists before using it
-            $columnCheckStmt = $db->prepare("SHOW COLUMNS FROM common_issues LIKE 'created_by'");
-            $columnCheckStmt->execute();
-            $hasCreatedByColumn = $columnCheckStmt->rowCount() > 0;
-            
-            if ($hasCreatedByColumn) {
+            if (columnExists($db, 'common_issues', 'created_by')) {
                 $ins = $db->prepare("INSERT INTO common_issues (project_id, issue_id, title, created_by) VALUES (?, ?, ?, ?)");
                 $ins->execute([$projectId, $issueId, $title, $userId]);
             } else {

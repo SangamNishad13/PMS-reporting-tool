@@ -7,9 +7,10 @@ ALTER TABLE issues
     ADD INDEX IF NOT EXISTS idx_issues_project_reporter (project_id, reporter_id),
     ADD INDEX IF NOT EXISTS idx_issues_project_client   (project_id, client_ready),
     ADD INDEX IF NOT EXISTS idx_issues_project_status   (project_id, status_id),
-    ADD INDEX IF NOT EXISTS idx_issues_updated          (updated_at);
+    ADD INDEX IF NOT EXISTS idx_issues_updated          (updated_at),
+    ADD INDEX IF NOT EXISTS idx_issues_key_prefix       (issue_key);
 
--- issue_metadata: batch fetch by issue_id
+-- issue_metadata: batch fetch by issue_id + key lookup
 ALTER TABLE issue_metadata
     ADD INDEX IF NOT EXISTS idx_meta_issue_key (issue_id, meta_key);
 
@@ -33,3 +34,11 @@ ALTER TABLE grouped_urls
 -- user_sessions: isLoggedIn() check on every request
 ALTER TABLE user_sessions
     ADD INDEX IF NOT EXISTS idx_us_session_user (session_id, user_id, active);
+
+-- issue_history: conflict detection query (MAX id per issue)
+ALTER TABLE issue_history
+    ADD INDEX IF NOT EXISTS idx_ih_issue_id (issue_id);
+
+-- common_issues: project + issue_id lookups
+ALTER TABLE common_issues
+    ADD INDEX IF NOT EXISTS idx_ci_project_issue (project_id, issue_id);
