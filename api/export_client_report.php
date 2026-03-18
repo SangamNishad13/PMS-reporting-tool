@@ -1,0 +1,602 @@
+<?php
+/**
+ * Server-side Excel report generator using ZipArchive.
+ * Opens template xlsx, injects data into XML, streams result.
+ * Preserves ALL formatting, charts, images, and formulas.
+ */
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/constants.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/functions.php';
+
+$auth = new Auth();
+if (!$auth->isLoggedIn()) { http_response_code(401); exit('Unauthorized'); }
+
+$projectId = (int)($_GET['project_id'] ?? 0);
+if (!$projectId) { http_response_code(400); exit('project_id required'); }
+if (!class_exists('ZipArchive')) { http_response_code(500); exit('ZipArchive not available'); }
+
+$templatePath = __DIR__ . '/../assets/report_template.xlsx';
+if (!file_exists($templatePath)) { http_response_code(404); exit('Template not found'); }
+
+$db = Database::getInstance();
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Get first value for a meta key. Handles JSON-encoded arrays stored as strings.
+ */
+function metaFirst(array $meta, string $key): string {
+    if (empty($meta[$key])) return '';
+    $v = $meta[$key][0]; // always array of raw DB rows
+    if (is_string($v) && strlen($v) > 0 && $v[0] === '[') {
+        $d = json_decode($v, true);
+        if (is_array($d) && !empty($d)) return (string)$d[0];
+    }
+    return (string)$v;
+}
+
+/**
+ * Get all values for a meta key as a flat array.
+ * Each DB row is one value (may be plain string or JSON array).
+ * Does NOT split on comma — each row is treated as one atomic value.
+ */
+function metaArray(array $meta, string $key): array {
+    if (empty($meta[$key])) return [];
+    $out = [];
+    foreach ($meta[$key] as $v) {
+        $v = (string)$v;
+        if (strlen($v) > 0 && $v[0] === '[') {
+            $d = json_decode($v, true);
+            if (is_array($d)) {
+                foreach ($d as $item) {
+                    $item = trim((string)$item);
+                    if ($item !== '') $out[] = $item;
+                }
+                continue;
+            }
+        }
+        $v = trim($v);
+        if ($v !== '') $out[] = $v;
+    }
+    return array_values(array_unique($out));
+}
+
+function xstr(string $v): string {
+    return htmlspecialchars($v, ENT_XML1, 'UTF-8');
+}
+
+/**
+ * Replace a cell in worksheet XML with a new inline-string value.
+ * Handles both normal <c ...>...</c> and self-closing <c .../> forms.
+ * Preserves the style (s="N") attribute.
+ */
+function setCell(string &$xml, string $ref, string $value, bool $isNum = false): void {
+    $rq = preg_quote($ref, '/');
+    // Extract style attribute from existing cell (either form)
+    $style = '';
+    $selfClosingPat = '/<c\s+r="' . $rq . '"([^>]*)\/>/s';
+    $normalPat      = '/<c\s+r="' . $rq . '"([^>]*)>.*?<\/c>/s';
+    $isSelfClosing  = preg_match($selfClosingPat, $xml, $m);
+    if (!$isSelfClosing && !preg_match($normalPat, $xml, $m)) {
+        return; // cell not found
+    }
+    if (preg_match('/\bs="(\d+)"/', $m[1], $sm)) {
+        $style = ' s="' . $sm[1] . '"';
+    }
+    $repl = $isNum
+        ? '<c r="' . $ref . '"' . $style . '><v>' . (int)$value . '</v></c>'
+        : '<c r="' . $ref . '"' . $style . ' t="str"><v>' . xstr($value) . '</v></c>';
+    // Replace only the matched form (not both)
+    if ($isSelfClosing) {
+        $xml = preg_replace($selfClosingPat, $repl, $xml, 1);
+    } else {
+        $xml = preg_replace($normalPat, $repl, $xml, 1);
+    }
+}
+
+/**
+ * Inject or replace a cell. Creates the row if it doesn't exist.
+ */
+function injectCell(string &$xml, int $rowNum, string $ref, string $value, string $styleAttr = '', bool $isNum = false): void {
+    $rq = preg_quote($ref, '/');
+    // If cell already exists (either form), use setCell to replace it
+    if (preg_match('/<c\s+r="' . $rq . '"[^>]*\/>/s', $xml) ||
+        preg_match('/<c\s+r="' . $rq . '"[^>]*>.*?<\/c>/s', $xml)) {
+        setCell($xml, $ref, $value, $isNum);
+        return;
+    }
+    $newCell = $isNum
+        ? '<c r="' . $ref . '"' . $styleAttr . '><v>' . (int)$value . '</v></c>'
+        : '<c r="' . $ref . '"' . $styleAttr . ' t="str"><v>' . xstr($value) . '</v></c>';
+    // Insert into existing row
+    $rowPat = '/(<row\s+r="' . $rowNum . '"[^>]*>)(.*?)(<\/row>)/s';
+    if (preg_match($rowPat, $xml, $rm)) {
+        $xml = preg_replace($rowPat, $rm[1] . $rm[2] . $newCell . $rm[3], $xml, 1);
+        return;
+    }
+    // Create new row — handle both </sheetData> and self-closing <sheetData/>
+    if (strpos($xml, '</sheetData>') !== false) {
+        $xml = str_replace('</sheetData>', '<row r="' . $rowNum . '" spans="1:18">' . $newCell . '</row></sheetData>', $xml);
+    } else {
+        $xml = preg_replace('/<sheetData\s*\/>/s', '<sheetData><row r="' . $rowNum . '" spans="1:18">' . $newCell . '</row></sheetData>', $xml);
+    }
+}
+
+/** Remove all data rows (row 2 onwards), keep header row 1.
+ *  Handles both <row ...>...</row> and self-closing <row .../> forms.
+ */
+function clearDataRows(string &$xml): void {
+    // Self-closing rows: <row r="N" ... />
+    $xml = preg_replace('/<row\s+r="[1-9]\d+"[^>]*\/>/s', '', $xml);  // 10+
+    $xml = preg_replace('/<row\s+r="[2-9]"[^>]*\/>/s', '', $xml);     // 2-9
+    // Normal rows: <row r="N" ...>...</row>
+    $xml = preg_replace('/<row\s+r="[1-9]\d+"[^>]*>.*?<\/row>/s', '', $xml); // 10+
+    $xml = preg_replace('/<row\s+r="[2-9]"[^>]*>.*?<\/row>/s', '', $xml);    // 2-9
+}
+
+function stripHtml(string $html): string {
+    if (!$html) return '';
+    // Replace block-level tags with newlines/bullets BEFORE stripping
+    $text = preg_replace('/<br\s*\/?>/i', "\n", $html);
+    $text = preg_replace('/<\/p>/i', "\n", $text);
+    $text = preg_replace('/<li\b[^>]*>/i', '• ', $text);
+    // Strip all HTML tags (leaves entity-encoded content like &lt;header&gt; intact)
+    $text = strip_tags($text);
+    // NOW decode entities so &lt;header&gt; → <header> shows as literal text
+    $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    // Collapse whitespace
+    $text = preg_replace('/[ \t]+/', ' ', $text);
+    $text = preg_replace('/\n{3,}/', "\n\n", $text);
+    return trim($text);
+}
+
+/** Build absolute URL from a possibly-relative src path */
+function absoluteUrl(string $src): string {
+    if ($src === '') return '';
+    if (preg_match('#^https?://#i', $src)) return $src;
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    return $protocol . '://' . $host . '/' . ltrim($src, '/');
+}
+
+/**
+ * Extract named sections from issue description HTML.
+ * Sections are delimited by [Section Name] markers embedded in the rich text.
+ * Returns array: ['actual_result' => '...html...', 'incorrect_code' => '...', ...]
+ */
+function extractSections(string $html): array {
+    $patterns = [
+        'actual_result'      => '/\[Actual Result\](.*?)(?=\[|$)/is',
+        'incorrect_code'     => '/\[Incorrect Code\](.*?)(?=\[|$)/is',
+        'screenshot'         => '/\[Screenshot\](.*?)(?=\[|$)/is',
+        'recommendation'     => '/\[Recommendation\](.*?)(?=\[|$)/is',
+        'correct_code'       => '/\[Correct Code\](.*?)(?=\[|$)/is',
+    ];
+    $out = [];
+    foreach ($patterns as $key => $pat) {
+        if (preg_match($pat, $html, $m)) {
+            $content = trim(preg_replace(
+                '/^(?:\s|&nbsp;|<br\s*\/?>|<\/?(?:p|div)[^>]*>)+|(?:\s|&nbsp;|<br\s*\/?>|<\/?(?:p|div)[^>]*>)+$/i',
+                '', $m[1] ?? ''
+            ));
+            $out[$key] = $content;
+        } else {
+            $out[$key] = '';
+        }
+    }
+    return $out;
+}
+
+/**
+ * Extract all <img src="..."> URLs from an HTML string.
+ */
+function extractImageUrls(string $html): array {
+    if (!$html) return [];
+    preg_match_all('/<img\b[^>]*src=["\']([^"\']+)["\'][^>]*>/i', $html, $m);
+    return array_values(array_filter($m[1] ?? []));
+}
+
+// ── fetch project ─────────────────────────────────────────────────────────────
+$projStmt = $db->prepare("SELECT title, project_type FROM projects WHERE id = ?");
+$projStmt->execute([$projectId]);
+$project = $projStmt->fetch(PDO::FETCH_ASSOC);
+if (!$project) { http_response_code(404); exit('Project not found'); }
+
+$typeMap = ['web' => 'Website', 'app' => 'Mobile App', 'pdf' => 'PDF'];
+$projectTypeLabel = $typeMap[strtolower($project['project_type'] ?? '')] ?? ($project['project_type'] ?? '');
+
+// ── team members ──────────────────────────────────────────────────────────────
+$teamStmt = $db->prepare("
+    SELECT DISTINCT u.full_name, ua.role
+    FROM user_assignments ua JOIN users u ON u.id = ua.user_id
+    WHERE ua.project_id = ? AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+    ORDER BY ua.role, u.full_name
+");
+$teamStmt->execute([$projectId]);
+$teamMembers = $teamStmt->fetchAll(PDO::FETCH_ASSOC);
+$roleLabels = ['admin'=>'Admin','super_admin'=>'Super Admin','project_lead'=>'Project Lead',
+               'qa'=>'QA','at_tester'=>'AT Tester','ft_tester'=>'FT Tester'];
+
+// ── issues + metadata ─────────────────────────────────────────────────────────
+$issueStmt = $db->prepare("
+    SELECT i.id, i.title, i.description, i.severity, i.issue_key,
+           s.name as status_name
+    FROM issues i
+    LEFT JOIN issue_statuses s ON s.id = i.status_id
+    WHERE i.project_id = ?
+    ORDER BY i.id ASC
+");
+$issueStmt->execute([$projectId]);
+$allIssues = $issueStmt->fetchAll(PDO::FETCH_ASSOC);
+$issueIds  = array_column($allIssues, 'id');
+
+$metaMap       = [];
+$pagesByIssue  = [];
+$qaStatusByIssue = [];
+
+if (!empty($issueIds)) {
+    $ph = implode(',', array_fill(0, count($issueIds), '?'));
+
+    // All metadata — each key stores array of raw DB values
+    $ms = $db->prepare("SELECT issue_id, meta_key, meta_value FROM issue_metadata WHERE issue_id IN ($ph) ORDER BY id ASC");
+    $ms->execute($issueIds);
+    while ($m = $ms->fetch(PDO::FETCH_ASSOC)) {
+        $metaMap[(int)$m['issue_id']][$m['meta_key']][] = $m['meta_value'];
+    }
+
+    // Pages per issue
+    $ps = $db->prepare("SELECT ip.issue_id, pp.page_number, pp.page_name, pp.url FROM issue_pages ip JOIN project_pages pp ON ip.page_id = pp.id WHERE ip.issue_id IN ($ph)");
+    $ps->execute($issueIds);
+    while ($p = $ps->fetch(PDO::FETCH_ASSOC)) {
+        $pagesByIssue[(int)$p['issue_id']][] = $p;
+    }
+
+    // QA statuses per issue
+    foreach ($issueIds as $iid) {
+        $meta = $metaMap[$iid] ?? [];
+        $keys = [];
+        if (!empty($meta['reporter_qa_status_map'])) {
+            foreach ($meta['reporter_qa_status_map'] as $v) {
+                $d = json_decode($v, true);
+                if (is_array($d)) {
+                    foreach ($d as $statuses) {
+                        foreach ((array)$statuses as $sk) {
+                            $sk = strtolower(trim((string)$sk));
+                            if ($sk !== '') $keys[] = $sk;
+                        }
+                    }
+                }
+            }
+        }
+        if (empty($keys) && !empty($meta['qa_status'])) {
+            foreach ($meta['qa_status'] as $v) {
+                $d = json_decode($v, true);
+                if (is_array($d)) { foreach ($d as $sk) $keys[] = strtolower(trim((string)$sk)); }
+                else { $keys[] = strtolower(trim($v)); }
+            }
+        }
+        $qaStatusByIssue[$iid] = array_values(array_unique(array_filter($keys)));
+    }
+}
+
+// QA status labels
+$qaStatusLabels = [];
+try {
+    $qsm = $db->query("SELECT status_key, status_label FROM qa_status_master WHERE is_active = 1");
+    while ($qs = $qsm->fetch(PDO::FETCH_ASSOC)) {
+        $qaStatusLabels[strtolower($qs['status_key'])] = strtolower($qs['status_label']);
+    }
+} catch (Exception $e) {}
+
+// ── filter deleted/duplicate issues ──────────────────────────────────────────
+$filteredIssues = [];
+foreach ($allIssues as $iss) {
+    $iid  = (int)$iss['id'];
+    $skip = false;
+    foreach ($qaStatusByIssue[$iid] ?? [] as $qk) {
+        $normalized = strtolower(str_replace([' ', '-'], '_', $qk));
+        $label = $qaStatusLabels[$qk] ?? $normalized;
+        if (strpos($normalized, 'delete') !== false || strpos($normalized, 'duplicate') !== false
+            || strpos($label, 'delete') !== false || strpos($label, 'duplicate') !== false) {
+            $skip = true; break;
+        }
+    }
+    if (!$skip) $filteredIssues[] = $iss;
+}
+
+// ── overview calculations ─────────────────────────────────────────────────────
+$wcagLevelMap = [];
+try {
+    $wc = $db->query("SELECT criterion_number, level FROM wcag_criteria");
+    while ($row = $wc->fetch(PDO::FETCH_ASSOC)) {
+        $wcagLevelMap[trim($row['criterion_number'])] = strtoupper(trim($row['level']));
+    }
+} catch (Exception $e) {}
+
+$failingSCsA = []; $failingSCsAA = [];
+$userAffectedCounts = [];
+$severityCounts = [];
+$severityOrder = ['blocker'=>0,'critical'=>1,'major'=>2,'minor'=>3,'low'=>4];
+$issuesWithMeta = [];
+
+foreach ($filteredIssues as $iss) {
+    $iid  = (int)$iss['id'];
+    $meta = $metaMap[$iid] ?? [];
+
+    // WCAG levels
+    $scNums   = metaArray($meta, 'wcagsuccesscriteria');
+    $scLevels = metaArray($meta, 'wcagsuccesscriterialevel');
+    foreach ($scNums as $idx => $sc) {
+        $sc = trim($sc); if ($sc === '') continue;
+        $level = strtoupper(trim($scLevels[$idx] ?? ''));
+        if ($level === '' && isset($wcagLevelMap[$sc])) $level = $wcagLevelMap[$sc];
+        if ($level === 'A') $failingSCsA[$sc] = true;
+        elseif ($level === 'AA') $failingSCsAA[$sc] = true;
+    }
+
+    // Users affected — each DB row = one user (may be comma-separated if multiple selected)
+    foreach ($meta['usersaffected'] ?? [] as $rawVal) {
+        // Split on comma in case multiple users stored in one row
+        foreach (array_filter(array_map('trim', explode(',', $rawVal))) as $u) {
+            if ($u !== '') $userAffectedCounts[$u] = ($userAffectedCounts[$u] ?? 0) + 1;
+        }
+    }
+
+    // Severity
+    $sev = ucfirst(strtolower(trim(metaFirst($meta, 'severity') ?: ($iss['severity'] ?? 'minor'))));
+    $severityCounts[$sev] = ($severityCounts[$sev] ?? 0) + 1;
+
+    $issuesWithMeta[] = [
+        'title'    => $iss['title'],
+        'sc_nums'  => $scNums,
+        'sev_rank' => $severityOrder[strtolower(trim(metaFirst($meta, 'severity') ?: 'minor'))] ?? 99,
+    ];
+}
+
+// Top 5 issues by severity (unique titles)
+usort($issuesWithMeta, fn($a, $b) => $a['sev_rank'] - $b['sev_rank']);
+$topIssues = []; $seenTitles = [];
+foreach ($issuesWithMeta as $iss) {
+    $tk = strtolower(trim($iss['title']));
+    if (isset($seenTitles[$tk])) continue;
+    $seenTitles[$tk] = true;
+    $topIssues[] = ['title' => $iss['title'], 'sc_nums' => implode(', ', $iss['sc_nums'])];
+    if (count($topIssues) >= 5) break;
+}
+
+// Severity counts sorted
+arsort($userAffectedCounts);
+$sevOrderKeys = ['Blocker','Critical','Major','Minor','Low'];
+$severityCountsSorted = [];
+foreach ($sevOrderKeys as $k) {
+    if (isset($severityCounts[$k])) $severityCountsSorted[] = ['severity' => $k, 'count' => $severityCounts[$k]];
+}
+foreach ($severityCounts as $k => $v) {
+    if (!in_array($k, $sevOrderKeys)) $severityCountsSorted[] = ['severity' => $k, 'count' => $v];
+}
+
+// ── project pages ─────────────────────────────────────────────────────────────
+$pagesStmt = $db->prepare("
+    SELECT id, page_number, page_name, url FROM project_pages WHERE project_id = ?
+    ORDER BY CASE WHEN page_number LIKE 'Global%' THEN 0 WHEN page_number LIKE 'Page%' THEN 1 ELSE 2 END,
+             CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(page_number,' ',-1),' ',1) AS UNSIGNED), page_number, id ASC
+");
+$pagesStmt->execute([$projectId]);
+$projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// All grouped URLs (for All URLs sheet)
+$guStmt = $db->prepare("SELECT url FROM grouped_urls WHERE project_id = ? ORDER BY id ASC");
+$guStmt->execute([$projectId]);
+$allGroupedUrls = $guStmt->fetchAll(PDO::FETCH_COLUMN);
+
+// Grouped URLs per page (for URL Details sheet)
+$guPerPageStmt = $db->prepare("SELECT url FROM grouped_urls WHERE project_id = ? AND unique_page_id = ? ORDER BY id ASC");
+
+// ── open template ─────────────────────────────────────────────────────────────
+$tmpFile = tempnam(sys_get_temp_dir(), 'pms_rpt_') . '.xlsx';
+copy($templatePath, $tmpFile);
+$zip = new ZipArchive();
+if ($zip->open($tmpFile) !== true) { http_response_code(500); exit('Cannot open template'); }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SHEET 1: Overview
+// ══════════════════════════════════════════════════════════════════════════════
+$sh1 = $zip->getFromName('xl/worksheets/sheet1.xml');
+
+// Basic project info
+setCell($sh1, 'F2', $project['title'] ?? '');
+setCell($sh1, 'F3', $projectTypeLabel);
+setCell($sh1, 'F4', 'Sakshi Infotech Solutions LLP');
+setCell($sh1, 'F5', 'Sangam Nishad');
+// F6: replace TODAY() formula with plain date string
+setCell($sh1, 'F6', date('d-M'));
+
+// F12/G12: WCAG failing SC counts
+setCell($sh1, 'F12', (string)count($failingSCsA), true);
+setCell($sh1, 'G12', (string)count($failingSCsAA), true);
+
+// K12:K16 = top 5 issue titles (K:L merged), M12:M16 = SC numbers
+for ($ti = 0; $ti < 5; $ti++) {
+    $rn   = 12 + $ti;
+    $tiss = $topIssues[$ti] ?? ['title' => '', 'sc_nums' => ''];
+    setCell($sh1, 'K' . $rn, $tiss['title']);
+    setCell($sh1, 'M' . $rn, $tiss['sc_nums']);
+}
+
+// B15: "Users Affected" header, C15: "Issue counts" header
+setCell($sh1, 'B15', 'Users Affected');
+setCell($sh1, 'C15', 'Issue counts');
+
+// B16 onwards: users affected + counts
+$ui = 0;
+foreach ($userAffectedCounts as $user => $count) {
+    $rn = 16 + $ui;
+    injectCell($sh1, $rn, 'B' . $rn, (string)$user, ' s="26"');
+    injectCell($sh1, $rn, 'C' . $rn, (string)$count, ' s="27"', true);
+    $ui++;
+}
+
+// O23: "Severity" header, P23: "Issue Count" header
+setCell($sh1, 'O23', 'Severity');
+setCell($sh1, 'P23', 'Issue Count');
+
+// O24 onwards: severity name + count
+for ($si = 0; $si < count($severityCountsSorted); $si++) {
+    $rn = 24 + $si;
+    injectCell($sh1, $rn, 'O' . $rn, $severityCountsSorted[$si]['severity'], ' s="108"');
+    injectCell($sh1, $rn, 'P' . $rn, (string)$severityCountsSorted[$si]['count'], ' s="109"', true);
+}
+
+// B29 onwards: team members (row 28 = header "Resource Name"/"Resource Type" — leave as-is)
+for ($mi = 0; $mi < count($teamMembers); $mi++) {
+    $rn   = 29 + $mi;
+    $role = $roleLabels[$teamMembers[$mi]['role']] ?? ucfirst(str_replace('_', ' ', $teamMembers[$mi]['role']));
+    injectCell($sh1, $rn, 'B' . $rn, $teamMembers[$mi]['full_name'], ' s="101"');
+    injectCell($sh1, $rn, 'C' . $rn, $role, ' s="102"');
+}
+
+$zip->addFromString('xl/worksheets/sheet1.xml', $sh1);
+// Delete calcChain so Excel doesn't recalculate and overwrite our injected values
+$zip->deleteName('xl/calcChain.xml');
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SHEET 2: URL Details — A=Page No, B=Page Name, C=Unique URL, D=Grouped URLs
+// ══════════════════════════════════════════════════════════════════════════════
+$sh2 = $zip->getFromName('xl/worksheets/sheet2.xml');
+clearDataRows($sh2);
+
+$rows2 = '';
+foreach ($projectPages as $idx => $page) {
+    $rn = $idx + 2;
+    $guPerPageStmt->execute([$projectId, $page['id']]);
+    $grouped = $guPerPageStmt->fetchAll(PDO::FETCH_COLUMN);
+    $rows2 .= '<row r="' . $rn . '" spans="1:4">'
+        . '<c r="A' . $rn . '" t="str"><v>' . xstr($page['page_number'] ?? '') . '</v></c>'
+        . '<c r="B' . $rn . '" t="str"><v>' . xstr($page['page_name'] ?? '') . '</v></c>'
+        . '<c r="C' . $rn . '" t="str"><v>' . xstr($page['url'] ?? '') . '</v></c>'
+        . '<c r="D' . $rn . '" t="str"><v>' . xstr(implode(', ', $grouped)) . '</v></c>'
+        . '</row>';
+}
+$sh2 = str_replace('</sheetData>', $rows2 . '</sheetData>', $sh2);
+if (strpos($sh2, $rows2) === false) {
+    $sh2 = preg_replace('/<sheetData\s*\/>/s', '<sheetData>' . $rows2 . '</sheetData>', $sh2);
+}
+$zip->addFromString('xl/worksheets/sheet2.xml', $sh2);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SHEET 3: All URLs — A=URL
+// ══════════════════════════════════════════════════════════════════════════════
+$sh3 = $zip->getFromName('xl/worksheets/sheet3.xml');
+clearDataRows($sh3);
+
+$rows3 = '';
+foreach ($allGroupedUrls as $idx => $url) {
+    $rn = $idx + 2;
+    $rows3 .= '<row r="' . $rn . '" spans="1:1"><c r="A' . $rn . '" t="str"><v>' . xstr((string)$url) . '</v></c></row>';
+}
+// Fallback: if no </sheetData> found, rebuild sheetData entirely
+if (strpos($sh3, '</sheetData>') !== false) {
+    $sh3 = str_replace('</sheetData>', $rows3 . '</sheetData>', $sh3);
+} else {
+    $sh3 = preg_replace('/<sheetData\s*\/>/s', '<sheetData>' . $rows3 . '</sheetData>', $sh3);
+}
+$zip->addFromString('xl/worksheets/sheet3.xml', $sh3);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SHEET 4: Final Report
+// A=Sr.No  B=Issue Key  C=Page No  D=Page Name  E=Page URL
+// F=Issue Title  G=Actual Result  H=Incorrect Code  I=Screenshots
+// J=Recommendation  K=Correct Code  L=Severity  M=Priority
+// N=User Affected  O=WCAG SC Number  P=WCAG SC Name  Q=WCAG Level
+// R=GIGW 3.0  S=IS 17802  T=Environments  U=Developer's Status  V=Developer's Comment
+// ══════════════════════════════════════════════════════════════════════════════
+$sh4 = $zip->getFromName('xl/worksheets/sheet4.xml');
+clearDataRows($sh4);
+
+$rows4 = '';
+$srNo  = 1;
+foreach ($filteredIssues as $iss) {
+    $iid   = (int)$iss['id'];
+    $rn    = $srNo + 1;
+    $meta  = $metaMap[$iid] ?? [];
+    $pages = $pagesByIssue[$iid] ?? [];
+
+    $pageNums  = implode(', ', array_column($pages, 'page_number'));
+    $pageNames = implode(', ', array_column($pages, 'page_name'));
+    $pageUrls  = implode(', ', array_filter(array_column($pages, 'url')));
+
+    $wcagNums  = implode(', ', metaArray($meta, 'wcagsuccesscriteria'));
+    $wcagNames = implode(', ', metaArray($meta, 'wcagsuccesscriterianame'));
+    $wcagLevel = implode(', ', metaArray($meta, 'wcagsuccesscriterialevel'));
+    $gigw      = implode(', ', metaArray($meta, 'gigw30'));
+    $is17802   = implode(', ', metaArray($meta, 'is17802'));
+    $severity  = ucfirst(strtolower(metaFirst($meta, 'severity') ?: ($iss['severity'] ?? 'minor')));
+    $priority  = ucfirst(strtolower(metaFirst($meta, 'priority') ?: 'medium'));
+    $envs      = implode(', ', metaArray($meta, 'environments'));
+    $issueKey  = $iss['issue_key'] ?? metaFirst($meta, 'issue_key');
+
+    // Users affected: split on comma since multiple users may be in one row
+    $usersArr = [];
+    foreach ($meta['usersaffected'] ?? [] as $rawVal) {
+        foreach (array_filter(array_map('trim', explode(',', $rawVal))) as $u) {
+            $usersArr[] = $u;
+        }
+    }
+    $usersAff = implode(', ', array_unique($usersArr));
+
+    // Extract named sections from description
+    $sections       = extractSections($iss['description'] ?? '');
+    $actualResult   = stripHtml($sections['actual_result']);
+    $incorrectCode  = stripHtml($sections['incorrect_code']);
+    $recommendation = stripHtml($sections['recommendation']);
+    $correctCode    = stripHtml($sections['correct_code']);
+    $screenshotUrls = implode("\n", array_map('absoluteUrl', extractImageUrls($sections['screenshot'])));
+
+    $c = fn(string $col, string $val) =>
+        '<c r="' . $col . $rn . '" t="str"><v>' . xstr($val) . '</v></c>';
+
+    $rows4 .= '<row r="' . $rn . '" spans="1:22">'
+        . '<c r="A' . $rn . '"><v>' . $srNo . '</v></c>'
+        . $c('B', $issueKey)
+        . $c('C', $pageNums)
+        . $c('D', $pageNames)
+        . $c('E', $pageUrls)
+        . $c('F', $iss['title'] ?? '')
+        . $c('G', $actualResult)
+        . $c('H', $incorrectCode)
+        . $c('I', $screenshotUrls)
+        . $c('J', $recommendation)
+        . $c('K', $correctCode)
+        . $c('L', $severity)
+        . $c('M', $priority)
+        . $c('N', $usersAff)
+        . $c('O', $wcagNums)
+        . $c('P', $wcagNames)
+        . $c('Q', $wcagLevel)
+        . $c('R', $gigw)
+        . $c('S', $is17802)
+        . $c('T', $envs)
+        . $c('U', '')      // Developer's Status
+        . $c('V', '')      // Developer's Comment
+        . '</row>';
+    $srNo++;
+}
+$sh4 = str_replace('</sheetData>', $rows4 . '</sheetData>', $sh4);
+if (strpos($sh4, $rows4) === false) {
+    $sh4 = preg_replace('/<sheetData\s*\/>/s', '<sheetData>' . $rows4 . '</sheetData>', $sh4);
+}
+$zip->addFromString('xl/worksheets/sheet4.xml', $sh4);
+
+// ── stream ────────────────────────────────────────────────────────────────────
+$zip->close();
+$safeTitle = trim(preg_replace('/[^a-zA-Z0-9_\- ]/', '', $project['title'] ?? 'Project')) ?: 'Project';
+$filename  = $safeTitle . ' - Accessibility Audit Report.xlsx';
+
+header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+header('Content-Disposition: attachment; filename="' . $filename . '"');
+header('Content-Length: ' . filesize($tmpFile));
+header('Cache-Control: private, no-cache');
+readfile($tmpFile);
+unlink($tmpFile);
+exit;
