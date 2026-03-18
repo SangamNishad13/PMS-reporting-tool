@@ -5910,6 +5910,11 @@
 
             // Use the updated issue data from server response, not form data
             var payload = json.issue || Object.assign({ id: String(editId || json.id || ''), issue_key: String(json.issue_key || '') }, data);
+            // Normalize: ensure 'details' field exists (API returns 'description')
+            if (payload.details === undefined || payload.details === '') {
+                payload.details = payload.description || data.details || '';
+            }
+            payload.id = String(payload.id || '');
             var list = store[selectedPageId].final || [];
             var idx = list.findIndex(function (it) { return String(it.id) === String(payload.id); });
             if (idx >= 0) list[idx] = payload; else list.unshift(payload);
@@ -5953,6 +5958,19 @@
             }, 100);
             
             // Optimized update: update data in memory and re-render the table
+            // Normalize API response to internal format (description -> details, etc.)
+            function normalizeIssueFromApi(apiIssue) {
+                if (!apiIssue) return apiIssue;
+                var n = Object.assign({}, apiIssue);
+                // API returns 'description', internal store uses 'details'
+                if (n.details === undefined || n.details === '') {
+                    n.details = n.description || '';
+                }
+                // Ensure id is string
+                n.id = String(n.id || '');
+                return n;
+            }
+
             if (editId) {
                 // Update the issue data in memory
                 if (issueData.selectedPageId && issueData.pages[issueData.selectedPageId].final) {
@@ -5960,14 +5978,14 @@
                         return String(i.id) === String(savedIssueId);
                     });
                     if (issueIndex !== -1 && (json.issue || payload)) {
-                        issueData.pages[issueData.selectedPageId].final[issueIndex] = json.issue || payload;
+                        issueData.pages[issueData.selectedPageId].final[issueIndex] = normalizeIssueFromApi(json.issue || payload);
                     }
                 }
             } else {
                 // For new issues, use server response data
                 if (json.issue || payload) {
                     var list = issueData.pages[selectedPageId].final || [];
-                    list.unshift(json.issue || payload);
+                    list.unshift(normalizeIssueFromApi(json.issue || payload));
                     issueData.pages[selectedPageId].final = list;
                 }
             }
