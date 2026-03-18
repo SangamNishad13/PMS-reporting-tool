@@ -87,29 +87,39 @@ function xcell(string $col, int $row, string $val, string $style = ''): string {
  * Replace a cell in worksheet XML with a new inline-string value.
  * Handles both normal <c ...>...</c> and self-closing <c .../> forms.
  * Preserves the style (s="N") attribute.
+ * Uses a two-pass approach: first find the cell boundary, then replace.
  */
 function setCell(string &$xml, string $ref, string $value, bool $isNum = false): void {
     $rq = preg_quote($ref, '/');
-    // Extract style attribute from existing cell (either form)
     $style = '';
-    $selfClosingPat = '/<c\s+r="' . $rq . '"([^>]*)\/>/s';
-    $normalPat      = '/<c\s+r="' . $rq . '"([^>]*)>.*?<\/c>/s';
-    $isSelfClosing  = preg_match($selfClosingPat, $xml, $m);
-    if (!$isSelfClosing && !preg_match($normalPat, $xml, $m)) {
+
+    // Self-closing form: <c r="REF" ... />
+    $selfClosingPat = '/<c\s+r="' . $rq . '"([^>]*)\/>/';
+    if (preg_match($selfClosingPat, $xml, $m)) {
+        if (preg_match('/\bs="(\d+)"/', $m[1], $sm)) $style = ' s="' . $sm[1] . '"';
+        $repl = $isNum
+            ? '<c r="' . $ref . '"' . $style . '><v>' . (int)$value . '</v></c>'
+            : '<c r="' . $ref . '"' . $style . ' t="inlineStr"><is><t xml:space="preserve">' . xstr($value) . '</t></is></c>';
+        $xml = preg_replace($selfClosingPat, $repl, $xml, 1);
+        return;
+    }
+
+    // Normal form: find opening tag, then scan forward to matching </c>
+    // This handles multiline content (e.g. cells with <f> formulas spanning multiple lines)
+    $openPat = '/<c\s+r="' . $rq . '"([^>]*)>/';
+    if (!preg_match($openPat, $xml, $m, PREG_OFFSET_CAPTURE)) {
         return; // cell not found
     }
-    if (preg_match('/\bs="(\d+)"/', $m[1], $sm)) {
-        $style = ' s="' . $sm[1] . '"';
-    }
+    if (preg_match('/\bs="(\d+)"/', $m[1][0], $sm)) $style = ' s="' . $sm[1] . '"';
+    $start = $m[0][1]; // byte offset of <c ...>
+    $closePos = strpos($xml, '</c>', $start);
+    if ($closePos === false) return;
+    $end = $closePos + 4; // length of </c>
+
     $repl = $isNum
         ? '<c r="' . $ref . '"' . $style . '><v>' . (int)$value . '</v></c>'
         : '<c r="' . $ref . '"' . $style . ' t="inlineStr"><is><t xml:space="preserve">' . xstr($value) . '</t></is></c>';
-    // Replace only the matched form (not both)
-    if ($isSelfClosing) {
-        $xml = preg_replace($selfClosingPat, $repl, $xml, 1);
-    } else {
-        $xml = preg_replace($normalPat, $repl, $xml, 1);
-    }
+    $xml = substr($xml, 0, $start) . $repl . substr($xml, $end);
 }
 
 /**
@@ -119,24 +129,28 @@ function injectCell(string &$xml, int $rowNum, string $ref, string $value, strin
     $rq = preg_quote($ref, '/');
     // If cell already exists (either form), use setCell to replace it
     if (preg_match('/<c\s+r="' . $rq . '"[^>]*\/>/s', $xml) ||
-        preg_match('/<c\s+r="' . $rq . '"[^>]*>.*?<\/c>/s', $xml)) {
+        preg_match('/<c\s+r="' . $rq . '"[^>]*>/s', $xml)) {
         setCell($xml, $ref, $value, $isNum);
         return;
     }
     $newCell = $isNum
         ? '<c r="' . $ref . '"' . $styleAttr . '><v>' . (int)$value . '</v></c>'
         : '<c r="' . $ref . '"' . $styleAttr . ' t="inlineStr"><is><t xml:space="preserve">' . xstr($value) . '</t></is></c>';
-    // Insert into existing row
-    $rowPat = '/(<row\s+r="' . $rowNum . '"[^>]*>)(.*?)(<\/row>)/s';
-    if (preg_match($rowPat, $xml, $rm)) {
-        $xml = preg_replace($rowPat, $rm[1] . $rm[2] . $newCell . $rm[3], $xml, 1);
-        return;
+    // Insert into existing row (use strpos+substr to avoid regex backtracking on large XML)
+    $rowOpenPat = '/<row\s+r="' . $rowNum . '"[^>]*>/';
+    if (preg_match($rowOpenPat, $xml, $rm, PREG_OFFSET_CAPTURE)) {
+        $rowStart = $rm[0][1] + strlen($rm[0][0]);
+        $closePos = strpos($xml, '</row>', $rowStart);
+        if ($closePos !== false) {
+            $xml = substr($xml, 0, $closePos) . $newCell . substr($xml, $closePos);
+            return;
+        }
     }
-    // Create new row — handle both </sheetData> and self-closing <sheetData/>
+    // Create new row — use preg_replace with limit=1 to avoid duplicate insertion
     if (strpos($xml, '</sheetData>') !== false) {
-        $xml = str_replace('</sheetData>', '<row r="' . $rowNum . '" spans="1:18">' . $newCell . '</row></sheetData>', $xml);
+        $xml = preg_replace('/<\/sheetData>/', '<row r="' . $rowNum . '" spans="1:18">' . $newCell . '</row></sheetData>', $xml, 1);
     } else {
-        $xml = preg_replace('/<sheetData\s*\/>/s', '<sheetData><row r="' . $rowNum . '" spans="1:18">' . $newCell . '</row></sheetData>', $xml);
+        $xml = preg_replace('/<sheetData\s*\/>/s', '<sheetData><row r="' . $rowNum . '" spans="1:18">' . $newCell . '</row></sheetData>', $xml, 1);
     }
 }
 
@@ -455,9 +469,9 @@ setCell($sh1, 'F5', 'Sangam Nishad');
 // F6: replace TODAY() formula with plain date string
 setCell($sh1, 'F6', date('d-M'));
 
-// F12/G12: WCAG failing SC counts
-setCell($sh1, 'F12', (string)count($failingSCsA), true);
-setCell($sh1, 'G12', (string)count($failingSCsAA), true);
+// F12/G12: These cells have COUNTIFS formulas referencing 'Conformance Score' sheet.
+// DO NOT overwrite them — the formulas will auto-calculate from Final Report data.
+// (Overwriting destroys the formula and breaks Conformance Score sheet cross-references)
 
 // K12:K16 = top 5 issue titles (K:L merged), M12:M16 = SC numbers
 for ($ti = 0; $ti < 5; $ti++) {
@@ -503,7 +517,20 @@ for ($mi = 0; $mi < count($teamMembers); $mi++) {
 $sh1 = preg_replace('/<dimension\s+ref="[^"]*"\s*\/>/s', '', $sh1);
 
 $zip->addFromString('xl/worksheets/sheet1.xml', $sh1);
-// Delete calcChain so Excel doesn't recalculate and overwrite our injected values
+
+// Delete calcChain — stale chain causes Excel to use cached values instead of recalculating
+$zip->deleteName('xl/calcChain.xml');
+
+// Force full recalculation on open so all formula sheets (incl. Conformance Score) update
+$wb = $zip->getFromName('xl/workbook.xml');
+if ($wb !== false) {
+    if (preg_match('/<calcPr\b/i', $wb)) {
+        $wb = preg_replace('/<calcPr\b[^\/]*\/>/i', '<calcPr calcMode="auto" fullCalcOnLoad="1"/>', $wb);
+    } else {
+        $wb = str_replace('</workbook>', '<calcPr calcMode="auto" fullCalcOnLoad="1"/></workbook>', $wb);
+    }
+    $zip->addFromString('xl/workbook.xml', $wb);
+}
 $zip->deleteName('xl/calcChain.xml');
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -619,6 +646,21 @@ foreach ($filteredIssues as $iss) {
 }
 injectRows($sh4, $rows4);
 $zip->addFromString('xl/worksheets/sheet4.xml', $sh4);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SHEET 5: Conformance Score — clear stale <v> cached values so formulas recalculate
+// Sheet5 formulas reference 'Final Report'!$O:$O and $L:$L directly.
+// Stale <v> values cause Excel to show old results until manually edited.
+// ══════════════════════════════════════════════════════════════════════════════
+$sh5 = $zip->getFromName('xl/worksheets/sheet5.xml');
+if ($sh5 !== false) {
+    // Remove cached <v> from formula cells: <c ...><f>...</f><v>stale</v></c>
+    // After removal Excel is forced to recalculate on open
+    $sh5 = preg_replace('/(<c\b[^>]*>)(<f\b[^>]*>.*?<\/f>)<v>[^<]*<\/v>/s', '$1$2', $sh5);
+    // Also remove dimension to avoid range mismatch warnings
+    $sh5 = preg_replace('/<dimension\s+ref="[^"]*"\s*\/>/s', '', $sh5);
+    $zip->addFromString('xl/worksheets/sheet5.xml', $sh5);
+}
 
 // ── stream ────────────────────────────────────────────────────────────────────
 $zip->close();
