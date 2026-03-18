@@ -502,9 +502,34 @@ for ($mi = 0; $mi < count($teamMembers); $mi++) {
 // Remove dimension element from sheet1 to prevent Excel repair dialog
 $sh1 = preg_replace('/<dimension\s+ref="[^"]*"\s*\/>/s', '', $sh1);
 
+// Clear stale cached values from formula cells so Excel recalculates them
+// Formula cells look like: <c r="X1" ...><f>FORMULA</f><v>stale_value</v></c>
+// Remove the <v>...</v> part so Excel is forced to recalculate
+$sh1 = preg_replace('/(<c\b[^>]*>)(<f>[^<]*<\/f>)<v>[^<]*<\/v>/s', '$1$2', $sh1);
+
 $zip->addFromString('xl/worksheets/sheet1.xml', $sh1);
-// Delete calcChain so Excel doesn't recalculate and overwrite our injected values
+
+// Delete calcChain — stale chain causes Excel to skip recalculation
 $zip->deleteName('xl/calcChain.xml');
+
+// Force workbook to recalculate all formulas on open
+$wb = $zip->getFromName('xl/workbook.xml');
+if ($wb !== false) {
+    // Set calcMode="auto" and fullCalcOnLoad="1" so formulas recalculate immediately on open
+    if (preg_match('/<calcPr\b/i', $wb)) {
+        // Update existing calcPr element
+        $wb = preg_replace('/<calcPr\b[^>]*\/>/i',
+            '<calcPr calcMode="auto" fullCalcOnLoad="1"/>',
+            $wb);
+        $wb = preg_replace('/<calcPr\b[^>]*>.*?<\/calcPr>/is',
+            '<calcPr calcMode="auto" fullCalcOnLoad="1"/>',
+            $wb);
+    } else {
+        // Insert calcPr before </workbook>
+        $wb = str_replace('</workbook>', '<calcPr calcMode="auto" fullCalcOnLoad="1"/></workbook>', $wb);
+    }
+    $zip->addFromString('xl/workbook.xml', $wb);
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SHEET 2: URL Details — A=Page No, B=Page Name, C=Unique URL, D=Grouped URLs
