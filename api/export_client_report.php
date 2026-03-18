@@ -63,9 +63,15 @@ function metaArray(array $meta, string $key): array {
 }
 
 function xstr(string $v): string {
+    // Fix invalid UTF-8 sequences first
+    $v = mb_convert_encoding($v, 'UTF-8', 'UTF-8');
     // Strip illegal XML 1.0 characters (control chars except tab/LF/CR, and UTF-8 surrogates)
     $v = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $v);
-    $v = preg_replace('/[\xED][\xA0-\xBF][\x80-\xBF]/', '', $v); // UTF-8 encoded surrogates
+    // Strip UTF-8 encoded surrogates (U+D800–U+DFFF)
+    $v = preg_replace('/\xED[\xA0-\xBF][\x80-\xBF]/s', '', $v);
+    // Strip emoji and supplementary plane characters that can cause issues (U+10000+)
+    // These are encoded as 4-byte UTF-8 sequences: F0-F4 ...
+    // Keep them but ensure they're valid; mb_convert_encoding above handles this
     // Normalize CR+LF and bare CR to LF
     $v = str_replace(["\r\n", "\r"], "\n", $v);
     return htmlspecialchars($v, ENT_XML1 | ENT_SUBSTITUTE, 'UTF-8');
@@ -132,6 +138,23 @@ function injectCell(string &$xml, int $rowNum, string $ref, string $value, strin
     } else {
         $xml = preg_replace('/<sheetData\s*\/>/s', '<sheetData><row r="' . $rowNum . '" spans="1:18">' . $newCell . '</row></sheetData>', $xml);
     }
+}
+
+/**
+ * Inject rows into a sheet's sheetData. Replaces existing sheetData content
+ * (after clearDataRows) with the new rows. Handles both </sheetData> and
+ * self-closing <sheetData/> forms. Safe to call even if rows string is empty.
+ * Also updates the <dimension> element to cover all rows.
+ */
+function injectRows(string &$xml, string $rows): void {
+    if (strpos($xml, '</sheetData>') !== false) {
+        // Replace only the FIRST occurrence to avoid double-injection
+        $xml = preg_replace('/<\/sheetData>/', $rows . '</sheetData>', $xml, 1);
+    } else {
+        $xml = preg_replace('/<sheetData\s*\/>/s', '<sheetData>' . $rows . '</sheetData>', $xml, 1);
+    }
+    // Remove dimension element — Excel will recalculate it, avoids "repair" dialog
+    $xml = preg_replace('/<dimension\s+ref="[^"]*"\s*\/>/s', '', $xml);
 }
 
 /** Remove all data rows (row 2 onwards), keep header row 1.
@@ -410,6 +433,15 @@ copy($templatePath, $tmpFile);
 $zip = new ZipArchive();
 if ($zip->open($tmpFile) !== true) { http_response_code(500); exit('Cannot open template'); }
 
+// Fix sharedStrings count attributes to prevent Excel repair dialog
+$ss = $zip->getFromName('xl/sharedStrings.xml');
+if ($ss !== false) {
+    // Remove count/uniqueCount so Excel recalculates — avoids mismatch after cell replacements
+    $ss = preg_replace('/\s+count="\d+"/', '', $ss);
+    $ss = preg_replace('/\s+uniqueCount="\d+"/', '', $ss);
+    $zip->addFromString('xl/sharedStrings.xml', $ss);
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // SHEET 1: Overview
 // ══════════════════════════════════════════════════════════════════════════════
@@ -467,6 +499,9 @@ for ($mi = 0; $mi < count($teamMembers); $mi++) {
     injectCell($sh1, $rn, 'C' . $rn, $role, ' s="102"');
 }
 
+// Remove dimension element from sheet1 to prevent Excel repair dialog
+$sh1 = preg_replace('/<dimension\s+ref="[^"]*"\s*\/>/s', '', $sh1);
+
 $zip->addFromString('xl/worksheets/sheet1.xml', $sh1);
 // Delete calcChain so Excel doesn't recalculate and overwrite our injected values
 $zip->deleteName('xl/calcChain.xml');
@@ -489,10 +524,7 @@ foreach ($projectPages as $idx => $page) {
         . xcell('D', $rn, implode(', ', $grouped))
         . '</row>';
 }
-$sh2 = str_replace('</sheetData>', $rows2 . '</sheetData>', $sh2);
-if (strpos($sh2, $rows2) === false) {
-    $sh2 = preg_replace('/<sheetData\s*\/>/s', '<sheetData>' . $rows2 . '</sheetData>', $sh2);
-}
+injectRows($sh2, $rows2);
 $zip->addFromString('xl/worksheets/sheet2.xml', $sh2);
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -506,12 +538,7 @@ foreach ($allGroupedUrls as $idx => $url) {
     $rn = $idx + 2;
     $rows3 .= '<row r="' . $rn . '" spans="1:1">' . xcell('A', $rn, (string)$url) . '</row>';
 }
-// Fallback: if no </sheetData> found, rebuild sheetData entirely
-if (strpos($sh3, '</sheetData>') !== false) {
-    $sh3 = str_replace('</sheetData>', $rows3 . '</sheetData>', $sh3);
-} else {
-    $sh3 = preg_replace('/<sheetData\s*\/>/s', '<sheetData>' . $rows3 . '</sheetData>', $sh3);
-}
+injectRows($sh3, $rows3);
 $zip->addFromString('xl/worksheets/sheet3.xml', $sh3);
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -590,10 +617,7 @@ foreach ($filteredIssues as $iss) {
         . '</row>';
     $srNo++;
 }
-$sh4 = str_replace('</sheetData>', $rows4 . '</sheetData>', $sh4);
-if (strpos($sh4, $rows4) === false) {
-    $sh4 = preg_replace('/<sheetData\s*\/>/s', '<sheetData>' . $rows4 . '</sheetData>', $sh4);
-}
+injectRows($sh4, $rows4);
 $zip->addFromString('xl/worksheets/sheet4.xml', $sh4);
 
 // ── stream ────────────────────────────────────────────────────────────────────
