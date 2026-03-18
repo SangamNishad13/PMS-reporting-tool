@@ -89,28 +89,6 @@ ob_start();
     <!-- Project Actions -->
     <?php include __DIR__ . '/partials/project_actions.php'; ?>
     
-    <!-- Enhanced View Option -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="enhanced-view-promotion">
-                <div class="promotion-content">
-                    <div class="promotion-icon">
-                        <i class="fas fa-rocket text-primary"></i>
-                    </div>
-                    <div class="promotion-text">
-                        <h4>Try Enhanced Analytics</h4>
-                        <p>Get deeper insights with our enhanced project analytics featuring detailed drill-downs, comparison views, and AI-powered recommendations.</p>
-                    </div>
-                    <div class="promotion-action">
-                        <a href="<?php echo $baseDir; ?>/modules/client/project_dashboard_enhanced.php?id=<?php echo $projectId; ?>" 
-                           class="btn btn-primary btn-lg">
-                            <i class="fas fa-microscope"></i> Enhanced View
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
 </div>
 
@@ -149,89 +127,7 @@ function setupProjectNavigation() {
 }
 </script>
 
-<style>
-.enhanced-view-promotion {
-    background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
-    border: 1px solid #2196f3;
-    border-radius: 12px;
-    padding: 0;
-    overflow: hidden;
-    box-shadow: 0 4px 12px rgba(33,150,243,0.15);
-}
 
-.promotion-content {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    padding: 24px;
-}
-
-.promotion-icon {
-    font-size: 3rem;
-    color: #2196f3;
-    flex-shrink: 0;
-}
-
-.promotion-text {
-    flex: 1;
-}
-
-.promotion-text h4 {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #2c3e50;
-    margin-bottom: 8px;
-}
-
-.promotion-text p {
-    font-size: 1rem;
-    color: #6c757d;
-    margin: 0;
-    line-height: 1.5;
-}
-
-.promotion-action {
-    flex-shrink: 0;
-}
-
-.promotion-action .btn {
-    font-weight: 600;
-    border-radius: 8px;
-    padding: 12px 24px;
-    box-shadow: 0 2px 8px rgba(33,150,243,0.3);
-    transition: all 0.3s ease;
-}
-
-.promotion-action .btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(33,150,243,0.4);
-}
-
-@media (max-width: 768px) {
-    .promotion-content {
-        flex-direction: column;
-        text-align: center;
-        gap: 16px;
-        padding: 20px;
-    }
-    
-    .promotion-icon {
-        font-size: 2.5rem;
-    }
-    
-    .promotion-text h4 {
-        font-size: 1.1rem;
-    }
-    
-    .promotion-text p {
-        font-size: 0.9rem;
-    }
-    
-    .promotion-action .btn {
-        padding: 10px 20px;
-    }
-}
-</style>
 
 <?php
 // Capture the page content

@@ -627,10 +627,16 @@ function toggleStatusIssues(statusId) {
 
 function openIssueDetail(issueId, pageId) {
     // Redirect to issues_page_detail.php with expanded view for this issue
+    const baseUrl = '<?php echo $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST']; ?>/PMS/modules/projects';
     if (pageId && pageId > 0) {
-        const issuesUrl = '<?php echo $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST']; ?>/PMS/modules/projects/issues_page_detail.php?project_id=<?php echo $projectId; ?>&page_id=' + pageId + '&expand=' + issueId;
+        const issuesUrl = baseUrl + '/issues_page_detail.php?project_id=<?php echo $projectId; ?>&page_id=' + pageId + '&expand=' + issueId;
         window.open(issuesUrl, '_blank');
     } else {
+        // If no page_id, redirect to issues_all.php and expand the issue there
+        const issuesUrl = baseUrl + '/issues_all.php?project_id=<?php echo $projectId; ?>&expand=' + issueId;
+        window.open(issuesUrl, '_blank');
+    }
+}
         // Fallback to main issues page if no page_id
         const issuesUrl = '<?php echo $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST']; ?>/PMS/modules/projects/view.php?id=<?php echo $projectId; ?>&tab=issues&expand=' + issueId;
         window.open(issuesUrl, '_blank');

@@ -84,10 +84,6 @@
     var issuePresets = [];
     var issueMetadataFields = [];
     var isSyncingUrlModal = false;
-    var liveIssueSyncTimer = null;
-    var liveIssueSyncInFlight = false;
-    var LIVE_ISSUE_SYNC_INTERVAL_MS = 5000;
-    var liveIssueSyncDisabledUntil = 0; // Timestamp to temporarily disable sync after saves
     var issuePresenceTimer = null;
     var issuePresenceIssueId = null;
     var issuePresenceSessionToken = null;
@@ -4856,50 +4852,6 @@
         return !!(modal && modal.classList.contains('show'));
     }
 
-    async function runLiveIssueSync() {
-        if (document.hidden || liveIssueSyncInFlight || isIssueEditorOpen()) return;
-        
-        // Skip sync if temporarily disabled after a save operation
-        if (Date.now() < liveIssueSyncDisabledUntil) return;
-        
-        var tasks = [];
-        if (issueData.selectedPageId) {
-            // Do not refresh Final Issues while any row is expanded; prevents auto-collapse.
-            var hasExpandedFinalRows = !!document.querySelector('#finalIssuesBody tr.collapse.show');
-            if (!hasExpandedFinalRows) {
-                tasks.push(loadFinalIssues(issueData.selectedPageId, { silent: true, onlyIfChanged: true }));
-            }
-        }
-        if (document.getElementById('commonIssuesBody')) {
-            tasks.push(loadCommonIssues({ silent: true, onlyIfChanged: true }));
-        }
-        if (!tasks.length) return;
-
-        liveIssueSyncInFlight = true;
-        try {
-            await Promise.all(tasks);
-        } catch (e) {
-            // Silent background refresh failure.
-        } finally {
-            liveIssueSyncInFlight = false;
-        }
-    }
-
-    function startLiveIssueSync() {
-        // In-place live updates (no page reload) so multi-user issue changes appear automatically.
-        if (liveIssueSyncTimer) return;
-        liveIssueSyncTimer = setInterval(runLiveIssueSync, LIVE_ISSUE_SYNC_INTERVAL_MS);
-        document.addEventListener('visibilitychange', function () {
-            if (!document.hidden) runLiveIssueSync();
-        });
-        window.addEventListener('beforeunload', function () {
-            if (liveIssueSyncTimer) {
-                clearInterval(liveIssueSyncTimer);
-                liveIssueSyncTimer = null;
-            }
-        });
-    }
-
     function updateSelectionButtons() {
         var finalChecked = document.querySelectorAll('.final-select:checked').length;
         var finalDelete = document.getElementById('finalDeleteSelected');
@@ -5276,34 +5228,110 @@
         var item = list.find(function (it) { return Number(it.id) === Number(commentId); });
         if (!item) return;
 
-        var currentText = String(item.text || '').replace(/<[^>]*>/g, '').trim();
-        var edited = window.prompt('Edit comment', currentText);
-        if (edited === null) return;
-        if (!edited.trim()) {
-            if (typeof showToast === 'function') showToast('Comment cannot be empty', 'warning');
-            return;
+        // Create a proper modal for editing instead of using window.prompt
+        var modalHtml = `
+            <div class="modal fade" id="editCommentModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Edit Comment</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="editCommentText" class="form-label">Comment Text</label>
+                                <textarea class="form-control" id="editCommentText" rows="4" placeholder="Enter your comment...">${escapeHtml(item.text || '')}</textarea>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" id="saveEditCommentBtn">Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Remove existing modal if any
+        var existingModal = document.getElementById('editCommentModal');
+        if (existingModal) {
+            existingModal.remove();
         }
-
-        var fd = new FormData();
-        fd.append('action', 'edit');
-        fd.append('project_id', projectId);
-        fd.append('issue_id', key);
-        fd.append('comment_id', String(commentId));
-        fd.append('comment_html', edited);
-        fetch(issueCommentsApi, { method: 'POST', body: fd, credentials: 'same-origin' })
-            .then(function (r) { return r.json(); })
-            .then(function (res) {
-                if (!res || res.error || !res.comment) {
-                    if (typeof showToast === 'function') showToast((res && res.error) ? res.error : 'Failed to edit comment', 'danger');
-                    return;
-                }
-                upsertIssueComment(key, res.comment);
-                renderIssueComments(key);
-                if (typeof showToast === 'function') showToast('Comment updated', 'success');
-            })
-            .catch(function () {
-                if (typeof showToast === 'function') showToast('Failed to edit comment', 'danger');
-            });
+        
+        // Add modal to body
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // Show modal
+        var modalEl = document.getElementById('editCommentModal');
+        var modal = new bootstrap.Modal(modalEl);
+        modal.show();
+        
+        // Focus on textarea
+        setTimeout(function() {
+            var textarea = document.getElementById('editCommentText');
+            if (textarea) {
+                textarea.focus();
+                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            }
+        }, 300);
+        
+        // Handle save button
+        document.getElementById('saveEditCommentBtn').addEventListener('click', function() {
+            var editedText = document.getElementById('editCommentText').value.trim();
+            
+            if (!editedText) {
+                if (typeof showToast === 'function') showToast('Comment cannot be empty', 'warning');
+                return;
+            }
+            
+            // Disable save button to prevent double-click
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving...';
+            
+            var fd = new FormData();
+            fd.append('action', 'edit');
+            fd.append('project_id', projectId);
+            fd.append('issue_id', key);
+            fd.append('comment_id', String(commentId));
+            fd.append('comment_html', editedText);
+            
+            fetch(issueCommentsApi, { method: 'POST', body: fd, credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res || res.error || !res.comment) {
+                        if (typeof showToast === 'function') showToast((res && res.error) ? res.error : 'Failed to edit comment', 'danger');
+                        return;
+                    }
+                    upsertIssueComment(key, res.comment);
+                    renderIssueComments(key);
+                    if (typeof showToast === 'function') showToast('Comment updated', 'success');
+                    modal.hide();
+                })
+                .catch(function () {
+                    if (typeof showToast === 'function') showToast('Failed to edit comment', 'danger');
+                })
+                .finally(function() {
+                    // Re-enable save button
+                    var saveBtn = document.getElementById('saveEditCommentBtn');
+                    if (saveBtn) {
+                        saveBtn.disabled = false;
+                        saveBtn.innerHTML = 'Save Changes';
+                    }
+                });
+        });
+        
+        // Clean up modal after it's hidden
+        modalEl.addEventListener('hidden.bs.modal', function() {
+            modalEl.remove();
+        });
+        
+        // Handle Enter key to save (Ctrl+Enter or Shift+Enter)
+        document.getElementById('editCommentText').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && (e.ctrlKey || e.shiftKey)) {
+                e.preventDefault();
+                document.getElementById('saveEditCommentBtn').click();
+            }
+        });
     }
 
     function deleteIssueComment(commentId) {
@@ -5837,18 +5865,52 @@
                 }
             });
 
-            // Add timeout to prevent long waits
-            var controller = new AbortController();
-            var timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            // Add session refresh header to prevent timeout during active use
+            var headers = {
+                'X-Session-Refresh': '1'
+            };
             
-            var res = await fetch(issuesApiBase, { 
-                method: 'POST', 
-                body: fd, 
-                credentials: 'same-origin',
-                signal: controller.signal
-            });
+            // Add retry logic for connection issues
+            var maxRetries = 2;
+            var retryDelay = 1000; // 1 second
+            var res, controller, timeoutId;
             
-            clearTimeout(timeoutId);
+            for (var attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    controller = new AbortController();
+                    timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+                    
+                    res = await fetch(issuesApiBase, { 
+                        method: 'POST', 
+                        body: fd, 
+                        credentials: 'same-origin',
+                        signal: controller.signal,
+                        headers: headers
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    break; // Success, exit retry loop
+                    
+                } catch (fetchError) {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    
+                    // If this is the last attempt or not a connection error, throw the error
+                    if (attempt === maxRetries || 
+                        !(fetchError.message && (
+                            fetchError.message.includes('Failed to fetch') || 
+                            fetchError.message.includes('ERR_') || 
+                            fetchError.message.includes('CONNECTION') ||
+                            fetchError.name === 'AbortError'
+                        ))) {
+                        throw fetchError;
+                    }
+                    
+                    // Wait before retrying
+                    console.warn(`Save attempt ${attempt + 1} failed, retrying in ${retryDelay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    retryDelay *= 2; // Exponential backoff
+                }
+            }
             
             var json = null;
             try {
@@ -5978,9 +6040,6 @@
                 }
             }
             
-            // Temporarily disable live sync for 500ms to prevent overwriting our manual update
-            liveIssueSyncDisabledUntil = Date.now() + 500;
-            
             updateSelectionButtons();
             showFinalIssuesTab();
 
@@ -5989,13 +6048,14 @@
                 delete issueData.comments['new'];
             }
             
-            // Don't dispatch issues changed event since we're doing manual row updates
-            // dispatchIssuesChanged({
-            //     action: editId ? 'update' : 'create',
-            //     type: 'final',
-            //     issue_id: String(editId || json.id || ''),
-            //     page_id: String(selectedPageId || '')
-            // });
+            // Dispatch issues changed event so pages like issues_all.php can reload their list
+            dispatchIssuesChanged({
+                action: editId ? 'update' : 'create',
+                type: 'final',
+                issue_id: String(editId || json.id || ''),
+                page_id: String(selectedPageId || ''),
+                issue: json.issue || null  // pass full updated issue for instant row update
+            });
         } catch (e) {
             // Reset button state on error
             if (saveBtn) {
@@ -6006,6 +6066,18 @@
             // Handle timeout errors
             if (e.name === 'AbortError') {
                 issueNotify('Save request timed out. Please check your connection and try again.', 'danger');
+                return;
+            }
+            
+            // Handle connection errors
+            if (e.message && (e.message.includes('ERR_EMPTY_RESPONSE') || e.message.includes('ERR_CONNECTION_RESET') || e.message.includes('Failed to fetch'))) {
+                issueNotify('Connection error. Please check your internet connection and try again.', 'danger');
+                return;
+            }
+            
+            // Handle authentication errors
+            if (e.message && (e.message.includes('401') || e.message.includes('Unauthorized'))) {
+                issueNotify('Your session has expired. Please refresh the page and login again.', 'warning');
                 return;
             }
             
@@ -6023,7 +6095,7 @@
                 });
                 return;
             }
-            issueNotify('Unable to save issue: ' + e.message, 'danger');
+            issueNotify('Unable to save issue: ' + (e.message || 'Unknown error'), 'danger');
         }
     }
 
@@ -7200,7 +7272,6 @@
     updateGroupedUrlsPreview();
     initSummernote();
     loadCommonIssues();
-    startLiveIssueSync();
 
     // Define editFinalIssue for table edit buttons
     window.editFinalIssue = function (id) {

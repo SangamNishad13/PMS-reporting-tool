@@ -15,6 +15,22 @@ if (!$auth->isLoggedIn()) {
     exit;
 }
 
+// Handle session refresh requests to prevent timeout during active use
+if (isset($_SERVER['HTTP_X_SESSION_REFRESH']) && $_SERVER['HTTP_X_SESSION_REFRESH'] === '1') {
+    // Update last activity time to prevent session timeout
+    $_SESSION['last_activity'] = time();
+    
+    // Update session record in database
+    try {
+        $db = Database::getInstance();
+        $stmt = $db->prepare("UPDATE user_sessions SET last_activity = NOW() WHERE session_id = ? AND user_id = ?");
+        $stmt->execute([session_id(), $_SESSION['user_id']]);
+    } catch (Exception $e) {
+        // Non-fatal, continue processing
+        error_log("Session refresh failed: " . $e->getMessage());
+    }
+}
+
 // Dedicated error log for issues API.
 $issuesApiLogDir = __DIR__ . '/../tmp/logs';
 $issuesApiLogFile = $issuesApiLogDir . '/issues_api.log';
@@ -670,10 +686,60 @@ function getIssuePresenceSessions($db, $projectId, $issueId) {
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-$db = Database::getInstance();
+// Add comprehensive error handling wrapper
+set_error_handler(function($severity, $message, $file, $line) {
+    // Don't handle fatal errors here
+    if (!(error_reporting() & $severity)) {
+        return false;
+    }
+    
+    // Log the error
+    error_log("Issues API Error: $message in $file:$line");
+    
+    // For database-related errors, provide more helpful messages
+    if (strpos($message, 'Unknown column') !== false) {
+        error_log("Database schema mismatch detected. This may indicate a missing database migration.");
+    }
+    
+    return false; // Let PHP handle the error normally
+});
+
+// Add database connection error handling
+try {
+    $db = Database::getInstance();
+    
+    // Add connection logging and error handling
+    error_log("Issues API: Database connection established");
+    
+    // Set autocommit to prevent transaction issues
+    try {
+        $db->setAttribute(PDO::ATTR_AUTOCOMMIT, 1);
+        error_log("Issues API: Autocommit set successfully");
+    } catch (Exception $e) {
+        error_log("Issues API: Failed to set autocommit: " . $e->getMessage());
+    }
+    
+    // Add connection timeout and retry logic
+    $db->setAttribute(PDO::ATTR_TIMEOUT, 30);
+    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    
+} catch (Exception $e) {
+    error_log("Issues API: Database connection failed: " . $e->getMessage());
+    http_response_code(503);
+    echo json_encode(['error' => 'Database connection failed', 'message' => 'Please try again later'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
 $projectId = (int)($_GET['project_id'] ?? $_POST['project_id'] ?? 0);
+
+// Handle health check requests
+if ($action === 'health_check' && isset($_SERVER['HTTP_X_HEALTH_CHECK'])) {
+    http_response_code(200);
+    echo json_encode(['status' => 'healthy', 'timestamp' => time()], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 if (!$projectId) {
     jsonError('project_id is required', 400);
@@ -745,7 +811,14 @@ try {
             $sql .= " AND i.client_ready = 1";
         }
         
-        $sql .= " ORDER BY i.issue_key ASC";
+        // Check if issue_key column exists before using it in ORDER BY
+        $columnCheckStmt = $db->prepare("SHOW COLUMNS FROM issues LIKE 'issue_key'");
+        $columnCheckStmt->execute();
+        $hasIssueKeyColumn = $columnCheckStmt->rowCount() > 0;
+        
+        $orderByClause = $hasIssueKeyColumn ? "ORDER BY i.issue_key ASC" : "ORDER BY i.id ASC";
+        $sql .= " $orderByClause";
+        
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
         $issues = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -835,7 +908,7 @@ try {
             
             $rowOut = [
                 'id' => $iid,
-                'issue_key' => $i['issue_key'] ?? '',
+                'issue_key' => $i['issue_key'] ?? 'ISS-' . $iid, // Fallback if column doesn't exist
                 'project_id' => (int)$i['project_id'],
                 'page_id' => $i['page_id'],
                 'title' => $i['title'],
@@ -891,7 +964,13 @@ try {
             $sql .= " AND i.client_ready = 1";
         }
         
-        $sql .= " ORDER BY i.issue_key ASC";
+        // Check if issue_key column exists before using it in ORDER BY
+        $columnCheckStmt = $db->prepare("SHOW COLUMNS FROM issues LIKE 'issue_key'");
+        $columnCheckStmt->execute();
+        $hasIssueKeyColumn = $columnCheckStmt->rowCount() > 0;
+        
+        $orderByClause = $hasIssueKeyColumn ? "ORDER BY i.issue_key ASC" : "ORDER BY i.id ASC";
+        $sql .= " $orderByClause";
         
         $stmt = $db->prepare($sql);
         $stmt->execute([$projectId]);
@@ -1074,10 +1153,10 @@ try {
             
             $out[] = [
                 'id' => $iid,
-                'issue_key' => $i['issue_key'] ?? '',
+                'issue_key' => $i['issue_key'] ?? 'ISS-' . $iid, // Fallback if column doesn't exist
                 'title' => $i['title'],
                 'description' => $i['description'],
-                'common_title' => $meta['common_title'] ?? '',
+                'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : ($meta['common_title'] ?? ''),
                 'status_id' => (int)$i['status_id'],
                 'status_name' => $i['status_name'] ?? '',
                 'status_color' => $i['status_color'] ?? '#6c757d',
@@ -1585,8 +1664,18 @@ try {
                 $up = $db->prepare("UPDATE common_issues SET title = ?, updated_at = NOW() WHERE id = ?");
                 $up->execute([$commonTitle, $cid]);
             } else {
-                $ins = $db->prepare("INSERT INTO common_issues (project_id, issue_id, title, created_by) VALUES (?, ?, ?, ?)");
-                $ins->execute([$projectId, $id, $commonTitle, $userId]);
+                // Check if created_by column exists before using it
+                $columnCheckStmt = $db->prepare("SHOW COLUMNS FROM common_issues LIKE 'created_by'");
+                $columnCheckStmt->execute();
+                $hasCreatedByColumn = $columnCheckStmt->rowCount() > 0;
+                
+                if ($hasCreatedByColumn) {
+                    $ins = $db->prepare("INSERT INTO common_issues (project_id, issue_id, title, created_by) VALUES (?, ?, ?, ?)");
+                    $ins->execute([$projectId, $id, $commonTitle, $userId]);
+                } else {
+                    $ins = $db->prepare("INSERT INTO common_issues (project_id, issue_id, title) VALUES (?, ?, ?)");
+                    $ins->execute([$projectId, $id, $commonTitle]);
+                }
             }
         } else {
             $db->prepare("DELETE FROM common_issues WHERE issue_id = ?")->execute([$id]);
@@ -1739,7 +1828,7 @@ try {
         
         $updatedIssue = [
             'id' => (int)$issueData['id'],
-            'issue_key' => $issueData['issue_key'] ?? '',
+            'issue_key' => $issueData['issue_key'] ?? 'ISS-' . $issueData['id'], // Fallback if column doesn't exist
             'title' => $issueData['title'],
             'description' => $issueData['description'],
             'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : '',
@@ -1844,13 +1933,20 @@ try {
     }
 
     if ($method === 'GET' && $action === 'common_list') {
+        // Check if issue_key column exists before using it in ORDER BY
+        $columnCheckStmt = $db->prepare("SHOW COLUMNS FROM issues LIKE 'issue_key'");
+        $columnCheckStmt->execute();
+        $hasIssueKeyColumn = $columnCheckStmt->rowCount() > 0;
+        
+        $orderByClause = $hasIssueKeyColumn ? "ORDER BY i.issue_key ASC" : "ORDER BY i.id ASC";
+        
         $stmt = $db->prepare("
             SELECT ci.id as common_id, ci.title as common_title, i.*, s.name AS status_name
             FROM common_issues ci
             JOIN issues i ON ci.issue_id = i.id
             LEFT JOIN issue_statuses s ON s.id = i.status_id
             WHERE ci.project_id = ?
-            ORDER BY i.issue_key ASC
+            $orderByClause
         ");
         $stmt->execute([$projectId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -1915,8 +2011,19 @@ try {
             $stmt = $db->prepare("INSERT INTO issues (project_id, issue_key, title, description, type_id, priority_id, status_id, reporter_id, severity, is_final, common_issue_title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)");
             $stmt->execute([$projectId, $issueKey, $title, $description, $typeId, $priorityId, $statusId, $userId, $severity, $title]);
             $issueId = (int)$db->lastInsertId();
-            $ins = $db->prepare("INSERT INTO common_issues (project_id, issue_id, title, created_by) VALUES (?, ?, ?, ?)");
-            $ins->execute([$projectId, $issueId, $title, $userId]);
+            
+            // Check if created_by column exists before using it
+            $columnCheckStmt = $db->prepare("SHOW COLUMNS FROM common_issues LIKE 'created_by'");
+            $columnCheckStmt->execute();
+            $hasCreatedByColumn = $columnCheckStmt->rowCount() > 0;
+            
+            if ($hasCreatedByColumn) {
+                $ins = $db->prepare("INSERT INTO common_issues (project_id, issue_id, title, created_by) VALUES (?, ?, ?, ?)");
+                $ins->execute([$projectId, $issueId, $title, $userId]);
+            } else {
+                $ins = $db->prepare("INSERT INTO common_issues (project_id, issue_id, title) VALUES (?, ?, ?)");
+                $ins->execute([$projectId, $issueId, $title]);
+            }
             $commonId = (int)$db->lastInsertId();
         } else {
             if (!$commonId) jsonError('id is required', 400);

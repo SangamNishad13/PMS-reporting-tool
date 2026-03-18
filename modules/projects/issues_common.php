@@ -223,11 +223,16 @@ include __DIR__ . '/../../includes/header.php';
                 <h5 class="mb-0">Common Issues</h5>
                 <div class="small text-muted">Issues that apply across multiple pages</div>
             </div>
-            <?php if ($_SESSION['role'] !== 'client'): ?>
-            <button class="btn btn-primary" id="commonAddBtn">
-                <i class="fas fa-plus me-1"></i> Add Common Issue
-            </button>
-            <?php endif; ?>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-secondary btn-sm" id="commonIssuesRefreshBtn" title="Refresh issues">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+                <?php if ($_SESSION['role'] !== 'client'): ?>
+                <button class="btn btn-primary" id="commonAddBtn">
+                    <i class="fas fa-plus me-1"></i> Add Common Issue
+                </button>
+                <?php endif; ?>
+            </div>
         </div>
         <div class="card-body">
             <div class="table-responsive">
@@ -340,6 +345,12 @@ include __DIR__ . '/partials/issues_modals.php';
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script>
 document.addEventListener('pms:issues-changed', function () {
+    if (typeof window.loadCommonIssues === 'function') {
+        window.loadCommonIssues();
+    }
+});
+
+document.getElementById('commonIssuesRefreshBtn').addEventListener('click', function () {
     if (typeof window.loadCommonIssues === 'function') {
         window.loadCommonIssues();
     }

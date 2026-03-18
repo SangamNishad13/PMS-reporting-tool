@@ -222,17 +222,17 @@ class Auth {
             return false;
         }
         
-        // Auto-logout only after 30 minutes of inactivity (no requests)
-        $idleTimeout = 30 * 60;
+        // Auto-logout only after 4 hours of inactivity (no requests) - increased for better user experience
+        $idleTimeout = 4 * 60 * 60; // 4 hours instead of 2 hours
         if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > $idleTimeout)) {
             try {
                 $sid = session_id();
-                $ust = $this->db->prepare("UPDATE user_sessions SET logout_at = NOW(), active = 0, last_activity = NOW(), logout_type = 'idle_30m' WHERE session_id = ? AND user_id = ?");
+                $ust = $this->db->prepare("UPDATE user_sessions SET logout_at = NOW(), active = 0, last_activity = NOW(), logout_type = 'idle_4h' WHERE session_id = ? AND user_id = ?");
                 $ust->execute([$sid, $_SESSION['user_id']]);
             } catch (Exception $_) {}
             try {
                 $details = [
-                    'reason' => 'idle_30m',
+                    'reason' => 'idle_4h',
                     'session_id' => session_id(),
                     'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
                     'device_ip' => $_SERVER['REMOTE_ADDR'] ?? ''

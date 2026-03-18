@@ -228,7 +228,7 @@ include __DIR__ . '/../../includes/header.php';
             </div>
             <div class="col-md-2">
                 <label class="form-label"><i class="fas fa-file-alt me-1"></i> Page</label>
-                <select class="form-select" id="filterPage">
+                <select class="form-select" id="filterPage" multiple>
                     <option value="">All Pages</option>
                     <?php foreach ($projectPages as $page): ?>
                         <option value="<?php echo $page['id']; ?>">
@@ -239,7 +239,7 @@ include __DIR__ . '/../../includes/header.php';
             </div>
             <div class="col-md-2">
                 <label class="form-label"><i class="fas fa-flag me-1"></i> Status</label>
-                <select class="form-select" id="filterStatus">
+                <select class="form-select" id="filterStatus" multiple>
                     <option value="">All Statuses</option>
                     <?php foreach ($issueStatuses as $status): ?>
                         <option value="<?php echo $status['id']; ?>"><?php echo htmlspecialchars($status['name']); ?></option>
@@ -249,7 +249,7 @@ include __DIR__ . '/../../includes/header.php';
             <?php if ($_SESSION['role'] !== 'client'): ?>
             <div class="col-md-2">
                 <label class="form-label"><i class="fas fa-check-circle me-1"></i> QA Status</label>
-                <select class="form-select" id="filterQAStatus">
+                <select class="form-select" id="filterQAStatus" multiple>
                     <option value="">All QA Statuses</option>
                     <?php foreach ($qaStatuses as $qaStatus): ?>
                         <option value="<?php echo htmlspecialchars($qaStatus['status_key']); ?>">
@@ -260,7 +260,7 @@ include __DIR__ . '/../../includes/header.php';
             </div>
             <div class="col-md-2">
                 <label class="form-label"><i class="fas fa-user me-1"></i> Reporter</label>
-                <select class="form-select" id="filterReporter">
+                <select class="form-select" id="filterReporter" multiple>
                     <option value="">All Reporters</option>
                     <?php foreach ($projectUsers as $reporter): ?>
                         <option value="<?php echo $reporter['id']; ?>"><?php echo htmlspecialchars($reporter['full_name']); ?></option>
@@ -362,8 +362,6 @@ const projectId = <?php echo $projectId; ?>;
 const baseDir = '<?php echo $baseDir; ?>';
 let allIssues = [];
 let filteredIssues = [];
-let autoRefreshTimer = null;
-let autoRefreshInFlight = false;
 let loadIssuesDebounceTimer = null;
 
 // Fallback decorateIssueImages function if not loaded from view_issues.js
@@ -495,15 +493,6 @@ function performLoadIssues(preserveFilters, silentErrors, retryCount = 0) {
         }
         throw error;
     });
-}
-
-function startIssuesAutoRefresh() {
-    // Disabled periodic background polling to avoid automatic list refresh/flicker.
-    // Data still refreshes on explicit actions (save/delete/manual refresh button).
-    if (autoRefreshTimer) {
-        clearInterval(autoRefreshTimer);
-        autoRefreshTimer = null;
-    }
 }
 
 // Render issues table
@@ -704,36 +693,65 @@ function updateCounts() {
 // Apply filters
 function applyFilters() {
     const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-    const pageFilter = document.getElementById('filterPage').value;
-    const statusFilter = document.getElementById('filterStatus').value;
+    const pageFilter = $('#filterPage').val() || []; // Get array of selected values
+    const statusFilter = $('#filterStatus').val() || []; // Get array of selected values
     const qaStatusFilterEl = document.getElementById('filterQAStatus');
-    const qaStatusFilter = qaStatusFilterEl ? qaStatusFilterEl.value : '';
+    const qaStatusFilter = qaStatusFilterEl ? ($(qaStatusFilterEl).val() || []) : [];
     const reporterFilterEl = document.getElementById('filterReporter');
-    const reporterFilter = reporterFilterEl ? reporterFilterEl.value : '';
+    const reporterFilter = reporterFilterEl ? ($(reporterFilterEl).val() || []) : [];
     
     filteredIssues = allIssues.filter(issue => {
-        // Search filter
+        // Search filter — covers all visible columns: key, title, page(s), status, QA status, reporter
         if (searchTerm) {
-            const searchableText = `${issue.issue_key} ${issue.title} ${issue.description || ''}`.toLowerCase();
+            // Strip HTML tags from description for plain-text search
+            const stripHtmlTags = (html) => {
+                if (!html) return '';
+                return String(html).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            };
+            // qa_statuses is an array of {key, label, color} objects
+            const qaLabels = Array.isArray(issue.qa_statuses)
+                ? issue.qa_statuses.map(qs => String(qs.label || '')).join(' ')
+                : String(issue.qa_statuses || '');
+            const commonTitle = Array.isArray(issue.common_title)
+                ? issue.common_title.join(' ')
+                : String(issue.common_title || '');
+            const searchableText = [
+                issue.issue_key,
+                issue.title,
+                commonTitle,
+                issue.pages,        // "1 - Home, 2 - About"
+                issue.status_name,  // "Need Review"
+                qaLabels,           // "Passed Failed"
+                issue.reporters,    // "John Doe, Jane Smith"
+                stripHtmlTags(issue.description)
+            ].filter(v => v && String(v).trim()).join(' ').toLowerCase();
             if (!searchableText.includes(searchTerm)) return false;
         }
         
-        // Page filter
-        if (pageFilter && issue.page_ids) {
-            if (!issue.page_ids.includes(parseInt(pageFilter))) return false;
+        // Page filter - check if any selected page matches any of the issue's pages
+        if (pageFilter.length > 0 && !pageFilter.includes('')) {
+            if (!issue.page_ids || !pageFilter.some(pid => issue.page_ids.includes(parseInt(pid)))) {
+                return false;
+            }
         }
         
-        // Status filter
-        if (statusFilter && issue.status_id != statusFilter) return false;
-        
-        // QA Status filter (only if element exists)
-        if (qaStatusFilter && issue.qa_status_keys) {
-            if (!issue.qa_status_keys.includes(qaStatusFilter)) return false;
+        // Status filter - check if issue status matches any selected status
+        if (statusFilter.length > 0 && !statusFilter.includes('')) {
+            if (!statusFilter.includes(String(issue.status_id))) return false;
         }
         
-        // Reporter filter (only if element exists)
-        if (reporterFilter && issue.reporter_ids) {
-            if (!issue.reporter_ids.includes(parseInt(reporterFilter))) return false;
+        // QA Status filter - check if any issue QA status matches any selected QA status
+        if (qaStatusFilter.length > 0 && !qaStatusFilter.includes('')) {
+            if (!issue.qa_status_keys || !qaStatusFilter.some(qas => issue.qa_status_keys.includes(qas))) {
+                return false;
+            }
+        }
+        
+        // Reporter filter - check if any issue reporter matches any selected reporter
+        if (reporterFilter.length > 0 && !reporterFilter.includes('')) {
+            if (!issue.reporter_ids || !reporterFilter.some(rid => issue.reporter_ids.includes(parseInt(rid)))) {
+                return false;
+            }
         }
         
         return true;
@@ -1112,25 +1130,25 @@ function showError(message) {
 
 // Event listeners
 document.getElementById('searchInput').addEventListener('input', applyFilters);
-document.getElementById('filterPage').addEventListener('change', applyFilters);
-document.getElementById('filterStatus').addEventListener('change', applyFilters);
+$('#filterPage').on('change', applyFilters);
+$('#filterStatus').on('change', applyFilters);
 
 // QA Status and Reporter filters - only for non-client users
 const qaStatusFilterEl = document.getElementById('filterQAStatus');
 if (qaStatusFilterEl) {
-    qaStatusFilterEl.addEventListener('change', applyFilters);
+    $(qaStatusFilterEl).on('change', applyFilters);
 }
 const reporterFilterEl = document.getElementById('filterReporter');
 if (reporterFilterEl) {
-    reporterFilterEl.addEventListener('change', applyFilters);
+    $(reporterFilterEl).on('change', applyFilters);
 }
 
 document.getElementById('clearFilters').addEventListener('click', function() {
     document.getElementById('searchInput').value = '';
-    document.getElementById('filterPage').value = '';
-    document.getElementById('filterStatus').value = '';
-    if (qaStatusFilterEl) qaStatusFilterEl.value = '';
-    if (reporterFilterEl) reporterFilterEl.value = '';
+    $('#filterPage').val([]).trigger('change');
+    $('#filterStatus').val([]).trigger('change');
+    if (qaStatusFilterEl) $(qaStatusFilterEl).val([]).trigger('change');
+    if (reporterFilterEl) $(reporterFilterEl).val([]).trigger('change');
     applyFilters();
 });
 
@@ -1138,17 +1156,47 @@ document.getElementById('refreshBtn').addEventListener('click', function () {
     loadIssues({ preserveFilters: true });
 });
 
-// Keep table synced with modal CRUD done by shared issue editor (no page reload needed)
+// Reload full table whenever an issue is added, edited, or deleted
 document.addEventListener('pms:issues-changed', function () {
     loadIssues({ preserveFilters: true, silentErrors: true });
 });
 
 // Initial load - wait for view_issues.js to load
 function initializeAllIssuesPage() {
+    // Initialize Select2 for multiselect dropdowns
+    $('#filterPage').select2({
+        placeholder: 'All Pages',
+        allowClear: true,
+        width: '100%'
+    });
+    
+    $('#filterStatus').select2({
+        placeholder: 'All Statuses',
+        allowClear: true,
+        width: '100%'
+    });
+    
+    const qaStatusFilterEl = document.getElementById('filterQAStatus');
+    if (qaStatusFilterEl) {
+        $(qaStatusFilterEl).select2({
+            placeholder: 'All QA Statuses',
+            allowClear: true,
+            width: '100%'
+        });
+    }
+    
+    const reporterFilterEl = document.getElementById('filterReporter');
+    if (reporterFilterEl) {
+        $(reporterFilterEl).select2({
+            placeholder: 'All Reporters',
+            allowClear: true,
+            width: '100%'
+        });
+    }
+    
     // Check if decorateIssueImages is available
     if (typeof decorateIssueImages === 'function') {
         loadIssues({ immediate: true });
-        startIssuesAutoRefresh();
     } else {
         setTimeout(initializeAllIssuesPage, 100);
     }
@@ -1156,6 +1204,45 @@ function initializeAllIssuesPage() {
 
 // Start initialization
 initializeAllIssuesPage();
+
+// Handle expand parameter from URL (for QA breakdown links)
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const expandIssueId = urlParams.get('expand');
+    
+    if (expandIssueId) {
+        // Wait for issues to load, then expand the specified issue
+        const checkAndExpand = function() {
+            if (allIssues.length > 0) {
+                const issueRow = document.querySelector(`[data-issue-id="${expandIssueId}"]`);
+                if (issueRow) {
+                    // Scroll to the issue
+                    issueRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    
+                    // Expand the issue details
+                    setTimeout(function() {
+                        issueRow.click();
+                        
+                        // Highlight the expanded issue
+                        issueRow.style.backgroundColor = '#fff3cd';
+                        setTimeout(function() {
+                            issueRow.style.backgroundColor = '';
+                        }, 3000);
+                    }, 500);
+                } else {
+                    // Issue not found in current filter, clear filters and try again
+                    document.getElementById('clearFilters').click();
+                    setTimeout(checkAndExpand, 1000);
+                }
+            } else {
+                // Issues not loaded yet, wait and try again
+                setTimeout(checkAndExpand, 500);
+            }
+        };
+        
+        checkAndExpand();
+    }
+});
 
 // Also attach image handlers on DOM ready as a fallback
 document.addEventListener('DOMContentLoaded', function() {
@@ -1188,153 +1275,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     // Wait for view_issues.js to load and attach its handler first
     setTimeout(function() {
-        const saveBtn = document.getElementById('finalIssueSaveBtn');
-        if (saveBtn) {
-            // Remove the existing handler and add our custom one
-            const newSaveBtn = saveBtn.cloneNode(true);
-            saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-            
-            newSaveBtn.addEventListener('click', async function() {
-                const editId = document.getElementById('finalIssueEditId').value;
-                const expectedUpdatedAtEl = document.getElementById('finalIssueExpectedUpdatedAt');
-                const expectedUpdatedAt = expectedUpdatedAtEl ? (expectedUpdatedAtEl.value || '').trim() : '';
-                
-                // Get title from custom field
-                let titleVal = '';
-                const titleInput = document.getElementById('customIssueTitle');
-                if (titleInput) {
-                    titleVal = titleInput.value.trim();
-                }
-                
-                // Get selected pages
-                const selectedPages = jQuery('#finalIssuePages').val() || [];
-                if (selectedPages.length === 0) {
-                    showError('Please select at least one page for this issue.');
-                    return;
-                }
-                
-                // Build data object
-                const data = {
-                    title: titleVal,
-                    description: jQuery('#finalIssueDetails').summernote('code'),
-                    issue_status: document.getElementById('finalIssueStatus').value,
-                    qa_status: window.ProjectConfig.canUpdateIssueQaStatus ? (jQuery('#finalIssueQaStatus').val() || []) : [],
-                    pages: selectedPages,
-                    grouped_urls: jQuery('#finalIssueGroupedUrls').val() || [],
-                    reporters: jQuery('#finalIssueReporters').val() || [],
-                    common_title: document.getElementById('finalIssueCommonTitle').value.trim()
-                };
-                
-                // Get dynamic metadata fields
-                const metadata = {};
-                
-                // Get all metadata fields from the metadata container
-                const metadataContainer = document.getElementById('finalIssueMetadataContainer');
-                if (metadataContainer) {
-                    // Find all input/select elements with IDs starting with 'finalIssueField_'
-                    const metadataFields = metadataContainer.querySelectorAll('[id^="finalIssueField_"]');
-                    metadataFields.forEach(function(field) {
-                        const fieldKey = field.id.replace('finalIssueField_', '');
-                        const value = jQuery(field).val();
-                        // Handle arrays (multi-select) vs single values
-                        if (Array.isArray(value)) {
-                            metadata[fieldKey] = value.length === 1 ? value[0] : value;
-                        } else {
-                            metadata[fieldKey] = value;
-                        }
-                    });
-                }
-                
-                // Also check for severity and priority if not already in metadata
-                if (!metadata.severity) {
-                    const severityEl = document.getElementById('finalIssueField_severity');
-                    if (severityEl) {
-                        const severityVal = jQuery(severityEl).val();
-                        metadata.severity = Array.isArray(severityVal) ? (severityVal[0] || 'medium') : (severityVal || 'medium');
-                    }
-                }
-                
-                if (!metadata.priority) {
-                    const priorityEl = document.getElementById('finalIssueField_priority');
-                    if (priorityEl) {
-                        const priorityVal = jQuery(priorityEl).val();
-                        metadata.priority = Array.isArray(priorityVal) ? (priorityVal[0] || 'medium') : (priorityVal || 'medium');
-                    }
-                }
-                
-                if (!data.title) {
-                    showError('Issue title is required.');
-                    return;
-                }
-                
-                try {
-                    const fd = new FormData();
-                    fd.append('action', editId ? 'update' : 'create');
-                    fd.append('project_id', projectId);
-                    if (editId) fd.append('id', editId);
-                    if (editId && expectedUpdatedAt) fd.append('expected_updated_at', expectedUpdatedAt);
-                    fd.append('page_id', selectedPages[0]); // Use first selected page as primary
-                    fd.append('metadata', JSON.stringify(metadata));
-                    
-                    // Append all data fields
-                    Object.keys(data).forEach(function(k) {
-                        const v = data[k];
-                        if (Array.isArray(v)) {
-                            fd.append(k, JSON.stringify(v));
-                        } else {
-                            fd.append(k, v);
-                        }
-                    });
-                    
-                    const res = await fetch(`${baseDir}/api/issues.php`, {
-                        method: 'POST',
-                        body: fd,
-                        credentials: 'same-origin'
-                    });
-                    
-                    const json = await res.json();
-                    
-                    if (!json || json.error) {
-                        throw new Error(json && json.error ? json.error : 'Save failed');
-                    }
-                    
-                    if (!json.success) {
-                        throw new Error(json.message || 'Save failed - server returned unsuccessful response');
-                    }
-                    
-                    // Stop draft autosave and reset form state BEFORE closing modal
-                    if (window.issueData) {
-                        // Stop autosave timer
-                        if (window.issueData.draftTimer) {
-                            clearInterval(window.issueData.draftTimer);
-                            window.issueData.draftTimer = null;
-                        }
-                        // Reset initial form state to prevent "unsaved changes" detection
-                        window.issueData.initialFormState = null;
-                    }
-                    
-                    // Close modal
-                    const modalEl = document.getElementById('finalIssueModal');
-                    const modal = bootstrap.Modal.getInstance(modalEl);
-                    if (modal) modal.hide();
-                    
-                    // Show success message immediately
-                    showSuccess(editId ? 'Issue updated successfully' : 'Issue created successfully');
-                    
-                    // Debounced reload - will wait 300ms before actually loading
-                    // This prevents multiple rapid reloads if user saves multiple issues quickly
-                    loadIssues({ preserveFilters: true, silentErrors: true });
-                    
-                } catch (e) {
-                    if (String(e.message || '').toLowerCase().indexOf('modified by another user') !== -1) {
-                        showError('Issue was updated by another user. Latest data loaded. Please review and save again.');
-                        loadIssues({ preserveFilters: true, silentErrors: true, immediate: true });
-                        return;
-                    }
-                    showError('Unable to save issue: ' + e.message);
-                }
-            });
-        }
+        // NOTE: We do NOT replace the save button handler here.
+        // view_issues.js's addOrUpdateFinalIssue handles saving correctly.
+        // Replacing it caused the description to be wiped because the custom
+        // handler called summernote('code') before the editor was ready.
+        // The pms:issues-changed event below handles reloading the list after save.
         
         // Ensure reset template button works
         const resetBtn = document.getElementById('btnResetToTemplate');

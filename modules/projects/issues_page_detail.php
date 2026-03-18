@@ -673,11 +673,16 @@ include __DIR__ . '/../../includes/header.php';
                 <strong>Page Issues</strong>
                 <span class="small text-muted ms-2">Final issues</span>
             </div>
-            <?php if ($_SESSION['role'] !== 'client'): ?>
-            <button class="btn btn-primary btn-sm" id="issueAddFinalBtn">
-                <i class="fas fa-plus me-1"></i> Add Issue
-            </button>
-            <?php endif; ?>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-secondary btn-sm" id="pageIssuesRefreshBtn" title="Refresh issues">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+                <?php if ($_SESSION['role'] !== 'client'): ?>
+                <button class="btn btn-primary btn-sm" id="issueAddFinalBtn">
+                    <i class="fas fa-plus me-1"></i> Add Issue
+                </button>
+                <?php endif; ?>
+            </div>
         </div>
         <div class="card-body p-0">
             <ul class="nav nav-tabs px-3 pt-2 mb-0" id="pageIssueTabs" role="tablist">
@@ -891,8 +896,11 @@ document.addEventListener('pms:issues-changed', function () {
     if (typeof window.loadCommonIssues === 'function') {
         window.loadCommonIssues();
     }
-    if (typeof window.loadNeedsReviewFindings === 'function') {
-        window.loadNeedsReviewFindings();
+});
+
+document.getElementById('pageIssuesRefreshBtn').addEventListener('click', function () {
+    if (typeof window.loadFinalIssues === 'function') {
+        window.loadFinalIssues(<?php echo (int)$pageId; ?>);
     }
 });
 </script>
