@@ -10,7 +10,7 @@ if (!$auth->isLoggedIn()) {
     exit('Unauthorized');
 }
 
-$templatePath = __DIR__ . '/../Accessibility Audit of Web Project (3).xlsx';
+$templatePath = __DIR__ . '/../assets/report_template.xlsx';
 
 if (!file_exists($templatePath)) {
     http_response_code(404);
