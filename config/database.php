@@ -5,6 +5,9 @@ define('DB_NAME', getenv('DB_NAME') ?: 'project_management');
 define('DB_USER', getenv('DB_USER') ?: 'root');
 define('DB_PASS', getenv('DB_PASS') ?: '');
 
+// Runtime performance tuning (OPcache hints, APCu)
+require_once __DIR__ . '/performance.php';
+
 class Database {
     private static $instance = null;
     private $connection;

@@ -14,43 +14,58 @@ if (session_status() === PHP_SESSION_NONE) {
     $samesite = (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false || strpos($_SERVER['HTTP_HOST'] ?? '', '127.0.0.1') !== false) ? 'Lax' : 'Strict';
     ini_set('session.cookie_samesite', $samesite);
     ini_set('session.cookie_secure', isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 1 : 0);
-    
-    // Prefer project-specific temp folder for sessions (more reliable permissions)
-    $preferredSessionPath = __DIR__ . '/../tmp/sessions';
-    $sessionPathSet = false;
-    
-    // Try to create and set permissions on project session folder
-    if (!is_dir($preferredSessionPath)) {
-        @mkdir($preferredSessionPath, 0777, true);
-    }
-    
-    // Check if writable and try to fix permissions
-    if (is_dir($preferredSessionPath)) {
-        if (!is_writable($preferredSessionPath)) {
-            // Try to fix permissions
-            @chmod($preferredSessionPath, 0777);
+
+    // Try Redis session handler first — eliminates file-locking under concurrent load
+    $redisSessionSet = false;
+    if (class_exists('Redis')) {
+        try {
+            $redisHost = $_ENV['REDIS_HOST'] ?? getenv('REDIS_HOST') ?: 'localhost';
+            $redisPort = (int)($_ENV['REDIS_PORT'] ?? getenv('REDIS_PORT') ?: 6379);
+            $redisPass = $_ENV['REDIS_PASSWORD'] ?? getenv('REDIS_PASSWORD') ?: null;
+            $redisDb   = (int)($_ENV['REDIS_DB']   ?? getenv('REDIS_DB')   ?: 0);
+
+            $testRedis = new Redis();
+            if (@$testRedis->connect($redisHost, $redisPort, 1.0)) {
+                if ($redisPass) $testRedis->auth($redisPass);
+                $testRedis->select($redisDb);
+                $testRedis->ping();
+
+                ini_set('session.save_handler', 'redis');
+                $redisDsn = "tcp://{$redisHost}:{$redisPort}?database={$redisDb}";
+                if ($redisPass) $redisDsn .= "&auth={$redisPass}";
+                ini_set('session.save_path', $redisDsn);
+                $redisSessionSet = true;
+            }
+        } catch (Exception $e) {
+            // Redis unavailable — fall through to file-based sessions
         }
-        
-        if (is_writable($preferredSessionPath)) {
-            session_save_path($preferredSessionPath);
-            $sessionPathSet = true;
-        }
-    }
-    
-    // Fallback: common Linux temp path on shared hosting.
-    if (!$sessionPathSet && is_dir('/tmp') && is_writable('/tmp')) {
-        session_save_path('/tmp');
-        $sessionPathSet = true;
     }
 
-    // Last resort: system temp directory
-    if (!$sessionPathSet) {
-        $sysTemp = sys_get_temp_dir();
-        if (is_dir($sysTemp) && is_writable($sysTemp)) {
-            session_save_path($sysTemp);
+    if (!$redisSessionSet) {
+        // Fallback: file-based sessions
+        $preferredSessionPath = __DIR__ . '/../tmp/sessions';
+        $sessionPathSet = false;
+
+        if (!is_dir($preferredSessionPath)) {
+            @mkdir($preferredSessionPath, 0777, true);
+        }
+        if (is_dir($preferredSessionPath)) {
+            if (!is_writable($preferredSessionPath)) @chmod($preferredSessionPath, 0777);
+            if (is_writable($preferredSessionPath)) {
+                session_save_path($preferredSessionPath);
+                $sessionPathSet = true;
+            }
+        }
+        if (!$sessionPathSet && is_dir('/tmp') && is_writable('/tmp')) {
+            session_save_path('/tmp');
+            $sessionPathSet = true;
+        }
+        if (!$sessionPathSet) {
+            $sysTemp = sys_get_temp_dir();
+            if (is_dir($sysTemp) && is_writable($sysTemp)) session_save_path($sysTemp);
         }
     }
-    
+
     session_start();
     
     // Regenerate session ID periodically to prevent session fixation

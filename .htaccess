@@ -56,6 +56,14 @@ RedirectMatch 403 ^/?(config|includes|database|tmp|\.git|\.kiro)/.*$
     AddOutputFilterByType DEFLATE application/rss+xml application/atom+xml
     AddOutputFilterByType DEFLATE image/svg+xml
 </IfModule>
+
+# Keep-alive connections — reduces TCP handshake overhead under concurrent load
+<IfModule mod_headers.c>
+    Header set Connection keep-alive
+</IfModule>
+<IfModule mod_reqtimeout.c>
+    RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500
+</IfModule>
 # Cache static assets for performance
 <IfModule mod_expires.c>
     ExpiresActive On

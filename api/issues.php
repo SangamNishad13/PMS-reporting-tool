@@ -949,6 +949,19 @@ try {
     }
     
     if ($method === 'GET' && $action === 'get_all') {
+        // Cache key based on project + role (client sees filtered set)
+        $cacheKey = "issues_all_{$projectId}_" . ($userRole === 'client' ? 'client' : 'staff');
+        $cacheTtl = 120; // 2 minutes
+
+        // Try APCu first (in-process, zero network overhead)
+        $cached = false;
+        if (function_exists('apcu_fetch')) {
+            $data = apcu_fetch($cacheKey, $cached);
+            if ($cached) {
+                jsonResponse(['success' => true, 'issues' => $data, 'cached' => true]);
+            }
+        }
+
         // Fetch all issues for the project with complete information
         $sql = "SELECT DISTINCT i.*, 
                        s.name as status_name,
@@ -964,13 +977,7 @@ try {
             $sql .= " AND i.client_ready = 1";
         }
         
-        // Check if issue_key column exists before using it in ORDER BY
-        $columnCheckStmt = $db->prepare("SHOW COLUMNS FROM issues LIKE 'issue_key'");
-        $columnCheckStmt->execute();
-        $hasIssueKeyColumn = $columnCheckStmt->rowCount() > 0;
-        
-        $orderByClause = $hasIssueKeyColumn ? "ORDER BY i.issue_key ASC" : "ORDER BY i.id ASC";
-        $sql .= " $orderByClause";
+        $sql .= " ORDER BY i.issue_key ASC";
         
         $stmt = $db->prepare($sql);
         $stmt->execute([$projectId]);
@@ -1175,6 +1182,11 @@ try {
                 'created_at' => $i['created_at'],
                 'updated_at' => $i['updated_at']
             ];
+        }
+
+        // Store in APCu cache for next requests
+        if (function_exists('apcu_store')) {
+            apcu_store($cacheKey, $out, $cacheTtl);
         }
 
         jsonResponse(['success' => true, 'issues' => $out]);
@@ -1868,6 +1880,12 @@ try {
             }
         }
 
+        // Invalidate get_all cache for this project
+        if (function_exists('apcu_delete')) {
+            apcu_delete("issues_all_{$projectId}_staff");
+            apcu_delete("issues_all_{$projectId}_client");
+        }
+
         jsonResponse(['success' => true, 'id' => $id, 'issue_key' => $issueKey, 'issue' => $updatedIssue]);
     }
 
@@ -1925,6 +1943,11 @@ try {
 
             $db->commit();
             cleanupIssueUploadsFromHtmlBlocks($htmlBlocksForCleanup);
+            // Invalidate get_all cache
+            if (function_exists('apcu_delete')) {
+                apcu_delete("issues_all_{$projectId}_staff");
+                apcu_delete("issues_all_{$projectId}_client");
+            }
             jsonResponse(['success' => true, 'deleted' => $stmt->rowCount()]);
         } catch (Exception $e) {
             if ($db->inTransaction()) $db->rollBack();

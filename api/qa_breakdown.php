@@ -30,6 +30,18 @@ if (!$userId || !$projectId) {
 try {
     $db = Database::getInstance();
     
+    // Cache key: per user+project, 3 minute TTL
+    $cacheKey = "qa_breakdown_{$projectId}_{$userId}";
+    $cacheTtl = 180;
+    if (function_exists('apcu_fetch')) {
+        $cached = false;
+        $data = apcu_fetch($cacheKey, $cached);
+        if ($cached) {
+            echo json_encode(['success' => true, 'breakdown' => $data['breakdown'], 'total_unique_issues' => $data['total'], 'cached' => true]);
+            exit;
+        }
+    }
+
     // Set GROUP_CONCAT max length to handle large issue lists
     $db->exec("SET SESSION group_concat_max_len = 10000");
     
@@ -158,6 +170,11 @@ try {
         unset($item['issues_list']); // Remove the raw string
     }
     
+    // Store in APCu cache
+    if (function_exists('apcu_store')) {
+        apcu_store($cacheKey, ['breakdown' => $breakdown, 'total' => count($allUniqueIssues)], $cacheTtl);
+    }
+
     echo json_encode(['success' => true, 'breakdown' => $breakdown, 'total_unique_issues' => count($allUniqueIssues)]);
 } catch (Exception $e) {
     error_log('QA breakdown query failed: ' . $e->getMessage());
