@@ -16,7 +16,7 @@ $projectId = (int)($_GET['project_id'] ?? 0);
 if (!$projectId) { http_response_code(400); exit('project_id required'); }
 if (!class_exists('ZipArchive')) { http_response_code(500); exit('ZipArchive not available'); }
 
-$templatePath = __DIR__ . '/../assets/report_template.xlsx';
+$templatePath = __DIR__ . '/../assets/templates/report_template.xlsx';
 if (!file_exists($templatePath)) { http_response_code(404); exit('Template not found'); }
 
 $db = Database::getInstance();
