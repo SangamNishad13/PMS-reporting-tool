@@ -316,6 +316,9 @@
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Unique Pages (URLs)</h5>
                     <div class="btn-group" role="group">
+                        <button class="btn btn-sm btn-success" id="exportPagesBtn" title="Export Project Pages + All URLs to Excel">
+                            <i class="fas fa-file-excel me-1"></i> Export to Excel
+                        </button>
                         <button class="btn btn-sm btn-danger" id="deleteSelectedUnique">
                             <i class="fas fa-trash"></i> Delete Selected
                         </button>
@@ -999,3 +1002,87 @@
 
             </div> <!-- end .tab-content for pages sub-tabs -->
         </div>
+
+<script>
+(function () {
+    var exportBtn = document.getElementById('exportPagesBtn');
+    if (!exportBtn) return;
+
+    exportBtn.addEventListener('click', function () {
+        if (typeof XLSX === 'undefined') {
+            alert('Excel library not loaded. Please refresh the page.');
+            return;
+        }
+
+        var projectTitle = <?php echo json_encode($project['title'] ?? 'Project'); ?>;
+        var wb = XLSX.utils.book_new();
+
+        // ── Sheet 1: Project Pages (Unique Pages table) ──────────────────────
+        var pagesRows = [['#', 'Page No.', 'Page Name', 'Unique URL', 'Grouped URLs', 'FT Tester', 'AT Tester', 'QA', 'Page Status', 'Notes']];
+
+        document.querySelectorAll('#uniquePagesTable tbody tr[id^="unique-row-"]').forEach(function (tr) {
+            var cells = tr.querySelectorAll('td');
+            if (cells.length < 10) return;
+
+            var pageNo    = cells[1].textContent.trim();
+            var pageName  = (cells[2].querySelector('.page-name-display') || cells[2]).textContent.trim();
+            var uniqueUrl = cells[3].textContent.trim();
+
+            // Grouped URLs — collect all items (including collapsed ones)
+            var groupedList = cells[4].querySelectorAll('.grouped-url-item');
+            var groupedUrls = [];
+            groupedList.forEach(function (el) { groupedUrls.push(el.textContent.trim()); });
+            var groupedText = groupedUrls.join('\n');
+
+            var ftText     = cells[5].textContent.replace(/\s+/g, ' ').trim();
+            var atText     = cells[6].textContent.replace(/\s+/g, ' ').trim();
+            var qaText     = cells[7].textContent.replace(/\s+/g, ' ').trim();
+            var statusText = cells[8].textContent.trim();
+            var notesText  = (cells[9].querySelector('.notes-display') || cells[9]).textContent.trim();
+
+            pagesRows.push([
+                pagesRows.length,
+                pageNo, pageName, uniqueUrl, groupedText,
+                ftText, atText, qaText, statusText, notesText
+            ]);
+        });
+
+        var wsPages = XLSX.utils.aoa_to_sheet(pagesRows);
+        wsPages['!cols'] = [
+            {wch:5},{wch:12},{wch:30},{wch:40},{wch:50},
+            {wch:25},{wch:25},{wch:25},{wch:20},{wch:30}
+        ];
+        XLSX.utils.book_append_sheet(wb, wsPages, 'Project Pages');
+
+        // ── Sheet 2: All URLs ─────────────────────────────────────────────────
+        var urlRows = [['#', 'URL', 'Unique Page', 'Mapped Page', 'Mapping Status']];
+
+        document.querySelectorAll('#allUrlsTable tbody tr[id^="grouped-row-"]').forEach(function (tr) {
+            var cells = tr.querySelectorAll('td');
+            if (cells.length < 5) return;
+
+            var url       = cells[1].textContent.trim();
+            var uniqueSel = cells[2].querySelector('select');
+            var uniquePage = uniqueSel
+                ? (uniqueSel.options[uniqueSel.selectedIndex] ? uniqueSel.options[uniqueSel.selectedIndex].text : '')
+                : cells[2].textContent.trim();
+            var mappedCell = cells[3];
+            var mappedName = (mappedCell.querySelector('strong') || mappedCell).textContent.trim();
+            var mappedSmall = mappedCell.querySelector('small');
+            var mappedUrl  = mappedSmall ? mappedSmall.textContent.trim() : '';
+            var mappedFull = mappedName + (mappedUrl ? ' (' + mappedUrl + ')' : '');
+            var status     = (uniquePage && uniquePage !== '(Unassigned)') ? 'Mapped' : 'Unassigned';
+
+            urlRows.push([urlRows.length, url, uniquePage, mappedFull, status]);
+        });
+
+        var wsUrls = XLSX.utils.aoa_to_sheet(urlRows);
+        wsUrls['!cols'] = [{wch:5},{wch:60},{wch:30},{wch:50},{wch:15}];
+        XLSX.utils.book_append_sheet(wb, wsUrls, 'All URLs');
+
+        // ── Download ──────────────────────────────────────────────────────────
+        var safeTitle = projectTitle.replace(/[^a-zA-Z0-9_\- ]/g, '').trim() || 'Project';
+        XLSX.writeFile(wb, safeTitle + ' - Pages & URLs.xlsx');
+    });
+}());
+</script>

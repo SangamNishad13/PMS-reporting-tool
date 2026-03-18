@@ -178,6 +178,7 @@
                 </div>
             </div>
             <div class="modal-footer">
+                <span id="draftSaveIndicator" class="text-muted small me-auto" style="display:none;transition:opacity 0.4s;"></span>
                 <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button class="btn btn-primary" id="finalIssueSaveBtn">Save</button>
             </div>

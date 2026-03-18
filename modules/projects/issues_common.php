@@ -345,10 +345,9 @@ include __DIR__ . '/partials/issues_modals.php';
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script>
 document.addEventListener('pms:issues-changed', function (e) {
-    // Skip internal events — view_issues.js already reloaded internally
-    if (e.detail && e.detail.source === 'internal') return;
+    // Always reload common issues on any change so the table stays in sync
     if (typeof window.loadCommonIssues === 'function') {
-        window.loadCommonIssues();
+        window.loadCommonIssues({ silent: true });
     }
 });
 

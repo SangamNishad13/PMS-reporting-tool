@@ -1003,7 +1003,8 @@ try {
         $sql = "SELECT DISTINCT i.*, 
                        s.name as status_name,
                        s.color as status_color,
-                       reporter.full_name as reporter_name
+                       reporter.full_name as reporter_name,
+                       (SELECT COALESCE(MAX(ih.id), 0) FROM issue_history ih WHERE ih.issue_id = i.id) AS latest_history_id
                 FROM issues i
                 LEFT JOIN issue_statuses s ON i.status_id = s.id
                 LEFT JOIN users reporter ON i.reporter_id = reporter.id
@@ -1219,7 +1220,8 @@ try {
                 'client_ready' => (int)($i['client_ready'] ?? 0),
                 'metadata' => $meta, // Include all metadata for custom fields
                 'created_at' => $i['created_at'],
-                'updated_at' => $i['updated_at']
+                'updated_at' => $i['updated_at'],
+                'latest_history_id' => (int)($i['latest_history_id'] ?? 0)
             ];
         }
 

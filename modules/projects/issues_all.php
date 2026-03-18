@@ -924,7 +924,10 @@ function editIssue(issueId) {
         qa_status: issueData.qa_status_keys || [], // Array of QA status keys
         severity: issueData.severity || 'medium',
         priority: issueData.priority || 'medium',
-        updated_at: issueData.updated_at || null
+        updated_at: issueData.updated_at || null,
+        latest_history_id: issueData.latest_history_id != null ? issueData.latest_history_id : 0,
+        reporter_qa_status_map: issueData.reporter_qa_status_map || {},
+        assignee_ids: issueData.assignee_ids || []
     };
     
     // Add any additional metadata fields from the metadata object
@@ -1158,8 +1161,19 @@ document.getElementById('refreshBtn').addEventListener('click', function () {
 
 // Reload full table whenever an issue is added, edited, or deleted
 document.addEventListener('pms:issues-changed', function (e) {
-    // Skip internal events — view_issues.js already reloaded internally
-    if (e.detail && e.detail.source === 'internal') return;
+    var detail = e.detail || {};
+    var action = detail.action || '';
+    var issueId = String(detail.issue_id || '');
+
+    // For internal delete: remove from allIssues and re-render instantly
+    if (detail.source === 'internal' && action === 'delete' && issueId) {
+        allIssues = allIssues.filter(function(i) { return String(i.id) !== issueId; });
+        applyFilters();
+        return;
+    }
+
+    // For all other changes (create/update from internal or external): reload from API
+    // This ensures correct field format (status_name, page_ids, etc.) for renderIssues
     loadIssues({ preserveFilters: true, silentErrors: true });
 });
 

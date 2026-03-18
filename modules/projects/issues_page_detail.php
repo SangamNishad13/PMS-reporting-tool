@@ -890,14 +890,21 @@ include __DIR__ . '/../../includes/header.php';
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script>
 document.addEventListener('pms:issues-changed', function (e) {
-    // Skip events fired by view_issues.js itself — it already reloads internally.
-    // Only react to events coming from other pages (e.g. issues_all.php).
-    if (e.detail && e.detail.source === 'internal') return;
-    if (typeof window.loadFinalIssues === 'function') {
-        window.loadFinalIssues(<?php echo (int)$pageId; ?>);
-    }
-    if (typeof window.loadCommonIssues === 'function') {
-        window.loadCommonIssues();
+    var detail = e.detail || {};
+    if (detail.source === 'internal') {
+        // view_issues.js already updated in-memory data and called renderAll()
+        // Just reload common issues from API to stay in sync
+        if (typeof window.loadCommonIssues === 'function') {
+            window.loadCommonIssues({ silent: true });
+        }
+    } else {
+        // External change (another tab/page) — reload everything from API
+        if (typeof window.loadFinalIssues === 'function') {
+            window.loadFinalIssues(<?php echo (int)$pageId; ?>, { silent: true });
+        }
+        if (typeof window.loadCommonIssues === 'function') {
+            window.loadCommonIssues({ silent: true });
+        }
     }
 });
 

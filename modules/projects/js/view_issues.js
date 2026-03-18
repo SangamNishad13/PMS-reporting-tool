@@ -1342,109 +1342,59 @@
             }
         });
 
-        // Auto-formatting for bullet lists: Convert lines starting with - or * to bullet lists
+        // Auto-formatting for bullet lists: Convert "- " or "* " at line start to bullet list
         $el.on('summernote.keyup', function(we, e) {
-            // Only process on Enter key (13) or Space key (32)
-            if (e.keyCode !== 13 && e.keyCode !== 32) return;
-            
+            // Only process Space key (32)
+            if (e.keyCode !== 32) return;
+
             try {
-                var content = $el.summernote('code');
                 var range = $el.summernote('createRange');
-                
                 if (!range || !range.sc) return;
-                
-                // Get the current paragraph
-                var currentNode = range.sc.nodeType === 3 ? range.sc.parentNode : range.sc;
-                var currentP = currentNode.closest('p');
-                
+
+                var node = range.sc.nodeType === 3 ? range.sc.parentNode : range.sc;
+                var currentP = node.closest ? node.closest('p') : null;
                 if (!currentP) return;
-                
+
                 var text = currentP.textContent || '';
-                
-                // Check if the paragraph starts with - or * followed by space
-                var bulletMatch = text.match(/^[\-\*]\s+(.*)$/);
-                
-                if (bulletMatch && e.keyCode === 32) {
-                    // Convert to bullet list
-                    var listContent = bulletMatch[1];
-                    
-                    // Check if we're already in a list
-                    var existingList = currentP.closest('ul');
-                    
-                    if (!existingList) {
-                        // Create new list
-                        var newList = document.createElement('ul');
-                        var newListItem = document.createElement('li');
-                        newListItem.textContent = listContent;
-                        newList.appendChild(newListItem);
-                        
-                        // Replace the paragraph with the list
-                        currentP.parentNode.replaceChild(newList, currentP);
-                        
-                        // Set cursor at the end of the list item
-                        var newRange = document.createRange();
-                        newRange.setStart(newListItem, newListItem.childNodes.length);
-                        newRange.collapse(true);
-                        
-                        var selection = window.getSelection();
-                        selection.removeAllRanges();
-                        selection.addRange(newRange);
-                    } else {
-                        // Add to existing list
-                        var newListItem = document.createElement('li');
-                        newListItem.textContent = listContent;
-                        
-                        // Find the current list item and add after it
-                        var currentLi = currentP.closest('li');
-                        if (currentLi) {
-                            currentLi.parentNode.insertBefore(newListItem, currentLi.nextSibling);
-                            currentP.remove();
-                            
-                            // Set cursor at the end of the new list item
-                            var newRange = document.createRange();
-                            newRange.setStart(newListItem, newListItem.childNodes.length);
-                            newRange.collapse(true);
-                            
-                            var selection = window.getSelection();
-                            selection.removeAllRanges();
-                            selection.addRange(newRange);
-                        }
-                    }
-                    
-                    // Trigger change event
-                    $el.summernote('code', $el.summernote('code'));
-                }
-                
-                // Handle Enter key in bullet lists to continue the list
-                if (e.keyCode === 13) {
-                    var currentLi = currentNode.closest('li');
-                    if (currentLi && currentLi.textContent.trim() === '') {
-                        // Empty list item - exit the list
-                        var list = currentLi.closest('ul, ol');
-                        if (list) {
-                            var newP = document.createElement('p');
-                            newP.innerHTML = '<br>';
-                            list.parentNode.insertBefore(newP, list.nextSibling);
-                            currentLi.remove();
-                            
-                            // If list is now empty, remove it
-                            if (list.children.length === 0) {
-                                list.remove();
-                            }
-                            
-                            // Set cursor in the new paragraph
-                            var newRange = document.createRange();
-                            newRange.setStart(newP, 0);
-                            newRange.collapse(true);
-                            
-                            var selection = window.getSelection();
-                            selection.removeAllRanges();
-                            selection.addRange(newRange);
-                        }
-                    }
-                }
-            } catch (e) {
-                // Silently handle any errors
+                // Match "- " or "* " at the very start (the space was just typed)
+                if (!/^[\-\*]\s$/.test(text)) return;
+
+                // Clear the trigger characters
+                currentP.textContent = '';
+
+                // Use Summernote native command — preserves undo history
+                $el.summernote('saveRange');
+                document.execCommand('insertUnorderedList');
+                $el.summernote('restoreRange');
+            } catch (err) {
+                // Silently ignore
+            }
+        });
+
+        // Exit bullet list on Enter in empty <li>
+        $el.on('summernote.keydown', function(we, e) {
+            if (e.keyCode !== 13) return;
+
+            try {
+                var range = $el.summernote('createRange');
+                if (!range || !range.sc) return;
+
+                var node = range.sc.nodeType === 3 ? range.sc.parentNode : range.sc;
+                var currentLi = node.closest ? node.closest('li') : null;
+                if (!currentLi || currentLi.textContent.trim() !== '') return;
+
+                var list = currentLi.closest('ul, ol');
+                if (!list) return;
+
+                e.preventDefault();
+                $el.summernote('saveRange');
+                document.execCommand('insertParagraph');
+                // Remove the now-empty li that was left behind
+                if (currentLi.parentNode) currentLi.parentNode.removeChild(currentLi);
+                if (list.children.length === 0 && list.parentNode) list.parentNode.removeChild(list);
+                $el.summernote('restoreRange');
+            } catch (err) {
+                // Silently ignore
             }
         });
     }
@@ -2216,12 +2166,21 @@
         var formState = captureFormState();
         var plainText = String(formState.details || '').replace(/<[^>]*>/g, '').trim();
         if (!formState.title && !plainText) return;
+        var $indicator = jQuery('#draftSaveIndicator');
+        if ($indicator.length) { $indicator.text('Saving...').show(); }
         try {
             var fd = new FormData();
             fd.append('action', 'save'); fd.append('project_id', projectId);
             fd.append('issue_params', JSON.stringify(formState));
             await fetch(issueDraftsApi, { method: 'POST', body: fd, credentials: 'same-origin' });
-        } catch (e) { }
+            if ($indicator.length) {
+                $indicator.text('Draft saved');
+                clearTimeout(issueData._draftIndicatorTimer);
+                issueData._draftIndicatorTimer = setTimeout(function () { $indicator.fadeOut(400); }, 2500);
+            }
+        } catch (e) {
+            if ($indicator.length) { $indicator.text('').hide(); }
+        }
     }
 
     async function loadDraft() {
@@ -5993,7 +5952,7 @@
                 issueNotify(editId ? 'Issue updated successfully' : 'Issue created successfully', 'success');
             }, 100);
             
-            // Optimized update: just update the data and refresh the display
+            // Optimized update: update data in memory and re-render the table
             if (editId) {
                 // Update the issue data in memory
                 if (issueData.selectedPageId && issueData.pages[issueData.selectedPageId].final) {
@@ -6001,29 +5960,7 @@
                         return String(i.id) === String(savedIssueId);
                     });
                     if (issueIndex !== -1 && (json.issue || payload)) {
-                        // Update with fresh server data
                         issueData.pages[issueData.selectedPageId].final[issueIndex] = json.issue || payload;
-                    }
-                }
-                
-                // Simple DOM update: just update the specific row's text content
-                var existingRow = document.querySelector('#finalIssuesBody .final-edit[data-id="' + savedIssueId + '"]');
-                if (existingRow) {
-                    var row = existingRow.closest('tr');
-                    if (row && (json.issue || payload)) {
-                        var issueToUpdate = json.issue || payload;
-                        // Update key fields in the row without full re-render
-                        var titleCell = row.querySelector('.issue-title');
-                        if (titleCell) titleCell.textContent = issueToUpdate.title || 'Issue';
-                        
-                        var statusCell = row.querySelector('.issue-status');
-                        if (statusCell) statusCell.textContent = issueToUpdate.status_name || issueToUpdate.status || 'open';
-                        
-                        // Add a subtle flash effect to show the row was updated
-                        row.style.backgroundColor = '#d4edda';
-                        setTimeout(function() {
-                            row.style.backgroundColor = '';
-                        }, 1000);
                     }
                 }
             } else {
@@ -6034,8 +5971,9 @@
                     issueData.pages[selectedPageId].final = list;
                 }
             }
-            
-            updateSelectionButtons();
+
+            // Re-render the full table so all fields (status, priority, QA, etc.) reflect instantly
+            renderAll();
             showFinalIssuesTab();
 
             if (!editId && issueData.comments['new']) {
