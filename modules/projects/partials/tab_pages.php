@@ -1,4 +1,4 @@
-        <?php $canManageAssignmentsInView = in_array($userRole, ['admin', 'super_admin', 'project_lead'], true); ?>
+﻿        <?php $canManageAssignmentsInView = in_array($userRole, ['admin', 'super_admin', 'project_lead'], true); ?>
         <!-- Pages Tab -->
         <div class="tab-pane fade" id="pages" role="tabpanel">
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -1109,7 +1109,6 @@
 
     clientReportBtn.addEventListener('click', function () {
         if (typeof XLSX === 'undefined') { alert('Excel library not loaded. Please refresh.'); return; }
-
         clientReportBtn.disabled = true;
         clientReportBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Preparing...';
 
@@ -1118,15 +1117,58 @@
                 if (!r.ok) throw new Error('Template fetch failed: ' + r.status);
                 return r.arrayBuffer();
             }),
-            fetch(baseDir + '/api/issues.php?action=get_all&project_id=' + encodeURIComponent(projectId), { credentials: 'same-origin' }).then(function (r) {
-                return r.json();
-            })
+            fetch(baseDir + '/api/issues.php?action=get_all&project_id=' + encodeURIComponent(projectId), { credentials: 'same-origin' }).then(function (r) { return r.json(); }),
+            fetch(baseDir + '/api/export_overview_data.php?project_id=' + encodeURIComponent(projectId), { credentials: 'same-origin' }).then(function (r) { return r.json(); })
         ]).then(function (results) {
-            var templateBuf = results[0];
-            var issuesJson  = results[1];
-            var allIssues   = (issuesJson && issuesJson.issues) ? issuesJson.issues : [];
+            var templateBuf  = results[0];
+            var issuesJson   = results[1];
+            var overviewData = results[2];
+            var allIssues    = (issuesJson && issuesJson.issues) ? issuesJson.issues : [];
 
             var wb = XLSX.read(templateBuf, { type: 'array', cellFormula: true, cellStyles: true });
+
+            function sc(ws, addr, val) {
+                if (!ws[addr]) ws[addr] = {};
+                ws[addr].v = val;
+                ws[addr].t = (typeof val === 'number') ? 'n' : 's';
+                if (typeof val !== 'number') delete ws[addr].f;
+            }
+
+            // Overview sheet
+            var wsOV = wb.Sheets['Overview'];
+            if (wsOV && overviewData && !overviewData.error) {
+                var proj = overviewData.project || {};
+                sc(wsOV, 'F2', proj.title || '');
+                sc(wsOV, 'F3', proj.project_type || '');
+                sc(wsOV, 'F4', 'Sakshi Infotech Solutions LLP');
+                sc(wsOV, 'F5', 'Sangam Nishad');
+                sc(wsOV, 'F6', overviewData.export_date || '');
+                sc(wsOV, 'F12', overviewData.wcag_level_a || 0);
+                sc(wsOV, 'G12', overviewData.wcag_level_aa || 0);
+                var topIssues = overviewData.top_issues || [];
+                var lCols = ['L12','L13','L14','L15','L16'];
+                var mCols = ['M12','M13','M14','M15','M16'];
+                for (var ti = 0; ti < 5; ti++) {
+                    var tiss = topIssues[ti] || {};
+                    sc(wsOV, lCols[ti], tiss.title || '');
+                    sc(wsOV, mCols[ti], tiss.sc_nums || '');
+                }
+                var usersAff = overviewData.users_affected || [];
+                for (var ui = 0; ui < usersAff.length; ui++) {
+                    sc(wsOV, 'B' + (16 + ui), usersAff[ui].user || '');
+                    sc(wsOV, 'C' + (16 + ui), usersAff[ui].count || 0);
+                }
+                var sevCounts = overviewData.severity_counts || [];
+                for (var si = 0; si < sevCounts.length; si++) {
+                    sc(wsOV, 'O' + (24 + si), sevCounts[si].severity || '');
+                    sc(wsOV, 'P' + (24 + si), sevCounts[si].count || 0);
+                }
+                var team = overviewData.team || [];
+                for (var mi = 0; mi < team.length; mi++) {
+                    sc(wsOV, 'B' + (28 + mi), team[mi].name || '');
+                    sc(wsOV, 'C' + (28 + mi), team[mi].role || '');
+                }
+            }
 
             // URL Details sheet
             var wsUD = wb.Sheets['URL Details'];
@@ -1176,7 +1218,6 @@
                 for (var r = 1; r <= frRange.e.r; r++) {
                     for (var c = 0; c <= 35; c++) { delete wsFR[XLSX.utils.encode_cell({r:r,c:c})]; }
                 }
-
                 function stripHtml(html) {
                     if (!html) return '';
                     var d = document.createElement('div');
@@ -1184,31 +1225,27 @@
                     return (d.textContent || d.innerText || '').replace(/\s+/g, ' ').trim();
                 }
                 function s(v) { return {t:'s', v: String(v||'')}; }
-
                 function metaVal(meta, key) {
                     if (!meta || !meta[key]) return '';
                     var v = meta[key];
                     if (Array.isArray(v)) return v.join(', ');
                     return String(v);
                 }
-
                 for (var i = 0; i < allIssues.length; i++) {
                     var iss = allIssues[i];
                     var ri  = i + 1;
                     var meta = iss.metadata || {};
-                    var pageNo   = iss.pages || '';  // get_all returns pages as string
-                    var pageName = iss.pages || '';
                     var wcagNums  = metaVal(meta, 'wcagsuccesscriteria');
                     var wcagNames = metaVal(meta, 'wcagsuccesscriterianame');
                     var wcagLevel = metaVal(meta, 'wcagsuccesscriterialevel');
                     var gigw      = metaVal(meta, 'gigw30');
                     var is17802   = metaVal(meta, 'is17802');
-                    var usersAff  = metaVal(meta, 'usersaffected');
+                    var usersAffFR = metaVal(meta, 'usersaffected');
                     var qaStatus  = (iss.qa_statuses || []).map(function(q){ return q.label||q.key||''; }).join(', ');
                     var reporter  = iss.reporters || iss.reporter_name || '';
                     var desc      = stripHtml(iss.description || '');
-                    wsFR[XLSX.utils.encode_cell({r:ri,c:0})]  = s(pageNo);
-                    wsFR[XLSX.utils.encode_cell({r:ri,c:1})]  = s(pageName);
+                    wsFR[XLSX.utils.encode_cell({r:ri,c:0})]  = s(iss.pages||'');
+                    wsFR[XLSX.utils.encode_cell({r:ri,c:1})]  = s(iss.pages||'');
                     wsFR[XLSX.utils.encode_cell({r:ri,c:2})]  = s('');
                     wsFR[XLSX.utils.encode_cell({r:ri,c:3})]  = s(iss.title||'');
                     wsFR[XLSX.utils.encode_cell({r:ri,c:4})]  = s(desc);
@@ -1219,7 +1256,7 @@
                     wsFR[XLSX.utils.encode_cell({r:ri,c:9})]  = s('');
                     wsFR[XLSX.utils.encode_cell({r:ri,c:10})] = s('');
                     wsFR[XLSX.utils.encode_cell({r:ri,c:11})] = s(iss.severity||'');
-                    wsFR[XLSX.utils.encode_cell({r:ri,c:12})] = s(usersAff);
+                    wsFR[XLSX.utils.encode_cell({r:ri,c:12})] = s(usersAffFR);
                     wsFR[XLSX.utils.encode_cell({r:ri,c:13})] = s(wcagNums);
                     wsFR[XLSX.utils.encode_cell({r:ri,c:14})] = s(wcagNames);
                     wsFR[XLSX.utils.encode_cell({r:ri,c:15})] = s(wcagLevel);
