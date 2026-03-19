@@ -260,11 +260,11 @@ function extractSections(string $html): array {
     if (!$found) return $empty;
 
     $patterns = [
-        'actual_result'  => '/\[Actual Result\](.*?)(?=\[(?:Incorrect Code|Screenshot|Recommendation|Correct Code)\]|\z)/is',
-        'incorrect_code' => '/\[Incorrect Code\](.*?)(?=\[(?:Actual Result|Screenshot|Recommendation|Correct Code)\]|\z)/is',
-        'screenshot'     => '/\[Screenshot\](.*?)(?=\[(?:Actual Result|Incorrect Code|Recommendation|Correct Code)\]|\z)/is',
-        'recommendation' => '/\[Recommendation\](.*?)(?=\[(?:Actual Result|Incorrect Code|Screenshot|Correct Code)\]|\z)/is',
-        'correct_code'   => '/\[Correct Code\](.*?)(?=\[(?:Actual Result|Incorrect Code|Screenshot|Recommendation)\]|\z)/is',
+        'actual_result'  => '/\[Actual Result\](.*?)(?=\[(?:Incorrect Code|Screenshot|Recomm[eo]n[do]ation|Correct Code)\]|\z)/is',
+        'incorrect_code' => '/\[Incorrect Code\](.*?)(?=\[(?:Actual Result|Screenshot|Recomm[eo]n[do]ation|Correct Code)\]|\z)/is',
+        'screenshot'     => '/\[Screenshot\](.*?)(?=\[(?:Actual Result|Incorrect Code|Recomm[eo]n[do]ation|Correct Code)\]|\z)/is',
+        'recommendation' => '/\[Recomm[eo]n[do]ation\](.*?)(?=\[(?:Actual Result|Incorrect Code|Screenshot|Correct Code)\]|\z)/is',
+        'correct_code'   => '/\[Correct Code\](.*?)(?=\[(?:Actual Result|Incorrect Code|Screenshot|Recomm[eo]n[do]ation)\]|\z)/is',
     ];
 
     $out = $empty;
