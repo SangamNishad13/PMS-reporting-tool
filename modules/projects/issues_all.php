@@ -943,7 +943,9 @@ function editIssue(issueId) {
             }
             return (raw && typeof raw === 'object') ? raw : {};
         })(),
-        assignee_ids: issueData.assignee_ids || []
+        assignee_ids: Array.isArray(issueData.assignee_ids) && issueData.assignee_ids.length
+            ? issueData.assignee_ids.map(String)
+            : (issueData.assignee_id ? [String(issueData.assignee_id)] : [])
     };
     
     // Add any additional metadata fields from the metadata object

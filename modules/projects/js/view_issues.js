@@ -641,6 +641,8 @@
                     grouped_urls: it.grouped_urls || [],
                     reporter_name: it.reporter_name || null,
                     qa_name: it.qa_name || null,
+                    assignee_id: it.assignee_id || null,
+                    assignee_ids: Array.isArray(it.assignee_ids) && it.assignee_ids.length ? it.assignee_ids.map(String) : (it.assignee_id ? [String(it.assignee_id)] : []),
                     page_id: it.page_id || pageId,
                     client_ready: it.client_ready || 0,
                     // Metadata fields - use correct field names from API
