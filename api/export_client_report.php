@@ -84,59 +84,80 @@ function xcell(string $col, int $row, string $val, string $style = ''): string {
 }
 
 /**
- * Replace a cell in worksheet XML with a new inline-string value.
- * Handles both normal <c ...>...</c> and self-closing <c .../> forms.
+ * Replace a cell in worksheet XML with a new value.
+ * Handles both self-closing <c .../> and normal <c ...>...</c> forms.
  * Preserves the style (s="N") attribute.
  */
 function setCell(string &$xml, string $ref, string $value, bool $isNum = false): void {
     $rq = preg_quote($ref, '/');
-    // Extract style attribute from existing cell (either form)
     $style = '';
-    $selfClosingPat = '/<c\s+r="' . $rq . '"([^>]*)\/>/s';
-    $normalPat      = '/<c\s+r="' . $rq . '"([^>]*)>.*?<\/c>/s';
-    $isSelfClosing  = preg_match($selfClosingPat, $xml, $m);
-    if (!$isSelfClosing && !preg_match($normalPat, $xml, $m)) {
-        return; // cell not found
+
+    // Try self-closing form first: <c r="REF" s="N"/>
+    // Use strict pattern: [^/]* to avoid matching past the />
+    $selfPat = '/<c\s+r="' . $rq . '"([^\/]*)\s*\/>/';
+    if (preg_match($selfPat, $xml, $m)) {
+        if (preg_match('/\bs="(\d+)"/', $m[1], $sm)) $style = ' s="' . $sm[1] . '"';
+        $repl = $isNum
+            ? '<c r="' . $ref . '"' . $style . '><v>' . (int)$value . '</v></c>'
+            : '<c r="' . $ref . '"' . $style . ' t="inlineStr"><is><t xml:space="preserve">' . xstr($value) . '</t></is></c>';
+        $xml = preg_replace($selfPat, $repl, $xml, 1);
+        return;
     }
-    if (preg_match('/\bs="(\d+)"/', $m[1], $sm)) {
-        $style = ' s="' . $sm[1] . '"';
-    }
+
+    // Normal form: find opening <c r="REF" ...> then scan to matching </c>
+    // Use strpos-based approach to handle multiline formula content safely
+    $openPat = '/<c\s+r="' . $rq . '"([^>\/][^>]*)>/';
+    if (!preg_match($openPat, $xml, $m, PREG_OFFSET_CAPTURE)) return;
+    if (preg_match('/\bs="(\d+)"/', $m[1][0], $sm)) $style = ' s="' . $sm[1] . '"';
+    $start    = $m[0][1];
+    $closePos = strpos($xml, '</c>', $start + strlen($m[0][0]));
+    if ($closePos === false) return;
+    $end = $closePos + 4;
+
     $repl = $isNum
         ? '<c r="' . $ref . '"' . $style . '><v>' . (int)$value . '</v></c>'
         : '<c r="' . $ref . '"' . $style . ' t="inlineStr"><is><t xml:space="preserve">' . xstr($value) . '</t></is></c>';
-    // Replace only the matched form (not both)
-    if ($isSelfClosing) {
-        $xml = preg_replace($selfClosingPat, $repl, $xml, 1);
-    } else {
-        $xml = preg_replace($normalPat, $repl, $xml, 1);
-    }
+    $xml = substr($xml, 0, $start) . $repl . substr($xml, $end);
 }
 
 /**
- * Inject or replace a cell. Creates the row if it doesn't exist.
+ * Inject or replace a cell in a specific row. Creates the row if needed.
  */
 function injectCell(string &$xml, int $rowNum, string $ref, string $value, string $styleAttr = '', bool $isNum = false): void {
     $rq = preg_quote($ref, '/');
-    // If cell already exists (either form), use setCell to replace it
-    if (preg_match('/<c\s+r="' . $rq . '"[^>]*\/>/s', $xml) ||
-        preg_match('/<c\s+r="' . $rq . '"[^>]*>.*?<\/c>/s', $xml)) {
+
+    // Check if cell already exists (self-closing or normal)
+    $cellExists = preg_match('/<c\s+r="' . $rq . '"\s*\/>/', $xml)
+               || preg_match('/<c\s+r="' . $rq . '"[^\/][^>]*>/', $xml);
+    if ($cellExists) {
         setCell($xml, $ref, $value, $isNum);
         return;
     }
+
     $newCell = $isNum
         ? '<c r="' . $ref . '"' . $styleAttr . '><v>' . (int)$value . '</v></c>'
         : '<c r="' . $ref . '"' . $styleAttr . ' t="inlineStr"><is><t xml:space="preserve">' . xstr($value) . '</t></is></c>';
-    // Insert into existing row
-    $rowPat = '/(<row\s+r="' . $rowNum . '"[^>]*>)(.*?)(<\/row>)/s';
-    if (preg_match($rowPat, $xml, $rm)) {
-        $xml = preg_replace($rowPat, $rm[1] . $rm[2] . $newCell . $rm[3], $xml, 1);
-        return;
+
+    // Find existing row using strpos-based approach (avoids regex backtracking on large XML)
+    $rowTag = '<row r="' . $rowNum . '"';
+    $rowPos = strpos($xml, $rowTag);
+    if ($rowPos !== false) {
+        // Find end of opening row tag
+        $rowOpenEnd = strpos($xml, '>', $rowPos) + 1;
+        // Find closing </row>
+        $rowClosePos = strpos($xml, '</row>', $rowOpenEnd);
+        if ($rowClosePos !== false) {
+            // Insert cell before </row>
+            $xml = substr($xml, 0, $rowClosePos) . $newCell . substr($xml, $rowClosePos);
+            return;
+        }
     }
-    // Create new row — handle both </sheetData> and self-closing <sheetData/>
+
+    // Row doesn't exist — create it before </sheetData>
     if (strpos($xml, '</sheetData>') !== false) {
-        $xml = str_replace('</sheetData>', '<row r="' . $rowNum . '" spans="1:18">' . $newCell . '</row></sheetData>', $xml);
+        $xml = preg_replace('/<\/sheetData>/', '<row r="' . $rowNum . '" spans="1:18">' . $newCell . '</row></sheetData>', $xml, 1);
     } else {
-        $xml = preg_replace('/<sheetData\s*\/>/s', '<sheetData><row r="' . $rowNum . '" spans="1:18">' . $newCell . '</row></sheetData>', $xml);
+        $xml = preg_replace('/<sheetData\s*\/>/s', '<sheetData><row r="' . $rowNum . '" spans="1:18">' . $newCell . '</row></sheetData>', $xml, 1);
     }
 }
 
