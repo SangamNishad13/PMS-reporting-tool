@@ -1945,6 +1945,12 @@ try {
             $stmt = $db->prepare("UPDATE issues SET client_ready = ?, updated_at = NOW() WHERE id IN ($placeholders) AND project_id = ?");
             $stmt->execute($params);
             
+            // Invalidate get_all cache
+            if (function_exists('apcu_delete')) {
+                apcu_delete("issues_all_{$projectId}_staff");
+                apcu_delete("issues_all_{$projectId}_client");
+            }
+
             jsonResponse(['success' => true, 'updated' => $stmt->rowCount()]);
         } catch (PDOException $e) {
             error_log("Bulk client ready update error: " . $e->getMessage());
