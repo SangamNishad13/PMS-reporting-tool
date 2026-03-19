@@ -503,22 +503,8 @@ for ($mi = 0; $mi < count($teamMembers); $mi++) {
 $sh1 = preg_replace('/<dimension\s+ref="[^"]*"\s*\/>/s', '', $sh1);
 
 $zip->addFromString('xl/worksheets/sheet1.xml', $sh1);
-
-// Delete calcChain — stale chain causes Excel to use old cached values
+// Delete calcChain so Excel doesn't recalculate and overwrite our injected values
 $zip->deleteName('xl/calcChain.xml');
-
-// Set fullCalcOnLoad="1" in workbook so Excel recalculates ALL formulas on open
-// This is the only change needed — no sheet data is modified
-$wb = $zip->getFromName('xl/workbook.xml');
-if ($wb !== false) {
-    // Replace existing calcPr (any attributes) with one that forces full recalc
-    if (preg_match('/<calcPr\b/i', $wb)) {
-        $wb = preg_replace('/<calcPr\b[^\/]*\/>/i', '<calcPr calcId="191029" calcMode="auto" fullCalcOnLoad="1"/>', $wb);
-    } else {
-        $wb = str_replace('</workbook>', '<calcPr calcId="191029" calcMode="auto" fullCalcOnLoad="1"/></workbook>', $wb);
-    }
-    $zip->addFromString('xl/workbook.xml', $wb);
-}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SHEET 2: URL Details — A=Page No, B=Page Name, C=Unique URL, D=Grouped URLs
