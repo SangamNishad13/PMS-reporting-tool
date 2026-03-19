@@ -524,8 +524,19 @@ for ($mi = 0; $mi < count($teamMembers); $mi++) {
 $sh1 = preg_replace('/<dimension\s+ref="[^"]*"\s*\/>/s', '', $sh1);
 
 $zip->addFromString('xl/worksheets/sheet1.xml', $sh1);
-// Delete calcChain so Excel doesn't recalculate and overwrite our injected values
+// Delete calcChain — stale chain prevents recalculation
 $zip->deleteName('xl/calcChain.xml');
+
+// Force full recalculation on open — Excel will recalculate ALL formulas
+// across all sheets (including Conformance Score) when the file is opened
+$wb = $zip->getFromName('xl/workbook.xml');
+if ($wb !== false) {
+    $wb = preg_replace('/<calcPr\b[^\/]*\/>/i', '<calcPr calcId="191029" calcMode="auto" fullCalcOnLoad="1"/>', $wb);
+    if (strpos($wb, 'fullCalcOnLoad') === false) {
+        $wb = str_replace('</workbook>', '<calcPr calcId="191029" calcMode="auto" fullCalcOnLoad="1"/></workbook>', $wb);
+    }
+    $zip->addFromString('xl/workbook.xml', $wb);
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SHEET 2: URL Details — A=Page No, B=Page Name, C=Unique URL, D=Grouped URLs
