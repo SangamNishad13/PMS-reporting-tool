@@ -6709,6 +6709,8 @@
                         var newVal = h.new_value || '';
                         var fieldName = h.field_name || 'field';
                         var uniqueId = 'history-' + idx;
+                        var historyId = h.id;
+                        var canRollback = !!h.can_rollback;
 
                         // Format field name: remove "meta:" prefix and format nicely
                         var displayFieldName = fieldName;
@@ -6768,10 +6770,10 @@
                                     '<small class="text-muted text-uppercase" style="font-weight:600;letter-spacing:0.5px;">' +
                                     '<i class="fas fa-edit me-1"></i>' + escapeHtml(displayFieldName) +
                                     '</small>' +
-                                    '<small class="text-muted">' +
-                                    '<i class="fas fa-user me-1"></i><strong>' + escapeHtml(h.user_name) + '</strong> • ' +
-                                    '<i class="fas fa-clock me-1"></i>' + h.created_at +
-                                    '</small>' +
+                                    '<div class="d-flex align-items-center gap-2">' +
+                                    (canRollback ? '<button class="btn btn-xs btn-outline-warning py-0 px-1 issue-history-rollback" data-history-id="' + historyId + '" data-field="' + escapeAttr(displayFieldName) + '" title="Rollback this field to its previous value"><i class="fas fa-undo me-1"></i>Rollback</button>' : '') +
+                                    '<small class="text-muted"><i class="fas fa-user me-1"></i><strong>' + escapeHtml(h.user_name) + '</strong> • <i class="fas fa-clock me-1"></i>' + h.created_at + '</small>' +
+                                    '</div>' +
                                     '</div>' +
                                     '<div class="alert alert-info mb-0">' +
                                     '<i class="fas fa-info-circle me-2"></i>No visible changes detected (possibly formatting or whitespace changes)' +
@@ -6900,10 +6902,10 @@
                                 '<small class="text-muted text-uppercase" style="font-weight:600;letter-spacing:0.5px;">' +
                                 '<i class="fas fa-edit me-1"></i>' + escapeHtml(displayFieldName) +
                                 '</small>' +
-                                '<small class="text-muted">' +
-                                '<i class="fas fa-user me-1"></i><strong>' + escapeHtml(h.user_name) + '</strong> • ' +
-                                '<i class="fas fa-clock me-1"></i>' + h.created_at +
-                                '</small>' +
+                                '<div class="d-flex align-items-center gap-2">' +
+                                (canRollback ? '<button class="btn btn-xs btn-outline-warning py-0 px-1 issue-history-rollback" data-history-id="' + historyId + '" data-field="' + escapeAttr(displayFieldName) + '" title="Rollback this field to its previous value"><i class="fas fa-undo me-1"></i>Rollback</button>' : '') +
+                                '<small class="text-muted"><i class="fas fa-user me-1"></i><strong>' + escapeHtml(h.user_name) + '</strong> • <i class="fas fa-clock me-1"></i>' + h.created_at + '</small>' +
+                                '</div>' +
                                 '</div>' +
                                 '<div class="diff-container bg-white p-3 rounded border" style="line-height: 1.8;">' +
                                 '<div class="diff-preview" id="preview-' + uniqueId + '" style="white-space: pre-wrap; word-wrap: break-word;">' +
@@ -6935,10 +6937,10 @@
                                 '<small class="text-muted text-uppercase" style="font-weight:600;letter-spacing:0.5px;">' +
                                 '<i class="fas fa-edit me-1"></i>' + escapeHtml(displayFieldName) +
                                 '</small>' +
-                                '<small class="text-muted">' +
-                                '<i class="fas fa-user me-1"></i><strong>' + escapeHtml(h.user_name) + '</strong> • ' +
-                                '<i class="fas fa-clock me-1"></i>' + h.created_at +
-                                '</small>' +
+                                '<div class="d-flex align-items-center gap-2">' +
+                                (canRollback ? '<button class="btn btn-xs btn-outline-warning py-0 px-1 issue-history-rollback" data-history-id="' + historyId + '" data-field="' + escapeAttr(displayFieldName) + '" title="Rollback this field to its previous value"><i class="fas fa-undo me-1"></i>Rollback</button>' : '') +
+                                '<small class="text-muted"><i class="fas fa-user me-1"></i><strong>' + escapeHtml(h.user_name) + '</strong> • <i class="fas fa-clock me-1"></i>' + h.created_at + '</small>' +
+                                '</div>' +
                                 '</div>' +
                                 '<div class="row g-2 bg-white p-3 rounded border">' +
                                 '<div class="col-md-5">' +
@@ -6981,6 +6983,58 @@
                             text.textContent = 'Read More';
                         }
                     };
+
+                    // Rollback handlers
+                    wrap.querySelectorAll('.issue-history-rollback').forEach(function (btn) {
+                        btn.addEventListener('click', function () {
+                            var hid = this.getAttribute('data-history-id');
+                            var fieldLabel = this.getAttribute('data-field');
+                            var issueId = document.getElementById('finalIssueEditId').value;
+                            if (!window.confirm('Rollback "' + fieldLabel + '" to its previous value?')) return;
+
+                            var self = this;
+                            self.disabled = true;
+                            self.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Rolling back...';
+
+                            var fd = new FormData();
+                            fd.append('history_id', hid);
+                            fd.append('issue_id', issueId);
+                            fetch(ProjectConfig.baseDir + '/api/issue_history.php', { method: 'POST', body: fd, credentials: 'same-origin' })
+                                .then(function (r) { return r.json(); })
+                                .then(function (res) {
+                                    if (!res || res.error) {
+                                        if (typeof showToast === 'function') showToast((res && res.error) ? res.error : 'Rollback failed', 'danger');
+                                        self.disabled = false;
+                                        self.innerHTML = '<i class="fas fa-undo me-1"></i>Rollback';
+                                        return;
+                                    }
+                                    if (typeof showToast === 'function') showToast('"' + fieldLabel + '" rolled back successfully', 'success');
+                                    // Reload history tab
+                                    document.getElementById('btnShowHistory').dispatchEvent(new Event('shown.bs.tab'));
+                                    // Reload issue data in background
+                                    var currentIssueId = document.getElementById('finalIssueEditId').value;
+                                    if (currentIssueId && issueData.issues) {
+                                        var issueObj = issueData.issues.find(function (i) { return String(i.id) === String(currentIssueId); });
+                                        if (issueObj) {
+                                            fetch(ProjectConfig.baseDir + '/api/issues.php?action=list&project_id=' + encodeURIComponent(projectId) + '&id=' + encodeURIComponent(currentIssueId), { credentials: 'same-origin' })
+                                                .then(function (r) { return r.json(); })
+                                                .then(function (r) {
+                                                    if (r && r.issues && r.issues.length) {
+                                                        var updated = r.issues[0];
+                                                        var idx = issueData.issues.findIndex(function (i) { return String(i.id) === String(currentIssueId); });
+                                                        if (idx >= 0) issueData.issues[idx] = updated;
+                                                    }
+                                                }).catch(function () {});
+                                        }
+                                    }
+                                })
+                                .catch(function () {
+                                    if (typeof showToast === 'function') showToast('Rollback failed', 'danger');
+                                    self.disabled = false;
+                                    self.innerHTML = '<i class="fas fa-undo me-1"></i>Rollback';
+                                });
+                        });
+                    });
                 });
         });
     }
