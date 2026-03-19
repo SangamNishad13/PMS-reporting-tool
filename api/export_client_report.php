@@ -218,17 +218,56 @@ function absoluteUrl(string $src): string {
 /**
  * Extract named sections from issue description HTML.
  * Sections are delimited by [Section Name] markers embedded in the rich text.
+ * Works on both raw HTML and plain text descriptions.
  * Returns array: ['actual_result' => '...html...', 'incorrect_code' => '...', ...]
  */
 function extractSections(string $html): array {
-    $patterns = [
-        'actual_result'      => '/\[Actual Result\](.*?)(?=\[|$)/is',
-        'incorrect_code'     => '/\[Incorrect Code\](.*?)(?=\[|$)/is',
-        'screenshot'         => '/\[Screenshot\](.*?)(?=\[|$)/is',
-        'recommendation'     => '/\[Recommendation\](.*?)(?=\[|$)/is',
-        'correct_code'       => '/\[Correct Code\](.*?)(?=\[|$)/is',
+    $keys = ['actual_result', 'incorrect_code', 'screenshot', 'recommendation', 'correct_code'];
+    $empty = array_fill_keys($keys, '');
+
+    if (!$html) return $empty;
+
+    // Marker labels (case-insensitive)
+    $labels = [
+        'actual_result'  => 'Actual Result',
+        'incorrect_code' => 'Incorrect Code',
+        'screenshot'     => 'Screenshot',
+        'recommendation' => 'Recommendation',
+        'correct_code'   => 'Correct Code',
     ];
-    $out = [];
+
+    // Strategy 1: markers exist directly in HTML (most common)
+    // Try matching on raw HTML first
+    $found = false;
+    foreach ($labels as $key => $label) {
+        if (stripos($html, '[' . $label . ']') !== false) { $found = true; break; }
+    }
+
+    // Strategy 2: markers may be inside HTML tags or encoded — strip tags first
+    // then re-match on plain text, but keep original HTML for section content
+    if (!$found) {
+        // Try after stripping tags (markers might be wrapped in <p>, <strong> etc.)
+        $plain = strip_tags($html);
+        foreach ($labels as $key => $label) {
+            if (stripos($plain, '[' . $label . ']') !== false) { $found = true; break; }
+        }
+        if ($found) {
+            // Work on plain text for section splitting, return plain text sections
+            $html = $plain;
+        }
+    }
+
+    if (!$found) return $empty;
+
+    $patterns = [
+        'actual_result'  => '/\[Actual Result\](.*?)(?=\[(?:Incorrect Code|Screenshot|Recommendation|Correct Code)\]|$)/is',
+        'incorrect_code' => '/\[Incorrect Code\](.*?)(?=\[(?:Actual Result|Screenshot|Recommendation|Correct Code)\]|$)/is',
+        'screenshot'     => '/\[Screenshot\](.*?)(?=\[(?:Actual Result|Incorrect Code|Recommendation|Correct Code)\]|$)/is',
+        'recommendation' => '/\[Recommendation\](.*?)(?=\[(?:Actual Result|Incorrect Code|Screenshot|Correct Code)\]|$)/is',
+        'correct_code'   => '/\[Correct Code\](.*?)(?=\[(?:Actual Result|Incorrect Code|Screenshot|Recommendation)\]|$)/is',
+    ];
+
+    $out = $empty;
     foreach ($patterns as $key => $pat) {
         if (preg_match($pat, $html, $m)) {
             $content = trim(preg_replace(
@@ -236,8 +275,6 @@ function extractSections(string $html): array {
                 '', $m[1] ?? ''
             ));
             $out[$key] = $content;
-        } else {
-            $out[$key] = '';
         }
     }
     return $out;
@@ -621,6 +658,10 @@ foreach ($filteredIssues as $iss) {
     $incorrectCode  = stripHtml($sections['incorrect_code']);
     $recommendation = stripHtml($sections['recommendation']);
     $correctCode    = stripHtml($sections['correct_code']);
+    // Fallback: if no sections found, put full description in Actual Result
+    if ($actualResult === '' && $incorrectCode === '' && $recommendation === '' && $correctCode === '') {
+        $actualResult = stripHtml($iss['description'] ?? '');
+    }
     $screenshotUrls = implode("\n", array_map('absoluteUrl', extractImageUrls($sections['screenshot'])));
 
     $rows4 .= '<row r="' . $rn . '" spans="1:22">'
