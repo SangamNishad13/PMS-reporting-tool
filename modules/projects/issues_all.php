@@ -926,7 +926,23 @@ function editIssue(issueId) {
         priority: issueData.priority || 'medium',
         updated_at: issueData.updated_at || null,
         latest_history_id: issueData.latest_history_id != null ? issueData.latest_history_id : 0,
-        reporter_qa_status_map: issueData.reporter_qa_status_map || {},
+        reporter_qa_status_map: (function() {
+            var raw = issueData.reporter_qa_status_map;
+            // API may return array of JSON strings - parse to plain object
+            if (Array.isArray(raw)) {
+                for (var i = 0; i < raw.length; i++) {
+                    try {
+                        var parsed = (typeof raw[i] === 'string') ? JSON.parse(raw[i]) : raw[i];
+                        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+                    } catch(e) {}
+                }
+                return {};
+            }
+            if (typeof raw === 'string') {
+                try { return JSON.parse(raw); } catch(e) { return {}; }
+            }
+            return (raw && typeof raw === 'object') ? raw : {};
+        })(),
         assignee_ids: issueData.assignee_ids || []
     };
     

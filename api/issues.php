@@ -1741,10 +1741,12 @@ try {
         $sql = "SELECT DISTINCT i.*, 
                        s.name as status_name,
                        s.color as status_color,
-                       reporter.full_name as reporter_name
+                       reporter.full_name as reporter_name,
+                       assignee.full_name as qa_name
                 FROM issues i
                 LEFT JOIN issue_statuses s ON i.status_id = s.id
                 LEFT JOIN users reporter ON i.reporter_id = reporter.id
+                LEFT JOIN users assignee ON i.assignee_id = assignee.id
                 WHERE i.id = ? AND i.project_id = ?";
         
         $stmt = $db->prepare($sql);
