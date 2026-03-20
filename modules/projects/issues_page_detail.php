@@ -252,10 +252,81 @@ include __DIR__ . '/../../includes/header.php';
     margin: 0 !important;
     line-height: 1.5 !important;
 }
+
+/* ── Final Issues Table ─────────────────────────────────────── */
+#finalIssuesBody tr td,
+#finalIssuesBody tr th {
+    font-size: 12px;
+    vertical-align: middle;
+    padding: 0.35rem 0.5rem;
+}
+/* Sticky checkbox + issue-key columns */
+.final-issues-table-wrap {
+    overflow-x: auto;
+    position: relative;
+    border-radius: 0 0 6px 6px;
+}
+.final-issues-table-wrap table {
+    min-width: 900px;
+}
+.final-issues-table-wrap thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    white-space: nowrap;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #6c757d;
+}
+/* Sticky first two columns on final issues table */
+.final-issues-table-wrap table th:nth-child(1),
+.final-issues-table-wrap table td:nth-child(1) {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: #f8f9fa;
+}
+.final-issues-table-wrap table td:nth-child(1) {
+    background: #fff;
+    z-index: 2;
+}
+.final-issues-table-wrap table th:nth-child(2),
+.final-issues-table-wrap table td:nth-child(2) {
+    position: sticky;
+    left: 38px;
+    z-index: 4;
+    background: #f8f9fa;
+    border-right: 1px solid #dee2e6;
+}
+.final-issues-table-wrap table td:nth-child(2) {
+    background: #fff;
+    z-index: 2;
+}
+/* Scroll shadow indicator */
+.final-issues-table-wrap::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 24px; height: 100%;
+    background: linear-gradient(to right, transparent, rgba(0,0,0,0.04));
+    pointer-events: none;
+    border-radius: 0 6px 6px 0;
+}
+
+/* ── Needs Review Table ─────────────────────────────────────── */
 .needs-review-table thead th {
     position: sticky;
     top: 0;
     z-index: 2;
+    background: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #6c757d;
 }
 .needs-review-table {
     table-layout: fixed;
@@ -274,6 +345,37 @@ include __DIR__ . '/../../includes/header.php';
     max-height: 96px;
     overflow: hidden;
 }
+/* Sticky first 3 columns on needs-review table */
+.needs-review-wrap {
+    overflow-x: auto;
+    position: relative;
+}
+.needs-review-table th:nth-child(1),
+.needs-review-table td:nth-child(1) {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: #f8f9fa;
+}
+.needs-review-table td:nth-child(1) { background: #fff; }
+.needs-review-table th:nth-child(2),
+.needs-review-table td:nth-child(2) {
+    position: sticky;
+    left: 36px;
+    z-index: 3;
+    background: #f8f9fa;
+}
+.needs-review-table td:nth-child(2) { background: #fff; }
+.needs-review-table th:nth-child(3),
+.needs-review-table td:nth-child(3) {
+    position: sticky;
+    left: 76px;
+    z-index: 3;
+    background: #f8f9fa;
+    border-right: 2px solid #dee2e6;
+}
+.needs-review-table td:nth-child(3) { background: #fff; }
+
 .resizable-table { table-layout: fixed; width: 100%; min-width: 1600px; }
 .resizable-table th { position: relative; overflow: visible; text-overflow: ellipsis; white-space: nowrap; }
 .col-resizer { position: absolute; right: 0; top: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 999; background: transparent; border-right: 1px solid rgba(0, 0, 0, 0.2); }
@@ -381,6 +483,20 @@ include __DIR__ . '/../../includes/header.php';
 }
 .needs-review-preview-image {
     cursor: zoom-in;
+}
+
+/* Scroll hint badge */
+.scroll-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: #6c757d;
+    background: #f1f3f5;
+    border: 1px solid #dee2e6;
+    border-radius: 20px;
+    padding: 2px 8px;
+    user-select: none;
 }
 </style>
 
@@ -700,7 +816,10 @@ include __DIR__ . '/../../includes/header.php';
                 <div class="tab-pane fade show active" id="final_issues_tab" role="tabpanel">
                     <?php if ($_SESSION['role'] !== 'client'): ?>
                     <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
-                        <div class="small text-muted">Issues for the final report</div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="small text-muted">Issues for the final report</span>
+                            <span class="scroll-hint"><i class="fas fa-arrows-left-right"></i> scroll</span>
+                        </div>
                         <div>
                             <button class="btn btn-sm btn-outline-success me-1" id="finalMarkClientReadyBtn" disabled>
                                 <i class="fas fa-check"></i> Mark Client Ready
@@ -709,27 +828,27 @@ include __DIR__ . '/../../includes/header.php';
                         </div>
                     </div>
                     <?php endif; ?>
-                    <div class="table-responsive">
+                    <div class="final-issues-table-wrap">
                         <table class="table table-sm table-hover align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
                                     <?php if ($_SESSION['role'] !== 'client'): ?>
                                     <th style="width:30px;"><input type="checkbox" id="finalSelectAll"></th>
                                     <?php endif; ?>
-                                    <th style="width:120px; white-space: nowrap;">Issue Key</th>
-                                    <th>Issue Title</th>
-                                    <th style="width:100px;">Severity</th>
-                                    <th style="width:100px;">Priority</th>
-                                    <th style="width:120px;">Status</th>
+                                    <th style="width:110px;">Issue Key</th>
+                                    <th style="min-width:200px;">Issue Title</th>
+                                    <th style="width:90px;">Severity</th>
+                                    <th style="width:90px;">Priority</th>
+                                    <th style="width:110px;">Status</th>
                                     <?php if ($_SESSION['role'] !== 'client'): ?>
                                     <th style="width:120px;">QA Status</th>
-                                    <th style="width:120px;">Reporter</th>
-                                    <th style="width:120px;">QA Name</th>
-                                    <th style="width:100px;">Client Ready</th>
+                                    <th style="width:110px;">Reporter</th>
+                                    <th style="width:110px;">QA Name</th>
+                                    <th style="width:95px;">Client Ready</th>
                                     <?php endif; ?>
-                                    <th style="width:100px;">Pages</th>
+                                    <th style="width:90px;">Pages</th>
                                     <?php if ($_SESSION['role'] !== 'client'): ?>
-                                    <th style="width:120px;">Actions</th>
+                                    <th style="width:110px;">Actions</th>
                                     <?php endif; ?>
                                 </tr>
                             </thead>
@@ -746,7 +865,10 @@ include __DIR__ . '/../../includes/header.php';
                 <?php if ($_SESSION['role'] !== 'client'): ?>
                 <div class="tab-pane fade" id="needs_review_tab" role="tabpanel">
                     <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
-                        <div class="small text-muted">Automated tool findings for manual verification</div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="small text-muted">Automated tool findings for manual verification</span>
+                            <span class="scroll-hint"><i class="fas fa-arrows-left-right"></i> scroll</span>
+                        </div>
                         <div class="d-flex gap-2">
                             <button class="btn btn-sm btn-outline-danger" id="needsReviewDeleteSelectedBtn" type="button" disabled>
                                 <i class="fas fa-trash me-1"></i> Delete Selected
@@ -768,7 +890,7 @@ include __DIR__ . '/../../includes/header.php';
                             <div class="progress-bar progress-bar-striped progress-bar-animated" id="needsReviewScanProgressBar" role="progressbar" style="width: 0%;"></div>
                         </div>
                     </div>
-                    <div class="table-responsive">
+                    <div class="needs-review-wrap">
                         <table class="table table-sm table-hover align-middle mb-0 needs-review-table resizable-table" id="needsReviewResizableTable">
                             <thead class="table-light">
                                 <tr>
