@@ -11,28 +11,65 @@ $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 
 // Get ALL AT Tester's assigned projects (including completed)
-$userIdJson = (string)(int)$userId; // plain integer string for JSON_CONTAINS
-
+// Use simple query without JSON_CONTAINS for compatibility
 $assignedProjectsQuery = "
     SELECT DISTINCT p.id, p.title, p.po_number, p.status, p.project_type,
            COUNT(DISTINCT pp.id) as total_pages,
-           COUNT(DISTINCT CASE WHEN pe.at_tester_id = ? OR JSON_CONTAINS(COALESCE(pe.at_tester_ids,'[]'), ?) THEN pp.id END) as assigned_pages,
-           COUNT(DISTINCT CASE WHEN pe.status = 'tested' AND (pe.at_tester_id = ? OR JSON_CONTAINS(COALESCE(pe.at_tester_ids,'[]'), ?)) THEN pp.id END) as completed_pages
+           COUNT(DISTINCT CASE WHEN pe.at_tester_id = ? THEN pp.id END) as assigned_pages,
+           COUNT(DISTINCT CASE WHEN pe.status = 'tested' AND pe.at_tester_id = ? THEN pp.id END) as completed_pages
     FROM projects p
     LEFT JOIN project_pages pp ON p.id = pp.project_id
     LEFT JOIN page_environments pe ON pp.id = pe.page_id
     WHERE (
         pe.at_tester_id = ?
         OR pp.at_tester_id = ?
-        OR JSON_CONTAINS(COALESCE(pe.at_tester_ids,'[]'), ?)
-        OR JSON_CONTAINS(COALESCE(pp.at_tester_ids,'[]'), ?)
     )
     GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
     ORDER BY p.created_at DESC
 ";
 
 $assignedProjects = $db->prepare($assignedProjectsQuery);
-$assignedProjects->execute([$userId, $userIdJson, $userId, $userIdJson, $userId, $userId, $userIdJson, $userIdJson]);
+$assignedProjects->execute([$userId, $userId, $userId, $userId]);
+$projects = $assignedProjects->fetchAll();
+
+// Also fetch projects assigned via JSON array fields (at_tester_ids)
+try {
+    $jsonQuery = "
+        SELECT DISTINCT p.id FROM projects p
+        LEFT JOIN project_pages pp ON p.id = pp.project_id
+        LEFT JOIN page_environments pe ON pp.id = pe.page_id
+        WHERE (
+            (pe.at_tester_ids IS NOT NULL AND pe.at_tester_ids LIKE ?)
+            OR (pp.at_tester_ids IS NOT NULL AND pp.at_tester_ids LIKE ?)
+        )
+    ";
+    $likeVal = '%' . $userId . '%';
+    $jsonStmt = $db->prepare($jsonQuery);
+    $jsonStmt->execute([$likeVal, $likeVal]);
+    $jsonProjectIds = $jsonStmt->fetchAll(PDO::FETCH_COLUMN);
+
+    if (!empty($jsonProjectIds)) {
+        $existingIds = array_column($projects, 'id');
+        $newIds = array_diff($jsonProjectIds, $existingIds);
+        if (!empty($newIds)) {
+            $placeholders = implode(',', array_fill(0, count($newIds), '?'));
+            $extraStmt = $db->prepare("
+                SELECT DISTINCT p.id, p.title, p.po_number, p.status, p.project_type,
+                       COUNT(DISTINCT pp.id) as total_pages,
+                       0 as assigned_pages, 0 as completed_pages
+                FROM projects p
+                LEFT JOIN project_pages pp ON p.id = pp.project_id
+                WHERE p.id IN ($placeholders)
+                GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
+            ");
+            $extraStmt->execute(array_values($newIds));
+            $extraProjects = $extraStmt->fetchAll();
+            $projects = array_merge($projects, $extraProjects);
+        }
+    }
+} catch (Exception $e) {
+    // JSON fields may not exist on all installs — ignore
+}
 $projects = $assignedProjects->fetchAll();
 
 include __DIR__ . '/../../includes/header.php';
