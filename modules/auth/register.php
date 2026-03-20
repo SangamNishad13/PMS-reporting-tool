@@ -113,7 +113,7 @@ include __DIR__ . '/../../includes/header.php';
                             <div class="col-md-6 mb-3">
                                 <label for="password" class="form-label">Password *</label>
                                 <input type="password" class="form-control" id="password" name="password" 
-                                       required minlength="6">
+                                       required minlength="8">
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="confirm_password" class="form-label">Confirm Password *</label>

@@ -13,6 +13,9 @@ if (!$auth->isLoggedIn()) {
     exit;
 }
 
+// CSRF protection
+enforceApiCsrf();
+
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'];

@@ -6,6 +6,9 @@ header('Content-Type: application/json; charset=utf-8');
 $auth = new Auth();
 $auth->requireLogin();
 
+// CSRF protection
+enforceApiCsrf();
+
 $db = Database::getInstance();
 $currentUserId = $_SESSION['user_id'];
 $isAdmin = isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin','super_admin']);

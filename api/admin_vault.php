@@ -1,6 +1,7 @@
 <?php
 require_once '../config/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/helpers.php';
 
 header('Content-Type: application/json');
 
@@ -22,15 +23,54 @@ if (!in_array($user_role, ['admin', 'super_admin'])) {
     exit;
 }
 
-// Simple encryption/decryption (use stronger encryption in production)
-function encryptPassword($password) {
-    $key = 'your-secret-key-change-this'; // Change this in production
-    return base64_encode(openssl_encrypt($password, 'AES-128-ECB', $key));
+// CSRF validation for all state-changing (non-GET) requests
+enforceApiCsrf();
+
+// AES-256-GCM encryption with random IV and authentication tag
+function getVaultKey() {
+    $key = getenv('VAULT_ENCRYPTION_KEY');
+    if (!$key) {
+        // Derive from APP_KEY env var or a server-specific secret
+        $appKey = getenv('APP_KEY') ?: (defined('APP_SECRET') ? APP_SECRET : '');
+        if (empty($appKey)) {
+            // Fallback: derive from server-specific values (not ideal but better than hardcoded)
+            $appKey = php_uname('n') . $_SERVER['SERVER_ADDR'] ?? 'fallback';
+        }
+        $key = hash('sha256', $appKey, true); // 32 bytes for AES-256
+    } else {
+        $key = base64_decode($key) ?: hash('sha256', $key, true);
+    }
+    return $key;
 }
 
-function decryptPassword($encrypted) {
-    $key = 'your-secret-key-change-this'; // Change this in production
-    return openssl_decrypt(base64_decode($encrypted), 'AES-128-ECB', $key);
+function encryptPassword($password) {
+    $key = getVaultKey();
+    $iv = random_bytes(12); // 96-bit IV for GCM
+    $tag = '';
+    $encrypted = openssl_encrypt($password, 'AES-256-GCM', $key, OPENSSL_RAW_DATA, $iv, $tag, '', 16);
+    if ($encrypted === false) return '';
+    // Store: base64(iv + tag + ciphertext)
+    return base64_encode($iv . $tag . $encrypted);
+}
+
+function decryptPassword($stored) {
+    if (empty($stored)) return '';
+    $key = getVaultKey();
+    $raw = base64_decode($stored);
+    if ($raw === false || strlen($raw) < 28) {
+        // Legacy AES-128-ECB fallback (for old records only)
+        $legacyKey = getenv('VAULT_LEGACY_KEY') ?: '';
+        if ($legacyKey) {
+            $result = @openssl_decrypt(base64_decode($stored), 'AES-128-ECB', $legacyKey);
+            return $result !== false ? $result : '';
+        }
+        return '';
+    }
+    $iv  = substr($raw, 0, 12);
+    $tag = substr($raw, 12, 16);
+    $ciphertext = substr($raw, 28);
+    $decrypted = openssl_decrypt($ciphertext, 'AES-256-GCM', $key, OPENSSL_RAW_DATA, $iv, $tag);
+    return $decrypted !== false ? $decrypted : '';
 }
 
 try {

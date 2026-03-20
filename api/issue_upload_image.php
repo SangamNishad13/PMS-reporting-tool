@@ -8,6 +8,7 @@ function issue_upload_debug_log($msg) {
 
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/helpers.php';
 
 
 issue_upload_debug_log('--- New upload request ---');
@@ -15,6 +16,9 @@ $auth = new Auth();
 $auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin']);
 
 header('Content-Type: application/json');
+
+// CSRF protection for file uploads
+enforceApiCsrf();
 
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

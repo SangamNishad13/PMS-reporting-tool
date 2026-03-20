@@ -8,6 +8,9 @@ header('Content-Type: application/json');
 $auth = new Auth();
 $auth->requireLogin();
 
+// CSRF protection
+enforceApiCsrf();
+
 $db = Database::getInstance();
 $action = $_GET['action'] ?? '';
 $projectId = (int)($_GET['project_id'] ?? 0);

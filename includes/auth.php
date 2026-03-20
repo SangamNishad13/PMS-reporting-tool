@@ -123,7 +123,25 @@ class Auth {
         }
         
         // Sanitize username input
-        $username = filter_var(trim($username), FILTER_SANITIZE_STRING);
+        $username = trim(strip_tags($username));
+
+        // Rate limiting: max 5 failed attempts per IP per 15 minutes
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        $rateLimitKey = 'login_attempts_' . md5($ip);
+        $maxAttempts = 5;
+        $lockoutTime = 900; // 15 minutes
+        $now = time();
+
+        if (!isset($_SESSION[$rateLimitKey])) {
+            $_SESSION[$rateLimitKey] = [];
+        }
+        // Remove attempts older than lockout window
+        $_SESSION[$rateLimitKey] = array_filter($_SESSION[$rateLimitKey], function($t) use ($now, $lockoutTime) {
+            return ($now - $t) < $lockoutTime;
+        });
+        if (count($_SESSION[$rateLimitKey]) >= $maxAttempts) {
+            return false; // Too many attempts
+        }
         
         $stmt = $this->db->prepare("
             SELECT id, username, email, password, full_name, role, is_active, force_password_reset, can_manage_issue_config, can_manage_devices
@@ -135,6 +153,8 @@ class Auth {
         $user = $stmt->fetch();
         
         if ($user && password_verify($password, $user['password'])) {
+            // Clear rate limit on successful login
+            unset($_SESSION[$rateLimitKey]);
             // Regenerate session ID to prevent session fixation
             session_regenerate_id(true);
             
@@ -181,6 +201,8 @@ class Auth {
             return true;
         }
         
+        // Track failed attempt
+        $_SESSION[$rateLimitKey][] = $now;
         return false;
     }
     
@@ -237,8 +259,8 @@ class Auth {
             return false;
         }
         
-        // Auto-logout only after 4 hours of inactivity (no requests) - increased for better user experience
-        $idleTimeout = 4 * 60 * 60; // 4 hours instead of 2 hours
+        // Auto-logout after 30 minutes of inactivity
+        $idleTimeout = 30 * 60; // 30 minutes
         if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > $idleTimeout)) {
             try {
                 $sid = session_id();

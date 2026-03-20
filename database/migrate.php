@@ -4,8 +4,12 @@
  * Allows running migrations and checking migration status
  */
 
-// Simple password protection
-$MIGRATION_PASSWORD = 'admin123'; // Change this password!
+// Simple password protection - set via environment variable
+$MIGRATION_PASSWORD = getenv('MIGRATION_PASSWORD') ?: null;
+if (!$MIGRATION_PASSWORD) {
+    http_response_code(403);
+    die('Migration tool is disabled. Set MIGRATION_PASSWORD environment variable to enable.');
+}
 
 session_start();
 

@@ -17,7 +17,7 @@ return [
     
     // Security
     'session_timeout' => 1800, // 30 minutes
-    'password_min_length' => 6,
+    'password_min_length' => 8,
     'max_login_attempts' => 5,
     'lockout_time' => 900, // 15 minutes
     
@@ -41,7 +41,7 @@ return [
         return !in_array(strtolower(trim((string)$v)), ['0', 'false', 'no', 'off'], true);
     })(),
     'smtp_username' => getenv('SMTP_USERNAME') ?: 'noreply@athenaeumtransformation.com',
-    'smtp_password' => getenv('SMTP_PASSWORD') ?: 'Sakshi@2026',
+    'smtp_password' => getenv('SMTP_PASSWORD') ?: '',
     
     // Features
     'allow_registration' => false,

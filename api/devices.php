@@ -11,6 +11,9 @@ if (!isLoggedIn()) {
     exit;
 }
 
+// CSRF protection
+enforceApiCsrf();
+
 $pdo = Database::getInstance();
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 $user_id = $_SESSION['user_id'];

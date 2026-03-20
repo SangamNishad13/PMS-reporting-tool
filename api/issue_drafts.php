@@ -11,6 +11,9 @@ if (!$auth->isLoggedIn()) {
     exit;
 }
 
+// CSRF protection
+enforceApiCsrf();
+
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 $action = $_GET['action'] ?? $_POST['action'] ?? '';

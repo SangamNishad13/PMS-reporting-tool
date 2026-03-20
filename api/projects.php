@@ -14,6 +14,9 @@ if (!$auth->isLoggedIn()) {
     exit;
 }
 
+// CSRF protection for state-changing requests
+enforceApiCsrf();
+
 // Set JSON response headers
 function jsonResponse($data, $statusCode = 200) {
     http_response_code($statusCode);

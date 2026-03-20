@@ -14,6 +14,9 @@ if (!$auth->isLoggedIn()) {
     exit;
 }
 
+// CSRF protection
+enforceApiCsrf();
+
 $db = Database::getInstance();
 $method = $_SERVER['REQUEST_METHOD'];
 

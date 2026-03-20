@@ -80,6 +80,10 @@
 
         var fd = new FormData();
         fd.append(opts.fieldName || 'image', file);
+        // Attach CSRF token if available
+        if (window._csrfToken) {
+            fd.append('csrf_token', window._csrfToken);
+        }
 
         return fetch(uploadUrl, {
             method: 'POST',

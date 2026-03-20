@@ -283,6 +283,42 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
         });
     })();
     </script>
+    <meta name="csrf-token" content="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
+    <script>
+    // Automatically attach CSRF token to all jQuery AJAX POST/PUT/PATCH/DELETE requests
+    (function() {
+        var csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        if (typeof $ !== 'undefined' && $.ajaxSetup) {
+            $.ajaxSetup({
+                beforeSend: function(xhr, settings) {
+                    var safeMethods = /^(GET|HEAD|OPTIONS|TRACE)$/i;
+                    if (!safeMethods.test(settings.type)) {
+                        xhr.setRequestHeader('X-CSRF-Token', csrfToken);
+                    }
+                }
+            });
+        }
+        // Also expose for fetch() calls
+        window._csrfToken = csrfToken;
+        
+        // Helper: fetch with CSRF token automatically included
+        window.csrfFetch = function(url, options) {
+            options = options || {};
+            var method = (options.method || 'GET').toUpperCase();
+            var safeMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE'];
+            if (safeMethods.indexOf(method) === -1) {
+                // For FormData, append token; for other bodies, add header
+                if (options.body instanceof FormData) {
+                    options.body.append('csrf_token', csrfToken);
+                } else {
+                    options.headers = options.headers || {};
+                    options.headers['X-CSRF-Token'] = csrfToken;
+                }
+            }
+            return fetch(url, options);
+        };
+    })();
+    </script>
 </head>
 <body class="app-shell">
     <a href="#main-content" class="sr-only skip">Skip to main content</a>

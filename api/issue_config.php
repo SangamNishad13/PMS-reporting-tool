@@ -18,6 +18,9 @@ if (!$canManageIssueConfig) {
     echo json_encode(['error' => 'Unauthorized']);
     exit;
 }
+
+// CSRF protection
+enforceApiCsrf();
 $projectType = $_REQUEST['project_type'] ?? 'web';
 
 // Validate project types

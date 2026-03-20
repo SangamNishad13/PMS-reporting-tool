@@ -15,6 +15,9 @@ if (!$auth->isLoggedIn()) {
     exit;
 }
 
+// CSRF protection for state-changing requests
+enforceApiCsrf();
+
 // Handle session refresh requests to prevent timeout during active use
 if (isset($_SERVER['HTTP_X_SESSION_REFRESH']) && $_SERVER['HTTP_X_SESSION_REFRESH'] === '1') {
     // Update last activity time to prevent session timeout

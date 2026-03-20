@@ -4,6 +4,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/helpers.php';
 
 header('Content-Type: application/json');
 
@@ -12,6 +13,9 @@ if (!isset($_SESSION['user_id'])) {
     echo json_encode(['error' => 'Unauthorized']);
     exit;
 }
+
+// CSRF protection for file uploads
+enforceApiCsrf();
 
 if (!isset($_FILES['image'])) {
     http_response_code(400);

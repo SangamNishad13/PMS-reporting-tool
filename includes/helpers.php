@@ -352,6 +352,25 @@ function verifyCsrfToken($token) {
 }
 
 /**
+ * Enforce CSRF token for state-changing API requests (POST/PUT/PATCH/DELETE).
+ * Accepts token from POST body or X-CSRF-Token header.
+ * Sends 403 JSON response and exits if validation fails.
+ */
+function enforceApiCsrf() {
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if (in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) {
+        return; // Safe methods don't need CSRF
+    }
+    $token = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (!verifyCsrfToken($token)) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => 'Invalid or missing CSRF token']);
+        exit;
+    }
+}
+
+/**
  * Get base URL of the application
  * 
  * @return string Base URL

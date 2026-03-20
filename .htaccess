@@ -16,8 +16,13 @@ RewriteEngine On
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
     
-    # HSTS for HTTPS (uncomment if using HTTPS)
-    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    # HSTS for HTTPS
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    
+    # Additional security headers
+    Header always set X-Permitted-Cross-Domain-Policies "none"
+    Header always set Cross-Origin-Opener-Policy "same-origin"
+    Header always set Cross-Origin-Resource-Policy "same-origin"
     
     # Remove server information
     Header always unset Server
@@ -130,3 +135,37 @@ LimitRequestBody 52428800
 
 # Disable server signature
 ServerSignature Off
+
+# Disable PHP error display in production (prevent information leakage)
+<IfModule mod_php.c>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_flag log_errors On
+    php_value error_reporting 0
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_flag log_errors On
+    php_value error_reporting 0
+</IfModule>
+
+# Block common attack patterns in User-Agent
+RewriteCond %{HTTP_USER_AGENT} (havij|nikto|sqlmap|nmap|masscan|zgrab|dirbuster|gobuster|wfuzz|hydra) [NC]
+RewriteRule .* - [F,L]
+
+# Prevent clickjacking via meta-refresh
+<FilesMatch "\.php$">
+    Header always set X-Frame-Options "SAMEORIGIN"
+</FilesMatch>
+
+# Block access to backup and temp files
+<FilesMatch "\.(bak|old|orig|save|swp|tmp|~)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>

@@ -12,6 +12,9 @@ if (!$auth->isLoggedIn()) {
     exit;
 }
 
+// CSRF protection for state-changing requests
+enforceApiCsrf();
+
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'];
