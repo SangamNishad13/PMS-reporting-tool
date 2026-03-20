@@ -5,32 +5,10 @@
  */
 
 // Simple password protection - set via environment variable
-// Also supports .env.local file (place outside web root or in project root, never commit)
 $MIGRATION_PASSWORD = getenv('MIGRATION_PASSWORD') ?: null;
-
-// Fallback: load from local env file if exists (not committed to git)
-if (!$MIGRATION_PASSWORD) {
-    $envFile = __DIR__ . '/../.env.local';
-    if (file_exists($envFile)) {
-        $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        foreach ($lines as $line) {
-            if (strpos(trim($line), '#') === 0) continue;
-            if (strpos($line, '=') !== false) {
-                [$key, $val] = explode('=', $line, 2);
-                $key = trim($key);
-                $val = trim($val, " \t\n\r\0\x0B\"'");
-                if ($key === 'MIGRATION_PASSWORD') {
-                    $MIGRATION_PASSWORD = $val;
-                    break;
-                }
-            }
-        }
-    }
-}
-
 if (!$MIGRATION_PASSWORD) {
     http_response_code(403);
-    die('Migration tool is disabled. Set MIGRATION_PASSWORD in environment variables or .env.local file.');
+    die('Migration tool is disabled. Set MIGRATION_PASSWORD environment variable to enable.');
 }
 
 session_start();
