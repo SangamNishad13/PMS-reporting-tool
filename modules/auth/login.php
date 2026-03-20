@@ -12,6 +12,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['logout']) && $_GET['log
     $success = 'You have been successfully logged out.';
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['session']) && $_GET['session'] === 'expired') {
+    $error = 'Your session has expired. Please log in again.';
+}
+
 // If already logged in, redirect to dashboard
 if ($auth->isLoggedIn()) {
     $role = $_SESSION['role'];

@@ -715,7 +715,10 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
     <!-- Notification Loading System -->
     <script>
     (function() {
+        var _notifPollingActive = true;
+
         function loadNotifications() {
+            if (!_notifPollingActive) return;
             $.get('<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/api/status.php?action=get_notifications', function(response) {
                 if (response.success) {
                     const notifications = response.notifications || [];
@@ -745,25 +748,25 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
                             if (link !== '#' && baseDir && !/^https?:\/\//i.test(link) && link.indexOf(baseDir + '/') !== 0) {
                                 link = baseDir + link;
                             }
-                            html += `
-                                <li>
-                                    <a class="dropdown-item ${readClass} py-2 notification-item" href="${escapeHtml(link)}" data-id="${notif.id}">
-                                        <div class="d-flex align-items-start">
-                                            <i class="fas ${icon} text-primary me-2 mt-1"></i>
-                                            <div class="flex-grow-1">
-                                                <div class="notification-message small mb-1">${escapeHtml(notif.message)}</div>
-                                                <div class="notification-time text-muted">${notif.time_ago}</div>
-                                            </div>
-                                        </div>
-                                    </a>
-                                </li>
-                            `;
+                            html += '<li>' +
+                                '<a class="dropdown-item ' + readClass + ' py-2 notification-item" href="' + escapeHtml(link) + '" data-id="' + notif.id + '">' +
+                                '<div class="d-flex align-items-start">' +
+                                '<i class="fas ' + icon + ' text-primary me-2 mt-1"></i>' +
+                                '<div class="flex-grow-1">' +
+                                '<div class="notification-message small mb-1">' + escapeHtml(notif.message) + '</div>' +
+                                '<div class="notification-time text-muted">' + notif.time_ago + '</div>' +
+                                '</div></div></a></li>';
                         });
                         content.html(html);
                     }
                 }
-            }).fail(function() {
-                // Silently fail
+            }).fail(function(xhr) {
+                if (xhr.status === 401) {
+                    // Session expired — stop polling and redirect to login
+                    _notifPollingActive = false;
+                    window.location.href = '<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/auth/login.php?session=expired';
+                }
+                // Other errors: silently ignore
             });
         }
         
@@ -811,8 +814,10 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
                     reminderShown = true;
                     showHoursReminderModal(response);
                 }
-            }).fail(function() {
-                // Silently fail
+            }).fail(function(xhr) {
+                if (xhr.status === 401) {
+                    window.location.href = '<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/auth/login.php?session=expired';
+                }
             });
         }
         
