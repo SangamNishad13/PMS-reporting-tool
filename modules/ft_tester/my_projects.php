@@ -32,6 +32,44 @@ $assignedProjects = $db->prepare($assignedProjectsQuery);
 $assignedProjects->execute([$userId, $userId, $userId, $userId]);
 $projects = $assignedProjects->fetchAll();
 
+// DEBUG: check what columns exist and what data is there for this user
+$debugInfo = [];
+try {
+    $d1 = $db->prepare("SELECT COUNT(*) FROM page_environments WHERE ft_tester_id = ?");
+    $d1->execute([$userId]);
+    $debugInfo['pe_ft_tester_id_count'] = $d1->fetchColumn();
+
+    $d2 = $db->prepare("SELECT COUNT(*) FROM project_pages WHERE ft_tester_id = ?");
+    $d2->execute([$userId]);
+    $debugInfo['pp_ft_tester_id_count'] = $d2->fetchColumn();
+
+    $d3 = $db->query("SELECT COUNT(*) FROM page_environments");
+    $debugInfo['total_pe_rows'] = $d3->fetchColumn();
+
+    $d4 = $db->query("SELECT COUNT(*) FROM project_pages");
+    $debugInfo['total_pp_rows'] = $d4->fetchColumn();
+
+    // Check if ft_tester_ids column exists
+    $d5 = $db->query("SHOW COLUMNS FROM page_environments LIKE 'ft_tester_ids'");
+    $debugInfo['pe_ft_tester_ids_col_exists'] = $d5->rowCount() > 0 ? 'yes' : 'no';
+
+    $d6 = $db->query("SHOW COLUMNS FROM project_pages LIKE 'ft_tester_ids'");
+    $debugInfo['pp_ft_tester_ids_col_exists'] = $d6->rowCount() > 0 ? 'yes' : 'no';
+
+    // Sample a few page_environments rows
+    $d7 = $db->query("SELECT id, page_id, ft_tester_id FROM page_environments LIMIT 5");
+    $debugInfo['sample_pe'] = $d7->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $debugInfo['error'] = $e->getMessage();
+}
+// Show debug only to admin viewing as ft_tester (remove after fix)
+if (in_array($_SESSION['role'], ['admin', 'super_admin'])) {
+    echo '<pre style="background:#fff;padding:10px;margin:10px;font-size:12px;z-index:9999;position:relative">';
+    echo 'USER ID: ' . $userId . "\n";
+    print_r($debugInfo);
+    echo '</pre>';
+}
+
 // Also fetch projects assigned via JSON array fields (ft_tester_ids)
 try {
     $jsonQuery = "
