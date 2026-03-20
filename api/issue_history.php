@@ -26,9 +26,8 @@ if (!$auth->isLoggedIn()) {
     exit;
 }
 
-$userInfo = $auth->getUser();
-$userRole = $userInfo['role'] ?? '';
-$userId   = (int)($userInfo['id'] ?? 0);
+$userRole = $auth->getUserRole() ?? '';
+$userId   = (int)($auth->getUserId() ?? 0);
 $isAdmin  = in_array($userRole, ['admin', 'super_admin', 'superadmin'], true);
 
 $db = Database::getInstance();
