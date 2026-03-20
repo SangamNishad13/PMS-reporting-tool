@@ -11,26 +11,28 @@ $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 
 // Get ALL AT Tester's assigned projects (including completed)
+$userIdJson = (string)(int)$userId; // plain integer string for JSON_CONTAINS
+
 $assignedProjectsQuery = "
     SELECT DISTINCT p.id, p.title, p.po_number, p.status, p.project_type,
            COUNT(DISTINCT pp.id) as total_pages,
-           COUNT(DISTINCT CASE WHEN pe.at_tester_id = ? OR JSON_CONTAINS(pe.at_tester_ids, CAST(? AS JSON)) THEN pp.id END) as assigned_pages,
-           COUNT(DISTINCT CASE WHEN pe.status = 'tested' AND (pe.at_tester_id = ? OR JSON_CONTAINS(pe.at_tester_ids, CAST(? AS JSON))) THEN pp.id END) as completed_pages
+           COUNT(DISTINCT CASE WHEN pe.at_tester_id = ? OR JSON_CONTAINS(COALESCE(pe.at_tester_ids,'[]'), ?) THEN pp.id END) as assigned_pages,
+           COUNT(DISTINCT CASE WHEN pe.status = 'tested' AND (pe.at_tester_id = ? OR JSON_CONTAINS(COALESCE(pe.at_tester_ids,'[]'), ?)) THEN pp.id END) as completed_pages
     FROM projects p
     LEFT JOIN project_pages pp ON p.id = pp.project_id
     LEFT JOIN page_environments pe ON pp.id = pe.page_id
     WHERE (
         pe.at_tester_id = ?
         OR pp.at_tester_id = ?
-        OR JSON_CONTAINS(pe.at_tester_ids, CAST(? AS JSON))
-        OR JSON_CONTAINS(pp.at_tester_ids, CAST(? AS JSON))
+        OR JSON_CONTAINS(COALESCE(pe.at_tester_ids,'[]'), ?)
+        OR JSON_CONTAINS(COALESCE(pp.at_tester_ids,'[]'), ?)
     )
     GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
     ORDER BY p.created_at DESC
 ";
 
 $assignedProjects = $db->prepare($assignedProjectsQuery);
-$assignedProjects->execute([$userId, $userId, $userId, $userId, $userId, $userId, $userId, $userId]);
+$assignedProjects->execute([$userId, $userIdJson, $userId, $userIdJson, $userId, $userId, $userIdJson, $userIdJson]);
 $projects = $assignedProjects->fetchAll();
 
 include __DIR__ . '/../../includes/header.php';
