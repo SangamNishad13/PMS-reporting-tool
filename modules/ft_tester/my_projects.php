@@ -8,106 +8,25 @@ $auth->requireRole(['ft_tester', 'admin', 'super_admin']);
 
 $baseDir = getBaseDir();
 $db = Database::getInstance();
-$userId = $_SESSION['user_id'];
+$userId = (int)$_SESSION['user_id'];
 
-// Get ALL FT Tester's assigned projects (including completed)
-// Use simple query without JSON_CONTAINS for compatibility
-$assignedProjectsQuery = "
+// Assignments stored in project_pages.ft_tester_ids (JSON array) or ft_tester_id (single int)
+// page_environments table is not used for assignments on this install
+$likeVal = '%' . $userId . '%';
+$assignedProjects = $db->prepare("
     SELECT DISTINCT p.id, p.title, p.po_number, p.status, p.project_type,
            COUNT(DISTINCT pp.id) as total_pages,
-           COUNT(DISTINCT CASE WHEN pe.ft_tester_id = ? THEN pp.id END) as assigned_pages,
-           COUNT(DISTINCT CASE WHEN pe.status = 'tested' AND pe.ft_tester_id = ? THEN pp.id END) as completed_pages
+           COUNT(DISTINCT CASE
+               WHEN pp.ft_tester_id = ? OR pp.ft_tester_ids LIKE ?
+               THEN pp.id END) as assigned_pages,
+           0 as completed_pages
     FROM projects p
-    LEFT JOIN project_pages pp ON p.id = pp.project_id
-    LEFT JOIN page_environments pe ON pp.id = pe.page_id
-    WHERE (
-        pe.ft_tester_id = ?
-        OR pp.ft_tester_id = ?
-    )
+    INNER JOIN project_pages pp ON p.id = pp.project_id
+    WHERE pp.ft_tester_id = ? OR pp.ft_tester_ids LIKE ?
     GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
     ORDER BY p.created_at DESC
-";
-
-$assignedProjects = $db->prepare($assignedProjectsQuery);
-$assignedProjects->execute([$userId, $userId, $userId, $userId]);
-$projects = $assignedProjects->fetchAll();
-
-// DEBUG: check what columns exist and what data is there for this user
-$debugInfo = [];
-try {
-    $d1 = $db->prepare("SELECT COUNT(*) FROM page_environments WHERE ft_tester_id = ?");
-    $d1->execute([$userId]);
-    $debugInfo['pe_ft_tester_id_count'] = $d1->fetchColumn();
-
-    $d2 = $db->prepare("SELECT COUNT(*) FROM project_pages WHERE ft_tester_id = ?");
-    $d2->execute([$userId]);
-    $debugInfo['pp_ft_tester_id_count'] = $d2->fetchColumn();
-
-    $d3 = $db->query("SELECT COUNT(*) FROM page_environments");
-    $debugInfo['total_pe_rows'] = $d3->fetchColumn();
-
-    $d4 = $db->query("SELECT COUNT(*) FROM project_pages");
-    $debugInfo['total_pp_rows'] = $d4->fetchColumn();
-
-    // Check if ft_tester_ids column exists
-    $d5 = $db->query("SHOW COLUMNS FROM page_environments LIKE 'ft_tester_ids'");
-    $debugInfo['pe_ft_tester_ids_col_exists'] = $d5->rowCount() > 0 ? 'yes' : 'no';
-
-    $d6 = $db->query("SHOW COLUMNS FROM project_pages LIKE 'ft_tester_ids'");
-    $debugInfo['pp_ft_tester_ids_col_exists'] = $d6->rowCount() > 0 ? 'yes' : 'no';
-
-    // Sample a few page_environments rows
-    $d7 = $db->query("SELECT id, page_id, ft_tester_id FROM page_environments LIMIT 5");
-    $debugInfo['sample_pe'] = $d7->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-    $debugInfo['error'] = $e->getMessage();
-}
-// Show debug only to admin viewing as ft_tester (remove after fix)
-if (in_array($_SESSION['role'], ['admin', 'super_admin'])) {
-    echo '<pre style="background:#fff;padding:10px;margin:10px;font-size:12px;z-index:9999;position:relative">';
-    echo 'USER ID: ' . $userId . "\n";
-    print_r($debugInfo);
-    echo '</pre>';
-}
-
-// Also fetch projects assigned via JSON array fields (ft_tester_ids)
-try {
-    $jsonQuery = "
-        SELECT DISTINCT p.id FROM projects p
-        LEFT JOIN project_pages pp ON p.id = pp.project_id
-        LEFT JOIN page_environments pe ON pp.id = pe.page_id
-        WHERE (
-            (pe.ft_tester_ids IS NOT NULL AND pe.ft_tester_ids LIKE ?)
-            OR (pp.ft_tester_ids IS NOT NULL AND pp.ft_tester_ids LIKE ?)
-        )
-    ";
-    $likeVal = '%' . $userId . '%';
-    $jsonStmt = $db->prepare($jsonQuery);
-    $jsonStmt->execute([$likeVal, $likeVal]);
-    $jsonProjectIds = $jsonStmt->fetchAll(PDO::FETCH_COLUMN);
-
-    if (!empty($jsonProjectIds)) {
-        $existingIds = array_column($projects, 'id');
-        $newIds = array_diff($jsonProjectIds, $existingIds);
-        if (!empty($newIds)) {
-            $placeholders = implode(',', array_fill(0, count($newIds), '?'));
-            $extraStmt = $db->prepare("
-                SELECT DISTINCT p.id, p.title, p.po_number, p.status, p.project_type,
-                       COUNT(DISTINCT pp.id) as total_pages,
-                       0 as assigned_pages, 0 as completed_pages
-                FROM projects p
-                LEFT JOIN project_pages pp ON p.id = pp.project_id
-                WHERE p.id IN ($placeholders)
-                GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
-            ");
-            $extraStmt->execute(array_values($newIds));
-            $extraProjects = $extraStmt->fetchAll();
-            $projects = array_merge($projects, $extraProjects);
-        }
-    }
-} catch (Exception $e) {
-    // JSON fields may not exist on all installs — ignore
-}
+");
+$assignedProjects->execute([$userId, $likeVal, $userId, $likeVal]);
 $projects = $assignedProjects->fetchAll();
 
 include __DIR__ . '/../../includes/header.php';
@@ -125,7 +44,6 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
 
-    <!-- All Projects Table with Filters -->
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="fas fa-list"></i> All Assigned Projects</h5>
@@ -164,19 +82,16 @@ include __DIR__ . '/../../includes/header.php';
                                 <th>Type</th>
                                 <th>Status</th>
                                 <th>Assigned Pages</th>
-                                <th>Completed</th>
                                 <th>Progress</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach ($projects as $project): ?>
-                            <tr data-status="<?php echo htmlspecialchars($project['status']); ?>" 
+                            <tr data-status="<?php echo htmlspecialchars($project['status']); ?>"
                                 data-type="<?php echo htmlspecialchars($project['project_type']); ?>"
                                 data-title="<?php echo htmlspecialchars(strtolower($project['title'])); ?>">
-                                <td>
-                                    <strong><?php echo htmlspecialchars($project['title']); ?></strong>
-                                </td>
+                                <td><strong><?php echo htmlspecialchars($project['title']); ?></strong></td>
                                 <td><?php echo htmlspecialchars($project['po_number']); ?></td>
                                 <td>
                                     <span class="badge bg-secondary">
@@ -185,26 +100,16 @@ include __DIR__ . '/../../includes/header.php';
                                 </td>
                                 <td>
                                     <?php
-                                    $statusColors = [
-                                        'planning' => 'secondary',
-                                        'in_progress' => 'primary',
-                                        'on_hold' => 'warning',
-                                        'completed' => 'success',
-                                        'cancelled' => 'danger'
-                                    ];
+                                    $statusColors = ['planning'=>'secondary','in_progress'=>'primary','on_hold'=>'warning','completed'=>'success','cancelled'=>'danger'];
                                     $statusColor = $statusColors[$project['status']] ?? 'secondary';
                                     ?>
                                     <span class="badge bg-<?php echo $statusColor; ?>">
                                         <?php echo formatProjectStatusLabel($project['status']); ?>
                                     </span>
                                 </td>
-                                <td><?php echo $project['assigned_pages']; ?></td>
-                                <td><?php echo $project['completed_pages']; ?></td>
+                                <td><?php echo (int)$project['assigned_pages']; ?></td>
                                 <td>
-                                    <?php 
-                                    $progress = $project['assigned_pages'] > 0 ? 
-                                        round(($project['completed_pages'] / $project['assigned_pages']) * 100) : 0;
-                                    ?>
+                                    <?php $progress = $project['assigned_pages'] > 0 ? round(($project['completed_pages'] / $project['assigned_pages']) * 100) : 0; ?>
                                     <div class="progress" style="height: 20px; min-width: 100px;">
                                         <div class="progress-bar bg-success" style="width: <?php echo $progress; ?>%">
                                             <?php echo $progress; ?>%
@@ -212,9 +117,9 @@ include __DIR__ . '/../../includes/header.php';
                                     </div>
                                 </td>
                                 <td>
-                                    <a href="<?php echo $baseDir; ?>/modules/at_tester/project_tasks.php?project_id=<?php echo $project['id']; ?>" 
+                                    <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $project['id']; ?>"
                                        class="btn btn-sm btn-primary">
-                                        <i class="fas fa-tasks"></i> View Tasks
+                                        <i class="fas fa-eye"></i> View
                                     </a>
                                 </td>
                             </tr>
@@ -228,5 +133,4 @@ include __DIR__ . '/../../includes/header.php';
 </div>
 
 <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/my-projects-filter.js"></script>
-
 <?php include __DIR__ . '/../../includes/footer.php'; ?>
