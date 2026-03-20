@@ -263,8 +263,15 @@ function parseReporterQaStatusMapInput($value) {
 function parseReporterQaStatusMapFromMetaValues($metaValues) {
     if (!is_array($metaValues) || empty($metaValues)) return [];
     foreach ($metaValues as $value) {
-        $map = parseReporterQaStatusMapInput($value);
-        if (!empty($map)) return $map;
+        if (!is_string($value)) continue;
+        $raw = trim($value);
+        if ($raw === '' || $raw === 'null') continue;
+        // Attempt to decode; accept both populated maps AND empty objects {}
+        $decoded = json_decode($raw, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            // Return immediately — even an empty map {} is a valid canonical value
+            return $decoded;
+        }
     }
     return [];
 }
@@ -1678,7 +1685,9 @@ try {
                 $qaStatusInput = array_values(array_unique($flatQaStatuses));
             }
             replaceMeta($db, $id, 'qa_status', $qaStatusInput);
-            replaceMeta($db, $id, 'reporter_qa_status_map', [json_encode($reporterQaStatusMap, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+            // Store as a single JSON-encoded object (plain object, not array-of-strings)
+            // This is the canonical format; parseReporterQaStatusMapFromMetaValues handles legacy array-of-strings too.
+            replaceMeta($db, $id, 'reporter_qa_status_map', [json_encode((object)$reporterQaStatusMap, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
             persistIssueReporterQaStatuses($db, $id, $reporterQaStatusMap, $userId);
         }
         

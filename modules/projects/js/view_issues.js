@@ -2294,12 +2294,17 @@
             }
 
             var inst = bootstrap.Modal.getInstance(el);
-            if (inst) inst.hide();
+            if (inst) {
+                el.addEventListener('hidden.bs.modal', function onHidden() {
+                    el.removeEventListener('hidden.bs.modal', onHidden);
+                    cleanupModalOverlayState();
+                }, { once: true });
+                inst.hide();
+            }
             
             // Cleanup aria-hidden immediately if element exists
             el.setAttribute('aria-hidden', 'true');
         });
-        setTimeout(cleanupModalOverlayState, 300);
     }
 
     function toggleFinalIssueFields(enable) {
@@ -2385,10 +2390,11 @@
         }
         var modal = new bootstrap.Modal(document.getElementById('finalIssueModal'));
         modal.show();
-        setTimeout(function () {
+        document.getElementById('finalIssueModal').addEventListener('shown.bs.modal', function onViewerShown() {
+            document.getElementById('finalIssueModal').removeEventListener('shown.bs.modal', onViewerShown);
             var activeTab = document.querySelector('#finalIssueModal .nav-link.active');
             if (activeTab) activeTab.dispatchEvent(new Event('shown.bs.tab', { bubbles: true }));
-        }, 200);
+        });
     }
 
     async function openFinalEditor(issue, options) {
@@ -2466,6 +2472,7 @@
         var reporterQaStatusMapValue = issue
             ? (function() {
                 var raw = issue.reporter_qa_status_map;
+                // PHP now always returns a plain object; handle legacy array-of-strings just in case
                 if (Array.isArray(raw)) {
                     for (var i = 0; i < raw.length; i++) {
                         try {
@@ -2493,8 +2500,10 @@
         }
 
         function applySelectValuesNow() {
-            setTimeout(function () { applyIssueQaPermissionState(); }, 50);
-            setTimeout(function () {
+            // Use microtask + rAF to ensure DOM is ready before applying Select2 values,
+            // avoiding the previous nested setTimeout(50) / setTimeout(60) / setTimeout(150) race conditions.
+            Promise.resolve().then(function () {
+                applyIssueQaPermissionState();
                 setFinalQaStatusValue(qaStatusValue);
                 // Temporarily suppress the reporter change handler to avoid
                 // refreshReporterQaStatusEditor() firing without seedMap (which blanks the field)
@@ -2505,7 +2514,6 @@
                     refreshReporterQaStatusEditor();
                 });
                 // Render reporter QA status directly with known reporters + seedMap
-                // (avoids relying on jQuery('#finalIssueReporters').val() which may not reflect yet)
                 var reportersForQa = (Array.isArray(reportersValue) ? reportersValue : []).map(String).filter(Boolean);
                 renderReporterQaStatusEditor(reportersForQa, reporterQaStatusMapValue);
                 // Set QA Names (multi-select assignees)
@@ -2520,11 +2528,12 @@
                 jQuery('#finalIssueAssignee').val(assigneeIds).trigger('change');
                 // Capture initial state AFTER all Select2 values are set — prevents false "unsaved changes" on edit open
                 if (issue) {
-                    setTimeout(function () {
+                    // rAF ensures Select2 internal state has settled before we snapshot
+                    requestAnimationFrame(function () {
                         issueData.initialFormState = captureFormState();
-                    }, 150);
+                    });
                 }
-            }, 60);
+            });
         }
 
         if (skipShow) {
@@ -2540,27 +2549,16 @@
             modalEl.addEventListener('shown.bs.modal', modalEl._select2SetterHandler, { once: true });
         }
 
-        // Populate metadata fields with a slight delay to ensure Select2 is initialized
-        // Uses retry logic in case loadMetadataOptions() async call hasn't completed yet
-        function applyMetadataFieldValues(attempt) {
-            attempt = attempt || 1;
-            if (typeof issueMetadataFields === 'undefined' || !issueMetadataFields.length) {
-                // Fields not loaded yet - retry up to 10 times (max 2s wait)
-                if (attempt < 10) setTimeout(function () { applyMetadataFieldValues(attempt + 1); }, 200);
-                return;
-            }
+        // Apply metadata field values once fields are loaded (no polling loop needed)
+        function applyMetadataFieldValues() {
             issueMetadataFields.forEach(function (f) {
                 var elId = 'finalIssueField_' + f.field_key;
                 var val = null;
 
-                // Get value from issue data - check multiple locations
                 if (issue) {
-                    // First check if it's directly on the issue object
                     if (issue[f.field_key] !== undefined) {
                         val = issue[f.field_key];
-                    }
-                    // Then check in the metadata object
-                    else if (issue.metadata && issue.metadata[f.field_key] !== undefined) {
+                    } else if (issue.metadata && issue.metadata[f.field_key] !== undefined) {
                         val = issue.metadata[f.field_key];
                     }
                 } else if (draftData && draftData.dynamic_fields && draftData.dynamic_fields[f.field_key] !== undefined) {
@@ -2570,31 +2568,21 @@
                 }
 
                 var $el = jQuery('#' + elId);
-                if (!$el.length) return; // element not rendered yet, skip
-                // For select2 multi-select, ensure value is an array
-                if ($el.prop('multiple') && val && !Array.isArray(val)) {
-                    val = [val];
-                }
-                // For single select, ensure value is a string
-                if (!$el.prop('multiple') && Array.isArray(val)) {
-                    val = val[0] || null;
-                }
-                // For select2-tags fields, ensure missing option values are added
-                // before setting (select2-tags allows custom values but .val() needs option to exist)
+                if (!$el.length) return;
+                if ($el.prop('multiple') && val && !Array.isArray(val)) val = [val];
+                if (!$el.prop('multiple') && Array.isArray(val)) val = val[0] || null;
                 if ($el.hasClass('issue-select2-tags') && val) {
                     var valArr = Array.isArray(val) ? val : [val];
                     valArr.forEach(function (v) {
                         if (!v) return;
                         var exists = $el.find('option[value="' + String(v).replace(/"/g, '\\"') + '"]').length > 0;
-                        if (!exists) {
-                            $el.append(new Option(v, v, false, false));
-                        }
+                        if (!exists) $el.append(new Option(v, v, false, false));
                     });
                 }
                 $el.val(val).trigger('change');
             });
         }
-        setTimeout(function () { applyMetadataFieldValues(1); }, 100);
+        onMetadataReady(applyMetadataFieldValues);
 
         var commonTitleVal = issue ? (issue.common_title || '') : (draftData ? draftData.common_title : '');
         document.getElementById('finalIssueCommonTitle').value = commonTitleVal;
@@ -2626,7 +2614,7 @@
             modal.show();
         }
         // Removed the condition - always ensure metadata fields are properly initialized
-        setTimeout(function () { var at = modalEl.querySelector('.nav-link.active'); if (at) at.dispatchEvent(new Event('shown.bs.tab', { bubbles: true })); }, 200);
+        Promise.resolve().then(function () { var at = modalEl.querySelector('.nav-link.active'); if (at) at.dispatchEvent(new Event('shown.bs.tab', { bubbles: true })); });
     }
 
     function openReviewEditor(issue) {
@@ -5743,6 +5731,19 @@
         }
     }
 
+    // Resolves when issueMetadataFields is populated; resolves immediately if already loaded.
+    var _metadataReadyResolvers = [];
+    var _metadataReady = false;
+    function onMetadataReady(fn) {
+        if (_metadataReady) { fn(); return; }
+        _metadataReadyResolvers.push(fn);
+    }
+    function _resolveMetadataReady() {
+        _metadataReady = true;
+        var cbs = _metadataReadyResolvers.splice(0);
+        cbs.forEach(function (fn) { try { fn(); } catch (e) {} });
+    }
+
     function loadMetadataOptions() {
         if (!issueTemplatesApi) return;
         fetch(issueTemplatesApi + '?action=metadata_options&project_type=' + encodeURIComponent(projectType), { credentials: 'same-origin' })
@@ -5751,6 +5752,7 @@
                 if (res && res.fields) { 
                     issueMetadataFields = res.fields; 
                     applyMetadataOptions(res.fields);
+                    _resolveMetadataReady();
                     // If edit modal is currently open, re-apply metadata values
                     // because applyMetadataOptions resets the container innerHTML
                     var modalEl = document.getElementById('finalIssueModal');
@@ -5768,7 +5770,7 @@
                                 }
                             });
                             if (currentIssue) {
-                                setTimeout(function () {
+                                Promise.resolve().then(function () {
                                     res.fields.forEach(function (f) {
                                         var elId = 'finalIssueField_' + f.field_key;
                                         var val = null;
@@ -5784,7 +5786,7 @@
                                             $el.val(val).trigger('change');
                                         }
                                     });
-                                }, 50);
+                                });
                             }
                         }
                     }
