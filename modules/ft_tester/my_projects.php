@@ -29,6 +29,18 @@ $assignedProjects = $db->prepare("
 $assignedProjects->execute([$userId, $likeVal, $userId, $likeVal]);
 $projects = $assignedProjects->fetchAll();
 
+// TEMP DEBUG - admin only
+if (in_array($_SESSION['role'], ['admin', 'super_admin'])) {
+    $d = $db->query("SELECT id, project_id, ft_tester_id, ft_tester_ids FROM project_pages WHERE ft_tester_ids IS NOT NULL LIMIT 10");
+    $rows = $d->fetchAll(PDO::FETCH_ASSOC);
+    echo '<pre style="background:#fff;padding:10px;margin:10px;font-size:11px">';
+    echo 'userId=' . $userId . ' likeVal=' . $likeVal . "\n";
+    echo 'projects found: ' . count($projects) . "\n";
+    echo "Sample ft_tester_ids rows:\n";
+    print_r($rows);
+    echo '</pre>';
+}
+
 include __DIR__ . '/../../includes/header.php';
 ?>
 
