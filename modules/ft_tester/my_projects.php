@@ -10,36 +10,20 @@ $baseDir = getBaseDir();
 $db = Database::getInstance();
 $userId = (int)$_SESSION['user_id'];
 
-// Assignments stored in project_pages.ft_tester_ids (JSON array) or ft_tester_id (single int)
-// page_environments table is not used for assignments on this install
-$likeVal = '%' . $userId . '%';
+// Assignments stored in project_pages.ft_tester_id (single int)
 $assignedProjects = $db->prepare("
     SELECT DISTINCT p.id, p.title, p.po_number, p.status, p.project_type,
            COUNT(DISTINCT pp.id) as total_pages,
-           COUNT(DISTINCT CASE
-               WHEN pp.ft_tester_id = ? OR pp.ft_tester_ids LIKE ?
-               THEN pp.id END) as assigned_pages,
+           COUNT(DISTINCT CASE WHEN pp.ft_tester_id = ? THEN pp.id END) as assigned_pages,
            0 as completed_pages
     FROM projects p
     INNER JOIN project_pages pp ON p.id = pp.project_id
-    WHERE pp.ft_tester_id = ? OR pp.ft_tester_ids LIKE ?
+    WHERE pp.ft_tester_id = ?
     GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
     ORDER BY p.created_at DESC
 ");
-$assignedProjects->execute([$userId, $likeVal, $userId, $likeVal]);
+$assignedProjects->execute([$userId, $userId]);
 $projects = $assignedProjects->fetchAll();
-
-// TEMP DEBUG - admin only
-if (in_array($_SESSION['role'], ['admin', 'super_admin'])) {
-    $d = $db->query("SELECT id, project_id, ft_tester_id, ft_tester_ids FROM project_pages WHERE ft_tester_ids IS NOT NULL LIMIT 10");
-    $rows = $d->fetchAll(PDO::FETCH_ASSOC);
-    echo '<pre style="background:#fff;padding:10px;margin:10px;font-size:11px">';
-    echo 'userId=' . $userId . ' likeVal=' . $likeVal . "\n";
-    echo 'projects found: ' . count($projects) . "\n";
-    echo "Sample ft_tester_ids rows:\n";
-    print_r($rows);
-    echo '</pre>';
-}
 
 include __DIR__ . '/../../includes/header.php';
 ?>

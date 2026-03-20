@@ -10,23 +10,19 @@ $baseDir = getBaseDir();
 $db = Database::getInstance();
 $userId = (int)$_SESSION['user_id'];
 
-// Assignments stored in project_pages.at_tester_ids (JSON array) or at_tester_id (single int)
-$likeVal = '%' . $userId . '%';
+// Assignments stored in project_pages.at_tester_id (single int)
 $assignedProjects = $db->prepare("
     SELECT DISTINCT p.id, p.title, p.po_number, p.status, p.project_type,
            COUNT(DISTINCT pp.id) as total_pages,
-           COUNT(DISTINCT CASE
-               WHEN pp.at_tester_id = ? OR pp.at_tester_ids LIKE ?
-               THEN pp.id END) as assigned_pages,
+           COUNT(DISTINCT CASE WHEN pp.at_tester_id = ? THEN pp.id END) as assigned_pages,
            0 as completed_pages
     FROM projects p
     INNER JOIN project_pages pp ON p.id = pp.project_id
-    WHERE pp.at_tester_id = ? OR pp.at_tester_ids LIKE ?
+    WHERE pp.at_tester_id = ?
     GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
     ORDER BY p.created_at DESC
 ");
-$assignedProjects->execute([$userId, $likeVal, $userId, $likeVal]);
-$projects = $assignedProjects->fetchAll();
+$assignedProjects->execute([$userId, $userId]);
 $projects = $assignedProjects->fetchAll();
 
 include __DIR__ . '/../../includes/header.php';
