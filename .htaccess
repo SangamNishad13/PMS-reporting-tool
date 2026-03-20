@@ -22,7 +22,8 @@ RewriteEngine On
     # Additional security headers
     Header always set X-Permitted-Cross-Domain-Policies "none"
     Header always set Cross-Origin-Opener-Policy "same-origin"
-    Header always set Cross-Origin-Resource-Policy "same-origin"
+    # Note: Cross-Origin-Resource-Policy set to same-site to allow same-origin AJAX
+    Header always set Cross-Origin-Resource-Policy "same-site"
     
     # Remove server information
     Header always unset Server
@@ -127,7 +128,7 @@ RewriteCond %{QUERY_STRING} GLOBALS(=|\[|\%[0-9A-Z]{0,2}) [OR]
 RewriteCond %{QUERY_STRING} _REQUEST(=|\[|\%[0-9A-Z]{0,2}) [OR]
 RewriteCond %{QUERY_STRING} ^.*(%0|%A|%B|%C|%D|%E|%F|127\.0).* [NC,OR]
 RewriteCond %{QUERY_STRING} ^.*(globals|encode|localhost|loopback).* [NC,OR]
-RewriteCond %{QUERY_STRING} ^.*(request|select|insert|union|declare).* [NC]
+RewriteCond %{QUERY_STRING} ^.*(select\s|insert\s|union\s|declare\s|drop\s).* [NC]
 RewriteRule ^(.*)$ - [F,L]
 
 # Limit file upload size (adjust as needed)

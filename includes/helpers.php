@@ -283,6 +283,11 @@ function createNotification($db, $userId, $type, $message, $link = null) {
             error_log('createNotification email mirror failed: ' . $mailEx->getMessage());
         }
 
+        // Restart session if it was closed for email sending
+        if (session_status() === PHP_SESSION_NONE) {
+            @session_start();
+        }
+
         return true;
     } catch (Exception $e) {
         error_log('createNotification error: ' . $e->getMessage());
