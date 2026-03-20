@@ -11,3 +11,9 @@ tools/accessibility/node_modules/
 # Runtime logs
 tmp/logs/*.log
 api/*.log
+
+# Local environment variables (never commit)
+.env.local
+.env
+.env.*
+!.env.example
