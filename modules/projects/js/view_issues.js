@@ -6670,7 +6670,18 @@
                 return;
             }
             fetch(ProjectConfig.baseDir + '/api/issue_history.php?issue_id=' + id, { credentials: 'same-origin' })
-                .then(function (res) { return res.json(); })
+                .then(function (res) {
+                    if (!res.ok) {
+                        return res.text().then(function (txt) {
+                            var wrap = document.getElementById('historyEntries');
+                            var msg = txt || ('Server error ' + res.status);
+                            try { var j = JSON.parse(txt); msg = j.error || msg; } catch (e) {}
+                            if (wrap) wrap.innerHTML = '<div class="alert alert-danger">Failed to load history: ' + escapeHtml(msg) + '</div>';
+                            throw new Error(msg);
+                        });
+                    }
+                    return res.json();
+                })
                 .then(function (res) {
                     var wrap = document.getElementById('historyEntries');
                     if (!wrap || !res || !res.history) return;
@@ -7039,6 +7050,12 @@
                                 });
                         });
                     });
+                })
+                .catch(function (err) {
+                    var wrap = document.getElementById('historyEntries');
+                    if (wrap && !wrap.querySelector('.alert-danger')) {
+                        wrap.innerHTML = '<div class="alert alert-danger">Failed to load history: ' + escapeHtml(String(err && err.message ? err.message : err)) + '</div>';
+                    }
                 });
         });
     }

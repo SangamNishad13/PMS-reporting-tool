@@ -5,6 +5,20 @@ require_once __DIR__ . '/../includes/functions.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Catch fatal errors and return JSON instead of empty body
+register_shutdown_function(function () {
+    $fatal = error_get_last();
+    if (!$fatal) return;
+    $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
+    if (in_array((int)$fatal['type'], $fatalTypes, true)) {
+        if (!headers_sent()) {
+            http_response_code(500);
+            header('Content-Type: application/json; charset=utf-8');
+        }
+        echo json_encode(['error' => 'Server error: ' . $fatal['message'] . ' in ' . basename($fatal['file']) . ':' . $fatal['line']]);
+    }
+});
+
 $auth = new Auth();
 if (!$auth->isLoggedIn()) {
     http_response_code(401);
@@ -20,6 +34,24 @@ $isAdmin  = in_array($userRole, ['admin', 'super_admin', 'superadmin'], true);
 $db = Database::getInstance();
 $method = $_SERVER['REQUEST_METHOD'];
 
+// Auto-create issue_history table if it doesn't exist (handles production deployments)
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS `issue_history` (
+        `id` int(11) NOT NULL AUTO_INCREMENT,
+        `issue_id` int(11) NOT NULL,
+        `user_id` int(11) NOT NULL,
+        `field_name` varchar(100) NOT NULL,
+        `old_value` longtext DEFAULT NULL,
+        `new_value` longtext DEFAULT NULL,
+        `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+        PRIMARY KEY (`id`),
+        KEY `issue_id` (`issue_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+} catch (Exception $e) {
+    // Non-fatal: table may already exist or user lacks CREATE privilege
+    error_log('issue_history table check failed: ' . $e->getMessage());
+}
+
 // ── GET: list history ────────────────────────────────────────────────────────
 if ($method === 'GET') {
     $issueId = (int)($_GET['issue_id'] ?? 0);
@@ -27,9 +59,9 @@ if ($method === 'GET') {
 
     try {
         $stmt = $db->prepare("
-            SELECT h.*, u.full_name as user_name
+            SELECT h.*, COALESCE(u.full_name, 'Unknown User') as user_name
             FROM issue_history h
-            JOIN users u ON h.user_id = u.id
+            LEFT JOIN users u ON h.user_id = u.id
             WHERE h.issue_id = ?
             ORDER BY h.created_at DESC
         ");
