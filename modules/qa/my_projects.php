@@ -19,7 +19,7 @@ $assignedProjectsQuery = "
     FROM projects p
     JOIN user_assignments ua ON p.id = ua.project_id
     LEFT JOIN project_pages pp ON p.id = pp.project_id
-    WHERE ua.user_id = ? AND ua.role = 'qa'
+    WHERE ua.user_id = ? AND ua.role = 'qa' AND (ua.is_removed IS NULL OR ua.is_removed = 0)
     GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
     ORDER BY p.created_at DESC
 ";

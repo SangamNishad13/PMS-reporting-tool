@@ -10,15 +10,15 @@ $baseDir = getBaseDir();
 $db = Database::getInstance();
 $userId = (int)$_SESSION['user_id'];
 
-// Assignments stored in project_pages.at_tester_id (single int)
+// Fetch all projects where user is assigned via user_assignments table
 $assignedProjects = $db->prepare("
     SELECT DISTINCT p.id, p.title, p.po_number, p.status, p.project_type,
            COUNT(DISTINCT pp.id) as total_pages,
            COUNT(DISTINCT CASE WHEN pp.at_tester_id = ? THEN pp.id END) as assigned_pages,
            0 as completed_pages
     FROM projects p
-    INNER JOIN project_pages pp ON p.id = pp.project_id
-    WHERE pp.at_tester_id = ?
+    INNER JOIN user_assignments ua ON ua.project_id = p.id AND ua.user_id = ? AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+    LEFT JOIN project_pages pp ON pp.project_id = p.id
     GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
     ORDER BY p.created_at DESC
 ");
