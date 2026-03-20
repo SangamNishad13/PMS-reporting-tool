@@ -72,7 +72,7 @@ include __DIR__ . '/../../includes/header.php';
                         <input type="hidden" name="csrf_token" value="<?php echo e(generateCsrfToken()); ?>">
                         <div class="mb-3">
                             <label for="username" class="form-label">Username or Email</label>
-                            <input type="text" autocomplete="username" class="form-control" id="username" name="username" value="<?php echo e($_POST['username'] ?? ''); ?>" required <?php echo !$error ? 'autofocus' : ''; ?>>
+                            <input type="text" autocomplete="username" class="form-control" id="username" name="username" value="<?php echo e($_POST['username'] ?? ''); ?>" required <?php echo $error ? 'autofocus' : ''; ?>>
                         </div>
                         <div class="mb-3">
                             <label for="password" class="form-label">Password</label>
@@ -81,18 +81,7 @@ include __DIR__ . '/../../includes/header.php';
                         <button type="submit" class="btn btn-primary w-100">Login</button>
                     </form>
                     
-                    <?php if ($error): ?>
-                    <script>
-                        // Focus on username field when there's an error
-                        document.addEventListener('DOMContentLoaded', function() {
-                            const usernameField = document.getElementById('username');
-                            if (usernameField) {
-                                usernameField.focus();
-                                usernameField.select(); // Also select the text for easy correction
-                            }
-                        });
-                    </script>
-                    <?php endif; ?>
+
                 </div>
             </div>
         </div>
