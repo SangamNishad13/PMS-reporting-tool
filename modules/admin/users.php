@@ -189,11 +189,11 @@ function sendCredentialsMailForUser(PDO $db, $uid, $mailMode, $requestId = '') {
             $mailMode
         );
 
-        $sent = $mailer->send($recipientEmail, $subject, $body, true);
-        
-        // Commit the password and temp_password changes regardless of email success
-        // This ensures admin can see the temp password even if email fails
+        // Commit first so the new password is always saved before attempting email send.
+        // This ensures the temp_password column is up-to-date even if the mailer is slow or fails.
         $db->commit();
+
+        $sent = $mailer->send($recipientEmail, $subject, $body, true);
         
         if ($sent) {
             logCredentialsMailAttempt($db, $requestId, $uid, $mailMode, 'success', (string)($user['username'] ?? "User#{$uid}") . ' sent.');
@@ -1457,6 +1457,11 @@ $(document).ready(function() {
     refreshBulkMailUi();
 });
 </script>
+<script>
+window._adminUsersConfig = {
+    baseDir: '<?php echo htmlspecialchars(rtrim(getBaseDir(), '/'), ENT_QUOTES, 'UTF-8'); ?>'
+};
+</script>
 <!-- User Details Modal -->
 <div class="modal fade" id="viewUserModal" tabindex="-1">
   <div class="modal-dialog modal-xl">
@@ -1477,230 +1482,6 @@ $(document).ready(function() {
   </div>
 </div>
 
-<script>
-$(document).on('click', '.view-user-btn', function() {
-    var uid = $(this).data('user-id');
-    $('#viewUserContent').html('<p><strong>Loading...</strong></p>');
-    var modal = new bootstrap.Modal(document.getElementById('viewUserModal'));
-    modal.show();
-
-    $.ajax({
-        url: '<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/users.php',
-        method: 'GET',
-        data: { action: 'get_user_details', user_id: uid },
-        success: function(resp) {
-            try {
-                var data = typeof resp === 'object' ? resp : JSON.parse(resp);
-                if (data.error) {
-                    $('#viewUserContent').html('<p class="text-danger">Error: ' + $('<div>').text(data.error).html() + '</p>');
-                    return;
-                }
-                if (!data.user) {
-                    $('#viewUserContent').html('<p class="text-danger">User not found.</p>');
-                    return;
-                }
-
-                var html = [];
-                html.push('<h5>' + $('<div>').text(data.user.full_name).html() + ' <small class="text-muted">(' + $('<div>').text(data.user.username).html() + ')</small></h5>');
-                html.push('<p><strong>Email:</strong> ' + $('<div>').text(data.user.email).html() + ' &nbsp; <strong>Role:</strong> ' + $('<div>').text(data.user.role).html() + '</p>');
-                if (data.user.can_manage_issue_config == 1) {
-                    html.push('<p><span class="badge bg-primary me-2">Has Issue Config Access</span></p>');
-                }
-                if (data.user.can_manage_devices == 1) {
-                    html.push('<p><span class="badge bg-success">Can Manage Devices</span></p>');
-                }
-
-                // Projects
-                html.push('<h6>Projects (' + (data.projects ? data.projects.length : 0) + ')</h6>');
-                if (data.projects && data.projects.length) {
-                    html.push('<ul>');
-                    data.projects.forEach(function(p) {
-                        html.push('<li>' + $('<div>').text(p.title).html() + ' <small class="text-muted">(' + $('<div>').text(p.po_number||'').html() + ')</small></li>');
-                    });
-                    html.push('</ul>');
-                } else {
-                    html.push('<p class="text-muted">No projects.</p>');
-                }
-
-                // Pages
-                html.push('<h6>Pages (' + (data.pages ? data.pages.length : 0) + ')</h6>');
-                if (data.pages && data.pages.length) {
-                    html.push('<ul>');
-                    data.pages.forEach(function(pg) {
-                        html.push('<li>' + $('<div>').text(pg.title).html() + ' <small class="text-muted">(ID ' + pg.id + ')</small></li>');
-                    });
-                    html.push('</ul>');
-                } else {
-                    html.push('<p class="text-muted">No pages.</p>');
-                }
-
-                // Assignments
-                html.push('<h6>Assignments (' + (data.assignments ? data.assignments.length : 0) + ')</h6>');
-                if (data.assignments && data.assignments.length) {
-                    html.push('<table class="table table-sm"><thead><tr><th>Project</th><th>Role</th><th>Assigned By</th><th>At</th></tr></thead><tbody>');
-                    data.assignments.forEach(function(a) {
-                        var proj = a.project_title ? $('<div>').text(a.project_title).html() : (a.project_id || 'N/A');
-                        var by = a.assigned_by_name ? $('<div>').text(a.assigned_by_name).html() : (a.assigned_by || 'System');
-                        html.push('<tr><td>' + proj + '</td><td>' + (a.role||'') + '</td><td>' + by + '</td><td>' + (a.assigned_at||'') + '</td></tr>');
-                    });
-                    html.push('</tbody></table>');
-                } else {
-                    html.push('<p class="text-muted">No assignments.</p>');
-                }
-
-                // Activity
-                html.push('<h6>Recent Activity (' + (data.activity ? data.activity.length : 0) + ')</h6>');
-                if (data.activity && data.activity.length) {
-                    html.push('<ul>');
-                    data.activity.forEach(function(a) {
-                        var entity = '';
-                        if (a.entity_type === 'project' && a.project_title) {
-                            entity = ' - Project: <strong>' + $('<div>').text(a.project_title).html() + '</strong>';
-                        } else if (a.entity_type && a.entity_id) {
-                            entity = ' - ' + a.entity_type + ' ' + a.entity_id;
-                        }
-                        
-                        // Parse details if available for more context
-                        if (a.details) {
-                            try {
-                                var details = JSON.parse(a.details);
-                                if (details.title) entity += ' ("' + $('<div>').text(details.title).html() + '")';
-                                else if (details.page_name) entity += ' (Page: "' + $('<div>').text(details.page_name).html() + '")';
-                                else if (details.asset_name) entity += ' (Asset: "' + $('<div>').text(details.asset_name).html() + '")';
-                            } catch(e) {}
-                        }
-
-                        html.push('<li><small class="text-muted">[' + (a.created_at||'') + ']</small> ' + $('<div>').text(a.action).html() + entity + '</li>');
-                    });
-                    html.push('</ul>');
-                } else {
-                    html.push('<p class="text-muted">No recent activity.</p>');
-                }
-
-                $('#viewUserContent').html(html.join(''));
-            } catch (e) {
-                $('#viewUserContent').html('<p class="text-danger">Failed to load details. Server response:<pre>' + $('<div>').text(resp).html() + '</pre></p>');
-                console.error('Failed parsing user-details response', resp, e);
-            }
-        },
-        error: function(xhr) {
-            var body = xhr.responseText || xhr.statusText || '';
-            $('#viewUserContent').html('<p class="text-danger">Request failed: ' + xhr.status + ' ' + $('<div>').text(body).html() + '</p>');
-            console.error('User details request failed', xhr.status, body);
-        }
-    });
-});
-
-// Handle send reset email button click
-$('.send-reset-email-btn').on('click', function() {
-    const userId = $(this).data('user-id');
-    const username = $(this).data('username');
-    const btn = $(this);
-    
-    // Show confirmation modal
-    const modalHtml = `
-        <div class="modal fade" id="confirmResetEmailModal" tabindex="-1" aria-labelledby="confirmResetEmailModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="confirmResetEmailModalLabel">
-                            <i class="fas fa-paper-plane text-primary"></i> Send Password Reset Email
-                        </h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <p>Are you sure you want to send a password reset email to <strong>${username}</strong>?</p>
-                        <div class="alert alert-info mb-0">
-                            <i class="fas fa-info-circle"></i> A new temporary password will be generated and sent to the user's email address.
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-primary" id="confirmSendResetEmail">
-                            <i class="fas fa-paper-plane"></i> Send Email
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // Remove existing modal if any
-    $('#confirmResetEmailModal').remove();
-    
-    // Add modal to body
-    $('body').append(modalHtml);
-    
-    // Show modal
-    const modal = new bootstrap.Modal(document.getElementById('confirmResetEmailModal'));
-    modal.show();
-    
-    // Handle confirm button click
-    $('#confirmSendResetEmail').off('click').on('click', function() {
-        const confirmBtn = $(this);
-        confirmBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
-        
-        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-        
-        const requestId = 'reset_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        
-        $.ajax({
-            url: window.location.pathname,
-            method: 'POST',
-            data: {
-                send_credentials_email_single: 1,
-                user_id: userId,
-                mail_mode: 'reset',
-                request_id: requestId
-            },
-            dataType: 'json',
-            success: function(response) {
-                modal.hide();
-                
-                if (response.success) {
-                    if (typeof showToast === 'function') {
-                        showToast(`Password reset email sent to ${response.username || username}`, 'success');
-                    } else {
-                        alert(`Password reset email sent to ${response.username || username}`);
-                    }
-                    // Reload page to show updated temp password
-                    setTimeout(function() {
-                        location.reload();
-                    }, 1500);
-                } else {
-                    // Even if email failed, temp password is saved - show message and reload
-                    const errorMsg = response.error || 'Failed to send reset email';
-                    if (typeof showToast === 'function') {
-                        showToast(errorMsg, 'warning');
-                    } else {
-                        alert(errorMsg);
-                    }
-                    
-                    // Reload page to show temp password in table
-                    setTimeout(function() {
-                        location.reload();
-                    }, 2000);
-                }
-            },
-            error: function(xhr) {
-                modal.hide();
-                
-                const errorMsg = 'Error sending reset email: ' + (xhr.responseText || xhr.statusText);
-                if (typeof showToast === 'function') {
-                    showToast(errorMsg, 'danger');
-                } else {
-                    alert(errorMsg);
-                }
-                btn.prop('disabled', false).html('<i class="fas fa-key"></i>');
-            }
-        });
-    });
-    
-    // Reset button state when modal is closed without confirming
-    $('#confirmResetEmailModal').on('hidden.bs.modal', function() {
-        $(this).remove();
-    });
-});
-</script>
+<script src="<?php echo htmlspecialchars(getBaseDir(), ENT_QUOTES, 'UTF-8'); ?>/assets/js/admin-users.js"></script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>
