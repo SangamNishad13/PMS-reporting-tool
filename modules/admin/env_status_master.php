@@ -1,8 +1,4 @@
 ﻿<?php
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
-
-<script src="<?php echo getBaseDir(); ?>/assets/js/env-status-master.js?v=<?php echo time(); ?>"></script>
-<?php
 /**
  * Environment Status Master Management
  * Allows admin to manage environment testing status options
