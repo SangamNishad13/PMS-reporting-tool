@@ -101,7 +101,10 @@ try {
             pp.page_name,
             (SELECT GROUP_CONCAT(DISTINCT te.name SEPARATOR ', ') FROM page_environments pe2 JOIN testing_environments te ON pe2.environment_id = te.id WHERE pe2.page_id = pp.id) AS envs,
             (SELECT GROUP_CONCAT(DISTINCT u.full_name SEPARATOR ', ') FROM users u JOIN page_environments pe3 ON u.id = pe3.at_tester_id OR u.id = pe3.ft_tester_id OR u.id = pe3.qa_id WHERE pe3.page_id = pp.id) AS testers,
-            (SELECT COUNT(*) FROM issues i WHERE i.project_id = pp.project_id AND i.page_id = pp.id" . ($userRole === 'client' ? ' AND i.client_ready = 1' : '') . ") AS issues_count,
+            (SELECT COUNT(DISTINCT i.id) FROM issues i 
+             LEFT JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'page_ids'
+             WHERE i.project_id = pp.project_id 
+               AND (i.page_id = pp.id OR im.meta_value = CAST(pp.id AS CHAR) OR im.meta_value LIKE CONCAT('%,', pp.id, ',%') OR im.meta_value LIKE CONCAT('[', pp.id, ',%') OR im.meta_value LIKE CONCAT('%,', pp.id, ']') OR im.meta_value = CONCAT('[', pp.id, ']'))" . ($userRole === 'client' ? ' AND i.client_ready = 1' : '') . ") AS issues_count,
             (SELECT COALESCE(SUM(ptl.hours_spent), 0) FROM project_time_logs ptl WHERE ptl.page_id = pp.id) AS production_hours
         FROM project_pages pp
         WHERE pp.id = ?

@@ -807,8 +807,13 @@ include __DIR__ . '/../../includes/header.php';
         $path = $viewJsBase . $file;
         return file_exists($path) ? filemtime($path) : time();
     };
+    $assetsJsBase = __DIR__ . '/../../assets/js/';
+    $assetsJsVersion = function ($file) use ($assetsJsBase) {
+        $path = $assetsJsBase . $file;
+        return file_exists($path) ? filemtime($path) : time();
+    };
 ?>
-<script src="<?php echo $baseDir; ?>/modules/projects/js/view_init.js?v=<?php echo $viewJsVersion('view_init.js'); ?>"></script>
+<script src="<?php echo $baseDir; ?>/assets/js/view-init.js?v=<?php echo $assetsJsVersion('view-init.js'); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_core.js?v=<?php echo $viewJsVersion('view_core.js'); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_pages.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_pages_enhanced.js?v=<?php echo time(); ?>"></script>
