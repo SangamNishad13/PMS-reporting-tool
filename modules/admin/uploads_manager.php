@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/functions.php';
@@ -505,41 +505,6 @@ require_once __DIR__ . '/../../includes/header.php';
     </nav>
 </div>
 
-<script>
-(function() {
-    var scopeType = document.getElementById('uploadScopeType');
-    var projectWrap = document.getElementById('uploadScopeProjectWrap');
-    var userWrap = document.getElementById('uploadScopeUserWrap');
-    if (!scopeType || !projectWrap || !userWrap) return;
-    function syncScope() {
-        if (scopeType.value === 'user') {
-            projectWrap.classList.add('d-none');
-            userWrap.classList.remove('d-none');
-        } else {
-            userWrap.classList.add('d-none');
-            projectWrap.classList.remove('d-none');
-        }
-    }
-    scopeType.addEventListener('change', syncScope);
-    syncScope();
-})();
-
-document.querySelectorAll('form[data-confirm]').forEach(function(form) {
-    form.addEventListener('submit', function(e) {
-        var msg = form.getAttribute('data-confirm') || 'Are you sure?';
-        e.preventDefault();
-        if (typeof window.confirmModal === 'function') {
-            window.confirmModal(msg, function() {
-                form.submit();
-            });
-            return;
-        }
-        var confirmFn = (typeof window._origConfirm === 'function') ? window._origConfirm : window.confirm;
-        if (confirmFn(msg)) {
-            form.submit();
-        }
-    });
-});
-</script>
+<script src="<?php echo getBaseDir(); ?>/assets/js/uploads-manager.js?v=<?php echo time(); ?>"></script>
 
 <?php require_once __DIR__ . '/../../includes/footer.php'; ?>
