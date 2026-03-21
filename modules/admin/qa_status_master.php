@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
@@ -388,7 +388,7 @@ include __DIR__ . '/../../includes/header.php';
         </div>
         <div class="card-body">
             <h6>How Error Rate is Calculated:</h6>
-            <p>Error Rate = (Total Error Points / Total Issues) × 100</p>
+            <p>Error Rate = (Total Error Points / Total Issues) Ã— 100</p>
             
             <h6 class="mt-3">Severity Levels:</h6>
             <ul>
@@ -400,12 +400,12 @@ include __DIR__ . '/../../includes/header.php';
             <h6 class="mt-3">Example:</h6>
             <p>User reported 10 issues:</p>
             <ul>
-                <li>2 × Typo (0.25 pts each) = 0.50 pts</li>
-                <li>3 × Change in Severity (1.00 pts each) = 3.00 pts</li>
-                <li>1 × Missed Issue (3.00 pts) = 3.00 pts</li>
-                <li>4 × Perfect Issue (0.00 pts) = 0.00 pts</li>
+                <li>2 Ã— Typo (0.25 pts each) = 0.50 pts</li>
+                <li>3 Ã— Change in Severity (1.00 pts each) = 3.00 pts</li>
+                <li>1 Ã— Missed Issue (3.00 pts) = 3.00 pts</li>
+                <li>4 Ã— Perfect Issue (0.00 pts) = 0.00 pts</li>
             </ul>
-            <p><strong>Error Rate = (6.50 / 10) × 100 = 65%</strong></p>
+            <p><strong>Error Rate = (6.50 / 10) Ã— 100 = 65%</strong></p>
         </div>
     </div>
 </div>
@@ -435,34 +435,7 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 
-<script>
-function deleteQaStatus(id, label, usageCount) {
-    if (usageCount > 0) {
-        alert('Cannot delete this QA status: It is currently in use by ' + usageCount + ' record(s).');
-        return;
-    }
-
-    var textEl = document.getElementById('deleteQaStatusConfirmText');
-    var idEl = document.getElementById('deleteQaStatusId');
-    var btn = document.getElementById('confirmDeleteQaStatusBtn');
-    var modalEl = document.getElementById('deleteQaStatusConfirmModal');
-
-    if (textEl) {
-        textEl.textContent = 'Are you sure you want to delete QA status "' + label + '"? This action cannot be undone.';
-    }
-    if (idEl) {
-        idEl.value = id;
-    }
-    if (btn) {
-        btn.onclick = function () {
-            document.getElementById('deleteQaStatusForm').submit();
-        };
-    }
-
-    var modal = new bootstrap.Modal(modalEl);
-    modal.show();
-}
-</script>
+<script src="<?php echo getBaseDir(); ?>/assets/js/qa-status-master.js?v=<?php echo time(); ?>"></script>
 
 <!-- Add Status Modal -->
 <div class="modal fade" id="addStatusModal" tabindex="-1">
