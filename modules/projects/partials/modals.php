@@ -1,4 +1,4 @@
-        <!-- Floating Project Chat (bottom-right) - Hidden for client role -->
+﻿        <!-- Floating Project Chat (bottom-right) - Hidden for client role -->
         <?php if ($userRole !== 'client'): ?>
         <style>
         .chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1060; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
@@ -121,104 +121,7 @@
     </div>
 </div>
 
-<script>
-// Handle custom phase name toggle and duration calculation
-document.addEventListener('DOMContentLoaded', function() {
-    const phaseSelect = document.getElementById('phaseNameSelect');
-    const phaseHidden = document.getElementById('phaseNameHidden');
-    const customDiv = document.getElementById('customPhaseNameDiv');
-    const customInput = document.getElementById('customPhaseName');
-    const startDateInput = document.getElementById('phaseStartDate');
-    const endDateInput = document.getElementById('phaseEndDate');
-    const durationHint = document.getElementById('durationHint');
-    const addPhaseForm = document.getElementById('addPhaseForm');
-    
-    if (phaseSelect) {
-        phaseSelect.addEventListener('change', function() {
-            if (this.value === 'custom') {
-                customDiv.style.display = 'block';
-                customInput.required = true;
-                durationHint.textContent = '';
-            } else {
-                customDiv.style.display = 'none';
-                customInput.required = false;
-                customInput.value = '';
-                
-                // Auto-calculate end date based on typical duration
-                const selectedOption = this.options[this.selectedIndex];
-                const duration = selectedOption.getAttribute('data-duration');
-                
-                if (duration && startDateInput.value) {
-                    const startDate = new Date(startDateInput.value);
-                    const endDate = new Date(startDate);
-                    endDate.setDate(endDate.getDate() + parseInt(duration));
-                    endDateInput.value = endDate.toISOString().split('T')[0];
-                    durationHint.textContent = `Typical: ${duration} days`;
-                } else if (duration) {
-                    durationHint.textContent = `Typical: ${duration} days`;
-                } else {
-                    durationHint.textContent = '';
-                }
-            }
-        });
-        
-        // Auto-calculate end date when start date changes
-        startDateInput.addEventListener('change', function() {
-            const selectedOption = phaseSelect.options[phaseSelect.selectedIndex];
-            const duration = selectedOption.getAttribute('data-duration');
-            
-            if (duration && this.value && phaseSelect.value !== 'custom') {
-                const startDate = new Date(this.value);
-                const endDate = new Date(startDate);
-                endDate.setDate(endDate.getDate() + parseInt(duration));
-                endDateInput.value = endDate.toISOString().split('T')[0];
-            }
-            
-            // Set min attribute on end date
-            if (this.value) {
-                endDateInput.setAttribute('min', this.value);
-            } else {
-                endDateInput.removeAttribute('min');
-            }
-        });
-        
-        // Validate end date is not before start date
-        endDateInput.addEventListener('change', function() {
-            const startDate = startDateInput.value;
-            const endDate = this.value;
-            
-            if (startDate && endDate) {
-                const start = new Date(startDate);
-                const end = new Date(endDate);
-                
-                if (end < start) {
-                    alert('End date cannot be before start date');
-                    this.value = '';
-                }
-            }
-        });
-    }
-    
-    // Handle form submission
-    if (addPhaseForm) {
-        addPhaseForm.addEventListener('submit', function(e) {
-            // Set the hidden input value based on selection
-            if (phaseSelect.value === 'custom') {
-                const customName = customInput.value.trim();
-                if (!customName) {
-                    e.preventDefault();
-                    alert('Please enter a custom phase name');
-                    customInput.focus();
-                    return false;
-                }
-                phaseHidden.value = customName;
-            } else {
-                phaseHidden.value = phaseSelect.value;
-            }
-        });
-    }
-});
-</script>
+<script src="<?php echo $baseDir; ?>/assets/js/project-modals.js?v=<?php echo time(); ?>"></script>
 
 <!-- Edit Phase Modal -->
 <div class="modal fade" id="editPhaseModal" tabindex="-1">
@@ -473,7 +376,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <div class="col-auto">
                                             <select id="mapAllOnlyCol" class="form-select form-select-sm" multiple size="3"></select>
                                         </div>
-                                        <div class="col-auto align-self-center">→ All URLs (multiple URLs allowed)</div>
+                                        <div class="col-auto align-self-center">â†’ All URLs (multiple URLs allowed)</div>
                                     </div>
                                 </div>
                                 <div class="table-responsive" style="max-height:300px; overflow:auto;">
