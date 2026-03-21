@@ -56,6 +56,7 @@
             pendingFile: null,
             pendingEditor: null,
             lastPasteTime: 0,
+            suppressUntil: 0,
             isEditing: false,
             editingImg: null,
             savedRange: null
@@ -760,7 +761,7 @@
     function uploadIssueImage(file, $el) {
         if (!file || !file.type || !file.type.startsWith('image/')) return;
         var now = Date.now();
-        if (now - issueData.imageUpload.lastPasteTime < 500) return;
+        if (now - issueData.imageUpload.lastPasteTime < 1500) return;
         issueData.imageUpload.lastPasteTime = now;
         issueData.imageUpload.savedRange = $el.summernote('createRange');
         issueData.imageUpload.pendingFile = file;
@@ -1317,28 +1318,36 @@
                 onMouseup: function () { setCodeBlockButtonState(); },
                 onChange: function () { setCodeBlockButtonState(); },
                 onImageUpload: function (files) {
+                    // Skip if onPaste already handled this (suppress window active)
+                    if (issueData.imageUpload.suppressUntil && Date.now() < issueData.imageUpload.suppressUntil) return;
                     var list = files || [];
                     for (var i = 0; i < list.length; i++) {
                         uploadIssueImage(list[i], $el);
                     }
                 },
                 onPaste: function (e) {
+                    var files = [];
                     if (window.PMSSummernoteImage && typeof window.PMSSummernoteImage.extractClipboardImageFiles === 'function') {
-                        var cfiles = window.PMSSummernoteImage.extractClipboardImageFiles(e);
-                        if (cfiles.length) {
-                            e.preventDefault();
-                            uploadIssueImage(cfiles[0], $el);
-                        }
+                        files = window.PMSSummernoteImage.extractClipboardImageFiles(e) || [];
                     } else {
                         var clipboard = e.originalEvent && e.originalEvent.clipboardData;
                         if (clipboard && clipboard.items) {
                             for (var i = 0; i < clipboard.items.length; i++) {
                                 var item = clipboard.items[i];
                                 if (item.type && item.type.indexOf('image') === 0) {
-                                    e.preventDefault(); uploadIssueImage(item.getAsFile(), $el); break;
+                                    files.push(item.getAsFile()); break;
                                 }
                             }
                         }
+                    }
+                    if (files.length) {
+                        e.preventDefault();
+                        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                        var oe = e.originalEvent;
+                        if (oe && typeof oe.stopImmediatePropagation === 'function') oe.stopImmediatePropagation();
+                        // Suppress onImageUpload for next 2s so it doesn't double-upload
+                        issueData.imageUpload.suppressUntil = Date.now() + 2000;
+                        uploadIssueImage(files[0], $el);
                     }
                 }
             }
@@ -1403,13 +1412,16 @@
 
     function initEditors() {
         document.querySelectorAll('.issue-summernote').forEach(function (el) { initSummernote(el); });
-        jQuery(document).on('click', '.note-editable img', function (e) {
-            e.preventDefault();
-            var $img = jQuery(this);
-            issueData.imageUpload.isEditing = true;
-            issueData.imageUpload.editingImg = $img;
-            showImageAltModal($img.attr('alt') || '');
-        });
+        if (!initEditors._imgClickBound) {
+            initEditors._imgClickBound = true;
+            jQuery(document).on('click', '.note-editable img', function (e) {
+                e.preventDefault();
+                var $img = jQuery(this);
+                issueData.imageUpload.isEditing = true;
+                issueData.imageUpload.editingImg = $img;
+                showImageAltModal($img.attr('alt') || '');
+            });
+        }
 
         // Initialize @ mention for comment editor
         initMentionSupport();
