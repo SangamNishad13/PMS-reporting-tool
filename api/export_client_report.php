@@ -21,6 +21,13 @@ if (!file_exists($templatePath)) { http_response_code(404); exit('Template not f
 
 $db = Database::getInstance();
 
+// IDOR: verify user has access to this project
+require_once __DIR__ . '/../includes/project_permissions.php';
+if (!hasProjectAccess($db, $_SESSION['user_id'], $projectId)) {
+    http_response_code(403);
+    exit('Access denied');
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 /**

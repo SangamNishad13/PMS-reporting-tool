@@ -1,10 +1,4 @@
 <?php
-if (isset($_GET['test'])) {
-    header('Content-Type: application/json');
-    echo json_encode(['success' => true, 'message' => 'Admin QA breakdown API is working', 'timestamp' => date('Y-m-d H:i:s')]);
-    exit;
-}
-
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 

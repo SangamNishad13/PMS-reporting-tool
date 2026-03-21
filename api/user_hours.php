@@ -14,13 +14,18 @@ $currentUserId = $_SESSION['user_id'];
 $isAdmin = isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin','super_admin']);
 
 $userId = isset($_GET['user_id']) ? intval($_GET['user_id']) : null;
-$date = isset($_GET['date']) ? $_GET['date'] : null; // expected YYYY-MM-DD
-
-// Debug logging removed
+$date = isset($_GET['date']) ? trim($_GET['date']) : null; // expected YYYY-MM-DD
 
 if (!$userId || !$date) {
     http_response_code(400);
     echo json_encode(['success' => false, 'error' => 'Missing parameters (user_id and date required)']);
+    exit;
+}
+
+// Validate date format strictly to prevent injection
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !checkdate((int)substr($date,5,2), (int)substr($date,8,2), (int)substr($date,0,4))) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'error' => 'Invalid date format']);
     exit;
 }
 
