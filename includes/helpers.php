@@ -344,6 +344,17 @@ function generateCsrfToken() {
 }
 
 /**
+ * Generate a per-request CSP nonce for inline scripts.
+ * Stored in $_SERVER so it's consistent within one request.
+ */
+function generateCspNonce() {
+    if (!isset($_SERVER['_CSP_NONCE'])) {
+        $_SERVER['_CSP_NONCE'] = base64_encode(random_bytes(16));
+    }
+    return $_SERVER['_CSP_NONCE'];
+}
+
+/**
  * Verify CSRF token
  * 
  * @param string $token The token to verify

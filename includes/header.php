@@ -51,6 +51,16 @@ $globalFlashError = isset($_SESSION['error']) ? (string)$_SESSION['error'] : '';
 if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
     unset($_SESSION['success'], $_SESSION['error']);
 }
+
+// Generate per-request CSP nonce for inline scripts
+if (!function_exists('generateCspNonce')) {
+    require_once __DIR__ . '/helpers.php';
+}
+$cspNonce = generateCspNonce();
+
+// Set CSP header with nonce (replaces .htaccess static CSP for pages using this header)
+// unsafe-eval required by CDN libs: SheetJS, Summernote, DataTables, FullCalendar, Chart.js
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$cspNonce}' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://code.jquery.com https://cdn.datatables.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; media-src 'self'; object-src 'none'; frame-src 'self'; base-uri 'self'; form-action 'self'");
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -122,7 +132,7 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
     <?php if (file_exists($summernoteHelperPath)): ?>
     <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/summernote_image_helper.js?v=<?php echo $assetVersion; ?>"></script>
     <?php endif; ?>
-    <script>
+    <script nonce="<?php echo $cspNonce; ?>">
     // Global suppression: disable browser alert/confirm/prompt, Notification prompts,
     // prevent Bootstrap modals from appearing, and hide success alerts/toasts.
     (function(){
@@ -284,7 +294,7 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
     })();
     </script>
     <meta name="csrf-token" content="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
-    <script>
+    <script nonce="<?php echo $cspNonce; ?>">
     // Automatically attach CSRF token to all jQuery AJAX POST/PUT/PATCH/DELETE requests
     (function() {
         var csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -736,7 +746,7 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
     </header>
     <?php if (isset($_SESSION['user_id'])): ?>
     <!-- Notification Loading System -->
-    <script>
+    <script nonce="<?php echo $cspNonce; ?>">
     (function() {
         function loadNotifications() {
             $.get('<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/api/status.php?action=get_notifications', function(response) {
@@ -822,7 +832,7 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
     </script>
     
     <!-- Hours Reminder System -->
-    <script>
+    <script nonce="<?php echo $cspNonce; ?>">
     (function() {
         let reminderShown = false;
         

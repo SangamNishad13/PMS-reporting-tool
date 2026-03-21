@@ -194,7 +194,7 @@ include '../includes/header.php';
 }
 </style>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 window.DevicesConfig = { currentUserId: <?php echo (int)$_SESSION['user_id']; ?> };
 </script>
 <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/devices.js"></script>

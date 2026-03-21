@@ -531,7 +531,7 @@ include __DIR__ . '/partials/issues_modals.php';
 <!-- Select2 JS -->
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
     window.ProjectConfig = {
         projectId: <?php echo json_encode($projectId); ?>,
         userId: <?php echo json_encode($userId); ?>,
@@ -551,7 +551,7 @@ include __DIR__ . '/partials/issues_modals.php';
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 // Filters for issues_pages.php
 (function() {
     function updateIssuesPagesNoDataRow() {

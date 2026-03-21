@@ -6,11 +6,11 @@ RewriteEngine On
 
 # Security Headers
 <IfModule mod_headers.c>
-    # Content-Security-Policy - Updated to allow source maps, DataTables, jQuery, and Google Fonts
-    # NOTE: 'unsafe-eval' is required by CDN libraries (SheetJS/xlsx, Summernote, DataTables, FullCalendar, Chart.js)
-    # which use eval()/new Function() internally. Removing it would break these libraries.
-    # Mitigation: all CDN sources are pinned to specific versions and served over HTTPS.
-    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://code.jquery.com https://cdn.datatables.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; media-src 'self'; object-src 'none'; frame-src 'self'; base-uri 'self'; form-action 'self'"
+    # Content-Security-Policy - Static fallback for non-PHP-header pages (API endpoints etc.)
+    # NOTE: Pages using includes/header.php override this with a nonce-based CSP dynamically.
+    # 'unsafe-eval' required by CDN libs: SheetJS, Summernote, DataTables, FullCalendar, Chart.js
+    # 'unsafe-inline' kept here only as fallback; nonce-based CSP removes it for all main pages.
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://code.jquery.com https://cdn.datatables.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; media-src 'self'; object-src 'none'; frame-src 'self'; base-uri 'self'; form-action 'self'"
     
     # Security headers
     Header always set X-Content-Type-Options nosniff

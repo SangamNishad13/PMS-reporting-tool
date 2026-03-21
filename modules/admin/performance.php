@@ -831,7 +831,7 @@ include __DIR__ . '/../../includes/header.php';
     <?php endif; ?>
 </div>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 window._performanceConfig = {
     baseDir: '<?php echo $baseDir; ?>',
     activeFilters: {

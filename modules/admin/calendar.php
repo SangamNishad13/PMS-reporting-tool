@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
@@ -182,7 +182,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                 
                 $title = $statusLabel . ' (' . $count . ')';
                 if ($totalHours > 0) {
-                    $title .= ' — ' . $totalHours . 'h';
+                    $title .= ' � ' . $totalHours . 'h';
                 }
                 
                 $events[] = [
@@ -210,7 +210,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                 if (empty($status_map[$u['id']][$d])) {
                     if ($statusFilterAllows('not_updated')) {
                         $title = $u['full_name'] . ' (Not updated)';
-                        if ($userHours > 0) $title .= ' — ' . $userHours . 'h';
+                        if ($userHours > 0) $title .= ' � ' . $userHours . 'h';
                         
                         // Truncate long titles for better display
                         $displayTitle = $title;
@@ -243,7 +243,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                     }
                     $title = $st['full_name'] . ' (' . $statusLabelFn($stType) . ')';
                     $userHours = $hours_map[$u['id']][$d] ?? 0;
-                    if ($userHours > 0) $title .= ' — ' . $userHours . 'h';
+                    if ($userHours > 0) $title .= ' � ' . $userHours . 'h';
                     
                     // Truncate long titles for better display
                     $displayTitle = $title;
@@ -767,8 +767,8 @@ $allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND 
                     <i class="fas fa-users me-2 text-primary"></i>View Scope
                 </label>
                 <select id="userSelect" class="form-select">
-                    <option value="">👤 Individual Users</option>
-                    <option value="all">👥 All Users (Consolidated)</option>
+                    <option value="">?? Individual Users</option>
+                    <option value="all">?? All Users (Consolidated)</option>
                     <?php foreach ($allUsers as $au): ?>
                         <option value="<?php echo $au['id']; ?>" <?php echo ($selectedUser && $selectedUser == $au['id']) ? 'selected' : ''; ?>>
                             <?php echo htmlspecialchars($au['full_name'], ENT_QUOTES, 'UTF-8'); ?>
@@ -862,7 +862,7 @@ $allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND 
 
 <!-- Removed duplicate FullCalendar JS (already included at top) -->
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 window.AdminCalendarConfig = {
     statusMeta: <?php echo json_encode($availabilityFilterOptions, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT); ?>,
     eventsUrl: <?php echo json_encode($_SERVER['PHP_SELF'] . '?action=get_events', JSON_HEX_TAG | JSON_HEX_AMP); ?>,

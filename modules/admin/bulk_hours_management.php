@@ -401,7 +401,7 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 window.BulkHoursConfig = {
     flashSuccess: <?php echo json_encode($flashSuccess, JSON_HEX_TAG | JSON_HEX_AMP); ?>,
     flashError: <?php echo json_encode($flashError, JSON_HEX_TAG | JSON_HEX_AMP); ?>

@@ -228,7 +228,7 @@ $projectStats = $projectAnalytics['project_statistics'] ?? [];
 }
 </style>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 window._projectHeaderConfig = {
     projectId: <?php echo json_encode((int)$projectId); ?>,
     baseDir: <?php echo json_encode($baseDir, JSON_HEX_TAG | JSON_HEX_AMP); ?>

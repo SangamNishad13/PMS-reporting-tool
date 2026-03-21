@@ -1149,7 +1149,7 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
     </div>
 </div>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 $(document).ready(function() {
     // Ensure users table is initialized with checkbox column non-sortable.
     // This prevents header-sort click conflicts with the select-all checkbox.
@@ -1457,7 +1457,7 @@ $(document).ready(function() {
     refreshBulkMailUi();
 });
 </script>
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 window._adminUsersConfig = {
     baseDir: '<?php echo htmlspecialchars(rtrim(getBaseDir(), '/'), ENT_QUOTES, 'UTF-8'); ?>'
 };

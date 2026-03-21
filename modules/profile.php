@@ -705,7 +705,7 @@ include __DIR__ . '/../includes/header.php';
 }
 </style>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 window.ProfileConfig = {
     userId: <?php echo intval($userId); ?>,
     baseDir: <?php echo json_encode($baseDir, JSON_HEX_TAG | JSON_HEX_AMP); ?>

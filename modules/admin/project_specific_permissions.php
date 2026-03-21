@@ -589,7 +589,7 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 function toggleAllUsers(checkbox) {
     const userCheckboxes = document.querySelectorAll('.user-checkbox');
     userCheckboxes.forEach(cb => cb.checked = checkbox.checked);

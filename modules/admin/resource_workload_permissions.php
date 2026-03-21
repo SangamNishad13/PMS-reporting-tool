@@ -382,7 +382,7 @@ unset($_SESSION['success'], $_SESSION['error']);
     </div>
 </div>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 document.addEventListener('DOMContentLoaded', function () {
     <?php if (!empty($flashSuccess)): ?>
     if (typeof showToast === 'function') {

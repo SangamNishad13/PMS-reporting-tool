@@ -1,4 +1,4 @@
-﻿        <!-- Floating Project Chat (bottom-right) - Hidden for client role -->
+        <!-- Floating Project Chat (bottom-right) - Hidden for client role -->
         <?php if ($userRole !== 'client'): ?>
         <style>
         .chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1060; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
@@ -376,7 +376,7 @@
                                         <div class="col-auto">
                                             <select id="mapAllOnlyCol" class="form-select form-select-sm" multiple size="3"></select>
                                         </div>
-                                        <div class="col-auto align-self-center">â†’ All URLs (multiple URLs allowed)</div>
+                                        <div class="col-auto align-self-center">→ All URLs (multiple URLs allowed)</div>
                                     </div>
                                 </div>
                                 <div class="table-responsive" style="max-height:300px; overflow:auto;">
@@ -527,7 +527,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
     (function(){
         if (!window.ProjectConfig) return;
         var projectId = window.ProjectConfig.projectId || 0;

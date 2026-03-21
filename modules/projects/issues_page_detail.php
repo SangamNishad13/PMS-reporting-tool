@@ -987,7 +987,7 @@ include __DIR__ . '/../../includes/header.php';
 <!-- Select2 JS -->
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
     window.ProjectConfig = {
         projectId: <?php echo json_encode($projectId); ?>,
         userId: <?php echo json_encode($userId); ?>,
@@ -1010,7 +1010,7 @@ include __DIR__ . '/../../includes/header.php';
 
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js?v=20260210180000"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 document.addEventListener('pms:issues-changed', function (e) {
     var detail = e.detail || {};
     if (detail.source === 'internal') {
@@ -1037,7 +1037,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
 });
 </script>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 // Automated findings -> Needs Review tab
 (function () {
     var baseDir = <?php echo json_encode($baseDir); ?>;
@@ -2012,7 +2012,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
 })();
 </script>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 // Testing Status Update Handler
 (function() {
     document.querySelectorAll('.env-status-update').forEach(function(select) {

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
@@ -331,7 +331,7 @@ include __DIR__ . '/../../includes/header.php';
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <!-- Project Configuration for view_issues.js -->
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 // Global configuration object required by view_issues.js
 window.ProjectConfig = {
     projectId: <?php echo $projectId; ?>,

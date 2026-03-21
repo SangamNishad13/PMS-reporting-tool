@@ -394,7 +394,7 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 window.AdminProjectsConfig = {
     projectLeads: <?php echo json_encode(array_map(function($l){ return ['id'=>(int)$l['id'],'full_name'=>$l['full_name']]; }, $projectLeads), JSON_HEX_TAG | JSON_HEX_AMP); ?>
 };

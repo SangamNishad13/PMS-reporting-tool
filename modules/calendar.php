@@ -694,7 +694,7 @@ $canEditFuture = true;
 }
 </style>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 window._calendarConfig = {
     canEditFuture: <?php echo $canEditFuture ? 'true' : 'false'; ?>,
     assignedProjects: <?php echo json_encode($assignedProjects, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>,

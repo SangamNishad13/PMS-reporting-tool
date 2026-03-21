@@ -2157,7 +2157,7 @@ include __DIR__ . '/../../includes/header.php';
 }
 </style>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 // Config for manage-assignments.js
 window._manageAssignFlash = {
     success: <?php echo json_encode($flashSuccess); ?>,

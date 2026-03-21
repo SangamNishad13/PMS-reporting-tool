@@ -783,7 +783,7 @@ include __DIR__ . '/../../includes/header.php';
     <?php include 'partials/tab_production_hours.php'; ?>
 </div>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
     window.ProjectConfig = {
         projectId: <?php echo json_encode($projectId); ?>,
         userId: <?php echo json_encode($userId); ?>,

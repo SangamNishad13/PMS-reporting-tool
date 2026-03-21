@@ -139,7 +139,7 @@ try {
 }
 ?>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 // Global config for dashboard.js
 window.actualClientId = '<?php echo $actualClientId; ?>';
 window.selectedProjectId = '<?php echo $selectedProjectId ?? ""; ?>';

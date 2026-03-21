@@ -489,7 +489,7 @@ include __DIR__ . '/../../includes/header.php';
     </form>
 </div>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 document.getElementById('selectAllColumns').addEventListener('click', function() {
     document.querySelectorAll('input[name="columns[]"]').forEach(function(cb) {
         cb.checked = true;
@@ -654,7 +654,7 @@ updateColumnOrderIndicators();
 
 <script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>
 
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 // Accessible, mobile-friendly column reordering controls
 (function initAccessibleColumnOrdering() {
     const columnItems = document.querySelectorAll('.column-checkbox');

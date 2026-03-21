@@ -881,7 +881,7 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
 </div>
-<script>
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
 window.AdminDashboardConfig = {
     pendingSummaryUrl: <?php echo json_encode($baseDir . '/modules/admin/dashboard.php?action=pending_requests_summary', JSON_HEX_TAG | JSON_HEX_AMP); ?>,
     devicesApiUrl: <?php echo json_encode($devicesApiUrl, JSON_HEX_TAG | JSON_HEX_AMP); ?>,
