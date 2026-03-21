@@ -401,50 +401,6 @@ body.chat-modal-open .chat-widget { visibility: hidden !important; pointer-event
     <span>Project Chat</span>
 </button>
 
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var launcher = document.getElementById('chatLauncher');
-    var widget = document.getElementById('projectChatWidget');
-    var closeBtn = document.getElementById('chatWidgetClose');
-    var fullscreenBtn = document.getElementById('chatWidgetFullscreen');
-    if (!launcher || !widget || !closeBtn || !fullscreenBtn) return;
-    launcher.addEventListener('click', function () {
-        widget.classList.add('open');
-        launcher.style.display = 'none';
-        setTimeout(function () { try { closeBtn.focus(); } catch (e) {} }, 0);
-    });
-    closeBtn.addEventListener('click', function () {
-        widget.classList.remove('open');
-        launcher.style.display = 'inline-flex';
-        setTimeout(function () { try { launcher.focus(); } catch (e) {} }, 0);
-    });
-    fullscreenBtn.addEventListener('click', function () {
-        window.location.href = '<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo (int)$projectId; ?>';
-    });
-    window.addEventListener('message', function (event) {
-        if (!event || !event.data || event.data.type !== 'pms-chat-close') return;
-        widget.classList.remove('open');
-        launcher.style.display = 'inline-flex';
-        setTimeout(function () { try { launcher.focus(); } catch (e) {} }, 0);
-    });
-
-    // Prevent chat overlapping any bootstrap modal on this page.
-    function syncModalState() {
-        var hasOpenModal = document.querySelector('.modal.show') !== null;
-        document.body.classList.toggle('chat-modal-open', hasOpenModal);
-        if (hasOpenModal) {
-            widget.classList.remove('open');
-            launcher.style.display = 'none';
-        } else {
-            launcher.style.display = 'inline-flex';
-        }
-    }
-
-    document.addEventListener('show.bs.modal', syncModalState, true);
-    document.addEventListener('shown.bs.modal', syncModalState, true);
-    document.addEventListener('hidden.bs.modal', syncModalState, true);
-    syncModalState();
-});
-</script>
+<script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>
