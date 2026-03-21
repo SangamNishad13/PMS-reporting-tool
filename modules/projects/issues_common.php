@@ -343,20 +343,7 @@ include __DIR__ . '/partials/issues_modals.php';
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js"></script>
 
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
-<script>
-document.addEventListener('pms:issues-changed', function (e) {
-    // Always reload common issues on any change so the table stays in sync
-    if (typeof window.loadCommonIssues === 'function') {
-        window.loadCommonIssues({ silent: true });
-    }
-});
-
-document.getElementById('commonIssuesRefreshBtn').addEventListener('click', function () {
-    if (typeof window.loadCommonIssues === 'function') {
-        window.loadCommonIssues();
-    }
-});
-</script>
+<script src="<?php echo $baseDir; ?>/assets/js/issues-common.js?v=<?php echo time(); ?>"></script>
 
 <!-- Floating Project Chat -->
 <style>
@@ -397,33 +384,6 @@ document.getElementById('commonIssuesRefreshBtn').addEventListener('click', func
     <span>Project Chat</span>
 </button>
 
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var launcher = document.getElementById('chatLauncher');
-    var widget = document.getElementById('projectChatWidget');
-    var closeBtn = document.getElementById('chatWidgetClose');
-    var fullscreenBtn = document.getElementById('chatWidgetFullscreen');
-    if (!launcher || !widget || !closeBtn || !fullscreenBtn) return;
-    launcher.addEventListener('click', function () {
-        widget.classList.add('open');
-        launcher.style.display = 'none';
-        setTimeout(function () { try { closeBtn.focus(); } catch (e) {} }, 0);
-    });
-    closeBtn.addEventListener('click', function () {
-        widget.classList.remove('open');
-        launcher.style.display = 'inline-flex';
-        setTimeout(function () { try { launcher.focus(); } catch (e) {} }, 0);
-    });
-    fullscreenBtn.addEventListener('click', function () {
-        window.location.href = '<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo (int)$projectId; ?>';
-    });
-    window.addEventListener('message', function (event) {
-        if (!event || !event.data || event.data.type !== 'pms-chat-close') return;
-        widget.classList.remove('open');
-        launcher.style.display = 'inline-flex';
-        setTimeout(function () { try { launcher.focus(); } catch (e) {} }, 0);
-    });
-});
-</script>
+<script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

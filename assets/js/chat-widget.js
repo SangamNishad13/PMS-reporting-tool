@@ -2,6 +2,7 @@
  * chat-widget.js
  * Floating project chat widget logic.
  * Requires window.ProjectConfig.baseDir and window.ProjectConfig.projectId
+ * OR window._chatConfig.fullSrc for custom full-screen URL
  */
 document.addEventListener('DOMContentLoaded', function () {
     var launcher      = document.getElementById('chatLauncher');
@@ -12,6 +13,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var baseDir   = window.ProjectConfig ? window.ProjectConfig.baseDir   : '';
     var projectId = window.ProjectConfig ? window.ProjectConfig.projectId : 0;
+    var fullSrc   = (window._chatConfig && window._chatConfig.fullSrc)
+        ? window._chatConfig.fullSrc
+        : (baseDir + '/modules/chat/project_chat.php?project_id=' + projectId);
 
     launcher.addEventListener('click', function () {
         widget.classList.add('open');
@@ -24,7 +28,7 @@ document.addEventListener('DOMContentLoaded', function () {
         setTimeout(function () { try { launcher.focus(); } catch (e) {} }, 0);
     });
     fullscreenBtn.addEventListener('click', function () {
-        window.location.href = baseDir + '/modules/chat/project_chat.php?project_id=' + projectId;
+        window.location.href = fullSrc;
     });
     window.addEventListener('message', function (event) {
         if (!event || !event.data || event.data.type !== 'pms-chat-close') return;

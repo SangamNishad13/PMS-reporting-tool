@@ -652,36 +652,9 @@ updateColumnOrderIndicators();
     <span>Project Chat</span>
 </button>
 
+<script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>
+
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    var launcher = document.getElementById('chatLauncher');
-    var widget = document.getElementById('projectChatWidget');
-    var closeBtn = document.getElementById('chatWidgetClose');
-    var fullscreenBtn = document.getElementById('chatWidgetFullscreen');
-    if (!launcher || !widget || !closeBtn || !fullscreenBtn) return;
-
-    function openChatWidget() {
-        widget.classList.add('open');
-        launcher.style.display = 'none';
-        setTimeout(function () { try { closeBtn.focus(); } catch (e) {} }, 0);
-    }
-    function closeChatWidget() {
-        widget.classList.remove('open');
-        launcher.style.display = 'inline-flex';
-        setTimeout(function () { try { launcher.focus(); } catch (e) {} }, 0);
-    }
-
-    launcher.addEventListener('click', openChatWidget);
-    closeBtn.addEventListener('click', closeChatWidget);
-    fullscreenBtn.addEventListener('click', function () {
-        window.location.href = '<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo (int)$projectId; ?>';
-    });
-    window.addEventListener('message', function (event) {
-        if (!event || !event.data || event.data.type !== 'pms-chat-close') return;
-        closeChatWidget();
-    });
-});
-
 // Accessible, mobile-friendly column reordering controls
 (function initAccessibleColumnOrdering() {
     const columnItems = document.querySelectorAll('.column-checkbox');
