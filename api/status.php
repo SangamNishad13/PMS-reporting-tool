@@ -54,6 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+// CSRF protection for all state-changing POST requests
+enforceApiCsrf();
+
 $action = $_POST['action'] ?? '';
 $pageId = $_POST['page_id'] ?? 0;
 $status = $_POST['status'] ?? '';

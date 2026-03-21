@@ -718,6 +718,7 @@ try {
     }
 
     if ($method === 'POST' && $action === 'mark_moved') {
+        enforceApiCsrf();
         $findingId = (int)($_POST['finding_id'] ?? 0);
         $issueId = (int)($_POST['issue_id'] ?? 0);
         if ($findingId <= 0 || $issueId <= 0) {
@@ -733,6 +734,7 @@ try {
     }
 
     if ($method === 'POST' && $action === 'delete') {
+        enforceApiCsrf();
         $pageId = (int)($_POST['page_id'] ?? 0);
         $idsRaw = $_POST['ids'] ?? ($_POST['finding_id'] ?? '');
         $ids = [];
@@ -783,6 +785,9 @@ try {
     if ($method !== 'POST') {
         jsonRes(['success' => false, 'message' => 'Method not allowed'], 405);
     }
+
+    // CSRF protection for scan POST
+    enforceApiCsrf();
 
     $pageId = (int)($_POST['page_id'] ?? $_POST['unique_id'] ?? 0);
     if ($pageId <= 0) {

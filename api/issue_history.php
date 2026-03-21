@@ -83,6 +83,7 @@ if ($method === 'GET') {
 
 // ── POST: rollback ───────────────────────────────────────────────────────────
 if ($method === 'POST') {
+    enforceApiCsrf();
     if (!$isAdmin) {
         http_response_code(403);
         echo json_encode(['error' => 'Admin access required']);

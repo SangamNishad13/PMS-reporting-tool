@@ -23,6 +23,14 @@ if (!$input || empty($input['session_id'])) {
     exit;
 }
 
+// CSRF protection
+$csrfToken = $input['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+if (!verifyCsrfToken($csrfToken)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Invalid or missing CSRF token']);
+    exit;
+}
+
 $sessionId = trim($input['session_id']);
 
 try {

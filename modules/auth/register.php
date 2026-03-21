@@ -34,8 +34,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = "Invalid email address";
     }
     
-    if (strlen($password) < 6) {
-        $errors[] = "Password must be at least 6 characters";
+    if (strlen($password) < 8) {
+        $errors[] = "Password must be at least 8 characters";
+    }
+    
+    // Password complexity check
+    if (strlen($password) >= 8) {
+        if (!preg_match('/[A-Z]/', $password)) {
+            $errors[] = "Password must contain at least one uppercase letter";
+        }
+        if (!preg_match('/[0-9]/', $password)) {
+            $errors[] = "Password must contain at least one number";
+        }
     }
     
     if ($password !== $confirmPassword) {
@@ -124,7 +134,7 @@ include __DIR__ . '/../../includes/header.php';
                         
                         <div class="alert alert-info">
                             <i class="fas fa-info-circle"></i>
-                            After registration, your account will need to be activated by an administrator.
+                            Password must be at least 8 characters with one uppercase letter and one number. After registration, your account will need to be activated by an administrator.
                         </div>
                         
                         <div class="d-grid gap-2">
