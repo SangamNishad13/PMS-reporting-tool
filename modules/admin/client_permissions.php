@@ -638,33 +638,6 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 
-<script>
-// Client filter for projects
-document.getElementById('clientFilter').addEventListener('change', function() {
-    const clientId = this.value;
-    const checkboxes = document.querySelectorAll('.form-check[data-client-id]');
-    
-    checkboxes.forEach(function(checkbox) {
-        if (clientId === '' || checkbox.dataset.clientId === clientId) {
-            checkbox.style.display = 'block';
-        } else {
-            checkbox.style.display = 'none';
-            checkbox.querySelector('input').checked = false;
-        }
-    });
-    
-    updateSelectedCount();
-});
-
-// Update selected count
-document.querySelectorAll('.project-checkbox').forEach(function(checkbox) {
-    checkbox.addEventListener('change', updateSelectedCount);
-});
-
-function updateSelectedCount() {
-    const count = document.querySelectorAll('.project-checkbox:checked').length;
-    document.getElementById('selectedCount').textContent = count;
-}
-</script>
+<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/admin-client-permissions.js"></script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

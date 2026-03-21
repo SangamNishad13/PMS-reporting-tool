@@ -270,24 +270,4 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
 }
 </style>
 
-<script>
-// Add click handlers for drill-down navigation
-document.addEventListener('DOMContentLoaded', function() {
-    const widgets = document.querySelectorAll('.widget-container .dashboard-widget');
-    
-    widgets.forEach(widget => {
-        const drillDownLink = widget.querySelector('.widget-actions a');
-        if (drillDownLink) {
-            widget.addEventListener('click', function(e) {
-                // Don't trigger if clicking on action buttons
-                if (!e.target.closest('.widget-actions')) {
-                    window.location.href = drillDownLink.href;
-                }
-            });
-            
-            // Add visual feedback
-            widget.style.cursor = 'pointer';
-        }
-    });
-});
-</script>
+<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/client-dashboard-widgets.js"></script>

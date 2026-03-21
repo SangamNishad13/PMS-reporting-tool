@@ -273,33 +273,4 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
 }
 </style>
 
-<script>
-// Refresh dashboard
-function refreshDashboard() {
-    const button = event.target.closest('button');
-    const originalText = button.innerHTML;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
-    button.disabled = true;
-    
-    // Reload the page with refresh parameter
-    const url = new URL(window.location);
-    url.searchParams.set('refresh', '1');
-    window.location.href = url.toString();
-}
-
-// Project filter functionality
-document.addEventListener('DOMContentLoaded', function() {
-    const projectFilter = document.getElementById('projectFilter');
-    if (projectFilter) {
-        projectFilter.addEventListener('change', function() {
-            const url = new URL(window.location);
-            if (this.value) {
-                url.searchParams.set('project_id', this.value);
-            } else {
-                url.searchParams.delete('project_id');
-            }
-            window.location.href = url.toString();
-        });
-    }
-});
-</script>
+<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/client-dashboard-actions.js"></script>
