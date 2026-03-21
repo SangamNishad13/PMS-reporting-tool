@@ -229,41 +229,9 @@ $projectStats = $projectAnalytics['project_statistics'] ?? [];
 </style>
 
 <script>
-function exportProject(format) {
-    const projectId = <?php echo $projectId; ?>;
-    const exportUrl = `<?php echo $baseDir; ?>/modules/client/export.php?type=project&format=${format}&project_id=${projectId}`;
-    
-    // Show loading state
-    const button = event.target.closest('button');
-    const originalText = button.innerHTML;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
-    button.disabled = true;
-    
-    // Create hidden form for export
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = exportUrl;
-    form.style.display = 'none';
-    document.body.appendChild(form);
-    form.submit();
-    
-    // Reset button after delay
-    setTimeout(() => {
-        button.innerHTML = originalText;
-        button.disabled = false;
-        document.body.removeChild(form);
-    }, 3000);
-}
-
-function refreshProject() {
-    const button = event.target.closest('button');
-    const originalText = button.innerHTML;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-    button.disabled = true;
-    
-    // Reload the page with refresh parameter
-    const url = new URL(window.location);
-    url.searchParams.set('refresh', '1');
-    window.location.href = url.toString();
-}
+window._projectHeaderConfig = {
+    projectId: <?php echo json_encode((int)$projectId); ?>,
+    baseDir: <?php echo json_encode($baseDir, JSON_HEX_TAG | JSON_HEX_AMP); ?>
+};
 </script>
+<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/client-project-header.js"></script>
