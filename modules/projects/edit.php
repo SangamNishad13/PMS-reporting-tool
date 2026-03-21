@@ -468,36 +468,6 @@ try {
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-    $(document).ready(function() {
-        // Form validation
-        $('#editProjectForm').on('submit', function(e) {
-            let valid = true;
-            
-            // Check required fields
-            $('.required').each(function() {
-                const field = $(this).find('input, select, textarea').first();
-                if (field.length && !field.val().trim()) {
-                    field.addClass('is-invalid');
-                    valid = false;
-                } else {
-                    field.removeClass('is-invalid');
-                }
-            });
-            
-            if (!valid) {
-                e.preventDefault();
-                showToast('Please fill in all required fields.', 'warning');
-            }
-        });
-        
-        // Clear delete confirmation checkbox
-        $('#deleteModal').on('show.bs.modal', function() {
-            $('#confirmDelete').prop('checked', false);
-        });
-        
-        // Keep duplicate code input prefilled from server-side default.
-    });
-    </script>
+    <script src="<?php echo htmlspecialchars($base_url, ENT_QUOTES, 'UTF-8'); ?>/assets/js/project-edit.js"></script>
 </body>
 </html>
