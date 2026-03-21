@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/constants.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/project_permissions.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -84,6 +85,11 @@ function handleGetTasks() {
                 jsonResponse(['error' => 'Page not found'], 404);
                 return;
             }
+
+            // IDOR prevention: verify user has access to this page's project
+            if (!hasProjectAccess($db, $userId, (int)$page['project_id'])) {
+                jsonError('Permission denied', 403);
+            }
             
             // Get testing environments
             $envStmt = $db->prepare("
@@ -99,8 +105,10 @@ function handleGetTasks() {
             jsonResponse($page);
             
         } elseif ($projectId) {
-            // Get all pages for a project
-            error_log("Getting pages for project ID: " . $projectId);
+            // Get all pages for a project — verify access first (IDOR prevention)
+            if (!hasProjectAccess($db, $userId, $projectId)) {
+                jsonError('Permission denied', 403);
+            }
             
             $stmt = $db->prepare("
                 SELECT pp.*, 
@@ -116,8 +124,6 @@ function handleGetTasks() {
             ");
             $stmt->execute([$projectId]);
             $pages = $stmt->fetchAll();
-            
-            error_log("Found " . count($pages) . " pages for project " . $projectId);
             
             jsonResponse($pages);
             

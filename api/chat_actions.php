@@ -5,12 +5,16 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/project_permissions.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Content-Type: application/json');
     echo json_encode(['error' => 'Unauthorized']);
     exit;
 }
+
+// CSRF protection for state-changing requests
+enforceApiCsrf();
 
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
@@ -121,6 +125,12 @@ switch ($action) {
         ensureChatAuditSchema($db);
         $projectId = (isset($_POST['project_id']) && $_POST['project_id'] !== '' && $_POST['project_id'] !== 'null' && $_POST['project_id'] !== '0') ? intval($_POST['project_id']) : null;
         $pageId = (isset($_POST['page_id']) && $_POST['page_id'] !== '' && $_POST['page_id'] !== 'null' && $_POST['page_id'] !== '0') ? intval($_POST['page_id']) : null;
+
+        // IDOR prevention: verify project access before sending
+        if ($projectId && !hasProjectAccess($db, $userId, $projectId)) {
+            echo json_encode(['error' => 'Permission denied']);
+            exit;
+        }
         $replyTo = (isset($_POST['reply_to']) && is_numeric($_POST['reply_to'])) ? intval($_POST['reply_to']) : null;
         if ($replyTo === null) {
             $replyToken = trim((string)($_POST['reply_token'] ?? ''));
@@ -221,6 +231,12 @@ switch ($action) {
         $projectId = (isset($_GET['project_id']) && $_GET['project_id'] !== '' && $_GET['project_id'] !== 'null') ? intval($_GET['project_id']) : null;
         $pageId = (isset($_GET['page_id']) && $_GET['page_id'] !== '' && $_GET['page_id'] !== 'null') ? intval($_GET['page_id']) : null;
         $lastId = isset($_GET['last_id']) ? intval($_GET['last_id']) : 0;
+
+        // IDOR prevention: verify project access
+        if ($projectId && !hasProjectAccess($db, $userId, $projectId)) {
+            echo json_encode(['error' => 'Permission denied']);
+            exit;
+        }
         
         $sql = "SELECT cm.*, u.username, u.full_name, u.role FROM chat_messages cm JOIN users u ON cm.user_id = u.id WHERE cm.id > ? ";
         $params = [$lastId];
