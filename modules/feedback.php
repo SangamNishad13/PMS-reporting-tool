@@ -133,7 +133,7 @@ include __DIR__ . '/../includes/header.php';
 <!-- Summernote CSS -->
 <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
 
-<div class="container-fluid" id="feedbackApp" data-base-dir="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>">
+<div class="container-fluid">
     <div class="row">
         <div class="col-md-12">
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -412,6 +412,117 @@ include __DIR__ . '/../includes/header.php';
 <!-- Summernote JS -->
 <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
 
-<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/feedback.js"></script>
+<script>
+$(document).ready(function() {
+    // Initialize Summernote
+    $('#feedbackContent').summernote({
+        height: 200,
+        toolbar: [
+            ['style', ['style']],
+            ['font', ['bold', 'italic', 'underline', 'clear']],
+            ['color', ['color']],
+            ['para', ['ul', 'ol', 'paragraph']],
+            ['table', ['table']],
+            ['insert', ['link']],
+            ['view', ['fullscreen', 'codeview']]
+        ],
+        placeholder: 'Enter your feedback here...'
+    });
+    
+    // Handle form reset
+    $('button[type="reset"]').on('click', function() {
+        $('#feedbackContent').summernote('code', '');
+    });
+
+    // My Feedback table filters
+    function applyMyFeedbackFilters() {
+        const $table = $('#myFeedbackTable');
+        if (!$table.length) return;
+        const search = String($('#myFeedbackSearch').val() || '').toLowerCase().trim();
+        const status = String($('#myFeedbackStatusFilter').val() || '').toLowerCase().trim();
+        const type = String($('#myFeedbackTypeFilter').val() || '').toLowerCase().trim();
+
+        let visible = 0;
+        $table.find('tbody tr').each(function() {
+            const $row = $(this);
+            const rowSearch = String($row.data('search') || '');
+            const rowStatus = String($row.data('status') || '');
+            const rowType = String($row.data('type') || '');
+
+            const matchSearch = !search || rowSearch.indexOf(search) !== -1;
+            const matchStatus = !status || rowStatus === status;
+            const matchType = !type || rowType === type;
+            const show = matchSearch && matchStatus && matchType;
+            $row.toggle(show);
+            if (show) visible++;
+        });
+        $('#myFeedbackVisibleCount').text(visible);
+    }
+
+    $('#myFeedbackSearch, #myFeedbackStatusFilter, #myFeedbackTypeFilter').on('input change', applyMyFeedbackFilters);
+    $('#myFeedbackClearFilters').on('click', function() {
+        $('#myFeedbackSearch').val('');
+        $('#myFeedbackStatusFilter').val('');
+        $('#myFeedbackTypeFilter').val('');
+        applyMyFeedbackFilters();
+    });
+});
+
+// View feedback details
+function viewFeedbackDetails(feedbackId) {
+    fetch(`<?php echo $baseDir; ?>/api/feedback.php?action=get_user_feedback&feedback_id=${feedbackId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const feedback = data.feedback;
+                let html = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Feedback Information</h6>
+                            <p><strong>Date:</strong> ${new Date(feedback.created_at).toLocaleString()}</p>
+                            <p><strong>Status:</strong> <span class="badge bg-primary">${feedback.status || 'open'}</span></p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Project Information</h6>
+                            ${feedback.project_title ? 
+                                `<p><strong>Project:</strong> ${feedback.project_title} (${feedback.project_code})</p>` : 
+                                '<p><strong>Type:</strong> General Feedback</p>'
+                            }
+                        </div>
+                    </div>
+                `;
+                
+                if (feedback.recipients) {
+                    html += `
+                        <div class="mt-3">
+                            <h6>Recipients</h6>
+                            <p>${feedback.recipients}</p>
+                        </div>
+                    `;
+                }
+                
+                html += `
+                    <div class="mt-3">
+                        <h6>Content</h6>
+                        <div class="border p-3 rounded bg-light">
+                            ${feedback.content}
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('feedbackDetailsContent').innerHTML = html;
+                
+                const modal = new bootstrap.Modal(document.getElementById('viewFeedbackDetailsModal'));
+                modal.show();
+            } else {
+                showToast('Failed to load feedback details', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showToast('Error loading feedback details', 'danger');
+        });
+}
+</script>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>

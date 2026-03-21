@@ -8,21 +8,24 @@ $auth->requireRole(['at_tester', 'admin', 'super_admin']);
 
 $baseDir = getBaseDir();
 $db = Database::getInstance();
-$userId = (int)$_SESSION['user_id'];
+$userId = $_SESSION['user_id'];
 
-// Fetch all projects where user is assigned via user_assignments table
-$assignedProjects = $db->prepare("
+// Get ALL AT Tester's assigned projects (including completed)
+$assignedProjectsQuery = "
     SELECT DISTINCT p.id, p.title, p.po_number, p.status, p.project_type,
            COUNT(DISTINCT pp.id) as total_pages,
-           COUNT(DISTINCT CASE WHEN pp.at_tester_id = ? THEN pp.id END) as assigned_pages,
-           0 as completed_pages
+           COUNT(DISTINCT CASE WHEN pe.at_tester_id = ? THEN pp.id END) as assigned_pages,
+           COUNT(DISTINCT CASE WHEN pe.status = 'tested' AND pe.at_tester_id = ? THEN pp.id END) as completed_pages
     FROM projects p
-    INNER JOIN user_assignments ua ON ua.project_id = p.id AND ua.user_id = ? AND (ua.is_removed IS NULL OR ua.is_removed = 0)
-    LEFT JOIN project_pages pp ON pp.project_id = p.id
+    LEFT JOIN project_pages pp ON p.id = pp.project_id
+    LEFT JOIN page_environments pe ON pp.id = pe.page_id
+    WHERE (pe.at_tester_id = ? OR pp.at_tester_id = ?)
     GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
     ORDER BY p.created_at DESC
-");
-$assignedProjects->execute([$userId, $userId]);
+";
+
+$assignedProjects = $db->prepare($assignedProjectsQuery);
+$assignedProjects->execute([$userId, $userId, $userId, $userId]);
 $projects = $assignedProjects->fetchAll();
 
 include __DIR__ . '/../../includes/header.php';
@@ -142,6 +145,33 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 
-<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/my-projects-filter.js"></script>
+<script>
+// Project table filtering
+$(document).ready(function() {
+    function filterProjects() {
+        const statusFilter = $('#statusFilter').val().toLowerCase();
+        const typeFilter = $('#typeFilter').val().toLowerCase();
+        const searchText = $('#searchProject').val().toLowerCase();
+        
+        $('#projectsTable tbody tr').each(function() {
+            const row = $(this);
+            const status = row.data('status');
+            const type = row.data('type');
+            const title = row.data('title');
+            
+            let showRow = true;
+            
+            if (statusFilter && status !== statusFilter) showRow = false;
+            if (typeFilter && type !== typeFilter) showRow = false;
+            if (searchText && title.indexOf(searchText) === -1) showRow = false;
+            
+            row.toggle(showRow);
+        });
+    }
+    
+    $('#statusFilter, #typeFilter').on('change', filterProjects);
+    $('#searchProject').on('keyup', filterProjects);
+});
+</script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

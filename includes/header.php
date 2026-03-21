@@ -307,6 +307,7 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
             var method = (options.method || 'GET').toUpperCase();
             var safeMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE'];
             if (safeMethods.indexOf(method) === -1) {
+                // For FormData, append token; for other bodies, add header
                 if (options.body instanceof FormData) {
                     options.body.append('csrf_token', csrfToken);
                 } else {
@@ -316,30 +317,6 @@ if ($globalFlashSuccess !== '' || $globalFlashError !== '') {
             }
             return fetch(url, options);
         };
-
-        // Globally patch fetch() so all POST/PUT/PATCH/DELETE calls auto-include CSRF token
-        (function() {
-            var _origFetch = window.fetch;
-            window.fetch = function(url, options) {
-                options = options || {};
-                var method = (options.method || 'GET').toUpperCase();
-                var safeMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE'];
-                if (safeMethods.indexOf(method) === -1 && csrfToken) {
-                    if (options.body instanceof FormData) {
-                        // Only append if not already present
-                        if (!options.body.has('csrf_token')) {
-                            options.body.append('csrf_token', csrfToken);
-                        }
-                    } else {
-                        options.headers = options.headers || {};
-                        if (!options.headers['X-CSRF-Token']) {
-                            options.headers['X-CSRF-Token'] = csrfToken;
-                        }
-                    }
-                }
-                return _origFetch.call(this, url, options);
-            };
-        })();
     })();
     </script>
 </head>

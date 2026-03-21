@@ -181,6 +181,36 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 
-<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/my-projects-filter.js"></script>
+<script>
+// Project table filtering
+$(document).ready(function() {
+    function filterProjects() {
+        const statusFilter = $('#statusFilter').val().toLowerCase();
+        const typeFilter = $('#typeFilter').val().toLowerCase();
+        const priorityFilter = $('#priorityFilter').val().toLowerCase();
+        const searchText = $('#searchProject').val().toLowerCase();
+        
+        $('#projectsTable tbody tr').each(function() {
+            const row = $(this);
+            const status = row.data('status');
+            const type = row.data('type');
+            const priority = row.data('priority');
+            const title = row.data('title');
+            
+            let showRow = true;
+            
+            if (statusFilter && status !== statusFilter) showRow = false;
+            if (typeFilter && type !== typeFilter) showRow = false;
+            if (priorityFilter && priority !== priorityFilter) showRow = false;
+            if (searchText && title.indexOf(searchText) === -1) showRow = false;
+            
+            row.toggle(showRow);
+        });
+    }
+    
+    $('#statusFilter, #typeFilter, #priorityFilter').on('change', filterProjects);
+    $('#searchProject').on('keyup', filterProjects);
+});
+</script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

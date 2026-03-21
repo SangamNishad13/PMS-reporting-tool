@@ -402,13 +402,184 @@ include __DIR__ . '/../../includes/header.php';
 </div>
 
 <script>
-window.BulkHoursConfig = {
-    flashSuccess: <?php echo json_encode($flashSuccess, JSON_HEX_TAG | JSON_HEX_AMP); ?>,
-    flashError: <?php echo json_encode($flashError, JSON_HEX_TAG | JSON_HEX_AMP); ?>
-};
-</script>
-<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/bulk-hours.js"></script>
+function showBulkToast(message, variant = 'info', ttl = 5500) {
+    if (!message) return;
+    if (typeof window.showToast === 'function') {
+        window.showToast(message, variant, ttl);
+        return;
+    }
 
+    let wrap = document.getElementById('bulkHoursInlineToastWrap');
+    if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.id = 'bulkHoursInlineToastWrap';
+        wrap.style.position = 'fixed';
+        wrap.style.top = '76px';
+        wrap.style.right = '16px';
+        wrap.style.zIndex = '1080';
+        wrap.style.maxWidth = '420px';
+        document.body.appendChild(wrap);
+    }
+
+    const toast = document.createElement('div');
+    const cls = variant === 'success' ? 'alert-success'
+        : (variant === 'danger' ? 'alert-danger'
+        : (variant === 'warning' ? 'alert-warning' : 'alert-secondary'));
+    toast.className = 'alert ' + cls + ' shadow-sm mb-2';
+    toast.textContent = String(message);
+    wrap.appendChild(toast);
+    setTimeout(function() {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, ttl);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const flashSuccess = <?php echo json_encode($flashSuccess); ?>;
+    const flashError = <?php echo json_encode($flashError); ?>;
+
+    if (flashSuccess) showBulkToast(flashSuccess, 'success', 5500);
+    if (flashError) showBulkToast(flashError, 'danger', 5500);
+});
+
+function validateHours(input) {
+    const minAllowed = parseFloat(input.dataset.min || '0') || 0;
+    const maxAllowed = parseFloat(input.dataset.maxAllowed || input.max || '0') || 0;
+    const isOverAllocated = String(input.dataset.overAllocated || '0') === '1';
+
+    if (input.value === '') {
+        input.style.borderColor = '';
+        input.style.backgroundColor = '';
+        input.nextElementSibling.textContent = `Min: ${minAllowed.toFixed(1)}h, Max: ${maxAllowed.toFixed(1)}h`;
+        input.nextElementSibling.className = 'text-muted hours-info';
+        input.setCustomValidity('');
+        return;
+    }
+
+    const newHours = parseFloat(input.value) || 0;
+    const originalHours = parseFloat(input.dataset.original);
+    const infoElement = input.nextElementSibling;
+    
+    if (newHours < minAllowed) {
+        input.style.borderColor = '#dc3545';
+        input.style.backgroundColor = '#f8d7da';
+        infoElement.textContent = `Min: ${minAllowed.toFixed(1)}h`;
+        infoElement.className = 'text-danger hours-info';
+        input.setCustomValidity(`Cannot be lower than ${minAllowed.toFixed(1)} hours`);
+    } else if (newHours > maxAllowed) {
+        input.style.borderColor = '#dc3545';
+        input.style.backgroundColor = '#f8d7da';
+        infoElement.textContent = isOverAllocated
+            ? `Project over-allocated. Max: ${maxAllowed.toFixed(1)}h`
+            : `Max: ${maxAllowed.toFixed(1)}h`;
+        infoElement.className = 'text-danger hours-info';
+        input.setCustomValidity(`Cannot exceed ${maxAllowed.toFixed(1)} hours`);
+    } else if (newHours > 0 && newHours !== originalHours) {
+        input.style.borderColor = '#198754';
+        input.style.backgroundColor = '#d1e7dd';
+        infoElement.textContent = `${(maxAllowed - newHours).toFixed(1)}h left`;
+        infoElement.className = 'text-success hours-info';
+        input.setCustomValidity('');
+    } else {
+        input.style.borderColor = '';
+        input.style.backgroundColor = '';
+        infoElement.textContent = '';
+        input.setCustomValidity('');
+    }
+}
+
+function applyBulkUpdate() {
+    const form = document.getElementById('bulkUpdateForm');
+    const inputs = form.querySelectorAll('.hours-input');
+    let hasChanges = false;
+    let hasErrors = false;
+    
+    inputs.forEach(input => {
+        if (input.value !== '' && parseFloat(input.value) !== parseFloat(input.dataset.original)) {
+            hasChanges = true;
+        }
+        if (!input.checkValidity()) {
+            hasErrors = true;
+        }
+    });
+    
+    if (!hasChanges) {
+        showBulkToast('No changes detected. Please modify some hours before saving.', 'warning');
+        return;
+    }
+    
+    if (hasErrors) {
+        showBulkToast('Please fix the validation errors before saving.', 'warning');
+        return;
+    }
+    
+    const reason = form.querySelector('textarea[name="bulk_reason"]').value;
+    if (!reason.trim()) {
+        showBulkToast('Please provide a reason for the bulk update.', 'warning');
+        return;
+    }
+    
+    const doSubmit = function() {
+        form.submit();
+    };
+    if (typeof confirmModal === 'function') {
+        confirmModal('Are you sure you want to apply these changes?', doSubmit);
+    } else if (window.confirm('Are you sure you want to apply these changes?')) {
+        doSubmit();
+    }
+}
+
+function resetChanges() {
+    const inputs = document.querySelectorAll('.hours-input');
+    inputs.forEach(input => {
+        input.value = '';
+        input.style.borderColor = '';
+        input.style.backgroundColor = '';
+        input.nextElementSibling.textContent = '';
+        input.setCustomValidity('');
+    });
+    document.querySelector('textarea[name="bulk_reason"]').value = '';
+}
+
+function increaseAll(amount) {
+    const inputs = document.querySelectorAll('.hours-input');
+    inputs.forEach(input => {
+        const current = parseFloat(input.dataset.original) || 0;
+        const maxAllowed = parseFloat(input.dataset.maxAllowed || input.max || current) || current;
+        const newValue = Math.min(maxAllowed, current + amount);
+        
+        input.value = newValue.toFixed(1);
+        validateHours(input);
+    });
+}
+
+function decreaseAll(amount) {
+    const inputs = document.querySelectorAll('.hours-input');
+    inputs.forEach(input => {
+        const current = parseFloat(input.dataset.original) || 0;
+        const minAllowed = parseFloat(input.dataset.min || '0') || 0;
+        const newValue = Math.max(minAllowed, current - amount);
+        input.value = newValue.toFixed(1);
+        validateHours(input);
+    });
+}
+
+function clearAll() {
+    const inputs = document.querySelectorAll('.hours-input');
+    inputs.forEach(input => {
+        input.value = '';
+        input.style.borderColor = '';
+        input.style.backgroundColor = '';
+        input.nextElementSibling.textContent = '';
+        input.setCustomValidity('');
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.hours-input').forEach(function(input) {
+        validateHours(input);
+    });
+});
+</script>
 
 <style>
 .badge-sm {
