@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Unified Dashboard View Template
  * 
@@ -140,32 +140,10 @@ try {
 ?>
 
 <script>
-// Initialize dashboard
-initializeDashboard();
-
-function initializeDashboard() {
-    
-    // Set actualClientId in global scope for dashboard.js
-    window.actualClientId = '<?php echo $actualClientId; ?>';
-    window.selectedProjectId = '<?php echo $selectedProjectId ?? ""; ?>';
-    window.baseUrl = '<?php echo $baseDir; ?>';
-
-    // Add any missing functionality here
-    const buttons = document.querySelectorAll('.btn');
-    buttons.forEach(button => {
-        if (!button.onclick && button.getAttribute('onclick')) {
-            // Ensure onclick handlers work
-            const onclickAttr = button.getAttribute('onclick');
-            button.addEventListener('click', function() {
-                try {
-                    eval(onclickAttr);
-                } catch (e) {
-                    console.error('Button click error:', e);
-                }
-            });
-        }
-    });
-}
+// Global config for dashboard.js
+window.actualClientId = '<?php echo $actualClientId; ?>';
+window.selectedProjectId = '<?php echo $selectedProjectId ?? ""; ?>';
+window.baseUrl = '<?php echo $baseDir; ?>';
+if (typeof initializeDashboard === "function") initializeDashboard();
 </script>
-
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

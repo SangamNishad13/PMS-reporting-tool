@@ -85,7 +85,3 @@ if (!isset($baseDir)) {
         </div>
     </nav>
 </header>
-
-<script>
-
-</script>

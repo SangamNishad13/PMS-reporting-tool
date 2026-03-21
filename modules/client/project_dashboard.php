@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Individual Project Dashboard Template
  * 
@@ -96,36 +96,8 @@ ob_start();
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <?php echo $dashboardController->visualization->getVisualizationJS(); ?>
 
-<script>
-// Project-specific JavaScript functionality
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize project analytics
-    initializeProjectAnalytics();
-    
-    // Setup navigation handlers
-    setupProjectNavigation();
-});
-
-function initializeProjectAnalytics() {
-    // Load project-specific analytics data
-    const projectId = <?php echo $projectId; ?>;
-    const clientUserId = <?php echo $clientUserId; ?>;
-    
-    // Any project-specific initialization can go here
-}
-
-function setupProjectNavigation() {
-    // Handle project switching
-    const projectSelect = document.getElementById('projectNavSelect');
-    if (projectSelect) {
-        projectSelect.addEventListener('change', function() {
-            if (this.value) {
-                window.location.href = `<?php echo $baseDir; ?>/modules/client/project_dashboard.php?id=${this.value}`;
-            }
-        });
-    }
-}
-</script>
+<script>window._clientProjectConfig = { projectId: <?php echo (int)$projectId; ?>, clientUserId: <?php echo (int)$clientUserId; ?>, baseDir: '<?php echo $baseDir; ?>' };</script>
+<script src="<?php echo $baseDir; ?>/assets/js/client-project-dashboard.js?v=<?php echo time(); ?>"></script>
 
 
 
