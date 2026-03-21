@@ -553,7 +553,7 @@ try {
                 jsonRes(['success'=>true,'created_pages'=>$createdPages,'updated_envs'=>$updatedEnvs,'inserted_results'=>$insertedResults]);
             } catch (Exception $ex) {
                 if ($db->inTransaction()) $db->rollBack();
-                jsonRes(['error'=>'Failed to run tests','message'=>$ex->getMessage()],500);
+                jsonRes(['error'=>'Failed to run tests'],500);
             }
         }
 
@@ -696,7 +696,7 @@ try {
                 jsonRes(['success' => true]);
             } catch (Exception $e) {
                 $db->rollBack();
-                jsonRes(['error' => 'Failed to delete unique page', 'message' => $e->getMessage()], 500);
+                jsonRes(['error' => 'Failed to delete unique page'], 500);
             }
         }
         // bulk delete unique pages
@@ -796,7 +796,7 @@ try {
                 jsonRes(['success'=>true,'deleted'=>count($idsArr)]);
             } catch (Exception $e) {
                 $db->rollBack();
-                jsonRes(['error' => 'Failed to delete unique pages', 'message' => $e->getMessage()], 500);
+                jsonRes(['error' => 'Failed to delete unique pages'], 500);
             }
         }
         jsonRes(['error' => 'action not found'], 404);
@@ -806,7 +806,7 @@ try {
 
 } catch (PDOException $e) {
     error_log('project_pages API error: ' . $e->getMessage());
-    jsonRes(['error' => 'database error', 'message' => $e->getMessage()], 500);
+    jsonRes(['error' => 'A database error occurred'], 500);
 }
 
 function normalizeUrlForGrouping($u) {

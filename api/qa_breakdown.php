@@ -171,6 +171,6 @@ try {
     echo json_encode(['success' => true, 'breakdown' => $breakdown, 'total_unique_issues' => count($allUniqueIssues)]);
 } catch (Exception $e) {
     error_log('QA breakdown query failed: ' . $e->getMessage());
-    echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'error' => 'An internal error occurred']);
 }
 ?>

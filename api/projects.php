@@ -146,10 +146,10 @@ function handleGetRequest() {
         }
     } catch (PDOException $e) {
         error_log("Get projects error: " . $e->getMessage());
-        jsonError('Database error occurred: ' . $e->getMessage(), 500);
+        jsonError('Database error occurred', 500);
     } catch (Exception $e) {
         error_log("Get projects general error: " . $e->getMessage());
-        jsonError('An error occurred: ' . $e->getMessage(), 500);
+        jsonError('An error occurred', 500);
     }
 }
 

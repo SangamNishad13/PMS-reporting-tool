@@ -105,9 +105,9 @@ try {
     
 } catch (PDOException $e) {
     error_log("Update project status error: " . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'A database error occurred']);
 } catch (Exception $e) {
     error_log("Update project status general error: " . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'An error occurred']);
 }
 ?>

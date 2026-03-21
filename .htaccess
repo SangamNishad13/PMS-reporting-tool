@@ -173,3 +173,14 @@ RewriteRule .* - [F,L]
         Deny from all
     </IfModule>
 </FilesMatch>
+
+# Block direct web access to debug/test/deployment scripts
+<FilesMatch "^(test_|_patch|deploy_production|run_final_validation)">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>

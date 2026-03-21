@@ -118,7 +118,7 @@ try {
 } catch (Exception $e) {
     error_log("User hours API error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'error' => 'An internal error occurred']);
 }
 
 ?>

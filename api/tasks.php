@@ -184,7 +184,7 @@ function handleGetTasks() {
         
     } catch (Exception $e) {
         error_log("handleGetTasks error: " . $e->getMessage());
-        jsonError('Database error: ' . $e->getMessage(), 500);
+        jsonError('An internal error occurred', 500);
     }
 }
 
