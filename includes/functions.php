@@ -155,41 +155,144 @@ function getStatusOptions($entityType) {
 
 /**
  * Sanitize chat HTML allowing only a small whitelist of tags and safe attributes.
- * Allows <a href>, <img src> (data: or http/https), <b>, <strong>, <i>, <em>, <u>, <br>, <p>, <ul>, <ol>, <li>
+ * Allows <a href>, <img src> (http/https only), <b>, <strong>, <i>, <em>, <u>, <br>, <p>, <ul>, <ol>, <li>
+ * Uses DOM-based parsing when available for robust XSS prevention.
  */
 function sanitize_chat_html($html) {
     if (trim($html) === '') return '';
 
-    // Strip dangerous tags completely (including their content for script/style)
-    $html = preg_replace('#<(script|style|iframe|object|embed|form|input|button|select|textarea|base|link|meta|applet|frame|frameset|layer|ilayer|bgsound|xml)\b[^>]*>.*?</\1>#is', '', $html);
-    // Strip self-closing dangerous tags
-    $html = preg_replace('#<(script|style|iframe|object|embed|form|input|button|select|textarea|base|link|meta|applet|frame|frameset|layer|ilayer|bgsound|xml)\b[^>]*/?\>#is', '', $html);
+    // --- Pass 1: Regex pre-filter (fast removal of obvious dangerous content) ---
 
-    // Remove ALL event handler attributes (on*)
-    $html = preg_replace('/\s+on[a-z][a-z0-9]*\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html);
+    // Strip dangerous tags completely including their content
+    $html = preg_replace('#<(script|style|iframe|object|embed|form|input|button|select|textarea|base|link|meta|applet|frame|frameset|layer|ilayer|bgsound|xml|svg|math)\b[^>]*>.*?</\1>#is', '', $html);
+    // Strip self-closing dangerous tags (including svg, math)
+    $html = preg_replace('#<(script|style|iframe|object|embed|form|input|button|select|textarea|base|link|meta|applet|frame|frameset|layer|ilayer|bgsound|xml|svg|math)\b[^>]*/?\>#is', '', $html);
 
-    // Remove style attributes entirely to prevent CSS-based XSS (expression(), url(javascript:...), etc.)
-    $html = preg_replace('/\s+style\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html);
+    // Remove ALL event handler attributes (on*) - covers onerror, onload, onclick, etc.
+    $html = preg_replace('/(\s+on[a-z][a-z0-9]*\s*=\s*)("[^"]*"|\'[^\']*\'|[^\s>\/]+)/i', '', $html);
 
+    // Remove style attributes entirely (prevents CSS expression(), url(javascript:...) etc.)
+    $html = preg_replace('/\s+style\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>\/]+)/i', '', $html);
+
+    // Remove data: URIs from src/href (can carry JS payloads)
+    $html = preg_replace_callback('/(src|href|action|formaction|xlink:href)\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>\/]+)/i', function ($m) {
+        $attr = $m[1];
+        $val = trim($m[2], "'\"");
+        // Block javascript:, vbscript:, data: URIs
+        if (preg_match('#^\s*(javascript|vbscript|data)\s*:#i', $val)) {
+            return '';
+        }
+        return $attr . '="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"';
+    }, $html);
+
+    // --- Pass 2: DOM-based sanitization (when ext/dom available) ---
+    if (class_exists('DOMDocument')) {
+        $allowedTags = [
+            'a', 'img', 'b', 'strong', 'i', 'em', 'u', 'br', 'p',
+            'ul', 'ol', 'li', 'span', 'code', 'pre', 'blockquote',
+            'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr',
+            'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        ];
+        // Allowed attributes per tag (whitelist approach)
+        $allowedAttrs = [
+            'a'   => ['href', 'title', 'target', 'rel'],
+            'img' => ['src', 'alt', 'title', 'width', 'height'],
+            'td'  => ['colspan', 'rowspan'],
+            'th'  => ['colspan', 'rowspan'],
+            '*'   => ['class'], // class allowed on all tags (no JS in class)
+        ];
+
+        $doc = new DOMDocument();
+        libxml_use_internal_errors(true);
+        // Wrap in utf-8 meta so DOMDocument handles encoding correctly
+        $doc->loadHTML('<?xml encoding="utf-8"?><html><body>' . $html . '</body></html>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+
+        $toRemove = [];
+        $xpath = new DOMXPath($doc);
+
+        // Collect all elements
+        foreach ($xpath->query('//*') as $node) {
+            $tagName = strtolower($node->nodeName);
+            if (!in_array($tagName, $allowedTags, true)) {
+                // Replace disallowed tag with its text content (don't just remove — preserve text)
+                $frag = $doc->createDocumentFragment();
+                while ($node->firstChild) {
+                    $frag->appendChild($node->firstChild);
+                }
+                $node->parentNode->replaceChild($frag, $node);
+                continue;
+            }
+
+            // Remove disallowed attributes
+            $attrsToRemove = [];
+            foreach ($node->attributes as $attr) {
+                $attrName = strtolower($attr->name);
+                $allowed = $allowedAttrs[$tagName] ?? [];
+                $allowedAll = $allowedAttrs['*'] ?? [];
+                if (!in_array($attrName, $allowed, true) && !in_array($attrName, $allowedAll, true)) {
+                    $attrsToRemove[] = $attr->name;
+                }
+                // Extra: block javascript/vbscript/data in any remaining attr value
+                if (preg_match('#^\s*(javascript|vbscript|data)\s*:#i', $attr->value)) {
+                    $attrsToRemove[] = $attr->name;
+                }
+            }
+            foreach ($attrsToRemove as $a) {
+                $node->removeAttribute($a);
+            }
+
+            // Force target="_blank" links to have rel="noopener noreferrer"
+            if ($tagName === 'a') {
+                $target = $node->getAttribute('target');
+                if ($target === '_blank') {
+                    $node->setAttribute('rel', 'noopener noreferrer');
+                }
+                // Ensure external links always have rel set
+                if (!$node->hasAttribute('rel')) {
+                    $node->setAttribute('rel', 'noopener noreferrer');
+                }
+            }
+        }
+
+        // Extract body innerHTML
+        $body = $doc->getElementsByTagName('body')->item(0);
+        if ($body) {
+            $result = '';
+            foreach ($body->childNodes as $child) {
+                $result .= $doc->saveHTML($child);
+            }
+            return $result;
+        }
+    }
+
+    // --- Fallback: regex-only path (when DOM not available) ---
     // Sanitize href/src on <a> and <img> tags
     $html = preg_replace_callback('/<(a|img)\b([^>]*)>/i', function ($m) {
         $tag = strtolower($m[1]);
         $attrs = $m[2];
-        $attrs = preg_replace_callback('/(href|src)\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', function ($ma) use ($tag) {
-            $name = strtolower($ma[1]);
-            $val = trim($ma[2], "'\"");
-            if (preg_match('#^\s*(javascript|vbscript)\s*:#i', $val)) {
-                return '';
+        // Keep only safe attributes
+        $safeAttrs = '';
+        if ($tag === 'a') {
+            if (preg_match('/href\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', $attrs, $hm)) {
+                $val = trim($hm[1], "'\"");
+                if (!preg_match('#^\s*(javascript|vbscript|data)\s*:#i', $val)) {
+                    $safeAttrs .= ' href="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"';
+                }
             }
-            if ($name === 'href' && preg_match('#^\s*data\s*:#i', $val)) {
-                return '';
+            $safeAttrs .= ' rel="noopener noreferrer"';
+        } elseif ($tag === 'img') {
+            if (preg_match('/src\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', $attrs, $sm)) {
+                $val = trim($sm[1], "'\"");
+                if (!preg_match('#^\s*(javascript|vbscript|data)\s*:#i', $val)) {
+                    $safeAttrs .= ' src="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"';
+                }
             }
-            return $name . '="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"';
-        }, $attrs);
-        if ($tag === 'a' && preg_match('/href\s*=/i', $attrs) && !preg_match('/rel\s*=/i', $attrs)) {
-            $attrs .= ' rel="noopener noreferrer"';
+            if (preg_match('/alt\s*=\s*("[^"]*"|\'[^\']*\')/i', $attrs, $am)) {
+                $safeAttrs .= ' alt=' . $am[1];
+            }
         }
-        return '<' . $tag . ' ' . trim($attrs) . '>';
+        return '<' . $tag . $safeAttrs . '>';
     }, $html);
 
     // Strip any tags not in the allowed whitelist

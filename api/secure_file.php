@@ -106,8 +106,12 @@ if (!$skipDbCheck) {
             }
         }
     } catch (Exception $e) {
-        // If database check fails, log error but allow access to avoid breaking existing functionality
+        // If database check fails, deny access (fail-closed for security)
         error_log('secure_file.php: Failed to check project asset permissions: ' . $e->getMessage());
+        http_response_code(403);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Forbidden: Permission check failed';
+        exit;
     }
 }
 
@@ -125,6 +129,8 @@ if (function_exists('finfo_open')) {
 }
 
 // Add caching headers for images to reduce server load
+$fileExt = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+$commonImageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'];
 if (in_array($fileExt, $commonImageExts)) {
     header('Cache-Control: public, max-age=3600'); // Cache for 1 hour
     header('Expires: ' . gmdate('D, d M Y H:i:s', time() + 3600) . ' GMT');

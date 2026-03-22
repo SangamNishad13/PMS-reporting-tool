@@ -333,6 +333,7 @@ function redirect($path, $statusCode = 302) {
 
 /**
  * Generate CSRF token
+ * Token is rotated after each successful verification to prevent replay attacks.
  * 
  * @return string CSRF token
  */
@@ -355,7 +356,7 @@ function generateCspNonce() {
 }
 
 /**
- * Verify CSRF token
+ * Verify CSRF token and rotate it immediately after successful verification.
  * 
  * @param string $token The token to verify
  * @return bool True if token is valid
@@ -364,7 +365,12 @@ function verifyCsrfToken($token) {
     if (!isset($_SESSION['csrf_token'])) {
         return false;
     }
-    return hash_equals($_SESSION['csrf_token'], $token);
+    $valid = hash_equals($_SESSION['csrf_token'], $token);
+    if ($valid) {
+        // Rotate token after successful use to prevent replay attacks
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $valid;
 }
 
 /**

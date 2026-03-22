@@ -129,6 +129,22 @@ function handleGetChat() {
 function handlePostChat() {
     global $db;
     
+    // Rate limiting: max 30 messages per minute per user
+    $userId = $_SESSION['user_id'];
+    $rateLimitKey = 'chat_rate_' . (int)$userId;
+    if (!isset($_SESSION[$rateLimitKey])) {
+        $_SESSION[$rateLimitKey] = ['count' => 0, 'window_start' => time()];
+    }
+    $rateData = &$_SESSION[$rateLimitKey];
+    if (time() - $rateData['window_start'] > 60) {
+        $rateData = ['count' => 0, 'window_start' => time()];
+    }
+    $rateData['count']++;
+    if ($rateData['count'] > 30) {
+        jsonError('Too many messages. Please slow down.', 429);
+        return;
+    }
+    
     $input = json_decode(file_get_contents('php://input'), true);
     if (json_last_error() !== JSON_ERROR_NONE) {
         jsonError('Invalid JSON input', 400);

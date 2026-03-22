@@ -1,9 +1,16 @@
 <?php
 // Database configuration - prefer environment variables on production hosts.
+// SECURITY: Never use default root/empty credentials in production.
+// Set DB_HOST, DB_NAME, DB_USER, DB_PASS as environment variables.
 define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
 define('DB_NAME', getenv('DB_NAME') ?: 'project_management');
 define('DB_USER', getenv('DB_USER') ?: 'root');
 define('DB_PASS', getenv('DB_PASS') ?: '');
+
+// Warn if running with default insecure credentials (non-CLI only)
+if (php_sapi_name() !== 'cli' && DB_USER === 'root' && DB_PASS === '') {
+    error_log('SECURITY WARNING: Application is running with default root/empty database credentials. Set DB_USER and DB_PASS environment variables immediately.');
+}
 
 // Runtime performance tuning (OPcache hints, APCu)
 require_once __DIR__ . '/performance.php';

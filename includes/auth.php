@@ -50,10 +50,10 @@ if (session_status() === PHP_SESSION_NONE) {
         $sessionPathSet = false;
 
         if (!is_dir($preferredSessionPath)) {
-            @mkdir($preferredSessionPath, 0777, true);
+            @mkdir($preferredSessionPath, 0750, true);
         }
         if (is_dir($preferredSessionPath)) {
-            if (!is_writable($preferredSessionPath)) @chmod($preferredSessionPath, 0777);
+            if (!is_writable($preferredSessionPath)) @chmod($preferredSessionPath, 0750);
             if (is_writable($preferredSessionPath)) {
                 session_save_path($preferredSessionPath);
                 $sessionPathSet = true;
@@ -95,6 +95,11 @@ if (isset($_SESSION['user_id'])) {
         $stmt->execute([$_SESSION['user_id']]);
         $u = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($u) {
+            // If role changed, regenerate session ID to prevent privilege escalation via old session
+            $prevRole = $_SESSION['role'] ?? null;
+            if ($prevRole !== null && $prevRole !== $u['role']) {
+                session_regenerate_id(true);
+            }
             $_SESSION['role'] = $u['role'];
             $_SESSION['can_manage_issue_config'] = (bool)$u['can_manage_issue_config'];
             $_SESSION['can_manage_devices'] = !empty($u['can_manage_devices']);
@@ -152,7 +157,9 @@ class Auth {
                 return 'locked'; // Too many attempts
             }
         } catch (Exception $e) {
-            // If DB check fails, fall through (fail open — availability over security here)
+            // If DB check fails, deny login to prevent brute force bypass (fail-closed)
+            error_log('Login rate-limit DB check failed: ' . $e->getMessage());
+            return 'locked';
         }
         
         $stmt = $this->db->prepare("
@@ -413,7 +420,15 @@ class Auth {
 
 // Helper functions for backward compatibility
 function isLoggedIn() {
-    return isset($_SESSION['user_id']);
+    // Use Auth class for proper DB-backed session validation
+    static $authInstance = null;
+    if (!isset($_SESSION['user_id'])) {
+        return false;
+    }
+    if ($authInstance === null) {
+        $authInstance = new Auth();
+    }
+    return $authInstance->isLoggedIn();
 }
 
 function requireLogin() {
