@@ -1,3 +1,9 @@
+# Strict CSP for API endpoints — they return JSON, no scripts needed
+# This overrides the looser fallback CSP set in the root .htaccess
+<IfModule mod_headers.c>
+    Header always set Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+</IfModule>
+
 # Block direct access to log files
 <FilesMatch "(error_log|\.log)$">
     <IfModule mod_authz_core.c>

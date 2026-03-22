@@ -315,8 +315,8 @@ try {
         }
         
         if (!empty($_POST['search'])) {
-            // Escape LIKE wildcards to prevent wildcard injection / excessive DB load
-            $searchEscaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $_POST['search']);
+            // Escape LIKE special chars; use addcslashes for clarity over manual str_replace
+            $searchEscaped = addcslashes($_POST['search'], '%_\\');
             $whereConditions[] = "(f.content LIKE ? OR f.subject LIKE ?)";
             $params[] = "%{$searchEscaped}%";
             $params[] = "%{$searchEscaped}%";

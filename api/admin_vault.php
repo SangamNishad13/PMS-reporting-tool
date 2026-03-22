@@ -40,7 +40,8 @@ function getVaultKey() {
             echo json_encode(['success' => false, 'message' => 'Vault encryption key not configured. Set VAULT_ENCRYPTION_KEY environment variable.']);
             exit;
         }
-        $key = hash('sha256', $appKey, true); // 32 bytes for AES-256
+        // Use PBKDF2 for proper key derivation from APP_KEY (not raw hash)
+        $key = hash_pbkdf2('sha256', $appKey, 'vault_key_salt_v1', 100000, 32, true);
     } else {
         $key = base64_decode($key) ?: hash('sha256', $key, true);
     }
