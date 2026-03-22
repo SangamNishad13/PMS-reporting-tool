@@ -5,7 +5,8 @@ require_once '../includes/helpers.php';
 
 header('Content-Type: application/json');
 
-if (!isLoggedIn()) {
+$auth = new Auth();
+if (!$auth->isLoggedIn()) {
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit;
@@ -92,11 +93,27 @@ try {
             break;
 
         case 'get_credential_password':
-            $stmt = $pdo->prepare("SELECT password_encrypted FROM admin_credentials WHERE id = ? AND admin_id = ?");
-            $stmt->execute([$_GET['id'], $user_id]);
+            $credId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+            $stmt = $pdo->prepare("SELECT id, title, password_encrypted FROM admin_credentials WHERE id = ? AND admin_id = ?");
+            $stmt->execute([$credId, $user_id]);
             $result = $stmt->fetch();
             if ($result) {
                 $password = decryptPassword($result['password_encrypted']);
+                // Audit log: every password reveal is recorded
+                try {
+                    $logStmt = $pdo->prepare("
+                        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+                        VALUES (?, 'vault_password_revealed', 'admin_credential', ?, ?, ?, NOW())
+                    ");
+                    $logStmt->execute([
+                        $user_id,
+                        (int)$result['id'],
+                        json_encode(['credential_title' => $result['title'], 'accessed_by_role' => $user_role]),
+                        $_SERVER['REMOTE_ADDR'] ?? ''
+                    ]);
+                } catch (Exception $logEx) {
+                    error_log('Vault audit log failed: ' . $logEx->getMessage());
+                }
                 echo json_encode(['success' => true, 'password' => $password]);
             } else {
                 throw new Exception('Credential not found');

@@ -168,6 +168,9 @@ function sanitize_chat_html($html) {
     // Remove ALL event handler attributes (on*)
     $html = preg_replace('/\s+on[a-z][a-z0-9]*\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html);
 
+    // Remove style attributes entirely to prevent CSS-based XSS (expression(), url(javascript:...), etc.)
+    $html = preg_replace('/\s+style\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html);
+
     // Sanitize href/src on <a> and <img> tags
     $html = preg_replace_callback('/<(a|img)\b([^>]*)>/i', function ($m) {
         $tag = strtolower($m[1]);

@@ -10,8 +10,20 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Get user ID from URL parameter
-$userId = isset($_GET['id']) ? intval($_GET['id']) : $_SESSION['user_id'];
+// IDOR fix: non-admin users can only view their own profile
+$requestedId = isset($_GET['id']) ? intval($_GET['id']) : (int)$_SESSION['user_id'];
+$currentSessionId = (int)$_SESSION['user_id'];
+$sessionRole = $_SESSION['role'] ?? '';
+$isAdminRole = in_array($sessionRole, ['admin', 'super_admin'], true);
+
+// Only admins can view other users' profiles
+if (!$isAdminRole && $requestedId !== $currentSessionId) {
+    // Silently redirect to own profile instead of exposing the restriction
+    header("Location: " . $baseDir . "/modules/profile.php");
+    exit;
+}
+
+$userId = $requestedId ?: $currentSessionId;
 
 if (!$userId) {
     header("Location: " . $baseDir . "/index.php");

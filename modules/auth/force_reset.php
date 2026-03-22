@@ -27,6 +27,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if (strlen($newPassword) < 8) {
         $error = "Password must be at least 8 characters long.";
+    } elseif (!preg_match('/[A-Z]/', $newPassword)) {
+        $error = "Password must contain at least one uppercase letter.";
+    } elseif (!preg_match('/[0-9]/', $newPassword)) {
+        $error = "Password must contain at least one number.";
+    } elseif (!preg_match('/[^A-Za-z0-9]/', $newPassword)) {
+        $error = "Password must contain at least one special character.";
     } elseif ($newPassword !== $confirmPassword) {
         $error = "Passwords do not match!";
     } else {
@@ -80,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
                     <div class="mb-3">
                         <label class="form-label">New Password</label>
-                        <input type="password" name="new_password" autocomplete="new-password" class="form-control" required placeholder="Min 8 characters">
+                        <input type="password" name="new_password" autocomplete="new-password" class="form-control" required placeholder="Min 8 chars, uppercase, number, special char">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Confirm New Password</label>

@@ -315,9 +315,11 @@ try {
         }
         
         if (!empty($_POST['search'])) {
+            // Escape LIKE wildcards to prevent wildcard injection / excessive DB load
+            $searchEscaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $_POST['search']);
             $whereConditions[] = "(f.content LIKE ? OR f.subject LIKE ?)";
-            $params[] = "%{$_POST['search']}%";
-            $params[] = "%{$_POST['search']}%";
+            $params[] = "%{$searchEscaped}%";
+            $params[] = "%{$searchEscaped}%";
         }
         
         if (!empty($_POST['status'])) {
