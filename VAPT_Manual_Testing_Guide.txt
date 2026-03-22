@@ -37,7 +37,7 @@ TEST 1.2 - Clickjacking Protection
 Steps:
   1. Ek HTML file banao locally:
      <html><body>
-     <iframe src="https://athenaeumtransformation.com/modules/auth/login.php" width="800" height="600"></iframe>
+     <iframe src="https://athenaeumtransformation.com/PMS/modules/auth/login.php" width="800" height="600"></iframe>
      </body></html>
   2. Browser mein kholo
 
@@ -280,7 +280,7 @@ Steps:
   1. Apne computer pe ek file banao: csrf_test.html
      Content:
      <html><body>
-     <form id="f" action="https://athenaeumtransformation.com/api/feedback.php" method="POST">
+     <form id="f" action="https://athenaeumtransformation.com/PMS/api/feedback.php" method="POST">
        <input name="action" value="submit_feedback">
        <input name="content" value="CSRF Attack Test">
      </form>
@@ -361,11 +361,11 @@ SECTION 7: SENSITIVE FILE / DIRECTORY EXPOSURE
 TEST 7.1 - Config Files Access
 --------------------------------
 Steps: Ye URLs browser mein directly type karo:
-  [ ] https://athenaeumtransformation.com/config/database.php
+  [ ] https://athenaeumtransformation.com/PMS/config/database.php
       Expected: Blank page ya 403, DB credentials nahi dikhne chahiye
-  [ ] https://athenaeumtransformation.com/config/settings.php
+  [ ] https://athenaeumtransformation.com/PMS/config/settings.php
       Expected: Blank page ya 403
-  [ ] https://athenaeumtransformation.com/.env (agar exist kare)
+  [ ] https://athenaeumtransformation.com/PMS/.env (agar exist kare)
       Expected: 404 ya 403
 
 Result: PASS / FAIL
@@ -374,9 +374,9 @@ Notes: _______________________________________________
 TEST 7.2 - Git Repository Exposure
 ------------------------------------
 Steps:
-  [ ] https://athenaeumtransformation.com/.git/config
+  [ ] https://athenaeumtransformation.com/PMS/.git/config
       Expected: 403 Forbidden
-  [ ] https://athenaeumtransformation.com/.git/HEAD
+  [ ] https://athenaeumtransformation.com/PMS/.git/HEAD
       Expected: 403 Forbidden
 
 Result: PASS / FAIL
@@ -385,9 +385,9 @@ Notes: _______________________________________________
 TEST 7.3 - Log Files Access
 -----------------------------
 Steps:
-  [ ] https://athenaeumtransformation.com/tmp/logs/issues_api.log
+  [ ] https://athenaeumtransformation.com/PMS/tmp/logs/issues_api.log
       Expected: 403 Forbidden
-  [ ] https://athenaeumtransformation.com/tmp/
+  [ ] https://athenaeumtransformation.com/PMS/tmp/
       Expected: 403 Forbidden, directory listing nahi
 
 Result: PASS / FAIL
@@ -396,11 +396,11 @@ Notes: _______________________________________________
 TEST 7.4 - Directory Listing
 ------------------------------
 Steps: Ye directories browser mein access karo:
-  [ ] https://athenaeumtransformation.com/uploads/
-  [ ] https://athenaeumtransformation.com/assets/uploads/
-  [ ] https://athenaeumtransformation.com/includes/
-  [ ] https://athenaeumtransformation.com/config/
-  [ ] https://athenaeumtransformation.com/api/
+  [ ] https://athenaeumtransformation.com/PMS/uploads/
+  [ ] https://athenaeumtransformation.com/PMS/assets/uploads/
+  [ ] https://athenaeumtransformation.com/PMS/includes/
+  [ ] https://athenaeumtransformation.com/PMS/config/
+  [ ] https://athenaeumtransformation.com/PMS/api/
 
 Expected: Sab pe 403 ya redirect, file listing nahi dikhni chahiye
 Result: PASS / FAIL
@@ -411,7 +411,7 @@ TEST 7.5 - repair_db.php Production Access
 Steps:
   1. Super admin se login karo
   2. Production server pe access karo:
-     https://athenaeumtransformation.com/modules/admin/repair_db.php
+     https://athenaeumtransformation.com/PMS/modules/admin/repair_db.php
 
 Expected: "This utility is disabled in production" - 403 aana chahiye
   (Sirf localhost pe accessible hona chahiye)
@@ -725,324 +725,324 @@ FORMAT: URL | Expected Result | Actual Result | PASS/FAIL
 --------------------------------------------------------------------------------
 ROOT FILES
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/.htaccess                                    | 403 Forbidden
-https://athenaeumtransformation.com/index.php                                    | Login redirect or app load
-https://athenaeumtransformation.com/VAPT_Manual_Testing_Guide.txt                | 403 Forbidden
-https://athenaeumtransformation.com/package.json                                 | 403 Forbidden
-https://athenaeumtransformation.com/package-lock.json                            | 403 Forbidden
+https://athenaeumtransformation.com/PMS/.htaccess                                    | 403 Forbidden
+https://athenaeumtransformation.com/PMS/index.php                                    | Login redirect or app load
+https://athenaeumtransformation.com/PMS/VAPT_Manual_Testing_Guide.txt                | 403 Forbidden
+https://athenaeumtransformation.com/PMS/package.json                                 | 403 Forbidden
+https://athenaeumtransformation.com/PMS/package-lock.json                            | 403 Forbidden
 
 --------------------------------------------------------------------------------
 API FILES (should return JSON with auth error, NOT PHP source code)
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/api/.htaccess                                | 403 Forbidden
-https://athenaeumtransformation.com/api/accessibility_scan.php                   | JSON auth error (not PHP code)
-https://athenaeumtransformation.com/api/admin_project_users.php                  | JSON auth error
-https://athenaeumtransformation.com/api/admin_qa_breakdown.php                   | JSON auth error
-https://athenaeumtransformation.com/api/admin_user_projects.php                  | JSON auth error
-https://athenaeumtransformation.com/api/admin_vault.php                          | JSON auth error
-https://athenaeumtransformation.com/api/chat.php                                 | JSON auth error
-https://athenaeumtransformation.com/api/chat_actions.php                         | JSON auth error
-https://athenaeumtransformation.com/api/chat_unread_count.php                    | JSON auth error
-https://athenaeumtransformation.com/api/chat_upload_image.php                    | JSON auth error
-https://athenaeumtransformation.com/api/client_dashboard.php                     | JSON auth error
-https://athenaeumtransformation.com/api/client_export.php                        | JSON auth error
-https://athenaeumtransformation.com/api/devices.php                              | JSON auth error
-https://athenaeumtransformation.com/api/edit_requests.php                        | JSON auth error
-https://athenaeumtransformation.com/api/email_preferences.php                    | JSON auth error
-https://athenaeumtransformation.com/api/export_client_report.php                 | JSON auth error
-https://athenaeumtransformation.com/api/export_download.php                      | JSON auth error
-https://athenaeumtransformation.com/api/export_issues.php                        | JSON auth error
-https://athenaeumtransformation.com/api/export_overview_data.php                 | JSON auth error
-https://athenaeumtransformation.com/api/feedback.php                             | JSON auth error
-https://athenaeumtransformation.com/api/force_logout_session.php                 | JSON auth error
-https://athenaeumtransformation.com/api/generic_tasks.php                        | JSON auth error
-https://athenaeumtransformation.com/api/get_original_data.php                    | JSON auth error
-https://athenaeumtransformation.com/api/get_pending_changes.php                  | JSON auth error
-https://athenaeumtransformation.com/api/hours_reminder.php                       | JSON auth error
-https://athenaeumtransformation.com/api/issue_comments.php                       | JSON auth error
-https://athenaeumtransformation.com/api/issue_config.php                         | JSON auth error
-https://athenaeumtransformation.com/api/issue_drafts.php                         | JSON auth error
-https://athenaeumtransformation.com/api/issue_history.php                        | JSON auth error
-https://athenaeumtransformation.com/api/issue_presets.php                        | JSON auth error
-https://athenaeumtransformation.com/api/issue_templates.php                      | JSON auth error
-https://athenaeumtransformation.com/api/issue_titles.php                         | JSON auth error
-https://athenaeumtransformation.com/api/issue_upload_image.php                   | JSON auth error
-https://athenaeumtransformation.com/api/issues.php                               | JSON auth error
-https://athenaeumtransformation.com/api/mark_chat_read.php                       | JSON auth error
-https://athenaeumtransformation.com/api/project_hours.php                        | JSON auth error
-https://athenaeumtransformation.com/api/project_pages.php                        | JSON auth error
-https://athenaeumtransformation.com/api/projects.php                             | JSON auth error
-https://athenaeumtransformation.com/api/public_image.php                         | JSON auth error or image
-https://athenaeumtransformation.com/api/qa_breakdown.php                         | JSON auth error
-https://athenaeumtransformation.com/api/regression_actions.php                   | JSON auth error
-https://athenaeumtransformation.com/api/secure_file.php                          | JSON auth error
-https://athenaeumtransformation.com/api/serve_template.php                       | JSON auth error
-https://athenaeumtransformation.com/api/status.php                               | JSON auth error
-https://athenaeumtransformation.com/api/tasks.php                                | JSON auth error
-https://athenaeumtransformation.com/api/update_env_status.php                    | JSON auth error
-https://athenaeumtransformation.com/api/update_page_status.php                   | JSON auth error
-https://athenaeumtransformation.com/api/update_phase.php                         | JSON auth error
-https://athenaeumtransformation.com/api/update_project_status.php                | JSON auth error
-https://athenaeumtransformation.com/api/user_hours.php                           | JSON auth error
+https://athenaeumtransformation.com/PMS/api/.htaccess                                | 403 Forbidden
+https://athenaeumtransformation.com/PMS/api/accessibility_scan.php                   | JSON auth error (not PHP code)
+https://athenaeumtransformation.com/PMS/api/admin_project_users.php                  | JSON auth error
+https://athenaeumtransformation.com/PMS/api/admin_qa_breakdown.php                   | JSON auth error
+https://athenaeumtransformation.com/PMS/api/admin_user_projects.php                  | JSON auth error
+https://athenaeumtransformation.com/PMS/api/admin_vault.php                          | JSON auth error
+https://athenaeumtransformation.com/PMS/api/chat.php                                 | JSON auth error
+https://athenaeumtransformation.com/PMS/api/chat_actions.php                         | JSON auth error
+https://athenaeumtransformation.com/PMS/api/chat_unread_count.php                    | JSON auth error
+https://athenaeumtransformation.com/PMS/api/chat_upload_image.php                    | JSON auth error
+https://athenaeumtransformation.com/PMS/api/client_dashboard.php                     | JSON auth error
+https://athenaeumtransformation.com/PMS/api/client_export.php                        | JSON auth error
+https://athenaeumtransformation.com/PMS/api/devices.php                              | JSON auth error
+https://athenaeumtransformation.com/PMS/api/edit_requests.php                        | JSON auth error
+https://athenaeumtransformation.com/PMS/api/email_preferences.php                    | JSON auth error
+https://athenaeumtransformation.com/PMS/api/export_client_report.php                 | JSON auth error
+https://athenaeumtransformation.com/PMS/api/export_download.php                      | JSON auth error
+https://athenaeumtransformation.com/PMS/api/export_issues.php                        | JSON auth error
+https://athenaeumtransformation.com/PMS/api/export_overview_data.php                 | JSON auth error
+https://athenaeumtransformation.com/PMS/api/feedback.php                             | JSON auth error
+https://athenaeumtransformation.com/PMS/api/force_logout_session.php                 | JSON auth error
+https://athenaeumtransformation.com/PMS/api/generic_tasks.php                        | JSON auth error
+https://athenaeumtransformation.com/PMS/api/get_original_data.php                    | JSON auth error
+https://athenaeumtransformation.com/PMS/api/get_pending_changes.php                  | JSON auth error
+https://athenaeumtransformation.com/PMS/api/hours_reminder.php                       | JSON auth error
+https://athenaeumtransformation.com/PMS/api/issue_comments.php                       | JSON auth error
+https://athenaeumtransformation.com/PMS/api/issue_config.php                         | JSON auth error
+https://athenaeumtransformation.com/PMS/api/issue_drafts.php                         | JSON auth error
+https://athenaeumtransformation.com/PMS/api/issue_history.php                        | JSON auth error
+https://athenaeumtransformation.com/PMS/api/issue_presets.php                        | JSON auth error
+https://athenaeumtransformation.com/PMS/api/issue_templates.php                      | JSON auth error
+https://athenaeumtransformation.com/PMS/api/issue_titles.php                         | JSON auth error
+https://athenaeumtransformation.com/PMS/api/issue_upload_image.php                   | JSON auth error
+https://athenaeumtransformation.com/PMS/api/issues.php                               | JSON auth error
+https://athenaeumtransformation.com/PMS/api/mark_chat_read.php                       | JSON auth error
+https://athenaeumtransformation.com/PMS/api/project_hours.php                        | JSON auth error
+https://athenaeumtransformation.com/PMS/api/project_pages.php                        | JSON auth error
+https://athenaeumtransformation.com/PMS/api/projects.php                             | JSON auth error
+https://athenaeumtransformation.com/PMS/api/public_image.php                         | JSON auth error or image
+https://athenaeumtransformation.com/PMS/api/qa_breakdown.php                         | JSON auth error
+https://athenaeumtransformation.com/PMS/api/regression_actions.php                   | JSON auth error
+https://athenaeumtransformation.com/PMS/api/secure_file.php                          | JSON auth error
+https://athenaeumtransformation.com/PMS/api/serve_template.php                       | JSON auth error
+https://athenaeumtransformation.com/PMS/api/status.php                               | JSON auth error
+https://athenaeumtransformation.com/PMS/api/tasks.php                                | JSON auth error
+https://athenaeumtransformation.com/PMS/api/update_env_status.php                    | JSON auth error
+https://athenaeumtransformation.com/PMS/api/update_page_status.php                   | JSON auth error
+https://athenaeumtransformation.com/PMS/api/update_phase.php                         | JSON auth error
+https://athenaeumtransformation.com/PMS/api/update_project_status.php                | JSON auth error
+https://athenaeumtransformation.com/PMS/api/user_hours.php                           | JSON auth error
 
 --------------------------------------------------------------------------------
 CONFIG FILES (must be blocked - CRITICAL)
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/config/cache_production.php                  | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/config/constants.php                         | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/config/database.php                          | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/config/email_production.php                  | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/config/init_production.php                   | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/config/performance.php                       | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/config/production.php                        | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/config/redis.php                             | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/config/settings.php                          | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/config/storage_production.php                | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/config/timezone.php                          | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/config/cache_production.php                  | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/config/constants.php                         | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/config/database.php                          | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/config/email_production.php                  | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/config/init_production.php                   | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/config/performance.php                       | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/config/production.php                        | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/config/redis.php                             | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/config/settings.php                          | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/config/storage_production.php                | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/config/timezone.php                          | 403 Forbidden (CRITICAL)
 
 --------------------------------------------------------------------------------
 CLIENT FILES
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/client/.htaccess                             | 403 Forbidden
-https://athenaeumtransformation.com/client/ajax_widget.php                       | 403 or auth redirect
-https://athenaeumtransformation.com/client/index.php                             | Login page or client portal
+https://athenaeumtransformation.com/PMS/client/.htaccess                             | 403 Forbidden
+https://athenaeumtransformation.com/PMS/client/ajax_widget.php                       | 403 or auth redirect
+https://athenaeumtransformation.com/PMS/client/index.php                             | Login page or client portal
 
 --------------------------------------------------------------------------------
 INCLUDES FILES (must be blocked - source code exposure risk)
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/includes/auth.php                            | 403 Forbidden
-https://athenaeumtransformation.com/includes/backup.php                          | 403 Forbidden
-https://athenaeumtransformation.com/includes/chat_helpers.php                    | 403 Forbidden
-https://athenaeumtransformation.com/includes/client_page_template.php            | 403 Forbidden
-https://athenaeumtransformation.com/includes/client_permissions.php              | 403 Forbidden
-https://athenaeumtransformation.com/includes/email.php                           | 403 Forbidden
-https://athenaeumtransformation.com/includes/excel_reader.php                    | 403 Forbidden
-https://athenaeumtransformation.com/includes/footer.php                          | 403 Forbidden
-https://athenaeumtransformation.com/includes/functions.php                       | 403 Forbidden
-https://athenaeumtransformation.com/includes/header.php                          | 403 Forbidden
-https://athenaeumtransformation.com/includes/helpers.php                         | 403 Forbidden
-https://athenaeumtransformation.com/includes/hours_validation.php                | 403 Forbidden
-https://athenaeumtransformation.com/includes/project_permissions.php             | 403 Forbidden
-https://athenaeumtransformation.com/includes/universal_header.php                | 403 Forbidden
-https://athenaeumtransformation.com/includes/controllers/AdminAssignmentController.php       | 403 Forbidden
-https://athenaeumtransformation.com/includes/controllers/ClientAuthenticationController.php  | 403 Forbidden
-https://athenaeumtransformation.com/includes/controllers/ClientDashboardController.php       | 403 Forbidden
-https://athenaeumtransformation.com/includes/controllers/ClientExportController.php          | 403 Forbidden
-https://athenaeumtransformation.com/includes/controllers/ProjectAnalyticsController.php      | 403 Forbidden
-https://athenaeumtransformation.com/includes/controllers/UnifiedDashboardController.php      | 403 Forbidden
-https://athenaeumtransformation.com/includes/exceptions/UnauthorizedAccessException.php      | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/AnalyticsEngine.php          | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/AnalyticsReport.php          | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/AuditLogger.php              | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/BlockerIssuesAnalytics.php   | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/CacheManager.php             | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/ClientAccessControlManager.php | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/ClientProjectAssignment.php  | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/ClientUser.php               | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/CommentedIssuesAnalytics.php | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/CommonIssuesAnalytics.php    | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/ComplianceTrendAnalytics.php | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/ErrorHandler.php             | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/ExcelExporter.php            | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/ExportEngine.php             | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/ExportRequest.php            | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/NotificationManager.php      | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/PageIssuesAnalytics.php      | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/PDFExporter.php              | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/ProjectAssignmentManager.php | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/SecurityValidator.php        | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/SeverityAnalytics.php        | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/UserAffectedAnalytics.php    | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/VisualizationRenderer.php    | 403 Forbidden
-https://athenaeumtransformation.com/includes/models/WCAGComplianceAnalytics.php  | 403 Forbidden
-https://athenaeumtransformation.com/includes/templates/admin/assignment_interface.php        | 403 Forbidden
-https://athenaeumtransformation.com/includes/templates/client/404.php            | 403 Forbidden
-https://athenaeumtransformation.com/includes/templates/client/dashboard.php      | 403 Forbidden
-https://athenaeumtransformation.com/includes/templates/client/error.php          | 403 Forbidden
-https://athenaeumtransformation.com/includes/templates/client/no_projects.php    | 403 Forbidden
-https://athenaeumtransformation.com/includes/templates/client/project_view.php   | 403 Forbidden
-https://athenaeumtransformation.com/includes/templates/email/assignment_notification.php     | 403 Forbidden
-https://athenaeumtransformation.com/includes/templates/email/export_ready.html   | 403 Forbidden
-https://athenaeumtransformation.com/includes/templates/email/periodic_summary.php | 403 Forbidden
-https://athenaeumtransformation.com/includes/templates/email/preferences_page.php | 403 Forbidden
-https://athenaeumtransformation.com/includes/templates/email/project_assignment.html | 403 Forbidden
-https://athenaeumtransformation.com/includes/templates/email/revocation_notification.php | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/auth.php                            | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/backup.php                          | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/chat_helpers.php                    | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/client_page_template.php            | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/client_permissions.php              | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/email.php                           | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/excel_reader.php                    | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/footer.php                          | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/functions.php                       | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/header.php                          | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/helpers.php                         | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/hours_validation.php                | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/project_permissions.php             | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/universal_header.php                | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/controllers/AdminAssignmentController.php       | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/controllers/ClientAuthenticationController.php  | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/controllers/ClientDashboardController.php       | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/controllers/ClientExportController.php          | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/controllers/ProjectAnalyticsController.php      | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/controllers/UnifiedDashboardController.php      | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/exceptions/UnauthorizedAccessException.php      | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/AnalyticsEngine.php          | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/AnalyticsReport.php          | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/AuditLogger.php              | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/BlockerIssuesAnalytics.php   | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/CacheManager.php             | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/ClientAccessControlManager.php | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/ClientProjectAssignment.php  | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/ClientUser.php               | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/CommentedIssuesAnalytics.php | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/CommonIssuesAnalytics.php    | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/ComplianceTrendAnalytics.php | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/ErrorHandler.php             | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/ExcelExporter.php            | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/ExportEngine.php             | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/ExportRequest.php            | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/NotificationManager.php      | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/PageIssuesAnalytics.php      | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/PDFExporter.php              | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/ProjectAssignmentManager.php | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/SecurityValidator.php        | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/SeverityAnalytics.php        | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/UserAffectedAnalytics.php    | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/VisualizationRenderer.php    | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/models/WCAGComplianceAnalytics.php  | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/templates/admin/assignment_interface.php        | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/templates/client/404.php            | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/templates/client/dashboard.php      | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/templates/client/error.php          | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/templates/client/no_projects.php    | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/templates/client/project_view.php   | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/templates/email/assignment_notification.php     | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/templates/email/export_ready.html   | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/templates/email/periodic_summary.php | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/templates/email/preferences_page.php | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/templates/email/project_assignment.html | 403 Forbidden
+https://athenaeumtransformation.com/PMS/includes/templates/email/revocation_notification.php | 403 Forbidden
 
 --------------------------------------------------------------------------------
 MODULES - AUTH
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/modules/auth/login.php                       | Login page (OK - public)
-https://athenaeumtransformation.com/modules/auth/logout.php                      | Redirect to login
-https://athenaeumtransformation.com/modules/auth/force_reset.php                 | Redirect to login (not directly accessible)
+https://athenaeumtransformation.com/PMS/modules/auth/login.php                       | Login page (OK - public)
+https://athenaeumtransformation.com/PMS/modules/auth/logout.php                      | Redirect to login
+https://athenaeumtransformation.com/PMS/modules/auth/force_reset.php                 | Redirect to login (not directly accessible)
 
 --------------------------------------------------------------------------------
 MODULES - ADMIN (must redirect to login if not authenticated)
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/modules/admin/active_sessions.php            | Login redirect
-https://athenaeumtransformation.com/modules/admin/availability_status_master.php | Login redirect
-https://athenaeumtransformation.com/modules/admin/backup.php                     | Login redirect (CRITICAL)
-https://athenaeumtransformation.com/modules/admin/bulk_hours_management.php      | Login redirect
-https://athenaeumtransformation.com/modules/admin/calendar.php                   | Login redirect
-https://athenaeumtransformation.com/modules/admin/client_permissions.php         | Login redirect
-https://athenaeumtransformation.com/modules/admin/client_users.php               | Login redirect
-https://athenaeumtransformation.com/modules/admin/clients.php                    | Login redirect
-https://athenaeumtransformation.com/modules/admin/dashboard.php                  | Login redirect
-https://athenaeumtransformation.com/modules/admin/device_permissions.php         | Login redirect
-https://athenaeumtransformation.com/modules/admin/devices.php                    | Login redirect
-https://athenaeumtransformation.com/modules/admin/edit_requests.php              | Login redirect
-https://athenaeumtransformation.com/modules/admin/env_status_master.php          | Login redirect
-https://athenaeumtransformation.com/modules/admin/environments.php               | Login redirect
-https://athenaeumtransformation.com/modules/admin/feedbacks.php                  | Login redirect
-https://athenaeumtransformation.com/modules/admin/hours_compliance.php           | Login redirect
-https://athenaeumtransformation.com/modules/admin/issue_config.php               | Login redirect
-https://athenaeumtransformation.com/modules/admin/issue_statuses.php             | Login redirect
-https://athenaeumtransformation.com/modules/admin/login_activity.php             | Login redirect
-https://athenaeumtransformation.com/modules/admin/manage_hours.php               | Login redirect
-https://athenaeumtransformation.com/modules/admin/manage_statuses.php            | Login redirect
-https://athenaeumtransformation.com/modules/admin/page_qa_status_master.php      | Login redirect
-https://athenaeumtransformation.com/modules/admin/page_testing_status_master.php | Login redirect
-https://athenaeumtransformation.com/modules/admin/pdf_export_template.php        | Login redirect
-https://athenaeumtransformation.com/modules/admin/performance.php                | Login redirect
-https://athenaeumtransformation.com/modules/admin/phase_master.php               | Login redirect
-https://athenaeumtransformation.com/modules/admin/production_logs.php            | Login redirect
-https://athenaeumtransformation.com/modules/admin/project_specific_permissions.php | Login redirect
-https://athenaeumtransformation.com/modules/admin/projects.php                   | Login redirect
-https://athenaeumtransformation.com/modules/admin/qa_status_master.php           | Login redirect
-https://athenaeumtransformation.com/modules/admin/qa_status_permissions.php      | Login redirect
-https://athenaeumtransformation.com/modules/admin/repair_db.php                  | 403 Forbidden in production (CRITICAL)
-https://athenaeumtransformation.com/modules/admin/reports.php                    | Login redirect
-https://athenaeumtransformation.com/modules/admin/resource_workload.php          | Login redirect
-https://athenaeumtransformation.com/modules/admin/resource_workload_permissions.php | Login redirect
-https://athenaeumtransformation.com/modules/admin/uploads_manager.php            | Login redirect
-https://athenaeumtransformation.com/modules/admin/user_performance.php           | Login redirect
-https://athenaeumtransformation.com/modules/admin/users.php                      | Login redirect
-https://athenaeumtransformation.com/modules/admin/vault.php                      | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/active_sessions.php            | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/availability_status_master.php | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/backup.php                     | Login redirect (CRITICAL)
+https://athenaeumtransformation.com/PMS/modules/admin/bulk_hours_management.php      | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/calendar.php                   | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/client_permissions.php         | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/client_users.php               | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/clients.php                    | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/dashboard.php                  | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/device_permissions.php         | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/devices.php                    | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/edit_requests.php              | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/env_status_master.php          | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/environments.php               | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/feedbacks.php                  | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/hours_compliance.php           | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/issue_config.php               | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/issue_statuses.php             | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/login_activity.php             | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/manage_hours.php               | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/manage_statuses.php            | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/page_qa_status_master.php      | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/page_testing_status_master.php | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/pdf_export_template.php        | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/performance.php                | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/phase_master.php               | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/production_logs.php            | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/project_specific_permissions.php | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/projects.php                   | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/qa_status_master.php           | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/qa_status_permissions.php      | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/repair_db.php                  | 403 Forbidden in production (CRITICAL)
+https://athenaeumtransformation.com/PMS/modules/admin/reports.php                    | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/resource_workload.php          | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/resource_workload_permissions.php | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/uploads_manager.php            | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/user_performance.php           | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/users.php                      | Login redirect
+https://athenaeumtransformation.com/PMS/modules/admin/vault.php                      | Login redirect
 
 --------------------------------------------------------------------------------
 MODULES - PROJECTS
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/modules/projects/actions.php                 | Login redirect
-https://athenaeumtransformation.com/modules/projects/add_page.php                | Login redirect
-https://athenaeumtransformation.com/modules/projects/archive.php                 | Login redirect
-https://athenaeumtransformation.com/modules/projects/assets_list.php             | Login redirect
-https://athenaeumtransformation.com/modules/projects/bulk_assign.php             | Login redirect
-https://athenaeumtransformation.com/modules/projects/create.php                  | Login redirect
-https://athenaeumtransformation.com/modules/projects/delete.php                  | Login redirect
-https://athenaeumtransformation.com/modules/projects/duplicate.php               | Login redirect
-https://athenaeumtransformation.com/modules/projects/edit.php                    | Login redirect
-https://athenaeumtransformation.com/modules/projects/export_issues.php           | Login redirect
-https://athenaeumtransformation.com/modules/projects/handle_asset.php            | Login redirect
-https://athenaeumtransformation.com/modules/projects/issues.php                  | Login redirect
-https://athenaeumtransformation.com/modules/projects/issues_all.php              | Login redirect
-https://athenaeumtransformation.com/modules/projects/issues_common.php           | Login redirect
-https://athenaeumtransformation.com/modules/projects/issues_page_detail.php      | Login redirect
-https://athenaeumtransformation.com/modules/projects/issues_pages.php            | Login redirect
-https://athenaeumtransformation.com/modules/projects/manage_assignments.php      | Login redirect
-https://athenaeumtransformation.com/modules/projects/my_client_projects.php      | Login redirect
-https://athenaeumtransformation.com/modules/projects/phases.php                  | Login redirect
-https://athenaeumtransformation.com/modules/projects/upload_pages.php            | Login redirect
-https://athenaeumtransformation.com/modules/projects/view.php                    | Login redirect
-https://athenaeumtransformation.com/modules/projects/partials/issues_modals.php  | 403 Forbidden
-https://athenaeumtransformation.com/modules/projects/partials/modals.php         | 403 Forbidden
-https://athenaeumtransformation.com/modules/projects/partials/tab_activity.php   | 403 Forbidden
-https://athenaeumtransformation.com/modules/projects/partials/tab_assets.php     | 403 Forbidden
-https://athenaeumtransformation.com/modules/projects/partials/tab_feedback.php   | 403 Forbidden
-https://athenaeumtransformation.com/modules/projects/partials/tab_issues.php     | 403 Forbidden
-https://athenaeumtransformation.com/modules/projects/partials/tab_pages.php      | 403 Forbidden
-https://athenaeumtransformation.com/modules/projects/partials/tab_performance.php | 403 Forbidden
-https://athenaeumtransformation.com/modules/projects/partials/tab_phases.php     | 403 Forbidden
-https://athenaeumtransformation.com/modules/projects/partials/tab_production_hours.php | 403 Forbidden
-https://athenaeumtransformation.com/modules/projects/partials/tab_team.php       | 403 Forbidden
+https://athenaeumtransformation.com/PMS/modules/projects/actions.php                 | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/add_page.php                | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/archive.php                 | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/assets_list.php             | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/bulk_assign.php             | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/create.php                  | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/delete.php                  | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/duplicate.php               | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/edit.php                    | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/export_issues.php           | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/handle_asset.php            | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/issues.php                  | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/issues_all.php              | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/issues_common.php           | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/issues_page_detail.php      | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/issues_pages.php            | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/manage_assignments.php      | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/my_client_projects.php      | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/phases.php                  | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/upload_pages.php            | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/view.php                    | Login redirect
+https://athenaeumtransformation.com/PMS/modules/projects/partials/issues_modals.php  | 403 Forbidden
+https://athenaeumtransformation.com/PMS/modules/projects/partials/modals.php         | 403 Forbidden
+https://athenaeumtransformation.com/PMS/modules/projects/partials/tab_activity.php   | 403 Forbidden
+https://athenaeumtransformation.com/PMS/modules/projects/partials/tab_assets.php     | 403 Forbidden
+https://athenaeumtransformation.com/PMS/modules/projects/partials/tab_feedback.php   | 403 Forbidden
+https://athenaeumtransformation.com/PMS/modules/projects/partials/tab_issues.php     | 403 Forbidden
+https://athenaeumtransformation.com/PMS/modules/projects/partials/tab_pages.php      | 403 Forbidden
+https://athenaeumtransformation.com/PMS/modules/projects/partials/tab_performance.php | 403 Forbidden
+https://athenaeumtransformation.com/PMS/modules/projects/partials/tab_phases.php     | 403 Forbidden
+https://athenaeumtransformation.com/PMS/modules/projects/partials/tab_production_hours.php | 403 Forbidden
+https://athenaeumtransformation.com/PMS/modules/projects/partials/tab_team.php       | 403 Forbidden
 
 --------------------------------------------------------------------------------
 MODULES - OTHER ROLES
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/modules/at_tester/dashboard.php              | Login redirect
-https://athenaeumtransformation.com/modules/at_tester/my_projects.php            | Login redirect
-https://athenaeumtransformation.com/modules/at_tester/project_tasks.php          | Login redirect
-https://athenaeumtransformation.com/modules/at_tester/test_history.php           | Login redirect
-https://athenaeumtransformation.com/modules/ft_tester/dashboard.php              | Login redirect
-https://athenaeumtransformation.com/modules/ft_tester/my_projects.php            | Login redirect
-https://athenaeumtransformation.com/modules/ft_tester/project_tasks.php          | Login redirect
-https://athenaeumtransformation.com/modules/ft_tester/test_history.php           | Login redirect
-https://athenaeumtransformation.com/modules/qa/dashboard.php                     | Login redirect
-https://athenaeumtransformation.com/modules/qa/my_projects.php                   | Login redirect
-https://athenaeumtransformation.com/modules/qa/page_assignment.php               | Login redirect
-https://athenaeumtransformation.com/modules/qa/qa_tasks.php                      | Login redirect
-https://athenaeumtransformation.com/modules/project_lead/assignments.php         | Login redirect
-https://athenaeumtransformation.com/modules/project_lead/dashboard.php           | Login redirect
-https://athenaeumtransformation.com/modules/project_lead/my_projects.php         | Login redirect
-https://athenaeumtransformation.com/modules/project_lead/team_assignment.php     | Login redirect
-https://athenaeumtransformation.com/modules/reports/dashboard.php                | Login redirect
-https://athenaeumtransformation.com/modules/reports/export.php                   | Login redirect
-https://athenaeumtransformation.com/modules/calendar.php                         | Login redirect
-https://athenaeumtransformation.com/modules/chat/page_chat.php                   | Login redirect
-https://athenaeumtransformation.com/modules/chat/project_chat.php                | Login redirect
-https://athenaeumtransformation.com/modules/client/dashboard.php                 | Login redirect
-https://athenaeumtransformation.com/modules/client/dashboard_unified.php         | Login redirect
-https://athenaeumtransformation.com/modules/client/preferences.php               | Login redirect
-https://athenaeumtransformation.com/modules/client/project_dashboard.php         | Login redirect
-https://athenaeumtransformation.com/modules/client/projects.php                  | Login redirect
-https://athenaeumtransformation.com/modules/devices.php                          | Login redirect
-https://athenaeumtransformation.com/modules/feedback.php                         | Login redirect
-https://athenaeumtransformation.com/modules/generic_tasks/add_task.php           | Login redirect
-https://athenaeumtransformation.com/modules/generic_tasks/index.php              | Login redirect
-https://athenaeumtransformation.com/modules/generic_tasks/manage_categories.php  | Login redirect
-https://athenaeumtransformation.com/modules/my_daily_status.php                  | Login redirect
-https://athenaeumtransformation.com/modules/notifications.php                    | Login redirect
-https://athenaeumtransformation.com/modules/profile.php                          | Login redirect
+https://athenaeumtransformation.com/PMS/modules/at_tester/dashboard.php              | Login redirect
+https://athenaeumtransformation.com/PMS/modules/at_tester/my_projects.php            | Login redirect
+https://athenaeumtransformation.com/PMS/modules/at_tester/project_tasks.php          | Login redirect
+https://athenaeumtransformation.com/PMS/modules/at_tester/test_history.php           | Login redirect
+https://athenaeumtransformation.com/PMS/modules/ft_tester/dashboard.php              | Login redirect
+https://athenaeumtransformation.com/PMS/modules/ft_tester/my_projects.php            | Login redirect
+https://athenaeumtransformation.com/PMS/modules/ft_tester/project_tasks.php          | Login redirect
+https://athenaeumtransformation.com/PMS/modules/ft_tester/test_history.php           | Login redirect
+https://athenaeumtransformation.com/PMS/modules/qa/dashboard.php                     | Login redirect
+https://athenaeumtransformation.com/PMS/modules/qa/my_projects.php                   | Login redirect
+https://athenaeumtransformation.com/PMS/modules/qa/page_assignment.php               | Login redirect
+https://athenaeumtransformation.com/PMS/modules/qa/qa_tasks.php                      | Login redirect
+https://athenaeumtransformation.com/PMS/modules/project_lead/assignments.php         | Login redirect
+https://athenaeumtransformation.com/PMS/modules/project_lead/dashboard.php           | Login redirect
+https://athenaeumtransformation.com/PMS/modules/project_lead/my_projects.php         | Login redirect
+https://athenaeumtransformation.com/PMS/modules/project_lead/team_assignment.php     | Login redirect
+https://athenaeumtransformation.com/PMS/modules/reports/dashboard.php                | Login redirect
+https://athenaeumtransformation.com/PMS/modules/reports/export.php                   | Login redirect
+https://athenaeumtransformation.com/PMS/modules/calendar.php                         | Login redirect
+https://athenaeumtransformation.com/PMS/modules/chat/page_chat.php                   | Login redirect
+https://athenaeumtransformation.com/PMS/modules/chat/project_chat.php                | Login redirect
+https://athenaeumtransformation.com/PMS/modules/client/dashboard.php                 | Login redirect
+https://athenaeumtransformation.com/PMS/modules/client/dashboard_unified.php         | Login redirect
+https://athenaeumtransformation.com/PMS/modules/client/preferences.php               | Login redirect
+https://athenaeumtransformation.com/PMS/modules/client/project_dashboard.php         | Login redirect
+https://athenaeumtransformation.com/PMS/modules/client/projects.php                  | Login redirect
+https://athenaeumtransformation.com/PMS/modules/devices.php                          | Login redirect
+https://athenaeumtransformation.com/PMS/modules/feedback.php                         | Login redirect
+https://athenaeumtransformation.com/PMS/modules/generic_tasks/add_task.php           | Login redirect
+https://athenaeumtransformation.com/PMS/modules/generic_tasks/index.php              | Login redirect
+https://athenaeumtransformation.com/PMS/modules/generic_tasks/manage_categories.php  | Login redirect
+https://athenaeumtransformation.com/PMS/modules/my_daily_status.php                  | Login redirect
+https://athenaeumtransformation.com/PMS/modules/notifications.php                    | Login redirect
+https://athenaeumtransformation.com/PMS/modules/profile.php                          | Login redirect
 
 --------------------------------------------------------------------------------
 DATABASE FILES (must be blocked - CRITICAL)
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/database/schema.sql                          | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/database/schema_live.sql                     | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/database/migrate.php                         | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/database/run_migration.php                   | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/database/run_client_migration.php            | 403 Forbidden (CRITICAL)
-https://athenaeumtransformation.com/database/migrations/add_account_setup_tracking.sql      | 403 Forbidden
-https://athenaeumtransformation.com/database/migrations/add_chat_read_tracking.sql          | 403 Forbidden
-https://athenaeumtransformation.com/database/migrations/add_client_dashboard_access.sql     | 403 Forbidden
-https://athenaeumtransformation.com/database/migrations/add_client_project_permissions.sql  | 403 Forbidden
-https://athenaeumtransformation.com/database/migrations/add_client_ready_field.sql          | 403 Forbidden
-https://athenaeumtransformation.com/database/migrations/add_client_reporting_system.sql     | 403 Forbidden
-https://athenaeumtransformation.com/database/migrations/add_login_attempts.sql              | 403 Forbidden
-https://athenaeumtransformation.com/database/migrations/add_performance_indexes.sql         | 403 Forbidden
-https://athenaeumtransformation.com/database/migrations/consolidated_migration_20260313.sql | 403 Forbidden
-https://athenaeumtransformation.com/database/migrations/convert_to_project_permissions.sql  | 403 Forbidden
-https://athenaeumtransformation.com/database/migrations/fix_edit_request_status.sql         | 403 Forbidden
+https://athenaeumtransformation.com/PMS/database/schema.sql                          | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/database/schema_live.sql                     | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/database/migrate.php                         | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/database/run_migration.php                   | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/database/run_client_migration.php            | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/PMS/database/migrations/add_account_setup_tracking.sql      | 403 Forbidden
+https://athenaeumtransformation.com/PMS/database/migrations/add_chat_read_tracking.sql          | 403 Forbidden
+https://athenaeumtransformation.com/PMS/database/migrations/add_client_dashboard_access.sql     | 403 Forbidden
+https://athenaeumtransformation.com/PMS/database/migrations/add_client_project_permissions.sql  | 403 Forbidden
+https://athenaeumtransformation.com/PMS/database/migrations/add_client_ready_field.sql          | 403 Forbidden
+https://athenaeumtransformation.com/PMS/database/migrations/add_client_reporting_system.sql     | 403 Forbidden
+https://athenaeumtransformation.com/PMS/database/migrations/add_login_attempts.sql              | 403 Forbidden
+https://athenaeumtransformation.com/PMS/database/migrations/add_performance_indexes.sql         | 403 Forbidden
+https://athenaeumtransformation.com/PMS/database/migrations/consolidated_migration_20260313.sql | 403 Forbidden
+https://athenaeumtransformation.com/PMS/database/migrations/convert_to_project_permissions.sql  | 403 Forbidden
+https://athenaeumtransformation.com/PMS/database/migrations/fix_edit_request_status.sql         | 403 Forbidden
 
 --------------------------------------------------------------------------------
 CRON FILES (must be blocked)
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/cron/check_daily_hours.php                   | 403 Forbidden
+https://athenaeumtransformation.com/PMS/cron/check_daily_hours.php                   | 403 Forbidden
 
 --------------------------------------------------------------------------------
 SCRIPTS (vendor files - should be blocked or not publicly accessible)
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/scripts/deep_a11y_scan.js                    | 403 Forbidden
-https://athenaeumtransformation.com/scripts/vendor/axe.min.js                    | 403 Forbidden
-https://athenaeumtransformation.com/scripts/vendor/axe-core/axe.js               | 403 Forbidden
-https://athenaeumtransformation.com/scripts/vendor/axe-core/axe.min.js           | 403 Forbidden
+https://athenaeumtransformation.com/PMS/scripts/deep_a11y_scan.js                    | 403 Forbidden
+https://athenaeumtransformation.com/PMS/scripts/vendor/axe.min.js                    | 403 Forbidden
+https://athenaeumtransformation.com/PMS/scripts/vendor/axe-core/axe.js               | 403 Forbidden
+https://athenaeumtransformation.com/PMS/scripts/vendor/axe-core/axe.min.js           | 403 Forbidden
 
 --------------------------------------------------------------------------------
 STORAGE & UPLOAD DIRECTORIES (directory listing must be blocked)
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/storage/                                     | 403 Forbidden (no listing)
-https://athenaeumtransformation.com/uploads/                                     | 403 Forbidden (no listing)
-https://athenaeumtransformation.com/uploads/chat/                                 | 403 Forbidden (no listing)
-https://athenaeumtransformation.com/uploads/issues/                               | 403 Forbidden (no listing)
-https://athenaeumtransformation.com/assets/uploads/                               | 403 Forbidden (no listing)
-https://athenaeumtransformation.com/assets/uploads/automated_findings/           | 403 Forbidden (no listing)
+https://athenaeumtransformation.com/PMS/storage/                                     | 403 Forbidden (no listing)
+https://athenaeumtransformation.com/PMS/uploads/                                     | 403 Forbidden (no listing)
+https://athenaeumtransformation.com/PMS/uploads/chat/                                 | 403 Forbidden (no listing)
+https://athenaeumtransformation.com/PMS/uploads/issues/                               | 403 Forbidden (no listing)
+https://athenaeumtransformation.com/PMS/assets/uploads/                               | 403 Forbidden (no listing)
+https://athenaeumtransformation.com/PMS/assets/uploads/automated_findings/           | 403 Forbidden (no listing)
 
 --------------------------------------------------------------------------------
 PUBLIC ASSETS (these SHOULD be accessible - verify they load correctly)
 --------------------------------------------------------------------------------
-https://athenaeumtransformation.com/assets/css/style.css                         | 200 OK (CSS loads)
-https://athenaeumtransformation.com/assets/css/dashboard.css                     | 200 OK (CSS loads)
-https://athenaeumtransformation.com/assets/css/header-fix.css                    | 200 OK (CSS loads)
-https://athenaeumtransformation.com/assets/js/dashboard.js                       | 200 OK (JS loads)
-https://athenaeumtransformation.com/assets/js/login-activity.js                  | 200 OK (JS loads)
+https://athenaeumtransformation.com/PMS/assets/css/style.css                         | 200 OK (CSS loads)
+https://athenaeumtransformation.com/PMS/assets/css/dashboard.css                     | 200 OK (CSS loads)
+https://athenaeumtransformation.com/PMS/assets/css/header-fix.css                    | 200 OK (CSS loads)
+https://athenaeumtransformation.com/PMS/assets/js/dashboard.js                       | 200 OK (JS loads)
+https://athenaeumtransformation.com/PMS/assets/js/login-activity.js                  | 200 OK (JS loads)
 
 ================================================================================
 END OF FILE URL LIST
