@@ -605,6 +605,13 @@ if (!$embed) {
             })();
         </script>
         <style>html,body{height:100%;margin:0;} body{background:#f8f9fa;overflow:hidden;} .container-embed{padding:8px;height:100%;}</style>
+        <meta name="csrf-token" content="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
+        <script>
+            // Expose CSRF token for all AJAX/fetch calls in embed mode
+            window._csrfToken = document.querySelector('meta[name="csrf-token"]')
+                ? document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                : '';
+        </script>
     </head>
     <body class="chat-embed">
     <div class="container-fluid container-embed chat-shell">

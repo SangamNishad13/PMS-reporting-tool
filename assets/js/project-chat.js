@@ -660,6 +660,8 @@
                 payload.append('message', msg);
                 payload.append('reply_to', replyTo ? String(replyTo) : '');
                 payload.append('reply_token', replyTo ? ('r:' + String(replyTo)) : '');
+                const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : (window._csrfToken || '');
+                if (csrfToken) payload.append('csrf_token', csrfToken);
 
                 function fallbackPostMessage() {
                     const params = new URLSearchParams();
@@ -689,7 +691,7 @@
 
                 fetch(baseDir + '/api/chat_actions.php?action=send_message', {
                     method: 'POST',
-                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json', 'X-CSRF-Token': csrfToken || '' },
                     body: payload
                 }).then(function(res) {
                     return res.text().then(function(text) { try { return JSON.parse(text); } catch (e) { return { error: 'Invalid response', _raw: text }; } });
