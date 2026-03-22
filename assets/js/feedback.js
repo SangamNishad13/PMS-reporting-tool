@@ -77,7 +77,7 @@ $(document).ready(function () {
                     html += '<div class="mt-3"><h6>Recipients</h6><p>' + fb.recipients + '</p></div>';
                 }
                 html += '<div class="mt-3"><h6>Content</h6>' +
-                    '<div class="border p-3 rounded bg-light">' + fb.content + '</div></div>';
+                    '<div class="border p-3 rounded bg-light">' + sanitizeFeedbackHtml(fb.content) + '</div></div>';
 
                 document.getElementById('feedbackDetailsContent').innerHTML = html;
                 new bootstrap.Modal(document.getElementById('viewFeedbackDetailsModal')).show();
@@ -85,3 +85,28 @@ $(document).ready(function () {
             .catch(function () { showToast('Error loading feedback details', 'danger'); });
     };
 });
+
+/**
+ * Sanitize HTML from server before injecting into DOM (XSS prevention).
+ * Allows basic formatting tags only; strips scripts, event handlers, etc.
+ */
+function sanitizeFeedbackHtml(html) {
+    var tmp = document.createElement('div');
+    tmp.innerHTML = html;
+
+    // Remove dangerous elements
+    var dangerous = tmp.querySelectorAll('script,iframe,object,embed,form,input,button,link,meta,style,base');
+    dangerous.forEach(function (el) { el.parentNode.removeChild(el); });
+
+    // Strip event handler attributes from all elements
+    tmp.querySelectorAll('*').forEach(function (el) {
+        Array.from(el.attributes).forEach(function (attr) {
+            if (/^on/i.test(attr.name) || /^javascript:/i.test(attr.value)) {
+                el.removeAttribute(attr.name);
+            }
+        });
+    });
+
+    return tmp.innerHTML;
+}
+

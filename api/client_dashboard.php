@@ -19,6 +19,18 @@ if (!$clientId) {
     exit;
 }
 
+// IDOR fix: non-admin users can only access their own client's data
+$sessionRole = $_SESSION['role'] ?? '';
+if (!in_array($sessionRole, ['admin', 'super_admin'])) {
+    $ownerCheck = $db->prepare("SELECT id FROM users WHERE id = ? AND client_id = ?");
+    $ownerCheck->execute([$_SESSION['user_id'], $clientId]);
+    if (!$ownerCheck->fetch()) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Access denied']);
+        exit;
+    }
+}
+
 try {
     $projectFilter = $projectId ? "AND i.project_id = ?" : "";
     $params = $projectId ? [$clientId, $projectId] : [$clientId];
