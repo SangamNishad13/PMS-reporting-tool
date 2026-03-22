@@ -38,11 +38,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     function syncModalState() {
-        // Only consider modals that are actually visible (display != none), not just those with .show class
-        var hasOpenModal = document.querySelector('.modal.show[style*="display: block"], .modal.show[style*="display:block"]') !== null
-            || document.querySelector('.modal.show:not([style*="display: none"]):not([style*="display:none"])') !== null;
-        // Extra guard: if body has modal-open class, a modal is truly open
-        hasOpenModal = hasOpenModal && document.body.classList.contains('modal-open');
+        // Bootstrap adds 'modal-open' to body only when a modal is truly open
+        var hasOpenModal = document.body.classList.contains('modal-open');
         document.body.classList.toggle('chat-modal-open', hasOpenModal);
         if (hasOpenModal) {
             widget.classList.remove('open');
@@ -55,5 +52,5 @@ document.addEventListener('DOMContentLoaded', function () {
     document.addEventListener('show.bs.modal',   syncModalState, true);
     document.addEventListener('shown.bs.modal',  syncModalState, true);
     document.addEventListener('hidden.bs.modal', syncModalState, true);
-    syncModalState();
+    // Do NOT call syncModalState() on page load — launcher should always be visible initially
 });
