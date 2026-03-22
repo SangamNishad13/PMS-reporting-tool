@@ -57,7 +57,6 @@ function handleGetRequest() {
         
         if ($action === 'get_categories') {
             // Get active generic task categories
-            error_log("Getting generic task categories");
             
             $stmt = $db->prepare("
                 SELECT id, name, description 
@@ -67,8 +66,6 @@ function handleGetRequest() {
             ");
             $stmt->execute();
             $categories = $stmt->fetchAll();
-            
-            error_log("Found " . count($categories) . " categories");
             
             jsonResponse($categories);
             return;

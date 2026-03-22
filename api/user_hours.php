@@ -84,21 +84,15 @@ try {
     $stmt->execute([$userId, $date]);
     $entries = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    error_log("User hours API: Found " . count($entries) . " entries for user $userId on $date");
-
     // Compute total hours
     $sumStmt = $db->prepare("SELECT COALESCE(SUM(hours_spent),0) as total_hours FROM project_time_logs WHERE user_id = ? AND log_date = ?");
     $sumStmt->execute([$userId, $date]);
     $total = $sumStmt->fetch();
 
-    error_log("User hours API: Total hours = " . $total['total_hours']);
-
     // Fetch availability status for the user on that date if present
     $statusStmt = $db->prepare("SELECT status, notes FROM user_daily_status WHERE user_id = ? AND status_date = ? LIMIT 1");
     $statusStmt->execute([$userId, $date]);
     $statusRow = $statusStmt->fetch(PDO::FETCH_ASSOC);
-
-    error_log("User hours API: Status = " . ($statusRow ? $statusRow['status'] : 'null'));
 
     echo json_encode([
         'success' => true,
