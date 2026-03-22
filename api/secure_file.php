@@ -128,6 +128,25 @@ if (function_exists('finfo_open')) {
     }
 }
 
+// Fallback to extension check if finfo fails or returns generic octet-stream
+$fileExt = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+if ($mime === 'application/octet-stream' || $mime === '') {
+    $mimeTypes = [
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+        'svg' => 'image/svg+xml',
+        'pdf' => 'application/pdf',
+        'txt' => 'text/plain',
+        'csv' => 'text/csv'
+    ];
+    if (isset($mimeTypes[$fileExt])) {
+        $mime = $mimeTypes[$fileExt];
+    }
+}
+
 // Add caching headers for images to reduce server load
 $fileExt = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
 $commonImageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'];
