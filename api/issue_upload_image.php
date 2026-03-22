@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 // Debug log function - disabled in production
 function issue_upload_debug_log($msg) {

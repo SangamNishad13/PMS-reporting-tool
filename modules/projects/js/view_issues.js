@@ -625,7 +625,8 @@
         try {
             var url = issuesApiBase + '?action=list&project_id=' + encodeURIComponent(projectId) + '&page_id=' + encodeURIComponent(pageId);
             var res = await fetch(url, { credentials: 'same-origin' });
-            var json = await res.json();
+            var text = await res.text();
+            var json = JSON.parse(text.replace(/^\uFEFF/, ''));
             var items = (json && json.issues) ? json.issues : [];
             var nextFinal = items.map(function (it) {
                 return {

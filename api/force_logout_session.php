@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Force Logout Session API
  * Allows admins to forcefully terminate a user session

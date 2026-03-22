@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Check if current user has admin privileges (admin or admin)
  * Admin users should have all rights of project leads, QA, and testers

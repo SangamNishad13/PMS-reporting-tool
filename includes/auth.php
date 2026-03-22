@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // includes/auth.php
 
 // Set timezone to IST (Indian Standard Time) for all time operations
@@ -378,7 +378,6 @@ class Auth {
         
         // Single role with hierarchy
         $roleHierarchy = [
-            'admin' => 6,
             'admin' => 5,
             'project_lead' => 4,
             'qa' => 3,

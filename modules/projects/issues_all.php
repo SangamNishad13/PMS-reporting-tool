@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
@@ -211,6 +211,9 @@ include __DIR__ . '/../../includes/header.php';
                         <i class="fas fa-plus me-1"></i> Add Issue
                     </button>
                     <?php endif; ?>
+                    <a href="<?php echo $baseDir; ?>/api/download_screenshots.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-primary me-2">
+                        <i class="fas fa-download me-1"></i> Download Screenshots
+                    </a>
                     <a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-secondary">
                         <i class="fas fa-arrow-left me-1"></i> Back
                     </a>

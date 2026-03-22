@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
@@ -901,7 +901,6 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                                             <div class="mb-3">
                                                 <label>Role *</label>
                                                 <select name="role" class="form-select" required>
-                                                    <option value="admin" <?php echo $user['role'] === 'admin' ? 'selected' : ''; ?>>Super Admin</option>
                                                     <option value="admin" <?php echo $user['role'] === 'admin' ? 'selected' : ''; ?>>Admin</option>
                                                     <option value="project_lead" <?php echo $user['role'] === 'project_lead' ? 'selected' : ''; ?>>Project Lead</option>
                                                     <option value="qa" <?php echo $user['role'] === 'qa' ? 'selected' : ''; ?>>QA</option>
@@ -1120,7 +1119,6 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                     <div class="mb-3">
                         <label>Role *</label>
                         <select name="role" class="form-select" required>
-                            <option value="admin">Super Admin</option>
                             <option value="admin">Admin</option>
                             <option value="project_lead">Project Lead</option>
                             <option value="qa">QA</option>

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Returns all data needed to populate the Overview sheet of the client Excel report.
  */
@@ -57,7 +57,6 @@ $teamMembers = $teamStmt->fetchAll(PDO::FETCH_ASSOC);
 // Role label map
 $roleLabels = [
     'admin'        => 'Admin',
-    'admin'  => 'Super Admin',
     'project_lead' => 'Project Lead',
     'qa'           => 'QA',
     'at_tester'    => 'AT Tester',

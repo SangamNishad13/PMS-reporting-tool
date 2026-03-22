@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
@@ -796,6 +796,9 @@ include __DIR__ . '/../../includes/header.php';
                 <button class="btn btn-outline-secondary btn-sm" id="pageIssuesRefreshBtn" title="Refresh issues">
                     <i class="fas fa-sync-alt"></i> Refresh
                 </button>
+                <a href="<?php echo $baseDir; ?>/api/download_screenshots.php?project_id=<?php echo $projectId; ?>&page_id=<?php echo $pageId; ?>" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-download me-1"></i> Download Screenshots
+                </a>
                 <?php if ($_SESSION['role'] !== 'client'): ?>
                 <button class="btn btn-primary btn-sm" id="issueAddFinalBtn">
                     <i class="fas fa-plus me-1"></i> Add Issue

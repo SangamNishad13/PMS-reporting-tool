@@ -1,4 +1,4 @@
-﻿        <?php $canManageAssignmentsInView = in_array($userRole, ['admin', 'super_admin', 'project_lead'], true); ?>
+        <?php $canManageAssignmentsInView = in_array($userRole, ['admin', 'project_lead'], true); ?>
         <!-- Pages Tab -->
         <div class="tab-pane fade" id="pages" role="tabpanel">
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -181,7 +181,7 @@
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <?php if (in_array($userRole, ['admin', 'super_admin', 'project_lead', 'qa']) || 
+                                        <?php if (in_array($userRole, ['admin', 'project_lead', 'qa']) || 
                                                   $env['at_tester_id'] == $userId): ?>
                                         <select class="form-select form-select-sm env-status-update" 
                                                 data-page-id="<?php echo $page['id']; ?>" 
@@ -215,7 +215,7 @@
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <?php if (in_array($userRole, ['admin', 'super_admin', 'project_lead', 'qa']) || 
+                                        <?php if (in_array($userRole, ['admin', 'project_lead', 'qa']) || 
                                                   $env['ft_tester_id'] == $userId): ?>
                                         <select class="form-select form-select-sm env-status-update" 
                                                 data-page-id="<?php echo $page['id']; ?>" 
@@ -249,7 +249,7 @@
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <?php if (in_array($userRole, ['admin', 'super_admin', 'project_lead', 'qa']) || 
+                                        <?php if (in_array($userRole, ['admin', 'project_lead', 'qa']) || 
                                                   $env['qa_id'] == $userId): ?>
                                         <?php
                                             $qaStatusRaw = strtolower(trim((string)($env['qa_status'] ?? 'not_started')));
@@ -845,7 +845,7 @@
                         <a href="#" class="btn btn-sm btn-outline-primary" id="importAllUrlsBtn">
                             <i class="fas fa-upload"></i> Import All URLs CSV/Excel
                         </a>
-                        <?php if (in_array($userRole, ['admin', 'super_admin', 'project_lead', 'qa'])): ?>
+                        <?php if (in_array($userRole, ['admin', 'project_lead', 'qa'])): ?>
                             <button class="btn btn-sm btn-primary" id="openAddGroupedUrlModal">
                                 <i class="fas fa-plus"></i> Add Page
                             </button>

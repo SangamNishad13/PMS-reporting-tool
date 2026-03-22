@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Project-Specific Permissions Helper
  * This file contains functions to check and manage project-specific permissions

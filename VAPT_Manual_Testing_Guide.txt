@@ -409,7 +409,7 @@ Notes: _______________________________________________
 TEST 7.5 - repair_db.php Production Access
 --------------------------------------------
 Steps:
-  1. Super admin se login karo
+  1. Admin se login karo
   2. Production server pe access karo:
      https://athenaeumtransformation.com/PMS/modules/admin/repair_db.php
 
@@ -433,7 +433,7 @@ Steps:
   2. Password kuch bhi dalo
 
 Expected: "Invalid username or password" - login nahi hona chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 8.2 - API Parameter Injection
@@ -446,7 +446,7 @@ Steps:
      https://athenaeumtransformation.com/PMS/api/issues.php?project_id=1 UNION SELECT 1,2,3--
 
 Expected: Error ya empty response, DB data leak nahi hona chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 
@@ -463,7 +463,7 @@ Steps:
 Expected:
   Attempts 1-5: "Invalid username or password"
   Attempt 6+: "Too many failed login attempts. Locked for 15 minutes."
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 9.2 - File Upload Rate Limiting

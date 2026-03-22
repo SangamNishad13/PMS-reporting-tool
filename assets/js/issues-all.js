@@ -80,7 +80,9 @@ function performLoadIssues(preserveFilters, silentErrors, retryCount) {
     .then(function (response) {
         clearTimeout(timeoutId);
         if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + response.statusText);
-        return response.json();
+        return response.text().then(function(text) {
+            return JSON.parse(text.replace(/^\uFEFF/, ''));
+        });
     })
     .then(function (data) {
         if (data.success) {

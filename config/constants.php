@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Set timezone to IST (Indian Standard Time) for entire application
 require_once __DIR__ . '/timezone.php';
 

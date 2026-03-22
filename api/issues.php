@@ -1372,8 +1372,6 @@ try {
         $pageId = (int)($_POST['page_id'] ?? 0);
         if (!$pageId && !empty($pageIds)) $pageId = (int)$pageIds[0];
 
-        // debug: error_log('issues api: title=' . $title . ', pageId=' . $pageId);
-
         $statusId = null;
         $statusInput = $_POST['issue_status'] ?? '';
         if (is_numeric($statusInput)) {

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Project Hours API
  * Provides real-time project hours information for validation

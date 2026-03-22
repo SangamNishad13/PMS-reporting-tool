@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/constants.php';
 require_once __DIR__ . '/../includes/auth.php';
@@ -164,7 +164,7 @@ function handleGetTasks() {
                 ";
                 $params = [$userId];
             } else {
-                // Admin/Super Admin - get all active pages
+                // Admin - get all active pages
                 $sql = "
                     SELECT pp.*, p.title as project_title, p.priority
                     FROM project_pages pp
