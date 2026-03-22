@@ -172,6 +172,11 @@ RewriteRule .* - [F,L]
     Header always set X-Frame-Options "DENY"
 </FilesMatch>
 
+# project_chat.php is intentionally embedded in an iframe within the same site
+<FilesMatch "^project_chat\.php$">
+    Header always set X-Frame-Options "SAMEORIGIN"
+</FilesMatch>
+
 # Block access to backup and temp files
 <FilesMatch "\.(bak|old|orig|save|swp|tmp|~)$">
     <IfModule mod_authz_core.c>
