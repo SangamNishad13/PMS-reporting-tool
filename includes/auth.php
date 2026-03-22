@@ -31,7 +31,8 @@ if (session_status() === PHP_SESSION_NONE) {
             $redisPass = $_ENV['REDIS_PASSWORD'] ?? getenv('REDIS_PASSWORD') ?: null;
             $redisDb   = (int)($_ENV['REDIS_DB']   ?? getenv('REDIS_DB')   ?: 0);
 
-            $testRedis = new Redis();
+            $redisClass = 'Redis';
+            $testRedis = new $redisClass();
             if (@$testRedis->connect($redisHost, $redisPort, 1.0)) {
                 if ($redisPass) $testRedis->auth($redisPass);
                 $testRedis->select($redisDb);

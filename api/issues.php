@@ -410,6 +410,12 @@ function getAnyStatusId($db) {
     return $id ? (int)$id : null;
 }
 
+function getAnyPriorityId($db) {
+    $stmt = $db->query("SELECT id FROM issue_priorities ORDER BY id ASC LIMIT 1");
+    $id = $stmt->fetchColumn();
+    return $id ? (int)$id : null;
+}
+
 function columnExists($db, $table, $column) {
     static $cache = [];
     $key = $table . '.' . $column;

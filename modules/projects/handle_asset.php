@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
@@ -60,7 +60,10 @@ function validateAssetUpload(array $file): array {
     return ['ok' => true, 'ext' => $ext];
 }
 
-function saveAssetFile(array $file, string $ext): string|false {
+/**
+ * @return string|false
+ */
+function saveAssetFile(array $file, string $ext) {
     $uploadDir = __DIR__ . '/../../assets/uploads/';
     if (!is_dir($uploadDir)) {
         mkdir($uploadDir, 0750, true);
