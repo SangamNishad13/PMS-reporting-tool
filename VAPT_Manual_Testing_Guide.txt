@@ -17,7 +17,7 @@ SECTION 1: HTTP SECURITY HEADERS
 TEST 1.1 - Security Headers Check
 ----------------------------------
 Steps:
-  1. Browser mein site kholo (https://yoursite.com)
+  1. Browser mein site kholo (https://athenaeumtransformation.com)
   2. F12 dabao > Network tab > koi bhi request click karo
   3. Response Headers section dekho
 
@@ -37,7 +37,7 @@ TEST 1.2 - Clickjacking Protection
 Steps:
   1. Ek HTML file banao locally:
      <html><body>
-     <iframe src="https://yoursite.com/modules/auth/login.php" width="800" height="600"></iframe>
+     <iframe src="https://athenaeumtransformation.com/modules/auth/login.php" width="800" height="600"></iframe>
      </body></html>
   2. Browser mein kholo
 
@@ -48,7 +48,7 @@ Notes: _______________________________________________
 TEST 1.3 - HTTPS Enforcement
 ------------------------------
 Steps:
-  1. Browser mein http:// se site access karo: http://yoursite.com
+  1. Browser mein http:// se site access karo: http://athenaeumtransformation.com
   2. Dekho kya https:// pe redirect hota hai
 
 Expected: Automatic redirect to HTTPS
@@ -280,7 +280,7 @@ Steps:
   1. Apne computer pe ek file banao: csrf_test.html
      Content:
      <html><body>
-     <form id="f" action="https://yoursite.com/api/feedback.php" method="POST">
+     <form id="f" action="https://athenaeumtransformation.com/api/feedback.php" method="POST">
        <input name="action" value="submit_feedback">
        <input name="content" value="CSRF Attack Test">
      </form>
@@ -361,11 +361,11 @@ SECTION 7: SENSITIVE FILE / DIRECTORY EXPOSURE
 TEST 7.1 - Config Files Access
 --------------------------------
 Steps: Ye URLs browser mein directly type karo:
-  [ ] https://yoursite.com/config/database.php
+  [ ] https://athenaeumtransformation.com/config/database.php
       Expected: Blank page ya 403, DB credentials nahi dikhne chahiye
-  [ ] https://yoursite.com/config/settings.php
+  [ ] https://athenaeumtransformation.com/config/settings.php
       Expected: Blank page ya 403
-  [ ] https://yoursite.com/.env (agar exist kare)
+  [ ] https://athenaeumtransformation.com/.env (agar exist kare)
       Expected: 404 ya 403
 
 Result: PASS / FAIL
@@ -374,9 +374,9 @@ Notes: _______________________________________________
 TEST 7.2 - Git Repository Exposure
 ------------------------------------
 Steps:
-  [ ] https://yoursite.com/.git/config
+  [ ] https://athenaeumtransformation.com/.git/config
       Expected: 403 Forbidden
-  [ ] https://yoursite.com/.git/HEAD
+  [ ] https://athenaeumtransformation.com/.git/HEAD
       Expected: 403 Forbidden
 
 Result: PASS / FAIL
@@ -385,9 +385,9 @@ Notes: _______________________________________________
 TEST 7.3 - Log Files Access
 -----------------------------
 Steps:
-  [ ] https://yoursite.com/tmp/logs/issues_api.log
+  [ ] https://athenaeumtransformation.com/tmp/logs/issues_api.log
       Expected: 403 Forbidden
-  [ ] https://yoursite.com/tmp/
+  [ ] https://athenaeumtransformation.com/tmp/
       Expected: 403 Forbidden, directory listing nahi
 
 Result: PASS / FAIL
@@ -396,11 +396,11 @@ Notes: _______________________________________________
 TEST 7.4 - Directory Listing
 ------------------------------
 Steps: Ye directories browser mein access karo:
-  [ ] https://yoursite.com/uploads/
-  [ ] https://yoursite.com/assets/uploads/
-  [ ] https://yoursite.com/includes/
-  [ ] https://yoursite.com/config/
-  [ ] https://yoursite.com/api/
+  [ ] https://athenaeumtransformation.com/uploads/
+  [ ] https://athenaeumtransformation.com/assets/uploads/
+  [ ] https://athenaeumtransformation.com/includes/
+  [ ] https://athenaeumtransformation.com/config/
+  [ ] https://athenaeumtransformation.com/api/
 
 Expected: Sab pe 403 ya redirect, file listing nahi dikhni chahiye
 Result: PASS / FAIL
@@ -411,7 +411,7 @@ TEST 7.5 - repair_db.php Production Access
 Steps:
   1. Super admin se login karo
   2. Production server pe access karo:
-     https://yoursite.com/modules/admin/repair_db.php
+     https://athenaeumtransformation.com/modules/admin/repair_db.php
 
 Expected: "This utility is disabled in production" - 403 aana chahiye
   (Sirf localhost pe accessible hona chahiye)
