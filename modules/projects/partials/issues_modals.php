@@ -257,17 +257,17 @@
 
 <!-- Issue Image Modal -->
 <div class="modal fade issue-image-modal" id="issueImageModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Image Preview</h5>
+            <div class="modal-header py-2">
+                <h6 class="modal-title mb-0">Image Preview</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body p-3" style="overflow: hidden;">
                 <div class="text-center">
-                    <img id="issueImagePreview" src="" alt="" class="img-fluid" style="max-height: 70vh;">
+                    <img id="issueImagePreview" src="" alt="" class="img-fluid" style="max-height: 55vh; object-fit: contain;">
                 </div>
-                <div id="issueImageAltText" class="mt-3 p-3 bg-light rounded" style="display: none;">
+                <div id="issueImageAltText" class="mt-2 p-2 bg-light rounded small" style="display: none;">
                     <strong>Alt Text:</strong> <span id="issueImageAltTextContent"></span>
                 </div>
             </div>

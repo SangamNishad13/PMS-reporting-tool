@@ -821,7 +821,6 @@ include __DIR__ . '/../../includes/header.php';
                     <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
                         <div class="d-flex align-items-center gap-2">
                             <span class="small text-muted">Issues for the final report</span>
-                            <span class="scroll-hint"><i class="fas fa-arrows-left-right"></i> scroll</span>
                         </div>
                         <div>
                             <button class="btn btn-sm btn-outline-success me-1" id="finalMarkClientReadyBtn" disabled>
@@ -840,8 +839,6 @@ include __DIR__ . '/../../includes/header.php';
                                     <?php endif; ?>
                                     <th style="width:110px;">Issue Key</th>
                                     <th style="min-width:200px;">Issue Title</th>
-                                    <th style="width:90px;">Severity</th>
-                                    <th style="width:90px;">Priority</th>
                                     <th style="width:110px;">Status</th>
                                     <?php if ($_SESSION['role'] !== 'client'): ?>
                                     <th style="width:120px;">QA Status</th>
@@ -856,7 +853,7 @@ include __DIR__ . '/../../includes/header.php';
                                 </tr>
                             </thead>
                             <tbody id="finalIssuesBody">
-                                <tr><td colspan="11" class="text-muted text-center py-4">
+                                <tr><td colspan="9" class="text-muted text-center py-4">
                                     <i class="fas fa-inbox fa-2x mb-2 opacity-25"></i>
                                     <div>No issues found for this page.</div>
                                     <div class="small mt-1">Click "Add Issue" to create one.</div>
@@ -2176,7 +2173,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             </button>
         </div>
     </div>
-    <iframe src="<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo (int)$projectId; ?>&embed=1" title="Project Chat"></iframe>
+    <iframe src="" data-src="<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo (int)$projectId; ?>&embed=1" title="Project Chat"></iframe>
 </div>
 
 <button type="button" class="btn btn-primary chat-launcher" id="chatLauncher">

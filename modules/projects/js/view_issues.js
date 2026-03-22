@@ -619,7 +619,7 @@
         var opts = options || {};
         if (!pageId) return;
         var tbody = document.getElementById('finalIssuesBody');
-        if (tbody && !opts.silent) tbody.innerHTML = '<tr><td colspan="11" class="text-muted text-center">Loading final issues...</td></tr>';
+        if (tbody && !opts.silent) tbody.innerHTML = '<tr><td colspan="9" class="text-muted text-center">Loading final issues...</td></tr>';
         var store = issueData.pages;
         ensurePageStore(store, pageId);
         try {
@@ -671,7 +671,7 @@
             store[pageId].final = nextFinal;
             renderFinalIssues();
         } catch (e) {
-            if (tbody && !opts.silent) tbody.innerHTML = '<tr><td colspan="11" class="text-muted text-center">Unable to load final issues.</td></tr>';
+            if (tbody && !opts.silent) tbody.innerHTML = '<tr><td colspan="9" class="text-muted text-center">Unable to load final issues.</td></tr>';
         }
     }
 
@@ -3096,7 +3096,7 @@
             if (issueId) expandedIssueIds.push(issueId);
         });
         if (!issueData.selectedPageId) {
-            tbody.innerHTML = '<tr><td colspan="11" class="text-center py-5"><div class="text-muted mb-2"><i class="fas fa-arrow-left fa-2x opacity-25"></i></div><div class="text-muted fw-medium">Select a page from the list to view issues.</div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center py-5"><div class="text-muted mb-2"><i class="fas fa-arrow-left fa-2x opacity-25"></i></div><div class="text-muted fw-medium">Select a page from the list to view issues.</div></td></tr>';
             updateIssueTabCounts();
             return;
         }
@@ -3123,7 +3123,7 @@
         });
         
         if (!issues.length) {
-            tbody.innerHTML = '<tr><td colspan="11" class="text-center py-5"><div class="text-muted mb-2"><i class="fas fa-check-circle fa-2x opacity-25"></i></div><div class="text-muted fw-medium">No final issues recorded yet.</div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center py-5"><div class="text-muted mb-2"><i class="fas fa-check-circle fa-2x opacity-25"></i></div><div class="text-muted fw-medium">No final issues recorded yet.</div></td></tr>';
             updateIssueTabCounts();
             return;
         }
@@ -3231,8 +3231,6 @@
                 '</div>' +
                 '</div>' +
                 '</td>' +
-                '<td>' + getSeverityBadge(severity) + '</td>' +
-                '<td>' + getPriorityBadge(priority) + '</td>' +
                 '<td>' + getStatusBadge(statusId) + '</td>';
             
             // QA Status, Reporter, QA Name, Client Ready columns - hide for client
@@ -3271,7 +3269,7 @@
 
             // Expandable details row
             var detailsRow = '<tr class="collapse" id="' + uniqueId + '">' +
-                '<td colspan="11" class="p-0 border-0">' +
+                '<td colspan="9" class="p-0 border-0">' +
                 '<div class="bg-light p-4 border-top">' +
                 '<div class="row g-3">' +
                 '<div class="col-md-8">' +
@@ -4028,7 +4026,7 @@
             existingMainRow.style.cursor = 'pointer';
 
             // Create new details row HTML
-            var detailsRowHtml = '<td colspan="11" class="p-0 border-0">' +
+            var detailsRowHtml = '<td colspan="9" class="p-0 border-0">' +
                 '<div class="bg-light p-4 border-top">' +
                 '<div class="row g-3">' +
                 '<div class="col-md-8">' +
@@ -4300,7 +4298,8 @@
                             e.stopPropagation();
                             e.preventDefault();
                             var src = this.getAttribute('src');
-                            if (src) openIssueImageModal(src);
+                            var alt = this.getAttribute('alt') || '';
+                            if (src) openIssueImageModal(src, alt);
                         };
 
                         img.addEventListener('click', img._imageClickHandler);
@@ -5991,18 +5990,6 @@
             ensurePageStore(store, selectedPageId);
             var pagesArr = (data.pages && data.pages.length) ? data.pages : [selectedPageId];
 
-            // Use the updated issue data from server response, not form data
-            var payload = json.issue || Object.assign({ id: String(editId || json.id || ''), issue_key: String(json.issue_key || '') }, data);
-            // Normalize: ensure 'details' field exists (API returns 'description')
-            if (payload.details === undefined || payload.details === '') {
-                payload.details = payload.description || data.details || '';
-            }
-            payload.id = String(payload.id || '');
-            var list = store[selectedPageId].final || [];
-            var idx = list.findIndex(function (it) { return String(it.id) === String(payload.id); });
-            if (idx >= 0) list[idx] = payload; else list.unshift(payload);
-            store[selectedPageId].final = list;
-
             var savedIssueId = String(editId || json.id || '');
             var pendingCommentSaved = true;
             if (pendingCommentPlain && savedIssueId) {
@@ -6060,15 +6047,17 @@
                     var issueIndex = issueData.pages[issueData.selectedPageId].final.findIndex(function(i) {
                         return String(i.id) === String(savedIssueId);
                     });
-                    if (issueIndex !== -1 && (json.issue || payload)) {
-                        issueData.pages[issueData.selectedPageId].final[issueIndex] = normalizeIssueFromApi(json.issue || payload);
+                    if (issueIndex !== -1 && json.issue) {
+                        issueData.pages[issueData.selectedPageId].final[issueIndex] = normalizeIssueFromApi(json.issue);
                     }
                 }
             } else {
                 // For new issues, use server response data
-                if (json.issue || payload) {
+                if (json.issue) {
                     var list = issueData.pages[selectedPageId].final || [];
-                    list.unshift(normalizeIssueFromApi(json.issue || payload));
+                    // Avoid duplicate: remove existing entry with same id if any
+                    list = list.filter(function(it) { return String(it.id) !== String(json.issue.id); });
+                    list.unshift(normalizeIssueFromApi(json.issue));
                     issueData.pages[selectedPageId].final = list;
                 }
             }
@@ -7130,7 +7119,8 @@
         if (target && target.classList && target.classList.contains('issue-image-thumb')) {
             e.preventDefault();
             var src = target.getAttribute('src');
-            if (src) openIssueImageModal(src);
+            var alt = target.getAttribute('alt') || '';
+            if (src) openIssueImageModal(src, alt);
         }
     });
 

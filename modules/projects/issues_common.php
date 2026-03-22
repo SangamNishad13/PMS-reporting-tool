@@ -376,7 +376,7 @@ include __DIR__ . '/partials/issues_modals.php';
             </button>
         </div>
     </div>
-    <iframe src="<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo (int)$projectId; ?>&embed=1" title="Project Chat"></iframe>
+    <iframe src="" data-src="<?php echo $baseDir; ?>/modules/chat/project_chat.php?project_id=<?php echo (int)$projectId; ?>&embed=1" title="Project Chat"></iframe>
 </div>
 
 <button type="button" class="btn btn-primary chat-launcher" id="chatLauncher">

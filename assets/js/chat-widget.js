@@ -17,7 +17,21 @@ document.addEventListener('DOMContentLoaded', function () {
         ? window._chatConfig.fullSrc
         : (baseDir + '/modules/chat/project_chat.php?project_id=' + projectId);
 
+    // Lazy-load iframe: only set src when chat is first opened
+    var iframe = widget.querySelector('iframe');
+    var iframeLoaded = false;
+
+    function loadIframe() {
+        if (iframeLoaded || !iframe) return;
+        var dataSrc = iframe.getAttribute('data-src');
+        if (dataSrc) {
+            iframe.src = dataSrc;
+            iframeLoaded = true;
+        }
+    }
+
     launcher.addEventListener('click', function () {
+        loadIframe();
         widget.classList.add('open');
         launcher.style.display = 'none';
         setTimeout(function () { try { closeBtn.focus(); } catch (e) {} }, 0);
