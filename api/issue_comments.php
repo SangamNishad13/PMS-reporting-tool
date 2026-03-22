@@ -381,5 +381,6 @@ try {
 
     jsonError('Unsupported action', 400);
 } catch (Exception $e) {
-    jsonError($e->getMessage(), 500);
+    error_log('issue_comments error: ' . $e->getMessage());
+    jsonError('An internal error occurred', 500);
 }

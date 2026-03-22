@@ -161,7 +161,7 @@ try {
                 <a class="nav-link" href="<?php echo $base_url; ?>/modules/admin/projects.php">
                     <i class="fas fa-arrow-left"></i> Back to Projects
                 </a>
-                <a class="nav-link" href="<?php echo $base_url; ?>/modules/auth/logout.php">
+                <a class="nav-link" href="<?php echo $base_url; ?>/modules/auth/logout.php?csrf_token=<?php echo urlencode(generateCsrfToken()); ?>">
                     <i class="fas fa-sign-out-alt"></i> Logout
                 </a>
             </div>

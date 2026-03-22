@@ -72,7 +72,7 @@ include __DIR__ . '/../../includes/header.php';
                         <input type="hidden" name="csrf_token" value="<?php echo e(generateCsrfToken()); ?>">
                         <div class="mb-3">
                             <label for="username" class="form-label">Username or Email</label>
-                            <input type="text" autocomplete="username" class="form-control" id="username" name="username" value="<?php echo e($_POST['username'] ?? ''); ?>" required <?php echo !$error ? 'autofocus' : ''; ?>>
+                            <input type="text" autocomplete="username" class="form-control" id="username" name="username" value="" required <?php echo !$error ? 'autofocus' : ''; ?>>
                         </div>
                         <div class="mb-3">
                             <label for="password" class="form-label">Password</label>

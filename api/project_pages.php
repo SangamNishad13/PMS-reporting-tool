@@ -98,9 +98,7 @@ function ensureProjectPagesTable($db) {
 // Helper: delete grouped urls by ids (ensures permission and logs activity)
 function delete_grouped_ids($db, $userId, $projectId, array $idsArr) {
     if (empty($idsArr)) return 0;
-    error_log('delete_grouped_ids called by user=' . intval($userId) . ' project=' . intval($projectId) . ' ids=' . implode(',', $idsArr));
     if (!hasProjectPermission($db, $userId, $projectId, 'delete_grouped_urls')) {
-        error_log('delete_grouped_ids: permission denied for user=' . intval($userId) . ' project=' . intval($projectId));
         jsonRes(['error' => 'Permission denied'], 403);
     }
     $in  = str_repeat('?,', count($idsArr) - 1) . '?';
@@ -109,7 +107,6 @@ function delete_grouped_ids($db, $userId, $projectId, array $idsArr) {
     $params = array_merge([$projectId], $idsArr);
     $stmt->execute($params);
     try { logActivity($db, $userId, 'delete_grouped_urls_bulk', 'project', $projectId, ['deleted_ids'=>$idsArr]); } catch (Exception $e) { error_log('logActivity failed: ' . $e->getMessage()); }
-    error_log('delete_grouped_ids: deleted ' . $stmt->rowCount());
     return $stmt->rowCount();
 }
 
@@ -125,19 +122,7 @@ try {
     $action = $_GET['action'] ?? ($jsonBody['action'] ?? ($_POST['action'] ?? ''));
     // If action is still empty, return helpful debug info to client and log server-side
     if (empty($action)) {
-        error_log('project_pages: missing action. Raw input length=' . strlen($rawBody));
-        error_log('project_pages: _GET=' . json_encode($_GET));
-        error_log('project_pages: _POST=' . json_encode($_POST));
-        error_log('project_pages: jsonBody=' . json_encode($jsonBody));
-        $debug = [
-            'raw_body_preview' => is_string($rawBody) ? substr($rawBody, 0, 2000) : null,
-            '_GET' => $_GET,
-            '_POST' => $_POST,
-            'jsonBody' => $jsonBody,
-            'method' => $method,
-            'request_uri' => $_SERVER['REQUEST_URI'] ?? ''
-        ];
-        jsonRes(['error' => 'action not found', 'debug' => $debug], 400);
+        jsonRes(['error' => 'action required'], 400);
     }
 
     if ($method === 'GET') {
@@ -427,8 +412,6 @@ try {
 
         // Accept bulk grouped delete via POST as well (some environments strip DELETE bodies)
         if ($action === 'remove_grouped_bulk') {
-            // Log incoming raw body for diagnostics
-            try { error_log('remove_grouped_bulk raw input: ' . file_get_contents('php://input')); } catch (Exception $e) {}
             $projectId = (int)($input['project_id'] ?? 0);
             $ids = $input['ids'] ?? null;
             if (!$projectId || !$ids) jsonRes(['error' => 'project_id and ids required'], 400);

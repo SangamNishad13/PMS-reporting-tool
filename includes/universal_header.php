@@ -313,7 +313,7 @@ $currentPath = $_SERVER['REQUEST_URI'];
                             </li>
                             <li><hr class="dropdown-divider pms-dropdown-divider"></li>
                             <li>
-                                <a class="dropdown-item pms-dropdown-item text-danger" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/auth/logout.php">
+                                <a class="dropdown-item pms-dropdown-item text-danger" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/auth/logout.php?csrf_token=<?php echo urlencode(generateCsrfToken()); ?>">
                                     <i class="fas fa-sign-out-alt"></i>
                                     <span>Logout</span>
                                 </a>

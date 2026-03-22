@@ -730,7 +730,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
                                     </li>
                                     <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/profile.php"><i class="fas fa-user-circle me-2 text-muted"></i> Profile</a></li>
                                     <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item text-danger" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/auth/logout.php"><i class="fas fa-sign-out-alt me-2"></i> Logout</a></li>
+                                    <li><a class="dropdown-item text-danger" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/auth/logout.php?csrf_token=<?php echo urlencode(generateCsrfToken()); ?>"><i class="fas fa-sign-out-alt me-2"></i> Logout</a></li>
                                 </ul>
                             </li>
 

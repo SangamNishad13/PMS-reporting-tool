@@ -74,11 +74,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <form method="POST">
                     <div class="mb-3">
                         <label class="form-label">New Password</label>
-                        <input type="password" name="new_password" class="form-control" required placeholder="Min 8 characters">
+                        <input type="password" name="new_password" autocomplete="new-password" class="form-control" required placeholder="Min 8 characters">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Confirm New Password</label>
-                        <input type="password" name="confirm_password" class="form-control" required>
+                        <input type="password" name="confirm_password" autocomplete="new-password" class="form-control" required>
                     </div>
                     <div class="d-grid shadow-sm">
                         <button type="submit" class="btn btn-primary">Update Password & Continue</button>

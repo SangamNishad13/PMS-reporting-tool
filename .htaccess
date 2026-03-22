@@ -1,6 +1,9 @@
 # Production .htaccess for Client Reporting and Analytics System
 # Requirements: 17.5 (Security), 18.1 (Performance and Caching)
 
+# Disable directory listing
+Options -Indexes
+
 # Enable rewrite engine
 RewriteEngine On
 
