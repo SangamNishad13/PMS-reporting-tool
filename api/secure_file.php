@@ -128,23 +128,24 @@ if (function_exists('finfo_open')) {
     }
 }
 
-// Fallback to extension check if finfo fails or returns generic octet-stream
+// Force extension check for web files to prevent strict nosniff blocking
 $fileExt = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
-if ($mime === 'application/octet-stream' || $mime === '') {
-    $mimeTypes = [
-        'jpg' => 'image/jpeg',
-        'jpeg' => 'image/jpeg',
-        'png' => 'image/png',
-        'gif' => 'image/gif',
-        'webp' => 'image/webp',
-        'svg' => 'image/svg+xml',
-        'pdf' => 'application/pdf',
-        'txt' => 'text/plain',
-        'csv' => 'text/csv'
-    ];
-    if (isset($mimeTypes[$fileExt])) {
-        $mime = $mimeTypes[$fileExt];
-    }
+$mimeTypes = [
+    'jpg' => 'image/jpeg',
+    'jpeg' => 'image/jpeg',
+    'png' => 'image/png',
+    'gif' => 'image/gif',
+    'webp' => 'image/webp',
+    'svg' => 'image/svg+xml',
+    'pdf' => 'application/pdf',
+    'avif' => 'image/avif'
+];
+
+if (isset($mimeTypes[$fileExt])) {
+    $mime = $mimeTypes[$fileExt];
+} elseif ($mime === 'application/octet-stream' || $mime === '') {
+    if ($fileExt === 'txt') $mime = 'text/plain';
+    if ($fileExt === 'csv') $mime = 'text/csv';
 }
 
 // Add caching headers for images to reduce server load
