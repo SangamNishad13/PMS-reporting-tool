@@ -11,10 +11,11 @@ if (session_status() === PHP_SESSION_NONE) {
     ini_set('session.use_only_cookies', 1);
     
     // For localhost development, use Lax; for production, use Strict
-    $samesite = (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false || strpos($_SERVER['HTTP_HOST'] ?? '', '127.0.0.1') !== false) ? 'Lax' : 'Strict';
+    $host = strtolower(parse_url('http://' . ($_SERVER['HTTP_HOST'] ?? ''), PHP_URL_HOST) ?? '');
+    $isLocalhost = ($host === 'localhost' || $host === '127.0.0.1' || $host === '::1');
+    $samesite = $isLocalhost ? 'Lax' : 'Strict';
     ini_set('session.cookie_samesite', $samesite);
     // Always enforce secure cookies on HTTPS; on localhost allow HTTP for dev
-    $isLocalhost = (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false || strpos($_SERVER['HTTP_HOST'] ?? '', '127.0.0.1') !== false);
     ini_set('session.cookie_secure', (!$isLocalhost || (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')) ? 1 : 0);
 
     // Try Redis session handler first — eliminates file-locking under concurrent load
@@ -127,30 +128,31 @@ class Auth {
         // Sanitize username input
         $username = trim(strip_tags($username));
 
-        // Rate limiting: max 5 failed attempts per IP per 15 minutes
+        // Rate limiting: max 5 failed attempts per IP per 15 minutes (DB-based, not session-based)
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-        $rateLimitKey = 'login_attempts_' . md5($ip);
-        // Also rate limit per username to prevent distributed brute force
-        $userRateLimitKey = 'login_attempts_user_' . md5(strtolower($username));
+        $usernameHash = md5(strtolower($username));
         $maxAttempts = 5;
         $lockoutTime = 900; // 15 minutes
-        $now = time();
 
-        if (!isset($_SESSION[$rateLimitKey])) {
-            $_SESSION[$rateLimitKey] = [];
-        }
-        if (!isset($_SESSION[$userRateLimitKey])) {
-            $_SESSION[$userRateLimitKey] = [];
-        }
-        // Remove attempts older than lockout window
-        $_SESSION[$rateLimitKey] = array_filter($_SESSION[$rateLimitKey], function($t) use ($now, $lockoutTime) {
-            return ($now - $t) < $lockoutTime;
-        });
-        $_SESSION[$userRateLimitKey] = array_filter($_SESSION[$userRateLimitKey], function($t) use ($now, $lockoutTime) {
-            return ($now - $t) < $lockoutTime;
-        });
-        if (count($_SESSION[$rateLimitKey]) >= $maxAttempts || count($_SESSION[$userRateLimitKey]) >= $maxAttempts) {
-            return false; // Too many attempts
+        try {
+            // Clean up old attempts first
+            $this->db->prepare("DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE)")->execute();
+
+            // Check IP-based attempts
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM login_attempts WHERE ip_address = ? AND attempted_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)");
+            $stmt->execute([$ip]);
+            $ipAttempts = (int)$stmt->fetchColumn();
+
+            // Check username-based attempts (distributed brute force protection)
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM login_attempts WHERE username_hash = ? AND attempted_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)");
+            $stmt->execute([$usernameHash]);
+            $userAttempts = (int)$stmt->fetchColumn();
+
+            if ($ipAttempts >= $maxAttempts || $userAttempts >= $maxAttempts) {
+                return 'locked'; // Too many attempts
+            }
+        } catch (Exception $e) {
+            // If DB check fails, fall through (fail open — availability over security here)
         }
         
         $stmt = $this->db->prepare("
@@ -163,9 +165,14 @@ class Auth {
         $user = $stmt->fetch();
         
         if ($user && password_verify($password, $user['password'])) {
-            // Clear rate limit on successful login
-            unset($_SESSION[$rateLimitKey]);
-            unset($_SESSION[$userRateLimitKey]);
+            // Clear DB rate limit on successful login
+            try {
+                $stmt = $this->db->prepare("DELETE FROM login_attempts WHERE ip_address = ? OR username_hash = ?");
+                $stmt->execute([$ip, $usernameHash]);
+            } catch (Exception $e) {}
+            // Clear legacy session-based rate limit keys if present
+            unset($_SESSION['login_attempts_' . md5($ip)]);
+            unset($_SESSION['login_attempts_user_' . md5(strtolower($username))]);
             // Regenerate session ID to prevent session fixation
             session_regenerate_id(true);
             
@@ -212,9 +219,18 @@ class Auth {
             return true;
         }
         
-        // Track failed attempt
-        $_SESSION[$rateLimitKey][] = $now;
-        $_SESSION[$userRateLimitKey][] = $now;
+        // Track failed attempt in DB
+        try {
+            $stmt = $this->db->prepare("INSERT INTO login_attempts (ip_address, username_hash) VALUES (?, ?)");
+            $stmt->execute([$ip, $usernameHash]);
+
+            // Return remaining attempts info so UI can warn the user
+            $remaining = max(0, $maxAttempts - max($ipAttempts + 1, $userAttempts + 1));
+            if ($remaining === 0) {
+                return 'locked';
+            }
+            return $remaining; // e.g. 4, 3, 2, 1
+        } catch (Exception $e) {}
         return false;
     }
     
@@ -299,8 +315,7 @@ class Auth {
             session_unset();
             session_destroy();
             return false;
-        }
-        
+        }        
         // Verify session is still active in user_sessions (if table exists)
         try {
             $sid = session_id();

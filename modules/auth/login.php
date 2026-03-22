@@ -24,31 +24,53 @@ if ($auth->isLoggedIn()) {
     }
 }
 
+// Store form load time in session for time-based check
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $_SESSION['login_form_load_time'] = time();
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Verify CSRF token
     if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
         $error = "Invalid security token. Please try again.";
+    // Honeypot check — real users leave this field empty
+    } elseif (!empty($_POST['hp_email_confirm'])) {
+        $error = "Invalid username or password";
+    // Time-based check — bots submit too fast (under 2 seconds)
+    } elseif (isset($_SESSION['login_form_load_time']) && (time() - $_SESSION['login_form_load_time']) < 2) {
+        $error = "Invalid username or password";
     } else {
         $username = sanitizeInput($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
         
         if (empty($username) || empty($password)) {
             $error = "Username and password are required";
-        } elseif ($auth->login($username, $password)) {
-            // Redirect based on role with proper mapping
-            $role = $_SESSION['role'];
-            
-            // Special handling for client users - redirect to new client router
-            if ($role === 'client') {
-                redirect("/client/dashboard");
-            } else {
-                $moduleDir = getModuleDirectory($role);
-                redirect("/modules/{$moduleDir}/dashboard.php");
-            }
         } else {
-            $error = "Invalid username or password";
+            $loginResult = $auth->login($username, $password);
+            if ($loginResult === true) {
+                // Redirect based on role with proper mapping
+                $role = $_SESSION['role'];
+                
+                // Special handling for client users - redirect to new client router
+                if ($role === 'client') {
+                    redirect("/client/dashboard");
+                } else {
+                    $moduleDir = getModuleDirectory($role);
+                    redirect("/modules/{$moduleDir}/dashboard.php");
+                }
+            } elseif ($loginResult === 'locked') {
+                $error = "Too many failed login attempts. Your account has been temporarily locked for 15 minutes. Please try again later.";
+            } elseif (is_int($loginResult) && $loginResult > 0) {
+                $error = "Invalid username or password.";
+            } else {
+                $error = "Invalid username or password";
+            }
         }
     }
+}
+// Clear form load time only after successful processing
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    unset($_SESSION['login_form_load_time']);
 }
 
 include __DIR__ . '/../../includes/header.php';
@@ -70,6 +92,13 @@ include __DIR__ . '/../../includes/header.php';
                     
                     <form method="POST">
                         <input type="hidden" name="csrf_token" value="<?php echo e(generateCsrfToken()); ?>">
+                        
+                        <?php /* Honeypot: hidden from real users, bots will fill it */ ?>
+                        <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;">
+                            <label for="hp_email_confirm">Leave this field empty</label>
+                            <input type="text" id="hp_email_confirm" name="hp_email_confirm" tabindex="-1" autocomplete="off" value="">
+                        </div>
+                        
                         <div class="mb-3">
                             <label for="username" class="form-label">Username or Email</label>
                             <input type="text" autocomplete="username" class="form-control" id="username" name="username" value="" required <?php echo !$error ? 'autofocus' : ''; ?>>

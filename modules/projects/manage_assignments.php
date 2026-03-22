@@ -677,9 +677,18 @@ if (!$projectId) {
         ]);
 
         $_SESSION['success'] = "Page assignment updated.";
+        // Validate return_to to prevent open redirect — only allow relative paths on same host
+        $safeReturnTo = '';
         if (!empty($returnTo)) {
-            $sep = (strpos($returnTo, '?') === false) ? '?' : '&';
-            header("Location: {$returnTo}{$sep}tab=pages&subtab=project_pages_sub&focus_assign_btn=$pageId");
+            $parsed = parse_url($returnTo);
+            // Allow only if no host (relative path) and starts with /
+            if (!isset($parsed['host']) && !isset($parsed['scheme']) && isset($parsed['path']) && strpos($parsed['path'], '/') === 0) {
+                $safeReturnTo = $returnTo;
+            }
+        }
+        if (!empty($safeReturnTo)) {
+            $sep = (strpos($safeReturnTo, '?') === false) ? '?' : '&';
+            header("Location: {$safeReturnTo}{$sep}tab=pages&subtab=project_pages_sub&focus_assign_btn=$pageId");
         } else {
             header("Location: manage_assignments.php?project_id=$projectId&tab=pages&focus_page_id=$pageId");
         }
@@ -1400,14 +1409,13 @@ include __DIR__ . '/../../includes/header.php';
                                     <input type="hidden" name="project_id" value="<?php echo (int)$projectId; ?>">
                                     <div class="mb-3">
                                         <label class="form-label">Select Users</label>
-                                        <select name="user_ids[]" class="form-select" multiple size="10" required>
+                                        <select name="user_ids[]" id="teamUserSelect" class="form-select" multiple required>
                                             <?php foreach ($allAvailableUsers as $au): ?>
                                                 <option value="<?php echo $au['id']; ?>">
                                                     <?php echo htmlspecialchars($au['full_name']); ?> (<?php echo ucfirst(str_replace('_', ' ', $au['role'])); ?>)
                                                 </option>
                                             <?php endforeach; ?>
                                         </select>
-                                        <small class="text-muted">Hold Ctrl to select multiple</small>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Allocated Hours</label>
@@ -2098,6 +2106,10 @@ include __DIR__ . '/../../includes/header.php';
     <?php endif; ?>
 </div>
 
+<!-- Select2 -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
 <style>
 .badge {
     font-size: 0.7rem;
@@ -2180,6 +2192,17 @@ window._manageAssignConfig = {
 </script>
 <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/manage-assignments.js?v=<?php echo $assetVersion ?? time(); ?>"></script>
 <!-- manage-assignments.js handles all JS logic above -->
+
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
+jQuery(function ($) {
+    $('#teamUserSelect').select2({
+        width: '100%',
+        placeholder: 'Search and select users...',
+        allowClear: true,
+        closeOnSelect: false
+    });
+});
+</script>
 
 
 
