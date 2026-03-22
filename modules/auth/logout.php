@@ -23,8 +23,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Perform logout
+// Perform logout — sets flash message in cookie, no sensitive state in URL
 $auth->logout();
-
-// Fallback redirect
-redirect("/modules/auth/login.php?logout=success");

@@ -15,8 +15,12 @@ if (session_status() === PHP_SESSION_NONE) {
     $isLocalhost = ($host === 'localhost' || $host === '127.0.0.1' || $host === '::1');
     $samesite = $isLocalhost ? 'Lax' : 'Strict';
     ini_set('session.cookie_samesite', $samesite);
-    // Always enforce secure cookies on HTTPS; on localhost allow HTTP for dev
-    ini_set('session.cookie_secure', (!$isLocalhost || (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')) ? 1 : 0);
+    // Detect HTTPS: check HTTPS server var OR X-Forwarded-Proto (for reverse proxies/load balancers)
+    $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')
+        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
+        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+    // Enforce Secure cookie on HTTPS; allow non-secure only on localhost HTTP
+    ini_set('session.cookie_secure', ($isHttps || !$isLocalhost) ? 1 : 0);
 
     // Try Redis session handler first — eliminates file-locking under concurrent load
     $redisSessionSet = false;
@@ -143,18 +147,14 @@ class Auth {
             // Clean up old attempts first
             $this->db->prepare("DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE)")->execute();
 
-            // Check IP-based attempts
-            $stmt = $this->db->prepare("SELECT COUNT(*) FROM login_attempts WHERE ip_address = ? AND attempted_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)");
-            $stmt->execute([$ip]);
-            $ipAttempts = (int)$stmt->fetchColumn();
-
-            // Check username-based attempts (distributed brute force protection)
+            // Check username-based attempts only — IP-based lockout intentionally removed
+            // because shared office/NAT IPs would block all users when one user fails repeatedly.
             $stmt = $this->db->prepare("SELECT COUNT(*) FROM login_attempts WHERE username_hash = ? AND attempted_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)");
             $stmt->execute([$usernameHash]);
             $userAttempts = (int)$stmt->fetchColumn();
 
-            if ($ipAttempts >= $maxAttempts || $userAttempts >= $maxAttempts) {
-                return 'locked'; // Too many attempts
+            if ($userAttempts >= $maxAttempts) {
+                return 'locked';
             }
         } catch (Exception $e) {
             // If DB check fails, deny login to prevent brute force bypass (fail-closed)
@@ -172,10 +172,10 @@ class Auth {
         $user = $stmt->fetch();
         
         if ($user && password_verify($password, $user['password'])) {
-            // Clear DB rate limit on successful login
+            // Clear DB rate limit on successful login (by username only)
             try {
-                $stmt = $this->db->prepare("DELETE FROM login_attempts WHERE ip_address = ? OR username_hash = ?");
-                $stmt->execute([$ip, $usernameHash]);
+                $stmt = $this->db->prepare("DELETE FROM login_attempts WHERE username_hash = ?");
+                $stmt->execute([$usernameHash]);
             } catch (Exception $e) {}
             // Clear legacy session-based rate limit keys if present
             unset($_SESSION['login_attempts_' . md5($ip)]);
@@ -231,8 +231,8 @@ class Auth {
             $stmt = $this->db->prepare("INSERT INTO login_attempts (ip_address, username_hash) VALUES (?, ?)");
             $stmt->execute([$ip, $usernameHash]);
 
-            // Return remaining attempts info so UI can warn the user
-            $remaining = max(0, $maxAttempts - max($ipAttempts + 1, $userAttempts + 1));
+            // Return remaining attempts so UI can warn the user
+            $remaining = max(0, $maxAttempts - ($userAttempts + 1));
             if ($remaining === 0) {
                 return 'locked';
             }
@@ -276,17 +276,21 @@ class Auth {
             } catch (Exception $_) {}
         }
 
-        // Store logout message in session before destroying it
-        // We'll use a cookie or URL parameter instead since session will be destroyed
-        $logoutMessage = 'You have been successfully logged out.';
-
         session_unset();
         session_destroy();
         
-        // Redirect to login page with success message
+        // Use a short-lived cookie for the logout flash message instead of URL parameter
+        // This avoids exposing session state in the URL (VAPT: sensitive data in URL)
+        setcookie('logout_msg', '1', [
+            'expires'  => time() + 30,
+            'path'     => '/',
+            'secure'   => true,
+            'httponly' => true,
+            'samesite' => 'Strict',
+        ]);
+
         require_once __DIR__ . '/helpers.php';
-        $baseDir = getBaseDir();
-        redirect("/modules/auth/login.php?logout=success");
+        redirect("/modules/auth/login.php");
     }
     
     public function isLoggedIn() {

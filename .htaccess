@@ -17,13 +17,13 @@ RewriteEngine On
     
     # Security headers
     Header always set X-Content-Type-Options nosniff
-    Header always set X-Frame-Options SAMEORIGIN
-    Header always set X-XSS-Protection "1; mode=block"
+    Header always set X-Frame-Options DENY
+    # X-XSS-Protection intentionally omitted — deprecated in modern browsers and can introduce XSS auditor bypass vulnerabilities
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
     
-    # HSTS for HTTPS
-    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    # HSTS for HTTPS — preload removed until domain is submitted to hstspreload.org
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
     
     # Additional security headers
     Header always set X-Permitted-Cross-Domain-Policies "none"
@@ -110,14 +110,14 @@ RedirectMatch 403 ^/?(config|includes|database|tmp|\.git|\.kiro)/.*$
 <IfModule mod_headers.c>
     # Cache static assets
     <FilesMatch "\.(css|js|png|jpg|jpeg|gif|svg|webp|woff|woff2|ttf|eot)$">
-        Header set Cache-Control "public, max-age=2592000"
+        Header always set Cache-Control "public, max-age=2592000"
     </FilesMatch>
     
-    # Don't cache dynamic content
+    # Don't cache dynamic content — use "always set" to overwrite any previously set value (prevents duplicate headers)
     <FilesMatch "\.(php|html)$">
-        Header set Cache-Control "no-cache, no-store, must-revalidate, private"
-        Header set Pragma "no-cache"
-        Header set Expires "0"
+        Header always set Cache-Control "no-cache, no-store, must-revalidate, private"
+        Header always set Pragma "no-cache"
+        Header always set Expires "0"
     </FilesMatch>
 </IfModule>
 
@@ -143,6 +143,10 @@ LimitRequestBody 52428800
 # Disable server signature
 ServerSignature Off
 
+# Migration password and SMTP email password
+SetEnv MIGRATION_PASSWORD "admin123"
+SetEnv SMTP_PASSWORD "Sakshi@2026"
+
 # Disable PHP error display in production (prevent information leakage)
 <IfModule mod_php.c>
     php_flag display_errors Off
@@ -165,7 +169,7 @@ RewriteRule .* - [F,L]
 
 # Prevent clickjacking via meta-refresh
 <FilesMatch "\.php$">
-    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Frame-Options "DENY"
 </FilesMatch>
 
 # Block access to backup and temp files

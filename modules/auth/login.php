@@ -7,9 +7,17 @@ $auth = new Auth();
 $error = '';
 $success = '';
 
-// Check for logout success message (only show on GET, not on POST submissions)
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['logout']) && $_GET['logout'] === 'success') {
+// Check for logout success message via short-lived cookie (not URL param)
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && !empty($_COOKIE['logout_msg'])) {
     $success = 'You have been successfully logged out.';
+    // Immediately expire the cookie
+    setcookie('logout_msg', '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'secure'   => true,
+        'httponly' => true,
+        'samesite' => 'Strict',
+    ]);
 }
 
 // If already logged in, redirect to dashboard
