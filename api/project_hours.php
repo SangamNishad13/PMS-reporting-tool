@@ -96,6 +96,9 @@ try {
             if (!$projectId || $hours <= 0) {
                 throw new Exception('Missing project_id or invalid hours');
             }
+            if ($hours > 24) {
+                throw new Exception('Cannot log more than 24 hours in a single entry');
+            }
 
             if ($taskType === 'regression_testing' && $issueCount !== null && $issueCount > 0) {
                 $desc = trim($desc);

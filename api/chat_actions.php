@@ -122,6 +122,25 @@ function ensureChatAuditSchema($db) {
 
 switch ($action) {
     case 'send_message':
+        // Rate limiting: max 60 messages per user per minute
+        $rl_key = 'chat_msg_' . ($_SESSION['user_id'] ?? 'anon');
+        $rl_window = 60; // 1 minute window
+        $rl_max = 60; // 60 messages allowed
+        $now = time();
+        if (!isset($_SESSION['rate_limits'][$rl_key])) {
+            $_SESSION['rate_limits'][$rl_key] = ['count' => 0, 'window_start' => $now];
+        }
+        $rl = &$_SESSION['rate_limits'][$rl_key];
+        if ($now - $rl['window_start'] > $rl_window) {
+            $rl = ['count' => 0, 'window_start' => $now];
+        }
+        if ($rl['count'] >= $rl_max) {
+            http_response_code(429);
+            echo json_encode(['error' => 'Too many messages. Please wait before sending again.']);
+            exit;
+        }
+        $rl['count']++;
+
         ensureChatAuditSchema($db);
         $projectId = (isset($_POST['project_id']) && $_POST['project_id'] !== '' && $_POST['project_id'] !== 'null' && $_POST['project_id'] !== '0') ? intval($_POST['project_id']) : null;
         $pageId = (isset($_POST['page_id']) && $_POST['page_id'] !== '' && $_POST['page_id'] !== 'null' && $_POST['page_id'] !== '0') ? intval($_POST['page_id']) : null;
