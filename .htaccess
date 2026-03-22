@@ -173,7 +173,9 @@ RewriteRule .* - [F,L]
 </FilesMatch>
 
 # project_chat.php is intentionally embedded in an iframe within the same site
+# Must unset first, then set — otherwise the DENY from the block above wins
 <FilesMatch "^project_chat\.php$">
+    Header always unset X-Frame-Options
     Header always set X-Frame-Options "SAMEORIGIN"
 </FilesMatch>
 

@@ -215,7 +215,8 @@ function sendCredentialsMailForUser(PDO $db, $uid, $mailMode, $requestId = '') {
 // Handle user actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $isAjaxAction = isset($_POST['send_credentials_email_single']);
-    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+    $csrfFromRequest = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (!verifyCsrfToken($csrfFromRequest)) {
         if ($isAjaxAction) {
             header('Content-Type: application/json');
             echo json_encode(['success' => false, 'error' => 'Invalid request token.']);

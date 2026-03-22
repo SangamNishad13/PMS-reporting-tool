@@ -18,8 +18,9 @@ $isAdminChatViewer = in_array($viewerRole, ['admin', 'super_admin'], true);
 $embed = isset($_GET['embed']) && $_GET['embed'] === '1';
 
 // When loaded in an iframe (embed mode), allow same-origin framing.
-// DENY is set globally in .htaccess but this page is intentionally embedded within the same site.
+// DENY is set globally in .htaccess; we must remove it first then set SAMEORIGIN.
 if ($embed) {
+    header_remove('X-Frame-Options');
     header('X-Frame-Options: SAMEORIGIN', true);
 }
 

@@ -298,18 +298,25 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
     // Automatically attach CSRF token to all jQuery AJAX POST/PUT/PATCH/DELETE requests
     (function() {
         var csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-        if (typeof $ !== 'undefined' && $.ajaxSetup) {
-            $.ajaxSetup({
-                beforeSend: function(xhr, settings) {
-                    var safeMethods = /^(GET|HEAD|OPTIONS|TRACE)$/i;
-                    if (!safeMethods.test(settings.type)) {
-                        xhr.setRequestHeader('X-CSRF-Token', csrfToken);
-                    }
-                }
-            });
-        }
-        // Also expose for fetch() calls
+        // Expose for fetch() and explicit AJAX calls
         window._csrfToken = csrfToken;
+
+        // Setup jQuery ajaxSetup — runs immediately if jQuery already loaded,
+        // otherwise deferred via DOMContentLoaded (jQuery is loaded before body scripts run)
+        function setupJqueryAjax() {
+            if (typeof $ !== 'undefined' && $.ajaxSetup) {
+                $.ajaxSetup({
+                    beforeSend: function(xhr, settings) {
+                        var safeMethods = /^(GET|HEAD|OPTIONS|TRACE)$/i;
+                        if (!safeMethods.test(settings.type)) {
+                            xhr.setRequestHeader('X-CSRF-Token', csrfToken);
+                        }
+                    }
+                });
+            }
+        }
+        setupJqueryAjax();
+        document.addEventListener('DOMContentLoaded', setupJqueryAjax);
         
         // Helper: fetch with CSRF token automatically included
         window.csrfFetch = function(url, options) {
