@@ -552,6 +552,8 @@
             payload.append('edit_message', '1');
             payload.append('message_id', String(mid));
             payload.append('message', edited);
+            const _csrfEdit = (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : (window._csrfToken || '');
+            if (_csrfEdit) payload.append('csrf_token', _csrfEdit);
             fetch(window.location.pathname + window.location.search, {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -580,6 +582,8 @@
             const payload = new URLSearchParams();
             payload.append('delete_message', '1');
             payload.append('message_id', String(mid));
+            const _csrfDel = (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : (window._csrfToken || '');
+            if (_csrfDel) payload.append('csrf_token', _csrfDel);
             fetch(window.location.pathname + window.location.search, {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -623,7 +627,8 @@
                         page_id: String(pageId || ''),
                         message: String(messageHtml || ''),
                         reply_to: String(replyToVal || ''),
-                        reply_token: replyToVal ? ('r:' + String(replyToVal)) : ''
+                        reply_token: replyToVal ? ('r:' + String(replyToVal)) : '',
+                        csrf_token: (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute ? (document.querySelector('meta[name="csrf-token"]').getAttribute('content') || '') : (window._csrfToken || '')
                     };
                     Object.keys(fields).forEach(function(k) {
                         const input = document.createElement('input');
@@ -671,6 +676,7 @@
                     params.append('message', msg);
                     if (replyTo) params.append('reply_to', String(replyTo));
                     if (replyTo) params.append('reply_token', 'r:' + String(replyTo));
+                    if (csrfToken) params.append('csrf_token', csrfToken);
                     return fetch(window.location.pathname + window.location.search, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },

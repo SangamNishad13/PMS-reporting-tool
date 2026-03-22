@@ -17,19 +17,19 @@ SECTION 1: HTTP SECURITY HEADERS
 TEST 1.1 - Security Headers Check
 ----------------------------------
 Steps:
-  1. Browser mein site kholo (https://athenaeumtransformation.com)
+  1. Browser mein site kholo (https://athenaeumtransformation.com/PMS)
   2. F12 dabao > Network tab > koi bhi request click karo
   3. Response Headers section dekho
 
 Expected Headers (sab hone chahiye):
-  [ ] X-Frame-Options: DENY
-  [ ] X-Content-Type-Options: nosniff
-  [ ] Strict-Transport-Security: max-age=31536000; includeSubDomains
-  [ ] Referrer-Policy: strict-origin-when-cross-origin
-  [ ] Content-Security-Policy: (kuch bhi value ho, blank nahi hona chahiye)
-  [ ] Permissions-Policy: (present hona chahiye)
+  [x] X-Frame-Options: DENY
+  [x] X-Content-Type-Options: nosniff
+  [x] Strict-Transport-Security: max-age=31536000; includeSubDomains
+  [x] Referrer-Policy: strict-origin-when-cross-origin
+  [x] Content-Security-Policy: (kuch bhi value ho, blank nahi hona chahiye)
+  [x] Permissions-Policy: (present hona chahiye)
 
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 1.2 - Clickjacking Protection
@@ -42,17 +42,17 @@ Steps:
   2. Browser mein kholo
 
 Expected: Iframe blank/blocked hona chahiye, site load nahi honi chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 1.3 - HTTPS Enforcement
 ------------------------------
 Steps:
-  1. Browser mein http:// se site access karo: http://athenaeumtransformation.com
+  1. Browser mein http:// se site access karo: http://athenaeumtransformation.com/PMS
   2. Dekho kya https:// pe redirect hota hai
 
 Expected: Automatic redirect to HTTPS
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 1.4 - SSL/TLS Rating
@@ -63,8 +63,8 @@ Steps:
   3. Rating dekho
 
 Expected: A ya A+ rating, TLS 1.0/1.1 disabled
-Result: PASS / FAIL
-Rating Mila: _______
+Result: PASS
+Rating Mila: A+
 Notes: _______________________________________________
 
 
@@ -80,7 +80,7 @@ Steps:
   3. 6th attempt karo
 
 Expected: 6th attempt pe "account locked for 15 minutes" message aaye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 2.2 - Session Fixation
@@ -91,9 +91,9 @@ Steps:
   3. Login ke baad session cookie ID dobara note karo
 
 Expected: Login ke baad session ID change honi chahiye (different value)
-Result: PASS / FAIL
-Before Login Session ID: _______________
-After Login Session ID:  _______________
+Result: PASS
+Before Login Session ID: qbk5k1k67lldr4rkoecfi92o6u
+After Login Session ID:  en0jd7mrjha0ac5svp2cngr22v
 Notes: _______________________________________________
 
 TEST 2.3 - Session After Logout
@@ -105,7 +105,7 @@ Steps:
   4. Ya directly URL type karo: https://athenaeumtransformation.com/PMS/modules/admin/dashboard.php
 
 Expected: Login page pe redirect hona chahiye, dashboard nahi dikhna chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 2.4 - Session Timeout (Idle)
@@ -126,7 +126,7 @@ Steps:
      https://athenaeumtransformation.com/PMS/modules/auth/force_reset.php
 
 Expected: Login page pe redirect hona chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 2.6 - Password Complexity
@@ -140,7 +140,7 @@ Steps:
      - "password@1" (no uppercase)
 
 Expected: Sab reject hone chahiye with proper error message
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 2.7 - Username Enumeration
@@ -151,7 +151,7 @@ Steps:
   3. Dono error messages compare karo
 
 Expected: Dono cases mein same generic message: "Invalid username or password"
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 
@@ -171,7 +171,7 @@ Steps:
      GET https://athenaeumtransformation.com/PMS/api/get_original_data.php?user_id=<UserB_ID>&date=2026-03-22
 
 Expected: 403 Access Denied aana chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 3.2 - Vertical Privilege Escalation (Admin Pages)
@@ -187,7 +187,7 @@ Steps:
      https://athenaeumtransformation.com/PMS/api/admin_project_users.php
 
 Expected: Sab pe redirect to login ya 403 aana chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 3.3 - API Role Bypass
@@ -199,7 +199,7 @@ Steps:
      action=delete_feedback&feedback_id=1
 
 Expected: "Permission denied" response aana chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 3.4 - Cross-Project Data Access
@@ -212,7 +212,7 @@ Steps:
      GET https://athenaeumtransformation.com/PMS/api/project_pages.php?project_id=<Project2_ID>
 
 Expected: Empty data ya 403 aana chahiye, Project 2 ka data nahi
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 
@@ -232,7 +232,7 @@ Steps:
   3. Page refresh karo, messages dobara dekho
 
 Expected: Alert popup nahi aana chahiye, text as-is ya escaped dikhna chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 4.2 - Stored XSS - Feedback
@@ -243,7 +243,7 @@ Steps:
   2. Admin se feedback dekho
 
 Expected: Script execute nahi honi chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 4.3 - Stored XSS - Issue Description
@@ -255,7 +255,7 @@ Steps:
   2. Issue save karo aur dobara kholo
 
 Expected: Alert nahi aana chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 4.4 - Reflected XSS - URL Parameters
@@ -266,7 +266,7 @@ Steps:
      https://athenaeumtransformation.com/PMS/modules/auth/login.php?logout=<img src=x onerror=alert(1)>
 
 Expected: Script execute nahi honi chahiye, text escaped dikhna chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 
@@ -290,7 +290,7 @@ Steps:
   3. Naye tab mein csrf_test.html kholo (file:// se)
 
 Expected: "Invalid or missing CSRF token" - 403 response aana chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 5.2 - CSRF on State-Changing APIs
