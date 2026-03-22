@@ -616,6 +616,12 @@
 
         function sendChatMessage() {
             function hardFallbackSubmit(messageHtml, replyToVal) {
+                // In embed mode, form submit would navigate the iframe and show raw JSON.
+                // Skip form submit and show error instead.
+                if (isEmbed) {
+                    if (typeof showToast === 'function') showToast('Failed to send message. Please try again.', 'danger');
+                    return;
+                }
                 try {
                     const f = document.createElement('form');
                     f.method = 'POST';
