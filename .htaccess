@@ -146,12 +146,14 @@ ServerSignature Off
     php_flag display_startup_errors Off
     php_flag log_errors On
     php_value error_reporting 0
+    php_value error_log /home/yourusername/logs/php_errors.log
 </IfModule>
 <IfModule mod_php8.c>
     php_flag display_errors Off
     php_flag display_startup_errors Off
     php_flag log_errors On
     php_value error_reporting 0
+    php_value error_log /home/yourusername/logs/php_errors.log
 </IfModule>
 
 # Block common attack patterns in User-Agent
