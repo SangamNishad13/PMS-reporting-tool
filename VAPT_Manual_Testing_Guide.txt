@@ -123,7 +123,7 @@ TEST 2.5 - Force Password Reset Bypass
 ----------------------------------------
 Steps:
   1. Bina login ke directly access karo:
-     /modules/auth/force_reset.php
+     https://athenaeumtransformation.com/PMS/modules/auth/force_reset.php
 
 Expected: Login page pe redirect hona chahiye
 Result: PASS / FAIL
@@ -167,8 +167,8 @@ Steps:
   1. User A se login karo
   2. User B ka user_id note karo (admin panel se)
   3. Ye URLs try karo User A ke session se:
-     GET /api/user_hours.php?user_id=<UserB_ID>&date=2026-03-22
-     GET /api/get_original_data.php?user_id=<UserB_ID>&date=2026-03-22
+     GET https://athenaeumtransformation.com/PMS/api/user_hours.php?user_id=<UserB_ID>&date=2026-03-22
+     GET https://athenaeumtransformation.com/PMS/api/get_original_data.php?user_id=<UserB_ID>&date=2026-03-22
 
 Expected: 403 Access Denied aana chahiye
 Result: PASS / FAIL
@@ -179,12 +179,12 @@ TEST 3.2 - Vertical Privilege Escalation (Admin Pages)
 Steps:
   1. Non-admin account se login karo (qa ya ft_tester)
   2. Ye admin URLs directly access karo:
-     /modules/admin/users.php
-     /modules/admin/repair_db.php
-     /modules/admin/dashboard.php
-     /modules/admin/bulk_hours_management.php
-     /api/admin_vault.php?action=get_credentials
-     /api/admin_project_users.php
+     https://athenaeumtransformation.com/PMS/modules/admin/users.php
+     https://athenaeumtransformation.com/PMS/modules/admin/repair_db.php
+     https://athenaeumtransformation.com/PMS/modules/admin/dashboard.php
+     https://athenaeumtransformation.com/PMS/modules/admin/bulk_hours_management.php
+     https://athenaeumtransformation.com/PMS/api/admin_vault.php?action=get_credentials
+     https://athenaeumtransformation.com/PMS/api/admin_project_users.php
 
 Expected: Sab pe redirect to login ya 403 aana chahiye
 Result: PASS / FAIL
@@ -195,7 +195,7 @@ TEST 3.3 - API Role Bypass
 Steps:
   1. ft_tester account se login karo
   2. Postman ya browser se ye POST request bhejo:
-     POST /api/feedback.php
+     POST https://athenaeumtransformation.com/PMS/api/feedback.php
      action=delete_feedback&feedback_id=1
 
 Expected: "Permission denied" response aana chahiye
@@ -208,8 +208,8 @@ Steps:
   1. User A ko Project 1 pe assign karo, Project 2 pe nahi
   2. User A se login karo
   3. Project 2 ka data access karne ki koshish karo:
-     GET /api/issues.php?project_id=<Project2_ID>
-     GET /api/project_pages.php?project_id=<Project2_ID>
+     GET https://athenaeumtransformation.com/PMS/api/issues.php?project_id=<Project2_ID>
+     GET https://athenaeumtransformation.com/PMS/api/project_pages.php?project_id=<Project2_ID>
 
 Expected: Empty data ya 403 aana chahiye, Project 2 ka data nahi
 Result: PASS / FAIL
@@ -262,8 +262,8 @@ TEST 4.4 - Reflected XSS - URL Parameters
 -------------------------------------------
 Steps:
   1. Ye URLs browser mein try karo:
-     /modules/auth/login.php?error=<script>alert(1)</script>
-     /modules/auth/login.php?logout=<img src=x onerror=alert(1)>
+     https://athenaeumtransformation.com/PMS/modules/auth/login.php?error=<script>alert(1)</script>
+     https://athenaeumtransformation.com/PMS/modules/auth/login.php?logout=<img src=x onerror=alert(1)>
 
 Expected: Script execute nahi honi chahiye, text escaped dikhna chahiye
 Result: PASS / FAIL
@@ -441,9 +441,9 @@ TEST 8.2 - API Parameter Injection
 Steps:
   1. Login karo
   2. Ye URLs try karo:
-     /api/user_hours.php?user_id=1' OR '1'='1&date=2026-03-22
-     /api/user_hours.php?user_id=1; DROP TABLE users--&date=2026-03-22
-     /api/issues.php?project_id=1 UNION SELECT 1,2,3--
+     https://athenaeumtransformation.com/PMS/api/user_hours.php?user_id=1' OR '1'='1&date=2026-03-22
+     https://athenaeumtransformation.com/PMS/api/user_hours.php?user_id=1; DROP TABLE users--&date=2026-03-22
+     https://athenaeumtransformation.com/PMS/api/issues.php?project_id=1 UNION SELECT 1,2,3--
 
 Expected: Error ya empty response, DB data leak nahi hona chahiye
 Result: PASS / FAIL
@@ -496,8 +496,8 @@ TEST 10.1 - Error Message Disclosure
 Steps:
   1. Login karo
   2. Ye invalid requests bhejo:
-     GET /api/user_hours.php?user_id=999999&date=invalid-date
-     GET /api/get_original_data.php?user_id=abc&date=xyz
+     GET https://athenaeumtransformation.com/PMS/api/user_hours.php?user_id=999999&date=invalid-date
+     GET https://athenaeumtransformation.com/PMS/api/get_original_data.php?user_id=abc&date=xyz
 
 Expected: Generic error message, koi DB details / stack trace nahi
 Result: PASS / FAIL
@@ -529,7 +529,7 @@ TEST 10.4 - API Response Sensitive Data
 -----------------------------------------
 Steps:
   1. Login karo
-  2. GET /api/user_hours.php?user_id=<your_id>&date=2026-03-22
+  2. GET https://athenaeumtransformation.com/PMS/api/user_hours.php?user_id=<your_id>&date=2026-03-22
   3. Response JSON dekho
 
 Expected: Response mein "debug_info", "is_admin", "columns_exist" fields nahi hone chahiye
@@ -546,7 +546,7 @@ TEST 11.1 - Role Escalation via Profile Edit
 Steps:
   1. ft_tester se login karo
   2. Profile edit request bhejo with role=admin:
-     POST /api/status.php
+     POST https://athenaeumtransformation.com/PMS/api/status.php
      action=update_profile&role=admin
 
 Expected: Role change nahi hona chahiye
@@ -570,7 +570,7 @@ TEST 11.3 - Accessing Other User's Vault
 Steps:
   1. Admin A se login karo, vault mein kuch credentials add karo
   2. Admin B se login karo
-  3. GET /api/admin_vault.php?action=get_credentials
+  3. GET https://athenaeumtransformation.com/PMS/api/admin_vault.php?action=get_credentials
 
 Expected: Sirf Admin B ke credentials dikhne chahiye, Admin A ke nahi
 Result: PASS / FAIL
@@ -580,7 +580,7 @@ TEST 11.4 - Export Without Permission
 ---------------------------------------
 Steps:
   1. ft_tester se login karo
-  2. POST /api/export_issues.php bhejo
+  2. POST https://athenaeumtransformation.com/PMS/api/export_issues.php bhejo
 
 Expected: Permission denied ya 403
 Result: PASS / FAIL
@@ -1047,3 +1047,4 @@ https://athenaeumtransformation.com/PMS/assets/js/login-activity.js             
 ================================================================================
 END OF FILE URL LIST
 ================================================================================
+
