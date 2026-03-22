@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Daily Hours Compliance Checker
  * 
@@ -61,7 +61,7 @@ try {
     $stmt = $pdo->query("
         SELECT id, username, full_name, email, role
         FROM users
-        WHERE is_active = TRUE AND role NOT IN ('super_admin', 'admin')
+        WHERE is_active = TRUE AND role NOT IN ('admin')
     ");
     $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
     

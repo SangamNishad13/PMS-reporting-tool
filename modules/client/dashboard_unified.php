@@ -27,7 +27,7 @@ $dashboardController = new UnifiedDashboardController();
 
 // Get client user ID (either current user or admin viewing specific client)
 $clientUserId = $userId;
-if (in_array($userRole, ['admin', 'super_admin']) && isset($_GET['client_id'])) {
+if (in_array($userRole, ['admin']) && isset($_GET['client_id'])) {
     $clientUserId = intval($_GET['client_id']);
 }
 
@@ -49,7 +49,7 @@ try {
 
 // Determine actual client_id for export
 $actualClientId = 0;
-if (in_array($userRole, ['admin', 'super_admin']) && isset($_GET['client_id'])) {
+if (in_array($userRole, ['admin']) && isset($_GET['client_id'])) {
     $actualClientId = intval($_GET['client_id']);
 } elseif (!empty($dashboardData['assigned_projects'])) {
     // For client users, take the client_id from their first assigned project

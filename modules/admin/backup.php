@@ -1,10 +1,10 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/backup.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'super_admin']);
+$auth->requireRole(['admin']);
 
 $backupManager = new BackupManager();
 

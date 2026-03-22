@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * NotificationManager Class
  * 
@@ -220,7 +220,7 @@ class NotificationManager {
             $stmt = $this->db->prepare("
                 SELECT id, username, email, full_name
                 FROM users 
-                WHERE id = ? AND role IN ('admin', 'super_admin') AND is_active = 1
+                WHERE id = ? AND role IN ('admin') AND is_active = 1
             ");
             $stmt->execute([$adminUserId]);
             return $stmt->fetch(PDO::FETCH_ASSOC);

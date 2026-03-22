@@ -1,11 +1,11 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/project_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin', 'client']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'admin', 'client']);
 
 $baseDir = getBaseDir();
 $projectId = (int)($_GET['project_id'] ?? 0);
@@ -115,7 +115,7 @@ try {
         UNION
         SELECT u.id, u.full_name, u.username, u.role
         FROM users u
-        WHERE u.is_active = 1 AND u.role IN ('admin', 'super_admin')
+        WHERE u.is_active = 1 AND u.role IN ('admin')
         ORDER BY full_name
     ");
     $usersStmt->execute([$projectId]);

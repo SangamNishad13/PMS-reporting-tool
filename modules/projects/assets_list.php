@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
@@ -27,7 +27,7 @@ $projectLeadId = (int)($projectLeadIdStmt->fetchColumn() ?? 0);
 $assignedStmt = $db->prepare("SELECT id FROM user_assignments WHERE project_id = ? AND user_id = ? AND (is_removed IS NULL OR is_removed = 0) LIMIT 1");
 $assignedStmt->execute([$projectId, $userId]);
 $isAssigned = (bool)$assignedStmt->fetch();
-$canManageAssets = in_array($userRole, ['admin', 'super_admin'], true)
+$canManageAssets = in_array($userRole, ['admin'], true)
     || ($userRole === 'project_lead' && $projectLeadId === (int)$userId)
     || $isAssigned
     || hasAnyProjectPermission($db, $userId, $projectId, ['assets_edit', 'assets_delete']);

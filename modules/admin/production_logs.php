@@ -1,9 +1,9 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'super_admin', 'project_lead']);
+$auth->requireRole(['admin', 'project_lead']);
 
 $db = Database::getInstance();
 $baseDir = getBaseDir();
@@ -117,7 +117,7 @@ $stmt->execute($queryParams);
 $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // --- 3b. Time Log History (Admin only) ---
-$isAdminViewer = in_array($_SESSION['role'] ?? '', ['admin', 'super_admin'], true);
+$isAdminViewer = in_array($_SESSION['role'] ?? '', ['admin'], true);
 $historyByUser = [];
 if ($isAdminViewer) {
     try {

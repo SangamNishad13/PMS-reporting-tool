@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/helpers.php';
@@ -37,7 +37,7 @@ if (!$phaseId || !$projectId || !$field) {
 
 // Security: Only Admin, PL (if assigned), or QA can update phase status
 $canUpdate = false;
-if (in_array($userRole, ['admin', 'super_admin', 'qa'])) {
+if (in_array($userRole, ['admin', 'qa'])) {
     $canUpdate = true;
 } elseif ($userRole === 'project_lead') {
     $stmt = $db->prepare("SELECT id FROM projects WHERE id = ? AND project_lead_id = ?");

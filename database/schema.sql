@@ -1,4 +1,4 @@
--- Fresh Database Schema
+﻿-- Fresh Database Schema
 -- Generated: 2026-02-09 05:31:46
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -1517,7 +1517,7 @@ CREATE TABLE `users` (
   `email` varchar(100) NOT NULL,
   `password` varchar(255) NOT NULL,
   `full_name` varchar(100) NOT NULL,
-  `role` enum('super_admin','admin','project_lead','qa','at_tester','ft_tester') NOT NULL,
+  `role` enum('admin','project_lead','qa','at_tester','ft_tester') NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `is_active` tinyint(1) DEFAULT 1,
   `force_password_reset` tinyint(1) DEFAULT 0,

@@ -1,11 +1,11 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/project_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'admin']);
 
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
@@ -77,7 +77,7 @@ function saveAssetFile(array $file, string $ext): string|false {
 }
 
 function canManageProjectAsset($db, $userId, $userRole, $projectId, $assetId, $permissionType = 'assets_edit') {
-    if (in_array($userRole, ['admin', 'super_admin'], true)) {
+    if (in_array($userRole, ['admin'], true)) {
         return true;
     }
     $assetStmt = $db->prepare("SELECT created_by FROM project_assets WHERE id = ? AND project_id = ? LIMIT 1");

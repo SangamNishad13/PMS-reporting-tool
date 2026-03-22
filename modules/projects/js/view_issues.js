@@ -1,4 +1,4 @@
-/**
+﻿/**
  * view_issues.js
  * Logic for the Issues tab: issue management, drafting, rendering, and interaction.
  */
@@ -36,7 +36,7 @@
     var issueDraftsApi = ProjectConfig.baseDir + '/api/issue_drafts.php';
     var uniqueIssuePages = ProjectConfig.uniqueIssuePages || [];
     var userRole = String(ProjectConfig.userRole || '').toLowerCase();
-    var isAdminUser = userRole === 'admin' || userRole === 'super_admin' || userRole === 'superadmin';
+    var isAdminUser = userRole === 'admin' || userRole === 'admin' || userRole === 'superadmin';
     var isTesterRole = userRole === 'at_tester' || userRole === 'ft_tester';
     var canUpdateIssueQaStatus = !!ProjectConfig.canUpdateIssueQaStatus;
     if (isTesterRole) {
@@ -1551,8 +1551,8 @@
             }).sort(function (a, b) {
                 var aUser = String(a.username || '').toLowerCase();
                 var bUser = String(b.username || '').toLowerCase();
-                var aIsAdmin = aUser === 'admin' || aUser === 'super_admin' || aUser === 'superadmin' || String(a.role || '').toLowerCase().indexOf('admin') >= 0;
-                var bIsAdmin = bUser === 'admin' || bUser === 'super_admin' || bUser === 'superadmin' || String(b.role || '').toLowerCase().indexOf('admin') >= 0;
+                var aIsAdmin = aUser === 'admin' || aUser === 'admin' || aUser === 'superadmin' || String(a.role || '').toLowerCase().indexOf('admin') >= 0;
+                var bIsAdmin = bUser === 'admin' || bUser === 'admin' || bUser === 'superadmin' || String(b.role || '').toLowerCase().indexOf('admin') >= 0;
                 if (aIsAdmin !== bIsAdmin) return aIsAdmin ? -1 : 1;
                 return String(a.full_name || '').localeCompare(String(b.full_name || ''));
             });

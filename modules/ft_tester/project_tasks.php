@@ -1,10 +1,10 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
-$auth->requireRole(['ft_tester', 'admin', 'super_admin']);
+$auth->requireRole(['ft_tester', 'admin']);
 
 $baseDir = getBaseDir();
 $db = Database::getInstance();

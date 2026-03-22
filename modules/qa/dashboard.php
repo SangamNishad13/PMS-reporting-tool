@@ -1,10 +1,10 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
-$auth->requireRole(['qa', 'admin', 'super_admin']);
+$auth->requireRole(['qa', 'admin']);
 
 $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'] ?? '';
@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_env_status']))
         }
 
         $canUpdate = false;
-        if (in_array($userRole, ['admin', 'super_admin'], true)) {
+        if (in_array($userRole, ['admin'], true)) {
             $canUpdate = true;
         } else {
             $teamStmt = $db->prepare("

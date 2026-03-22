@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/constants.php';
 require_once __DIR__ . '/../includes/auth.php';
@@ -108,7 +108,7 @@ function handleGetRequest() {
             }
             
             // Check permissions
-            if ($userRole !== 'admin' && $userRole !== 'super_admin') {
+            if ($userRole !== 'admin' && $userRole !== 'admin') {
                 if ($userRole === 'project_lead' && $project['project_lead_id'] != $userId) {
                     jsonError('Permission denied', 403);
                     return;
@@ -156,8 +156,8 @@ function handleGetRequest() {
 function handlePostRequest() {
     global $db;
     
-    // Only admin/super_admin can create projects via API
-    if (!in_array($_SESSION['role'], ['admin', 'super_admin'])) {
+    // Only admin/admin can create projects via API
+    if (!in_array($_SESSION['role'], ['admin'])) {
         jsonError('Permission denied', 403);
         return;
     }
@@ -237,7 +237,7 @@ function handlePutRequest() {
         return;
     }
     
-    if (!in_array($_SESSION['role'], ['admin', 'super_admin']) && 
+    if (!in_array($_SESSION['role'], ['admin']) && 
         $project['project_lead_id'] != $_SESSION['user_id']) {
         jsonError('Permission denied', 403);
         return;
@@ -302,8 +302,8 @@ function handleDeleteRequest() {
         return;
     }
     
-    // Only admin/super_admin can cancel projects
-    if (!in_array($_SESSION['role'], ['admin', 'super_admin'])) {
+    // Only admin/admin can cancel projects
+    if (!in_array($_SESSION['role'], ['admin'])) {
         jsonError('Permission denied', 403);
         return;
     }

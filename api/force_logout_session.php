@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Force Logout Session API
  * Allows admins to forcefully terminate a user session
@@ -10,7 +10,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'super_admin']);
+$auth->requireRole(['admin']);
 
 $db = Database::getInstance();
 

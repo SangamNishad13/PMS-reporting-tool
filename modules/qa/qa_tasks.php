@@ -1,10 +1,10 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
-$auth->requireRole(['qa', 'admin', 'super_admin']);
+$auth->requireRole(['qa', 'admin']);
 
 $baseDir = getBaseDir();
 $db = Database::getInstance();
@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_env_status']))
         }
 
         $canUpdate = false;
-        if (in_array($userRole, ['admin', 'super_admin'], true)) {
+        if (in_array($userRole, ['admin'], true)) {
             $canUpdate = true;
         } else {
             $teamStmt = $db->prepare("\n                SELECT 1\n                FROM user_assignments\n                WHERE project_id = ? AND user_id = ? AND role = 'qa'\n                  AND (is_removed IS NULL OR is_removed = 0)\n                LIMIT 1\n            ");

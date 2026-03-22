@@ -1,10 +1,10 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'super_admin']);
+$auth->requireRole(['admin']);
 
 $db = Database::getInstance();
 $baseDir = getBaseDir();
@@ -41,7 +41,7 @@ $filters = [
 
 // Get projects and users for filters
 $projects = $db->query('SELECT id, title FROM projects ORDER BY title')->fetchAll(PDO::FETCH_ASSOC);
-$users = $db->query("SELECT id, full_name, username FROM users WHERE is_active = 1 AND role NOT IN ('admin', 'super_admin') ORDER BY full_name")->fetchAll(PDO::FETCH_ASSOC);
+$users = $db->query("SELECT id, full_name, username FROM users WHERE is_active = 1 AND role NOT IN ('admin') ORDER BY full_name")->fetchAll(PDO::FETCH_ASSOC);
 
 $messages = ['error' => null, 'info' => null];
 $performanceData = [];
@@ -140,7 +140,7 @@ if (!$hasQaStatusMaster) {
                                 )
                             ) > 0
                            AND qsm.is_active = 1
-                        WHERE u.role NOT IN ('admin', 'super_admin')
+                        WHERE u.role NOT IN ('admin')
                           AND i.id IS NOT NULL 
                           " . (!empty($whereSql) ? " AND ($whereSql)" : "") . "
                         GROUP BY p.id, p.title
@@ -204,7 +204,7 @@ if (!$hasQaStatusMaster) {
                                 )
                             ) > 0
                            AND qsm.is_active = 1
-                        WHERE u.role NOT IN ('admin', 'super_admin')
+                        WHERE u.role NOT IN ('admin')
                           AND i.id IS NOT NULL 
                           " . (!empty($whereSql) ? " AND ($whereSql)" : "") . "
                         GROUP BY u.id, u.full_name, u.username, u.role
@@ -247,7 +247,7 @@ if (!$hasQaStatusMaster) {
                             OR LOWER(TRIM(qsm.status_label)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(im.meta_value)) COLLATE utf8mb4_unicode_ci
                         )
                        AND qsm.is_active = 1
-                    WHERE u.role NOT IN ('admin', 'super_admin') 
+                    WHERE u.role NOT IN ('admin') 
                       " . (!empty($whereSql) ? " AND ($whereSql)" : "") . "
                     GROUP BY u.id, u.full_name, u.username, u.role
                     ORDER BY total_error_points DESC, total_comments DESC";
@@ -360,7 +360,7 @@ if (!$hasQaStatusMaster) {
                    AND qsm.is_active = 1
                 LEFT JOIN projects p ON i.project_id = p.id
                 WHERE " . (!empty($whereSql) ? "($whereSql) AND " : "") . "
-                u.role NOT IN ('admin', 'super_admin')
+                u.role NOT IN ('admin')
                 ORDER BY irqs.updated_at DESC
                 LIMIT 50";
     
@@ -400,7 +400,7 @@ if (!$hasQaStatusMaster) {
                            AND qsm.is_active = 1
                         LEFT JOIN projects p ON i.project_id = p.id
                         WHERE " . (!empty($whereSql) ? "($whereSql) AND " : "") . "
-                        u.role NOT IN ('admin', 'super_admin')
+                        u.role NOT IN ('admin')
                         ORDER BY i.updated_at DESC
                         LIMIT 50";
         try {

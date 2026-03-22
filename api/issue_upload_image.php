@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 // Debug log function - disabled in production
 function issue_upload_debug_log($msg) {
@@ -14,7 +14,7 @@ require_once __DIR__ . '/../includes/helpers.php';
 
 issue_upload_debug_log('--- New upload request ---');
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'admin']);
 
 header('Content-Type: application/json');
 

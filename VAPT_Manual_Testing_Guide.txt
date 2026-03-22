@@ -116,7 +116,7 @@ Steps:
   3. Koi bhi page refresh karo ya API call karo
 
 Expected: Login page pe redirect hona chahiye (30 min idle timeout)
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 2.5 - Force Password Reset Bypass
@@ -301,7 +301,7 @@ Steps:
   3. Request dobara bhejo
 
 Expected: 403 response aana chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 
@@ -317,7 +317,7 @@ Steps:
   2. Issue upload ya chat upload se upload karne ki koshish karo
 
 Expected: "Invalid file type" error aana chahiye, upload reject hona chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 6.2 - Double Extension Bypass
@@ -328,7 +328,7 @@ Steps:
   2. Upload karne ki koshish karo
 
 Expected: Reject hona chahiye ya agar upload ho toh PHP execute nahi hona chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 6.3 - File Size Limit
@@ -350,7 +350,7 @@ Steps:
   4. https://athenaeumtransformation.com/PMS/uploads/ folder directly browser se access karo
 
 Expected: PHP execute nahi hona chahiye, directory listing nahi dikhni chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 
@@ -361,49 +361,49 @@ SECTION 7: SENSITIVE FILE / DIRECTORY EXPOSURE
 TEST 7.1 - Config Files Access
 --------------------------------
 Steps: Ye URLs browser mein directly type karo:
-  [ ] https://athenaeumtransformation.com/PMS/config/database.php
+  [x] https://athenaeumtransformation.com/PMS/config/database.php
       Expected: Blank page ya 403, DB credentials nahi dikhne chahiye
-  [ ] https://athenaeumtransformation.com/PMS/config/settings.php
+  [x] https://athenaeumtransformation.com/PMS/config/settings.php
       Expected: Blank page ya 403
-  [ ] https://athenaeumtransformation.com/PMS/.env (agar exist kare)
+  [x] https://athenaeumtransformation.com/PMS/.env (agar exist kare)
       Expected: 404 ya 403
 
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 7.2 - Git Repository Exposure
 ------------------------------------
 Steps:
-  [ ] https://athenaeumtransformation.com/PMS/.git/config
+  [x] https://athenaeumtransformation.com/PMS/.git/config
       Expected: 403 Forbidden
-  [ ] https://athenaeumtransformation.com/PMS/.git/HEAD
+  [x] https://athenaeumtransformation.com/PMS/.git/HEAD
       Expected: 403 Forbidden
 
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 7.3 - Log Files Access
 -----------------------------
 Steps:
-  [ ] https://athenaeumtransformation.com/PMS/tmp/logs/issues_api.log
+  [x] https://athenaeumtransformation.com/PMS/tmp/logs/issues_api.log
       Expected: 403 Forbidden
-  [ ] https://athenaeumtransformation.com/PMS/tmp/
+  [x] https://athenaeumtransformation.com/PMS/tmp/
       Expected: 403 Forbidden, directory listing nahi
 
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 7.4 - Directory Listing
 ------------------------------
 Steps: Ye directories browser mein access karo:
-  [ ] https://athenaeumtransformation.com/PMS/uploads/
-  [ ] https://athenaeumtransformation.com/PMS/assets/uploads/
-  [ ] https://athenaeumtransformation.com/PMS/includes/
-  [ ] https://athenaeumtransformation.com/PMS/config/
-  [ ] https://athenaeumtransformation.com/PMS/api/
+  [x] https://athenaeumtransformation.com/PMS/uploads/
+  [x] https://athenaeumtransformation.com/PMS/assets/uploads/
+  [x] https://athenaeumtransformation.com/PMS/includes/
+  [x] https://athenaeumtransformation.com/PMS/config/
+  [x] https://athenaeumtransformation.com/PMS/api/
 
 Expected: Sab pe 403 ya redirect, file listing nahi dikhni chahiye
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 TEST 7.5 - repair_db.php Production Access
@@ -415,7 +415,7 @@ Steps:
 
 Expected: "This utility is disabled in production" - 403 aana chahiye
   (Sirf localhost pe accessible hona chahiye)
-Result: PASS / FAIL
+Result: PASS
 Notes: _______________________________________________
 
 

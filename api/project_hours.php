@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Project Hours API
  * Provides real-time project hours information for validation
@@ -113,7 +113,7 @@ try {
 
             // Server-side: enforce allowed log date window for non-admins
             $role = $_SESSION['role'] ?? '';
-            $isAdmin = in_array($role, ['admin', 'super_admin']);
+            $isAdmin = in_array($role, ['admin']);
             $todayStr = date('Y-m-d');
             $hasApprovedPastEdit = false;
             try {

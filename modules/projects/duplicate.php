@@ -1,10 +1,10 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
-$auth->requireRole(['super_admin', 'admin']);
+$auth->requireRole(['admin']);
 
 $baseDir = getBaseDir();
 $projectId = (int)($_POST['project_id'] ?? 0);

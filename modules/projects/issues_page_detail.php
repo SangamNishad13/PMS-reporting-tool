@@ -1,11 +1,11 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/project_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin', 'client']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'admin', 'client']);
 
 $baseDir = getBaseDir();
 $projectId = (int)($_GET['project_id'] ?? 0);
@@ -60,7 +60,7 @@ $projectUsersStmt = $db->prepare("
     UNION
     SELECT u.id, u.full_name, u.username, u.role
     FROM users u
-    WHERE u.is_active = 1 AND u.role IN ('admin', 'super_admin')
+    WHERE u.is_active = 1 AND u.role IN ('admin')
     ORDER BY full_name
 ");
 $projectUsersStmt->execute([$projectId]);
@@ -632,7 +632,7 @@ include __DIR__ . '/../../includes/header.php';
                                             <div class="text-muted" style="font-size: 0.85em;"><?php echo htmlspecialchars($env['at_tester_name']); ?></div>
                                         </div>
                                         <div>
-                                            <?php if (in_array($userRole, ['admin', 'super_admin', 'project_lead']) || $env['at_tester_id'] == $userId): ?>
+                                            <?php if (in_array($userRole, ['admin', 'project_lead']) || $env['at_tester_id'] == $userId): ?>
                                             <select class="form-select form-select-sm env-status-update" 
                                                     data-status-type="testing"
                                                     data-page-id="<?php echo $pageId; ?>" 
@@ -682,7 +682,7 @@ include __DIR__ . '/../../includes/header.php';
                                             <div class="text-muted" style="font-size: 0.85em;"><?php echo htmlspecialchars($env['ft_tester_name']); ?></div>
                                         </div>
                                         <div>
-                                            <?php if (in_array($userRole, ['admin', 'super_admin', 'project_lead']) || $env['ft_tester_id'] == $userId): ?>
+                                            <?php if (in_array($userRole, ['admin', 'project_lead']) || $env['ft_tester_id'] == $userId): ?>
                                             <select class="form-select form-select-sm env-status-update" 
                                                     data-status-type="testing"
                                                     data-page-id="<?php echo $pageId; ?>" 
@@ -732,7 +732,7 @@ include __DIR__ . '/../../includes/header.php';
                                             <div class="text-muted" style="font-size: 0.85em;"><?php echo htmlspecialchars($env['qa_name']); ?></div>
                                         </div>
                                         <div>
-                                            <?php if (in_array($userRole, ['admin', 'super_admin', 'project_lead', 'qa']) || $env['qa_id'] == $userId): ?>
+                                            <?php if (in_array($userRole, ['admin', 'project_lead', 'qa']) || $env['qa_id'] == $userId): ?>
                                             <?php
                                                 $qaStatusRaw = strtolower(trim((string)($env['qa_status'] ?? 'not_started')));
                                                 $qaStatusMap = [

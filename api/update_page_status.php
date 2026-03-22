@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/helpers.php';
@@ -103,7 +103,7 @@ try {
     
     // Check permissions
     $canUpdate = false;
-    if (in_array($userRole, ['admin', 'super_admin'])) {
+    if (in_array($userRole, ['admin'])) {
         $canUpdate = true;
     } elseif ($userRole === 'project_lead' && $pageEnv['project_lead_id'] == $userId) {
         $canUpdate = true;

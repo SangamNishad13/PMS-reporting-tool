@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once '../config/database.php';
 require_once '../includes/auth.php';
 require_once '../includes/helpers.php';
@@ -18,7 +18,7 @@ $pdo = Database::getInstance();
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 $user_id = $_SESSION['user_id'];
 $user_role = $_SESSION['role'];
-$can_manage_devices = in_array($user_role, ['admin', 'super_admin']) || !empty($_SESSION['can_manage_devices']);
+$can_manage_devices = in_array($user_role, ['admin']) || !empty($_SESSION['can_manage_devices']);
 $baseDir = getBaseDir();
 $devicesLink = $baseDir . '/modules/devices.php';
 $adminDevicesLink = $baseDir . '/modules/admin/devices.php';
@@ -30,7 +30,7 @@ function getDeviceAdminRecipientIds($db) {
             FROM users
             WHERE is_active = 1
               AND (
-                    LOWER(TRIM(role)) IN ('admin', 'super_admin')
+                    LOWER(TRIM(role)) IN ('admin')
                     OR can_manage_devices = 1
               )
         ");

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
@@ -31,7 +31,7 @@ function normalizeRole($role) {
 
 function isAdminRole($role) {
     $r = normalizeRole($role);
-    return in_array($r, ['admin', 'super_admin'], true);
+    return in_array($r, ['admin'], true);
 }
 
 function currentUserIsAdmin($db, $userId, $sessionRole) {

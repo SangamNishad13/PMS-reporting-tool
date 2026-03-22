@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Server-side Excel report generator using ZipArchive.
  * Opens template xlsx, injects data into XML, streams result.
@@ -314,7 +314,7 @@ $teamStmt = $db->prepare("
 ");
 $teamStmt->execute([$projectId]);
 $teamMembers = $teamStmt->fetchAll(PDO::FETCH_ASSOC);
-$roleLabels = ['admin'=>'Admin','super_admin'=>'Super Admin','project_lead'=>'Project Lead',
+$roleLabels = ['admin'=>'Admin','admin'=>'Super Admin','project_lead'=>'Project Lead',
                'qa'=>'QA','at_tester'=>'AT Tester','ft_tester'=>'FT Tester'];
 
 // ── issues + metadata ─────────────────────────────────────────────────────────

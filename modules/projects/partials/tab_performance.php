@@ -100,7 +100,7 @@ if ($hasQaStatusMaster) {
                             )
                         ) > 0
                        AND qsm.is_active = 1
-                    WHERE u.role NOT IN ('admin', 'super_admin')
+                    WHERE u.role NOT IN ('admin')
                       AND i.id IS NOT NULL
                     GROUP BY u.id, u.full_name, u.username, u.role
                     HAVING COUNT(DISTINCT i.id) > 0
@@ -140,7 +140,7 @@ if ($hasQaStatusMaster) {
                         )
                        AND qsm.is_active = 1
                     WHERE i.project_id = ?
-                      AND u.role NOT IN ('admin', 'super_admin')
+                      AND u.role NOT IN ('admin')
                     GROUP BY u.id, u.full_name, u.username, u.role
                     ORDER BY total_error_points DESC, total_comments DESC";
         try {
@@ -171,7 +171,7 @@ if ($hasQaStatusMaster) {
                     JOIN users u ON uqp.user_id = u.id
                     LEFT JOIN qa_status_master qsm ON uqp.qa_status_id = qsm.id
                     WHERE uqp.project_id = ?
-                    AND u.role NOT IN ('admin', 'super_admin')
+                    AND u.role NOT IN ('admin')
                     GROUP BY u.id, u.full_name, u.username, u.role
                     ORDER BY total_error_points DESC, total_comments DESC";
         try {

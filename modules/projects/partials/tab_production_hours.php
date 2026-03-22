@@ -1,4 +1,4 @@
-        <!-- Production Hours Tab -->
+﻿        <!-- Production Hours Tab -->
         <div class="tab-pane fade" id="production-hours" role="tabpanel">
             <span id="production_hours_probe" data-file="tab_production_hours.php" style="display:none;"></span>
             <div class="mb-3">
@@ -110,7 +110,7 @@
                 <form id="logProductionHoursForm" class="row g-2 align-items-end">
                     <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
 
-                    <?php if (in_array($userRole, ['admin', 'super_admin'])): ?>
+                    <?php if (in_array($userRole, ['admin'])): ?>
                     <div class="col-md-3">
                         <label class="form-label">User</label>
                         <select name="user_id" class="form-select">
@@ -364,7 +364,7 @@
                                 ?>
                                 <tr>
                                     <td>
-                                        <?php if (in_array($userRole, ['admin', 'super_admin'])): ?>
+                                        <?php if (in_array($userRole, ['admin'])): ?>
                                         <div class="d-flex align-items-center">
                                             <a href="<?php echo $baseDir; ?>/modules/admin/users.php?view=<?php echo $member['user_id']; ?>" class="text-decoration-none me-2">
                                                 <strong><?php echo htmlspecialchars($member['full_name']); ?></strong>

@@ -1,10 +1,10 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
-$auth->requireRole(['super_admin', 'admin', 'project_lead']);
+$auth->requireRole(['admin', 'project_lead']);
 
 $baseDir = getBaseDir();
 $projectId = (int)($_POST['project_id'] ?? 0);
@@ -50,7 +50,7 @@ if ($projectId > 0) {
 
 // Fallback role-specific redirects
 $userRole = $_SESSION['role'] ?? '';
-if (in_array($userRole, ['admin', 'super_admin'])) {
+if (in_array($userRole, ['admin'])) {
     redirect($baseDir . "/modules/admin/projects.php");
 } elseif ($userRole === 'project_lead') {
     redirect($baseDir . "/modules/project_lead/my_projects.php");

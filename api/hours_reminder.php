@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once '../config/database.php';
 require_once '../includes/auth.php';
 require_once '../includes/helpers.php';
@@ -98,7 +98,7 @@ try {
             break;
 
         case 'get_compliance_report':
-            if (!in_array($user_role, ['admin', 'super_admin'])) {
+            if (!in_array($user_role, ['admin'])) {
                 throw new Exception('Only admins can view compliance reports');
             }
             
@@ -119,7 +119,7 @@ try {
                 FROM users u
                 LEFT JOIN project_time_logs ptl ON u.id = ptl.user_id AND DATE(ptl.log_date) = ?
                 LEFT JOIN daily_hours_compliance dhc ON u.id = dhc.user_id AND dhc.date = ?
-                WHERE u.is_active = TRUE AND u.role NOT IN ('super_admin', 'admin')
+                WHERE u.is_active = TRUE AND u.role NOT IN ('admin')
                 GROUP BY u.id
                 ORDER BY total_hours ASC, u.full_name
             ");
@@ -160,7 +160,7 @@ try {
             break;
 
         case 'update_settings':
-            if (!in_array($user_role, ['admin', 'super_admin'])) {
+            if (!in_array($user_role, ['admin'])) {
                 throw new Exception('Only admins can update settings');
             }
             
@@ -183,7 +183,7 @@ try {
             break;
 
         case 'get_settings':
-            if (!in_array($user_role, ['admin', 'super_admin'])) {
+            if (!in_array($user_role, ['admin'])) {
                 throw new Exception('Only admins can view settings');
             }
             
@@ -228,7 +228,7 @@ try {
             break;
 
         case 'get_user_time_logs':
-            if (!in_array($user_role, ['admin', 'super_admin'])) {
+            if (!in_array($user_role, ['admin'])) {
                 throw new Exception('Only admins can view user time logs');
             }
             

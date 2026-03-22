@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../config/database.php';
 
@@ -21,7 +21,7 @@ if (!$clientId) {
 
 // IDOR fix: non-admin users can only access their own client's data
 $sessionRole = $_SESSION['role'] ?? '';
-if (!in_array($sessionRole, ['admin', 'super_admin'])) {
+if (!in_array($sessionRole, ['admin'])) {
     $ownerCheck = $db->prepare("SELECT id FROM users WHERE id = ? AND client_id = ?");
     $ownerCheck->execute([$_SESSION['user_id'], $clientId]);
     if (!$ownerCheck->fetch()) {

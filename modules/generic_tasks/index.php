@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
@@ -38,7 +38,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2>Generic Tasks Log</h2>
         <div>
-            <?php if (in_array($userRole, ['admin', 'project_lead', 'super_admin'])): ?>
+            <?php if (in_array($userRole, ['admin', 'project_lead', 'admin'])): ?>
             <a href="manage_categories.php" class="btn btn-secondary me-2">
                 <i class="fas fa-tags"></i> Manage Categories
             </a>

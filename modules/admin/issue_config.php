@@ -1,11 +1,11 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
 $auth = new Auth();
-// Allow if admin, super_admin OR has explicit permission
-if (!$auth->checkRole(['admin', 'super_admin']) && empty($_SESSION['can_manage_issue_config'])) {
-    $auth->requireRole(['admin', 'super_admin']); // Fallback to standard redirect
+// Allow if admin, admin OR has explicit permission
+if (!$auth->checkRole(['admin']) && empty($_SESSION['can_manage_issue_config'])) {
+    $auth->requireRole(['admin']); // Fallback to standard redirect
 }
 
 $baseDir = getBaseDir();

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../config/database.php';
 
 /**
@@ -674,7 +674,7 @@ function build_public_image_url_from_src($src) {
 }
 
 /**
- * Render a user's full name as a link to their profile unless the user is an admin/super_admin.
+ * Render a user's full name as a link to their profile unless the user is an admin/admin.
  * Accepts either a user id or an array with keys ['id','full_name','role'].
  */
 function renderUserNameLink($user) {
@@ -700,7 +700,7 @@ function renderUserNameLink($user) {
     }
 
     $name = $name ?: 'User';
-    if (in_array($role, ['admin', 'super_admin'])) {
+    if (in_array($role, ['admin'])) {
         return htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
     }
 

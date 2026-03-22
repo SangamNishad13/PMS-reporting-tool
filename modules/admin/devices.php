@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once '../../includes/auth.php';
 requireDeviceManager();
 
@@ -12,7 +12,7 @@ include '../../includes/header.php';
             <h2><i class="fas fa-laptop"></i> Device Management</h2>
         </div>
         <div class="col-auto">
-            <?php if (in_array($_SESSION['role'] ?? '', ['admin', 'super_admin'], true)): ?>
+            <?php if (in_array($_SESSION['role'] ?? '', ['admin'], true)): ?>
             <a href="../admin/device_permissions.php" class="btn btn-outline-secondary me-2">
                 <i class="fas fa-user-shield"></i> Device Permissions
             </a>

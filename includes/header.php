@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Global Session Check - MUST be before any HTML output
 if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
     $currentPage = $_SERVER['PHP_SELF'];
@@ -505,7 +505,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
                                             <i class="fas fa-laptop me-2 text-secondary opacity-75"></i> Devices
                                         </a>
                                     </li>
-                                    <?php if (!empty($_SESSION['can_manage_devices']) && !in_array($_SESSION['role'], ['admin','super_admin'])): ?>
+                                    <?php if (!empty($_SESSION['can_manage_devices']) && !in_array($_SESSION['role'], ['admin'])): ?>
                                     <li>
                                         <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/devices.php">
                                             <i class="fas fa-tools me-2 text-secondary opacity-75"></i> Device Management
@@ -517,7 +517,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
                             <?php endif; ?>
 
                             <!-- Admin Menus -->
-                            <?php if ($_SESSION['role'] === 'super_admin' || $_SESSION['role'] === 'admin'): ?>
+                            <?php if ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'admin'): ?>
                             
                                 <li class="nav-item dropdown">
                                     <a class="nav-link dropdown-toggle text-white" href="#" id="projectsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -535,9 +535,9 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
                                 </li>
                             <?php endif; ?>
 
-                            <?php if ($_SESSION['role'] === 'super_admin' || $_SESSION['role'] === 'admin' || !empty($_SESSION['can_manage_issue_config'])): ?>
+                            <?php if ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'admin' || !empty($_SESSION['can_manage_issue_config'])): ?>
                                 
-                                <?php if ($_SESSION['role'] !== 'super_admin' && $_SESSION['role'] !== 'admin' && !empty($_SESSION['can_manage_issue_config'])): ?>
+                                <?php if ($_SESSION['role'] !== 'admin' && $_SESSION['role'] !== 'admin' && !empty($_SESSION['can_manage_issue_config'])): ?>
                                     <li class="nav-item">
                                         <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/issue_config.php">
                                             <i class="fas fa-tools me-1 opacity-50"></i> Issue Config
@@ -545,7 +545,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
                                     </li>
                                 <?php endif; ?>
 
-                                <?php if ($_SESSION['role'] === 'super_admin' || $_SESSION['role'] === 'admin'): ?>
+                                <?php if ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'admin'): ?>
                                 <li class="nav-item dropdown">
                                     <a class="nav-link dropdown-toggle text-white" href="#" id="loginActivityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                                         Monitoring
@@ -614,7 +614,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
                             <!-- Users with Client Permissions -->
                             <?php 
                             // Check if user has client permissions (non-admin users)
-                            if (!in_array($_SESSION['role'], ['admin', 'super_admin'])) {
+                            if (!in_array($_SESSION['role'], ['admin'])) {
                                 try {
                                     require_once __DIR__ . '/../includes/client_permissions.php';
                                     $db = Database::getInstance();

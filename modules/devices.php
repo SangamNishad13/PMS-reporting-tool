@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once '../includes/auth.php';
 requireLogin();
 
@@ -12,7 +12,7 @@ include '../includes/header.php';
             <h2><i class="fas fa-laptop"></i> Device Inventory</h2>
             <p class="text-muted">View all devices and their current assignments</p>
         </div>
-        <?php if (in_array($_SESSION['role'] ?? '', ['admin', 'super_admin'], true)): ?>
+        <?php if (in_array($_SESSION['role'] ?? '', ['admin'], true)): ?>
         <div class="col-auto d-flex align-items-start gap-2">
             <a href="../modules/admin/devices.php" class="btn btn-outline-primary">
                 <i class="fas fa-cogs"></i> Manage Devices

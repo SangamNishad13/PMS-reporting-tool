@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // modules/chat/project_chat.php
 
 // Include configuration
@@ -13,7 +13,7 @@ $baseDir = getBaseDir();
 $viewerRole = strtolower(trim((string)($_SESSION['role'] ?? '')));
 $viewerRole = preg_replace('/[^a-z0-9]+/', '_', $viewerRole);
 $viewerRole = trim($viewerRole, '_');
-$isAdminChatViewer = in_array($viewerRole, ['admin', 'super_admin'], true);
+$isAdminChatViewer = in_array($viewerRole, ['admin'], true);
 
 $embed = isset($_GET['embed']) && $_GET['embed'] === '1';
 
@@ -528,7 +528,7 @@ try {
             UNION
             SELECT u.id, u.username, u.full_name
             FROM users u
-            WHERE u.is_active = 1 AND u.role IN ('admin', 'super_admin')
+            WHERE u.is_active = 1 AND u.role IN ('admin')
         ");
         $mentionStmt->execute([$projectId, $projectId]);
     } elseif ($page && !empty($page['project_id'])) {
@@ -540,7 +540,7 @@ try {
             UNION
             SELECT u.id, u.username, u.full_name
             FROM users u
-            WHERE u.is_active = 1 AND u.role IN ('admin', 'super_admin')
+            WHERE u.is_active = 1 AND u.role IN ('admin')
         ");
         $mentionStmt->execute([$page['project_id']]);
     } else {
@@ -551,8 +551,8 @@ try {
     usort($mentionUsers, function($a, $b) {
         $aU = strtolower((string)($a['username'] ?? ''));
         $bU = strtolower((string)($b['username'] ?? ''));
-        $aIsAdmin = in_array($aU, ['admin', 'super_admin', 'superadmin'], true);
-        $bIsAdmin = in_array($bU, ['admin', 'super_admin', 'superadmin'], true);
+        $aIsAdmin = in_array($aU, ['admin', 'superadmin'], true);
+        $bIsAdmin = in_array($bU, ['admin', 'superadmin'], true);
         if ($aIsAdmin !== $bIsAdmin) {
             return $aIsAdmin ? -1 : 1;
         }

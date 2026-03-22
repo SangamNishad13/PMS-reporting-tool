@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -14,7 +14,7 @@ if (!isset($_SESSION['user_id'])) {
 $requestedId = isset($_GET['id']) ? intval($_GET['id']) : (int)$_SESSION['user_id'];
 $currentSessionId = (int)$_SESSION['user_id'];
 $sessionRole = $_SESSION['role'] ?? '';
-$isAdminRole = in_array($sessionRole, ['admin', 'super_admin'], true);
+$isAdminRole = in_array($sessionRole, ['admin'], true);
 
 // Only admins can view other users' profiles
 if (!$isAdminRole && $requestedId !== $currentSessionId) {
@@ -338,7 +338,7 @@ try {
     $activities = [];
 }
 
-$canViewUsernameHistory = in_array((string)($_SESSION['role'] ?? ''), ['admin', 'super_admin'], true);
+$canViewUsernameHistory = in_array((string)($_SESSION['role'] ?? ''), ['admin'], true);
 $usernameHistory = [];
 if ($canViewUsernameHistory) {
     ensureUsernameHistoryTable($db);
@@ -389,7 +389,7 @@ include __DIR__ . '/../includes/header.php';
                     <h4><?php echo htmlspecialchars($user['full_name']); ?></h4>
                     <p class="text-muted">@<?php echo htmlspecialchars($user['username']); ?></p>
                     <span class="badge bg-<?php
-                        echo $user['role'] === 'super_admin' ? 'danger' :
+                        echo $user['role'] === 'admin' ? 'danger' :
                              ($user['role'] === 'admin' ? 'warning' :
                              ($user['role'] === 'project_lead' ? 'info' :
                              ($user['role'] === 'qa' ? 'success' : 'primary')));
@@ -460,7 +460,7 @@ include __DIR__ . '/../includes/header.php';
                 </div>
             </div>
             <!-- Admin: View Production Hours By Day -->
-            <?php if (isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin','super_admin'])): ?>
+            <?php if (isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin'])): ?>
             <div class="card mt-3">
                 <div class="card-header">
                     <h5 class="mb-0"><i class="fas fa-clock"></i> Production Hours (By Day)</h5>

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * AdminAssignmentController
  * Handles project assignment requests with admin validation
@@ -439,7 +439,7 @@ class AdminAssignmentController {
     private function isAdmin() {
         return isset($_SESSION['user_id']) && 
                isset($_SESSION['role']) && 
-               in_array($_SESSION['role'], ['super_admin', 'admin']);
+               in_array($_SESSION['role'], ['admin']);
     }
     
     /**

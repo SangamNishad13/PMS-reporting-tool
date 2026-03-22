@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/helpers.php';
@@ -70,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_feedback'])) {
 
 // Get user's feedback for "My Feedback" view
 if ($view === 'my') {
-    $isAdmin = in_array($userRole, ['admin', 'super_admin']) ? 1 : 0;
+    $isAdmin = in_array($userRole, ['admin']) ? 1 : 0;
     $myFeedbackQuery = "
         SELECT DISTINCT f.*, 
                sender.full_name as sender_name,
@@ -113,7 +113,7 @@ if ($view === 'my') {
 }
 
 // Get projects for dropdown (only projects user has access to)
-if (in_array($userRole, ['admin', 'super_admin'])) {
+if (in_array($userRole, ['admin'])) {
     $projects = $db->query("SELECT id, title, po_number FROM projects ORDER BY title")->fetchAll(PDO::FETCH_ASSOC);
 } else {
     $projectsQuery = "

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Force no caching
 header("Cache-Control: no-cache, no-store, must-revalidate, max-age=0");
 header("Pragma: no-cache");
@@ -9,7 +9,7 @@ require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/project_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['project_lead', 'admin', 'super_admin']);
+$auth->requireRole(['project_lead', 'admin']);
 
 $userId = $_SESSION['user_id'];
 $db = Database::getInstance();

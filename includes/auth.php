@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // includes/auth.php
 
 // Set timezone to IST (Indian Standard Time) for all time operations
@@ -378,7 +378,7 @@ class Auth {
         
         // Single role with hierarchy
         $roleHierarchy = [
-            'super_admin' => 6,
+            'admin' => 6,
             'admin' => 5,
             'project_lead' => 4,
             'qa' => 3,
@@ -453,7 +453,7 @@ function requireLogin() {
 
 function requireAdmin() {
     requireLogin();
-    if (!in_array($_SESSION['role'] ?? '', ['admin', 'super_admin'])) {
+    if (!in_array($_SESSION['role'] ?? '', ['admin'])) {
         $_SESSION['error'] = "You don't have permission to access this page.";
         require_once __DIR__ . '/helpers.php';
         $baseDir = getBaseDir();
@@ -478,7 +478,7 @@ function requireDeviceManager() {
             // ignore
         }
     }
-    if (!in_array($role, ['admin', 'super_admin']) && !$canManage) {
+    if (!in_array($role, ['admin']) && !$canManage) {
         $_SESSION['error'] = "You don't have permission to access this page.";
         require_once __DIR__ . '/helpers.php';
         $baseDir = getBaseDir();

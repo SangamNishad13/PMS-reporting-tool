@@ -1,4 +1,4 @@
-        <!-- Assets Tab -->
+﻿        <!-- Assets Tab -->
         <div class="tab-pane fade" id="assets" role="tabpanel">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h5 class="mb-0">Project Assets</h5>
@@ -81,7 +81,7 @@
                             <?php 
                             // Only uploader or admin can edit/delete
                             $isUploader = ((int)$asset['created_by'] === (int)$userId);
-                            $isAdmin = in_array($userRole, ['admin', 'super_admin'], true);
+                            $isAdmin = in_array($userRole, ['admin'], true);
                             $canEditDeleteAsset = $isUploader || $isAdmin;
                             
                             if ($canEditDeleteAsset): 

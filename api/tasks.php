@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/constants.php';
 require_once __DIR__ . '/../includes/auth.php';
@@ -248,7 +248,7 @@ function updatePageStatus($data) {
             pp.ft_tester_id = ? OR 
             pp.qa_id = ? OR 
             p.project_lead_id = ? OR
-            ? IN ('admin', 'super_admin')
+            ? IN ('admin')
         )
     ");
     $check->execute([$pageId, $userId, $userId, $userId, $userId, $userRole]);
@@ -309,7 +309,7 @@ function assignPage($data) {
         JOIN projects p ON pp.project_id = p.id
         WHERE pp.id = ? AND (
             p.project_lead_id = ? OR 
-            ? IN ('admin', 'super_admin')
+            ? IN ('admin')
         )
     ");
     $check->execute([$pageId, $userId, $_SESSION['role']]);
@@ -455,7 +455,7 @@ function handlePutTask() {
         JOIN projects p ON pp.project_id = p.id
         WHERE pp.id = ? AND (
             p.project_lead_id = ? OR 
-            ? IN ('admin', 'super_admin')
+            ? IN ('admin')
         )
     ");
     $check->execute([$pageId, $_SESSION['user_id'], $_SESSION['role']]);
@@ -495,7 +495,7 @@ function handleDeleteTask() {
     $check = $db->prepare("
         SELECT p.project_lead_id FROM project_pages pp
         JOIN projects p ON pp.project_id = p.id
-        WHERE pp.id = ? AND ? IN ('admin', 'super_admin')
+        WHERE pp.id = ? AND ? IN ('admin')
     ");
     $check->execute([$pageId, $_SESSION['role']]);
     

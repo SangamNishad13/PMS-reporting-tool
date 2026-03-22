@@ -1,10 +1,10 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'super_admin']);
+$auth->requireRole(['admin', 'project_lead', 'admin']);
 
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'] ?? null;

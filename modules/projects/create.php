@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/client_permissions.php';
@@ -14,7 +14,7 @@ $userId = $_SESSION['user_id'];
 $preselectedClientId = isset($_GET['client_id']) ? intval($_GET['client_id']) : null;
 
 // Check if user has permission to create projects
-$isAdmin = isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin', 'super_admin']);
+$isAdmin = isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin']);
 
 if (!$isAdmin) {
     // Check if user has create_project permission for any client
@@ -53,7 +53,7 @@ if (empty($allowedClients)) {
 }
 
 // Get project leads for dropdown
-$projectLeads = $db->query("SELECT id, full_name FROM users WHERE role IN ('project_lead','admin','super_admin') ORDER BY full_name")->fetchAll();
+$projectLeads = $db->query("SELECT id, full_name FROM users WHERE role IN ('project_lead','admin') ORDER BY full_name")->fetchAll();
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_project'])) {

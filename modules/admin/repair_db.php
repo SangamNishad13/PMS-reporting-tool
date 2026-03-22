@@ -1,9 +1,9 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
 $auth = new Auth();
-$auth->requireRole(['super_admin']); // Only super_admin, not regular admin
+$auth->requireRole(['admin']); // Only admin, not regular admin
 
 // Extra safety: block access in production unless explicitly enabled
 $allowRepairInProduction = defined('ALLOW_DB_REPAIR') && ALLOW_DB_REPAIR === true;

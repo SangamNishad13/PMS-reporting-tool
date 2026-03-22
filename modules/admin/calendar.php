@@ -1,4 +1,4 @@
-<?php
+ï»¿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
@@ -71,12 +71,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
 
     $events = [];
 
-    // Fetch explicit statuses in range and index them by user+date (exclude admin and super_admin)
+    // Fetch explicit statuses in range and index them by user+date (exclude admin and admin)
     $sql = "SELECT uds.*, u.full_name, u.role
          FROM user_daily_status uds
          JOIN users u ON uds.user_id = u.id
          WHERE uds.status_date BETWEEN ? AND ?
-         AND u.role NOT IN ('admin', 'super_admin')";
+         AND u.role NOT IN ('admin')";
     $params = [$start, $end];
     if ($selectedUser && $selectedUser !== 'all') {
         $sql .= " AND u.id = ?";
@@ -96,7 +96,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                  FROM project_time_logs ptl
                  JOIN users u ON ptl.user_id = u.id
                  WHERE ptl.log_date BETWEEN ? AND ?
-                 AND u.role NOT IN ('admin','super_admin')";
+                 AND u.role NOT IN ('admin')";
     $hparams = [$start, $end];
     if ($selectedUser && $selectedUser !== 'all') {
         $hoursSql .= " AND ptl.user_id = ?";
@@ -109,13 +109,13 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
         $hours_map[$hr['user_id']][$hr['log_date']] = floatval($hr['total_hours']);
     }
 
-    // Fetch users to show "Not updated" where no status exists (exclude admin and super_admin)
+    // Fetch users to show "Not updated" where no status exists (exclude admin and admin)
     if ($selectedUser && $selectedUser !== 'all') {
-        $users = $db->prepare("SELECT id, full_name, role FROM users WHERE is_active = 1 AND id = ? AND role NOT IN ('admin', 'super_admin')");
+        $users = $db->prepare("SELECT id, full_name, role FROM users WHERE is_active = 1 AND id = ? AND role NOT IN ('admin')");
         $users->execute([$selectedUser]);
         $users = $users->fetchAll(PDO::FETCH_ASSOC);
     } else {
-        $users = $db->query("SELECT id, full_name, role FROM users WHERE is_active = 1 AND role NOT IN ('admin', 'super_admin') ORDER BY full_name")->fetchAll(PDO::FETCH_ASSOC);
+        $users = $db->query("SELECT id, full_name, role FROM users WHERE is_active = 1 AND role NOT IN ('admin') ORDER BY full_name")->fetchAll(PDO::FETCH_ASSOC);
     }
 
     // Build date range
@@ -182,7 +182,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                 
                 $title = $statusLabel . ' (' . $count . ')';
                 if ($totalHours > 0) {
-                    $title .= ' — ' . $totalHours . 'h';
+                    $title .= ' ï¿½ ' . $totalHours . 'h';
                 }
                 
                 $events[] = [
@@ -210,7 +210,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                 if (empty($status_map[$u['id']][$d])) {
                     if ($statusFilterAllows('not_updated')) {
                         $title = $u['full_name'] . ' (Not updated)';
-                        if ($userHours > 0) $title .= ' — ' . $userHours . 'h';
+                        if ($userHours > 0) $title .= ' ï¿½ ' . $userHours . 'h';
                         
                         // Truncate long titles for better display
                         $displayTitle = $title;
@@ -243,7 +243,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                     }
                     $title = $st['full_name'] . ' (' . $statusLabelFn($stType) . ')';
                     $userHours = $hours_map[$u['id']][$d] ?? 0;
-                    if ($userHours > 0) $title .= ' — ' . $userHours . 'h';
+                    if ($userHours > 0) $title .= ' ï¿½ ' . $userHours . 'h';
                     
                     // Truncate long titles for better display
                     $displayTitle = $title;
@@ -305,8 +305,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_edit_requests') {
 
 include __DIR__ . '/../../includes/header.php';
 
-// Fetch users for dropdown (exclude admin/super_admin)
-$allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND role NOT IN ('admin', 'super_admin') ORDER BY full_name")->fetchAll(PDO::FETCH_ASSOC);
+// Fetch users for dropdown (exclude admin/admin)
+$allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND role NOT IN ('admin') ORDER BY full_name")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css' rel='stylesheet' />

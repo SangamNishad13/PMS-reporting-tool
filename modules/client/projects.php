@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Client Projects Listing Page
  * 
@@ -22,7 +22,7 @@ $accessControl = new ClientAccessControlManager();
 
 // Get client user ID
 $clientUserId = $userId;
-if (in_array($userRole, ['admin', 'super_admin']) && isset($_GET['client_id'])) {
+if (in_array($userRole, ['admin']) && isset($_GET['client_id'])) {
     $clientUserId = intval($_GET['client_id']);
 }
 

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
@@ -9,7 +9,7 @@ $projectManager = new ProjectManager();
 $db = Database::getInstance();
 
 // Preload project leads for selection
-$projectLeads = $db->query("SELECT id, full_name FROM users WHERE role IN ('project_lead','admin','super_admin') ORDER BY full_name")->fetchAll();
+$projectLeads = $db->query("SELECT id, full_name FROM users WHERE role IN ('project_lead','admin','admin') ORDER BY full_name")->fetchAll();
 
 // Handle project creation
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_project'])) {

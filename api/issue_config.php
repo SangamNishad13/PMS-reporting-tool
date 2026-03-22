@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -11,8 +11,8 @@ $auth = new Auth();
 $baseDir = getBaseDir();
 $db = Database::getInstance();
 $action = $_REQUEST['action'] ?? '';
-$canManageIssueConfig = $auth->checkRole(['admin', 'super_admin']) || !empty($_SESSION['can_manage_issue_config']);
-// Check permissions (admin, super_admin, or explicit permission)
+$canManageIssueConfig = $auth->checkRole(['admin']) || !empty($_SESSION['can_manage_issue_config']);
+// Check permissions (admin, admin, or explicit permission)
 if (!$canManageIssueConfig) {
     http_response_code(403);
     echo json_encode(['error' => 'Unauthorized']);

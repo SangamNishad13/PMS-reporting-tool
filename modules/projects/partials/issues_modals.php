@@ -1,4 +1,4 @@
-<!-- Final Issue Modal -->
+﻿<!-- Final Issue Modal -->
 <div class="modal fade" id="finalIssueModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
@@ -163,7 +163,7 @@
                         <div id="finalIssueMetadataContainer"></div>
                         
                         <!-- Client Ready Checkbox (only for QA, Project Lead, Admin) -->
-                        <?php if (in_array($userRole, ['qa', 'project_lead', 'admin', 'super_admin'])): ?>
+                        <?php if (in_array($userRole, ['qa', 'project_lead', 'admin'])): ?>
                         <div class="mt-3 pt-3 border-top">
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" id="finalIssueClientReady" value="1">

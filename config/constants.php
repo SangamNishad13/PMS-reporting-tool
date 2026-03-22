@@ -1,9 +1,8 @@
-<?php
+﻿<?php
 // Set timezone to IST (Indian Standard Time) for entire application
 require_once __DIR__ . '/timezone.php';
 
 // User Roles
-define('ROLE_SUPER_ADMIN', 'super_admin');
 define('ROLE_ADMIN', 'admin');
 define('ROLE_PROJECT_LEAD', 'project_lead');
 define('ROLE_QA', 'qa');

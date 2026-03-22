@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
@@ -28,7 +28,7 @@ if (!$auth->isLoggedIn()) {
 
 $userRole = $auth->getUserRole() ?? '';
 $userId   = (int)($auth->getUserId() ?? 0);
-$isAdmin  = in_array($userRole, ['admin', 'super_admin', 'superadmin'], true);
+$isAdmin  = in_array($userRole, ['admin', 'superadmin'], true);
 
 $db = Database::getInstance();
 $method = $_SERVER['REQUEST_METHOD'];

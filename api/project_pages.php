@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
@@ -184,10 +184,10 @@ try {
             $up = $u->fetch(PDO::FETCH_ASSOC);
             if (!$up) jsonRes(['error'=>'unique not found'],404);
             $projectId = (int)$up['project_id'];
-            // permission: admin/super_admin/project_lead
+            // permission: admin/admin/project_lead
             $role = $_SESSION['role'] ?? '';
             $userId = $_SESSION['user_id'] ?? 0;
-            if (!in_array($role, ['admin','super_admin','project_lead'])) jsonRes(['error' => 'Permission denied'], 403);
+            if (!in_array($role, ['admin','admin','project_lead'])) jsonRes(['error' => 'Permission denied'], 403);
             if ($role === 'project_lead') {
                 $p = $db->prepare('SELECT project_lead_id FROM projects WHERE id = ? LIMIT 1');
                 $p->execute([$projectId]);
@@ -594,8 +594,8 @@ try {
             $projectId = (int)$up['project_id'];
             $role = $_SESSION['role'] ?? '';
             $userId = $_SESSION['user_id'] ?? 0;
-            // allow only admins, super_admin, or project lead
-            if (!in_array($role, ['admin','super_admin','project_lead'])) jsonRes(['error' => 'Permission denied'], 403);
+            // allow only admins, admin, or project lead
+            if (!in_array($role, ['admin','admin','project_lead'])) jsonRes(['error' => 'Permission denied'], 403);
             // If project_lead, ensure they are the lead of the project
             if ($role === 'project_lead') {
                 $p = $db->prepare('SELECT project_lead_id FROM projects WHERE id = ? LIMIT 1');
@@ -699,10 +699,10 @@ try {
             if (count($projectIds) !== 1) jsonRes(['error'=>'items belong to multiple projects'], 400);
             $projectId = (int)$projectIds[0];
 
-            // permission: admin/super_admin/project_lead (and if project_lead must be lead)
+            // permission: admin/admin/project_lead (and if project_lead must be lead)
             $role = $_SESSION['role'] ?? '';
             $userId = $_SESSION['user_id'] ?? 0;
-            if (!in_array($role, ['admin','super_admin','project_lead'])) jsonRes(['error' => 'Permission denied'], 403);
+            if (!in_array($role, ['admin','admin','project_lead'])) jsonRes(['error' => 'Permission denied'], 403);
             if ($role === 'project_lead') {
                 $p = $db->prepare('SELECT project_lead_id FROM projects WHERE id = ? LIMIT 1');
                 $p->execute([$projectId]);

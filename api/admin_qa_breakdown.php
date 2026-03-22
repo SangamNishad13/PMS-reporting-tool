@@ -1,11 +1,11 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 
 header('Content-Type: application/json');
 
 $auth = new Auth();
-if (!$auth->isLoggedIn() || !isset($_SESSION['role']) || !in_array($_SESSION['role'], ['admin', 'super_admin'])) {
+if (!$auth->isLoggedIn() || !isset($_SESSION['role']) || !in_array($_SESSION['role'], ['admin'])) {
     http_response_code(401);
     echo json_encode(['success' => false, 'error' => 'Unauthorized']);
     exit;

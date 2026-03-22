@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/constants.php';
 require_once __DIR__ . '/../includes/auth.php';
@@ -189,7 +189,7 @@ function handlePostChat() {
             WHERE p.id = ? AND (
                 p.project_lead_id = ? OR
                 ua.user_id = ? OR
-                ? IN ('admin', 'super_admin')
+                ? IN ('admin')
             )
             LIMIT 1
         ");
@@ -212,7 +212,7 @@ function handlePostChat() {
                 pp.qa_id = ? OR
                 p.project_lead_id = ? OR
                 ua.user_id = ? OR
-                ? IN ('admin', 'super_admin')
+                ? IN ('admin')
             )
             LIMIT 1
         ");

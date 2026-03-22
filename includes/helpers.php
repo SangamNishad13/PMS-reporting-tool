@@ -1,39 +1,39 @@
-<?php
+﻿<?php
 /**
- * Check if current user has admin privileges (admin or super_admin)
+ * Check if current user has admin privileges (admin or admin)
  * Admin users should have all rights of project leads, QA, and testers
  * 
  * @return bool True if user has admin privileges
  */
 function hasAdminPrivileges() {
-    return isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin', 'super_admin']);
+    return isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin']);
 }
 
 /**
- * Check if current user has project lead privileges (project_lead, admin, or super_admin)
+ * Check if current user has project lead privileges (project_lead, admin, or admin)
  * 
  * @return bool True if user has project lead privileges
  */
 function hasProjectLeadPrivileges() {
-    return isset($_SESSION['role']) && in_array($_SESSION['role'], ['project_lead', 'admin', 'super_admin']);
+    return isset($_SESSION['role']) && in_array($_SESSION['role'], ['project_lead', 'admin']);
 }
 
 /**
- * Check if current user has QA privileges (qa, admin, or super_admin)
+ * Check if current user has QA privileges (qa, admin, or admin)
  * 
  * @return bool True if user has QA privileges
  */
 function hasQAPrivileges() {
-    return isset($_SESSION['role']) && in_array($_SESSION['role'], ['qa', 'admin', 'super_admin']);
+    return isset($_SESSION['role']) && in_array($_SESSION['role'], ['qa', 'admin']);
 }
 
 /**
- * Check if current user has tester privileges (at_tester, ft_tester, admin, or super_admin)
+ * Check if current user has tester privileges (at_tester, ft_tester, admin, or admin)
  * 
  * @return bool True if user has tester privileges
  */
 function hasTesterPrivileges() {
-    return isset($_SESSION['role']) && in_array($_SESSION['role'], ['at_tester', 'ft_tester', 'admin', 'super_admin']);
+    return isset($_SESSION['role']) && in_array($_SESSION['role'], ['at_tester', 'ft_tester', 'admin']);
 }
 
 /**
@@ -418,8 +418,7 @@ function getModuleDirectory($role) {
     $roleMapping = [
         'at_tester' => 'at_tester',
         'ft_tester' => 'ft_tester',
-        'super_admin' => 'admin',
-        'admin' => 'admin',
+        'admin' => 'admin' => 'admin',
         'project_lead' => 'project_lead',
         'qa' => 'qa',
         'client' => 'client'

@@ -101,7 +101,7 @@ function ensureIssueCommentAuditSchema($db) {
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'] ?? 0;
 $role = (string)($_SESSION['role'] ?? '');
-$isAdmin = in_array($role, ['admin', 'super_admin'], true);
+$isAdmin = in_array($role, ['admin'], true);
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
 $projectId = (int)($_GET['project_id'] ?? $_POST['project_id'] ?? 0);

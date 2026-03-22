@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once '../config/database.php';
 require_once '../includes/auth.php';
 require_once '../includes/helpers.php';
@@ -18,7 +18,7 @@ $user_id = $_SESSION['user_id'];
 $user_role = $_SESSION['role'];
 
 // Only admins can access
-if (!in_array($user_role, ['admin', 'super_admin'])) {
+if (!in_array($user_role, ['admin'])) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Access denied']);
     exit;

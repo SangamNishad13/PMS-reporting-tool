@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
@@ -7,7 +7,7 @@ require_once __DIR__ . '/../../includes/chat_helpers.php';
 require_once __DIR__ . '/../../includes/client_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'super_admin', 'client']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'admin', 'client']);
 
 $baseDir = getBaseDir();
 $projectId = (int)($_GET['id'] ?? 0);
@@ -24,7 +24,7 @@ if ($userRole === 'client' && $projectId) {
 
 if (!$projectId) {
     // Redirect to role-specific projects page
-    if ($userRole === 'admin' || $userRole === 'super_admin') {
+    if ($userRole === 'admin' || $userRole === 'admin') {
         header('Location: ' . $baseDir . '/modules/admin/projects.php');
     } elseif ($userRole === 'project_lead') {
         header('Location: ' . $baseDir . '/modules/project_lead/my_projects.php');
@@ -43,7 +43,7 @@ if (!$projectId) {
 if (!hasProjectAccess($db, $userId, $projectId)) {
     $_SESSION['error'] = "You don't have access to this project.";
     // Redirect to role-specific projects page
-    if ($userRole === 'admin' || $userRole === 'super_admin') {
+    if ($userRole === 'admin' || $userRole === 'admin') {
         header('Location: ' . $baseDir . '/modules/admin/projects.php');
     } elseif ($userRole === 'project_lead') {
         header('Location: ' . $baseDir . '/modules/project_lead/my_projects.php');
@@ -87,7 +87,7 @@ $project = $stmt->fetch();
 if (!$project) {
     $_SESSION['error'] = 'Project not found.';
     // Redirect to role-specific projects page
-    if ($userRole === 'admin' || $userRole === 'super_admin') {
+    if ($userRole === 'admin' || $userRole === 'admin') {
         header('Location: ' . $baseDir . '/modules/admin/projects.php');
     } elseif ($userRole === 'project_lead') {
         header('Location: ' . $baseDir . '/modules/project_lead/my_projects.php');
@@ -563,8 +563,8 @@ include __DIR__ . '/../../includes/header.php';
                     <span class="badge bg-light text-dark border">Lead: <?php echo htmlspecialchars($project['project_lead_name'] ?? 'N/A'); ?></span>
                     
                     <?php 
-                    // Check if user can update project status (admin, super_admin, project lead, or has project edit permission)
-                    $canUpdateStatus = in_array($userRole, ['admin', 'super_admin']) || 
+                    // Check if user can update project status (admin, admin, project lead, or has project edit permission)
+                    $canUpdateStatus = in_array($userRole, ['admin']) || 
                                       ($userRole === 'project_lead' && $project['project_lead_id'] == $userId) ||
                                       canEditProjectById($db, $userId, $projectId);
                     ?>
@@ -656,8 +656,8 @@ include __DIR__ . '/../../includes/header.php';
             </div>
             <div class="col-lg-4 col-md-5 mt-3 mt-md-0">
                 <?php 
-                // Check if user can edit project (admin, super_admin, or has client permission)
-                $canEditProject = in_array($userRole, ['admin','super_admin'], true) || 
+                // Check if user can edit project (admin, admin, or has client permission)
+                $canEditProject = in_array($userRole, ['admin'], true) || 
                                  canEditProject($db, $userId, $projectId);
                 ?>
                 <?php if ($canEditProject): ?>
