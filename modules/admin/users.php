@@ -1141,11 +1141,11 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                     </div>
                     <div class="mb-3">
                         <label>Password *</label>
-                        <input type="password" name="password" class="form-control" required>
+                        <input type="password" name="password" autocomplete="off" class="form-control" required>
                     </div>
                     <div class="mb-3">
                         <label>Confirm Password *</label>
-                        <input type="password" name="confirm_password" class="form-control" required>
+                        <input type="password" name="confirm_password" autocomplete="off" class="form-control" required>
                     </div>
                     <div class="mb-3 form-check">
                         <input type="checkbox" name="send_setup_email" class="form-check-input" id="sendSetupEmailNow" value="1">

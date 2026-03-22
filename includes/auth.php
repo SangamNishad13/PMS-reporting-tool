@@ -7,6 +7,8 @@ require_once __DIR__ . '/../config/timezone.php';
 // Start session with secure settings
 if (session_status() === PHP_SESSION_NONE) {
     // Configure session security
+    session_name('PMS_SESSION');
+    ini_set('session.use_strict_mode', 1);
     ini_set('session.cookie_httponly', 1);
     ini_set('session.use_only_cookies', 1);
     

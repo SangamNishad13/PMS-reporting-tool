@@ -113,7 +113,7 @@ include __DIR__ . '/../../includes/header.php';
                         </div>
                         <div class="mb-3">
                             <label for="password" class="form-label">Password</label>
-                            <input type="password" autocomplete="current-password" class="form-control" id="password" name="password" required>
+                            <input type="password" autocomplete="off" class="form-control" id="password" name="password" required>
                         </div>
                         <button type="submit" class="btn btn-primary w-100">Login</button>
                     </form>

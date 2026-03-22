@@ -86,11 +86,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
                     <div class="mb-3">
                         <label class="form-label">New Password</label>
-                        <input type="password" name="new_password" autocomplete="new-password" class="form-control" required placeholder="Min 8 chars, uppercase, number, special char">
+                        <input type="password" name="new_password" autocomplete="off" class="form-control" required placeholder="Min 8 chars, uppercase, number, special char">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Confirm New Password</label>
-                        <input type="password" name="confirm_password" autocomplete="new-password" class="form-control" required>
+                        <input type="password" name="confirm_password" autocomplete="off" class="form-control" required>
                     </div>
                     <div class="d-grid shadow-sm">
                         <button type="submit" class="btn btn-primary">Update Password & Continue</button>
