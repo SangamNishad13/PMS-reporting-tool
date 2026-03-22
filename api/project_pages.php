@@ -561,10 +561,6 @@ try {
         if ($action === 'remove_grouped_bulk') {
             $projectId = (int)($delVars['project_id'] ?? 0);
             $ids = $delVars['ids'] ?? null;
-            // Debug helper: if debug=1 passed via query or body, return parsed params
-            if (!empty($_GET['debug']) || !empty($delVars['debug'])) {
-                jsonRes(['debug' => true, 'received' => ['project_id' => $projectId, 'ids' => $ids]]);
-            }
             if (!$projectId || !$ids) jsonRes(['error' => 'project_id and ids required'], 400);
             // ids could be comma separated or array-like
             if (is_string($ids)) {

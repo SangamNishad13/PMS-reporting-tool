@@ -275,7 +275,8 @@ try {
                     'total_hours' => array_sum(array_column($logs, 'hours_spent'))
                 ]);
             } catch (PDOException $e) {
-                throw new Exception('Database error: ' . $e->getMessage());
+                error_log('hours_reminder get_logs DB error: ' . $e->getMessage());
+                throw new Exception('Database error occurred');
             }
             break;
 
@@ -283,6 +284,7 @@ try {
             throw new Exception('Invalid action');
     }
 } catch (Exception $e) {
+    error_log('hours_reminder error: ' . $e->getMessage());
     http_response_code(400);
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'An error occurred. Please try again.']);
 }

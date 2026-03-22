@@ -86,6 +86,22 @@ function normalizeScanUrl(string $rawUrl): ?string {
     $scheme = strtolower($parsed['scheme'] ?? '');
     if (!in_array($scheme, ['http', 'https'], true)) return null;
 
+    // DNS rebinding protection: resolve hostname and validate the resolved IP
+    // This prevents attackers from using a domain that resolves to an internal IP
+    if (!filter_var($host, FILTER_VALIDATE_IP)) {
+        // It's a hostname, not a raw IP — resolve it
+        $resolved = @gethostbyname($host);
+        if ($resolved && $resolved !== $host) {
+            // Check resolved IP against blocked ranges
+            if (in_array($resolved, ['127.0.0.1', '::1', '0.0.0.0'], true)) return null;
+            if (preg_match('/^127\.\d+\.\d+\.\d+$/', $resolved)) return null;
+            if (preg_match('/^10\.\d+\.\d+\.\d+$/', $resolved)) return null;
+            if (preg_match('/^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/', $resolved)) return null;
+            if (preg_match('/^192\.168\.\d+\.\d+$/', $resolved)) return null;
+            if (preg_match('/^169\.254\.\d+\.\d+$/', $resolved)) return null;
+        }
+    }
+
     return $rawUrl;
 }
 

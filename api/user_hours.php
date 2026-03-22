@@ -101,13 +101,7 @@ try {
         'total_hours' => floatval($total['total_hours']),
         'entries' => $entries,
         'availability' => $statusRow ? $statusRow['status'] : null,
-        'availability_notes' => $statusRow ? $statusRow['notes'] : null,
-        'debug_info' => [
-            'entries_count' => count($entries),
-            'columns_exist' => $columnsExist,
-            'current_user' => $currentUserId,
-            'is_admin' => $isAdmin
-        ]
+        'availability_notes' => $statusRow ? $statusRow['notes'] : null
     ]);
 } catch (Exception $e) {
     error_log("User hours API error: " . $e->getMessage());

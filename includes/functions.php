@@ -584,6 +584,16 @@ function get_public_image_token_secret() {
         return $secret;
     }
 
+    // Fallback: derive from APP_KEY if set (stronger than DB credentials)
+    $appKey = trim((string)getenv('APP_KEY'));
+    if ($appKey !== '') {
+        $secret = hash_pbkdf2('sha256', $appKey, 'pms_public_image_secret_v1', 100000, 32);
+        return $secret;
+    }
+
+    // Last resort: derive from DB credentials + server path.
+    // Log a warning so admins know to set PMS_PUBLIC_IMAGE_SECRET.
+    error_log('SECURITY WARNING: PMS_PUBLIC_IMAGE_SECRET env var not set. Set it to a random 32+ char secret for stronger public image token security.');
     $parts = [
         (string)DB_HOST,
         (string)DB_NAME,
