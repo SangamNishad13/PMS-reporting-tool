@@ -559,7 +559,7 @@
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
                 body: payload.toString()
-            }).then(function(res) { return res.json(); }).then(function(res) {
+            }).then(function(res) { return res.text().then(function(t) { try { return JSON.parse(t); } catch(e) { return { success: false, error: 'Invalid response' }; } }); }).then(function(res) {
                 if (res && res.success) {
                     if (res.message && typeof window.chatUpdateMessageInDom === 'function') window.chatUpdateMessageInDom(res.message);
                     else fetchMessages();
@@ -589,7 +589,7 @@
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
                 body: payload.toString()
-            }).then(function(res) { return res.json(); }).then(function(res) {
+            }).then(function(res) { return res.text().then(function(t) { try { return JSON.parse(t); } catch(e) { return { success: false, error: 'Invalid response' }; } }); }).then(function(res) {
                 if (res && res.success) {
                     if (res.message && typeof window.chatUpdateMessageInDom === 'function') window.chatUpdateMessageInDom(res.message);
                     else fetchMessages();
