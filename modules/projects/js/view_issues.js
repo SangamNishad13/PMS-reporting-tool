@@ -2430,17 +2430,22 @@
         if (editBtn) editBtn.classList.add('d-none');
 
         var draftData = null;
+        // Don't await draft load — show modal immediately, apply draft after modal opens
         if (!issue) {
-            var draft = await loadDraft();
-            if (draft && draft.data) {
-                draftData = draft.data;
-                issueData.isDraftRestored = true;
-                if (window.showToast) showToast('Draft restored from ' + new Date(draft.updated_at).toLocaleString(), 'info');
-            }
+            loadDraft().then(function(draft) {
+                if (draft && draft.data && !document.getElementById('customIssueTitle').value) {
+                    draftData = draft.data;
+                    issueData.isDraftRestored = true;
+                    if (window.showToast) showToast('Draft restored from ' + new Date(draft.updated_at).toLocaleString(), 'info');
+                    // Apply draft values to already-open modal
+                    if (window.injectIssueTitleField) window.injectIssueTitleField(draft.data.title || '');
+                    jQuery('#finalIssueDetails').summernote('code', draft.data.details || '');
+                }
+            }).catch(function() {});
         }
 
         // Inject title field with value (won't re-inject if exists, just updates value)
-        var titleVal = issue ? (issue.title || '') : (draftData ? draftData.title : '');
+        var titleVal = issue ? (issue.title || '') : '';
         if (window.injectIssueTitleField) {
             window.injectIssueTitleField(titleVal);
         }
@@ -2451,7 +2456,7 @@
             var applyBtn = document.getElementById('applyPresetBtn');
         }, 100);
 
-        var detailsVal = issue ? (issue.details || '') : (draftData ? draftData.details : '');
+        var detailsVal = issue ? (issue.details || '') : '';
         jQuery('#finalIssueDetails').summernote('code', detailsVal);
 
         // Note: Issue status options are already populated by PHP in the modal HTML
@@ -5929,46 +5934,19 @@
                 'X-Session-Refresh': '1'
             };
             
-            // Add retry logic for connection issues
-            var maxRetries = 2;
-            var retryDelay = 1000; // 1 second
             var res, controller, timeoutId;
-            
-            for (var attempt = 0; attempt <= maxRetries; attempt++) {
-                try {
-                    controller = new AbortController();
-                    timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-                    
-                    res = await fetch(issuesApiBase, { 
-                        method: 'POST', 
-                        body: fd, 
-                        credentials: 'same-origin',
-                        signal: controller.signal,
-                        headers: headers
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    break; // Success, exit retry loop
-                    
-                } catch (fetchError) {
-                    if (timeoutId) clearTimeout(timeoutId);
-                    
-                    // If this is the last attempt or not a connection error, throw the error
-                    if (attempt === maxRetries || 
-                        !(fetchError.message && (
-                            fetchError.message.includes('Failed to fetch') || 
-                            fetchError.message.includes('ERR_') || 
-                            fetchError.message.includes('CONNECTION') ||
-                            fetchError.name === 'AbortError'
-                        ))) {
-                        throw fetchError;
-                    }
-                    
-                    // Wait before retrying
-                    console.warn(`Save attempt ${attempt + 1} failed, retrying in ${retryDelay}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, retryDelay));
-                    retryDelay *= 2; // Exponential backoff
-                }
+            controller = new AbortController();
+            timeoutId = setTimeout(function() { controller.abort(); }, 30000);
+            try {
+                res = await fetch(issuesApiBase, { 
+                    method: 'POST', 
+                    body: fd, 
+                    credentials: 'same-origin',
+                    signal: controller.signal,
+                    headers: headers
+                });
+            } finally {
+                clearTimeout(timeoutId);
             }
             
             var json = null;
