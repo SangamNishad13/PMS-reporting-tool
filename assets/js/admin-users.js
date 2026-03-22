@@ -341,7 +341,8 @@ $(document).ready(function() {
                     send_credentials_email_single: 1,
                     user_id: userId,
                     mail_mode: 'reset',
-                    request_id: requestId
+                    request_id: requestId,
+                    csrf_token: window._csrfToken || (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute('content') || ''
                 },
                 dataType: 'json',
                 success: function(response) {
