@@ -1394,7 +1394,8 @@ $(document).ready(function() {
                         send_credentials_email_single: 1,
                         user_id: uid,
                         mail_mode: mode,
-                        request_id: requestId
+                        request_id: requestId,
+                        csrf_token: window._csrfToken || (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute('content') || ''
                     }
                 });
                 if (resp && resp.success) {
