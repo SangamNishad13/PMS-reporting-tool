@@ -47,17 +47,46 @@ function ensureA11yFindingsTable(PDO $db): void {
 function normalizeScanUrl(string $rawUrl): ?string {
     $rawUrl = trim($rawUrl);
     if ($rawUrl === '') return null;
-    if (preg_match('/^https?:\/\//i', $rawUrl)) return $rawUrl;
 
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $origin = $scheme . '://' . $host;
-    $baseDir = getBaseDir();
+    // Resolve relative URLs to absolute first
+    if (!preg_match('/^https?:\/\//i', $rawUrl)) {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $origin = $scheme . '://' . $host;
+        $baseDir = getBaseDir();
 
-    if (strpos($rawUrl, '//') === 0) return $scheme . ':' . $rawUrl;
-    if (strpos($rawUrl, '/') === 0) return $origin . $rawUrl;
+        if (strpos($rawUrl, '//') === 0) {
+            $rawUrl = $scheme . ':' . $rawUrl;
+        } elseif (strpos($rawUrl, '/') === 0) {
+            $rawUrl = $origin . $rawUrl;
+        } else {
+            $rawUrl = rtrim($origin . $baseDir, '/') . '/' . ltrim($rawUrl, '/');
+        }
+    }
 
-    return rtrim($origin . $baseDir, '/') . '/' . ltrim($rawUrl, '/');
+    // SSRF protection: block private/internal IP ranges and localhost
+    $parsed = parse_url($rawUrl);
+    if (!$parsed || empty($parsed['host'])) return null;
+
+    $host = strtolower($parsed['host']);
+
+    // Block localhost variants
+    if (in_array($host, ['localhost', '127.0.0.1', '::1', '0.0.0.0'], true)) return null;
+    if (preg_match('/^127\.\d+\.\d+\.\d+$/', $host)) return null;
+
+    // Block private IPv4 ranges (RFC 1918)
+    if (preg_match('/^10\.\d+\.\d+\.\d+$/', $host)) return null;
+    if (preg_match('/^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/', $host)) return null;
+    if (preg_match('/^192\.168\.\d+\.\d+$/', $host)) return null;
+
+    // Block link-local and metadata endpoints
+    if (preg_match('/^169\.254\.\d+\.\d+$/', $host)) return null;
+
+    // Block non-http(s) schemes (already enforced above, but double-check)
+    $scheme = strtolower($parsed['scheme'] ?? '');
+    if (!in_array($scheme, ['http', 'https'], true)) return null;
+
+    return $rawUrl;
 }
 
 function getScanProgressPath(string $token): ?string {
@@ -926,5 +955,5 @@ try {
             'updated_at' => date('Y-m-d H:i:s')
         ]);
     }
-    jsonRes(['success' => false, 'message' => 'Deep accessibility scan failed: ' . $e->getMessage()], 500);
+    jsonRes(['success' => false, 'message' => 'Deep accessibility scan failed. Please try again or contact support.'], 500);
 }

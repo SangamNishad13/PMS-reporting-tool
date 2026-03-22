@@ -81,7 +81,8 @@ try {
         // Quick log endpoint for project view
         $postAction = $_POST['action'] ?? '';
         if ($postAction === 'log') {
-            $userId = $_POST['user_id'] ?? $_SESSION['user_id'];
+            // Always use session user_id — never trust POST for user identity
+            $userId = $_SESSION['user_id'];
             $projectId = isset($_POST['project_id']) ? intval($_POST['project_id']) : null;
             $pageId = isset($_POST['page_id']) && $_POST['page_id'] !== '' ? intval($_POST['page_id']) : null;
             $envId = isset($_POST['environment_id']) && $_POST['environment_id'] !== '' ? intval($_POST['environment_id']) : null;

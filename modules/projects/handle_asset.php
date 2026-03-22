@@ -12,6 +12,7 @@ $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'] ?? '';
 
 // Allowed file extensions and their MIME types
+// SVG intentionally excluded — SVG files can contain embedded scripts (XSS risk)
 const ALLOWED_ASSET_TYPES = [
     'pdf'  => ['application/pdf'],
     'doc'  => ['application/msword'],
@@ -27,7 +28,6 @@ const ALLOWED_ASSET_TYPES = [
     'jpeg' => ['image/jpeg'],
     'gif'  => ['image/gif'],
     'webp' => ['image/webp'],
-    'svg'  => ['image/svg+xml'],
     'zip'  => ['application/zip', 'application/x-zip-compressed'],
     'mp4'  => ['video/mp4'],
     'mp3'  => ['audio/mpeg'],
