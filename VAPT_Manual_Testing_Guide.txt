@@ -75,7 +75,7 @@ SECTION 2: AUTHENTICATION TESTING
 TEST 2.1 - Brute Force Protection
 -----------------------------------
 Steps:
-  1. Login page kholo: /modules/auth/login.php
+  1. Login page kholo: https://athenaeumtransformation.com/PMS/modules/auth/login.php
   2. Sahi username, galat password se 5 baar login try karo
   3. 6th attempt karo
 
@@ -99,10 +99,10 @@ Notes: _______________________________________________
 TEST 2.3 - Session After Logout
 ---------------------------------
 Steps:
-  1. Login karo, koi page kholo (e.g., /modules/admin/dashboard.php)
+  1. Login karo, koi page kholo (e.g., https://athenaeumtransformation.com/PMS/modules/admin/dashboard.php)
   2. Logout karo
   3. Browser back button dabao
-  4. Ya directly URL type karo: /modules/admin/dashboard.php
+  4. Ya directly URL type karo: https://athenaeumtransformation.com/PMS/modules/admin/dashboard.php
 
 Expected: Login page pe redirect hona chahiye, dashboard nahi dikhna chahiye
 Result: PASS / FAIL
@@ -347,7 +347,7 @@ Steps:
   1. Koi valid image upload karo (e.g., test.jpg)
   2. Upload hone ke baad URL note karo
   3. URL mein .php extension add karke access karne ki koshish karo
-  4. /uploads/ folder directly browser se access karo
+  4. https://athenaeumtransformation.com/PMS/uploads/ folder directly browser se access karo
 
 Expected: PHP execute nahi hona chahiye, directory listing nahi dikhni chahiye
 Result: PASS / FAIL
@@ -1047,4 +1047,5 @@ https://athenaeumtransformation.com/PMS/assets/js/login-activity.js             
 ================================================================================
 END OF FILE URL LIST
 ================================================================================
+
 
