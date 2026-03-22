@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // modules/chat/project_chat.php
 
 // Include configuration
@@ -799,7 +799,7 @@ if (!$embed) {
                             $safeSrc = htmlspecialchars($src, ENT_QUOTES, 'UTF-8');
                             $imgTag = $m[0];
                             if (stripos($imgTag, 'class=') === false) {
-                                $imgTag = preg_replace('/<img/i', '<img class="chat-image-thumb"', $imgTag, 1);
+                                $imgTag = preg_replace('/<img/i', '<img loading="lazy" class="chat-image-thumb"', $imgTag, 1);
                             } else {
                                 $imgTag = preg_replace('/class=["\']([^"\']*)["\']/', 'class="$1 chat-image-thumb"', $imgTag, 1);
                             }
@@ -955,7 +955,7 @@ if (!$embed) {
                                             $safeSrc = htmlspecialchars($src, ENT_QUOTES, 'UTF-8');
                                             $imgTag = $m[0];
                                             if (stripos($imgTag, 'class=') === false) {
-                                                $imgTag = preg_replace('/<img/i', '<img class="chat-image-thumb"', $imgTag, 1);
+                                                $imgTag = preg_replace('/<img/i', '<img loading="lazy" class="chat-image-thumb"', $imgTag, 1);
                                             } else {
                                                 $imgTag = preg_replace('/class=["\']([^"\']*)["\']/', 'class="$1 chat-image-thumb"', $imgTag, 1);
                                             }

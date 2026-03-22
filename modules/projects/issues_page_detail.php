@@ -1559,7 +1559,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             '<p><strong>[Screenshots]</strong></p>',
             screenshots.length
                 ? ('<div class="issue-image-grid">' + screenshots.map(function (u, idx) {
-                    return '<img src="' + esc(u) + '" alt="Screenshot ' + (idx + 1) + '" class="issue-image-thumb">';
+                    return '<img loading="lazy" src="' + esc(u) + '" alt="Screenshot ' + (idx + 1) + '" class="issue-image-thumb">';
                 }).join('') + '</div>')
                 : '<p></p>',
             '<p><strong>[Recommendation]</strong></p>',
@@ -1729,7 +1729,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                 var shotHtml = shots.length
                     ? ('<div class="needs-review-shot-stack">'
                         + visibleShots.map(function (u) {
-                            return '<img src="' + esc(u) + '" alt="Finding screenshot" class="needs-review-shot" onclick="event.stopPropagation(); if (typeof openImagePopup === \'function\') openImagePopup(this.src, this.alt);">';
+                            return '<img loading="lazy" src="' + esc(u) + '" alt="Finding screenshot" class="needs-review-shot" onclick="event.stopPropagation(); if (typeof openImagePopup === \'function\') openImagePopup(this.src, this.alt);">';
                         }).join('')
                         + (extraShots > 0 ? '<span class="needs-review-extra-badge">+' + extraShots + '</span>' : '')
                         + '</div>')

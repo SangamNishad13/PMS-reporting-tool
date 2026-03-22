@@ -1,4 +1,4 @@
-﻿-- Fresh Database Schema
+-- Fresh Database Schema
 -- Generated: 2026-02-09 05:31:46
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -1129,6 +1129,7 @@ CREATE TABLE `project_time_logs` (
   KEY `fk_ptl_generic_cat` (`generic_category_id`),
   KEY `idx_time_logs_project_hours` (`project_id`,`is_utilized`,`hours_spent`),
   KEY `idx_project_time_logs_issue_id` (`issue_id`),
+  KEY `idx_perf_time_logs_date` (`log_date`),
   CONSTRAINT `fk_project_time_logs_page_id_project` FOREIGN KEY (`page_id`) REFERENCES `project_pages` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_ptl_env` FOREIGN KEY (`environment_id`) REFERENCES `testing_environments` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_ptl_generic_cat` FOREIGN KEY (`generic_category_id`) REFERENCES `generic_task_categories` (`id`) ON DELETE SET NULL,
@@ -1162,6 +1163,7 @@ CREATE TABLE `projects` (
   KEY `client_id` (`client_id`),
   KEY `project_lead_id` (`project_lead_id`),
   KEY `created_by` (`created_by`),
+  KEY `idx_perf_projects_status` (`status`),
   KEY `fk_projects_parent_project` (`parent_project_id`),
   CONSTRAINT `fk_projects_parent_project` FOREIGN KEY (`parent_project_id`) REFERENCES `projects` (`id`) ON DELETE SET NULL,
   CONSTRAINT `projects_ibfk_1` FOREIGN KEY (`client_id`) REFERENCES `clients` (`id`),
@@ -1527,7 +1529,8 @@ CREATE TABLE `users` (
   `temp_password` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
-  UNIQUE KEY `email` (`email`)
+  UNIQUE KEY `email` (`email`),
+  KEY `idx_perf_users_active` (`is_active`)
 ) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Table: wcag_levels
