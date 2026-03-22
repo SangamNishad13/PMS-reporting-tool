@@ -366,10 +366,9 @@ function verifyCsrfToken($token) {
         return false;
     }
     $valid = hash_equals($_SESSION['csrf_token'], $token);
-    if ($valid) {
-        // Rotate token after successful use to prevent replay attacks
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    }
+    // Token is NOT rotated after use — rotating causes race conditions on
+    // pages with multiple concurrent AJAX requests (second request gets stale token).
+    // The token remains valid for the session lifetime; new token is issued on login.
     return $valid;
 }
 
