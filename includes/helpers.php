@@ -418,7 +418,7 @@ function getModuleDirectory($role) {
     $roleMapping = [
         'at_tester' => 'at_tester',
         'ft_tester' => 'ft_tester',
-        'admin' => 'admin' => 'admin',
+        'admin' => 'admin',
         'project_lead' => 'project_lead',
         'qa' => 'qa',
         'client' => 'client'
