@@ -17,6 +17,12 @@ $isAdminChatViewer = in_array($viewerRole, ['admin', 'super_admin'], true);
 
 $embed = isset($_GET['embed']) && $_GET['embed'] === '1';
 
+// When loaded in an iframe (embed mode), allow same-origin framing.
+// DENY is set globally in .htaccess but this page is intentionally embedded within the same site.
+if ($embed) {
+    header('X-Frame-Options: SAMEORIGIN', true);
+}
+
 // Get project and page IDs
 $projectId = isset($_GET['project_id']) ? intval($_GET['project_id']) : 0;
 $pageId = isset($_GET['page_id']) ? intval($_GET['page_id']) : 0;
