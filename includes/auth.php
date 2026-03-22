@@ -147,17 +147,23 @@ class Auth {
             // Clean up old attempts first
             $this->db->prepare("DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE)")->execute();
 
-            // Check username-based attempts only — IP-based lockout intentionally removed
-            // because shared office/NAT IPs would block all users when one user fails repeatedly.
-            $stmt = $this->db->prepare("SELECT COUNT(*) FROM login_attempts WHERE username_hash = ? AND attempted_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)");
+            // Fixed window: count attempts since the FIRST attempt in the window.
+            // This prevents the lockout from extending every time a new attempt is made.
+            $stmt = $this->db->prepare("
+                SELECT COUNT(*) as cnt, MIN(attempted_at) as first_attempt
+                FROM login_attempts
+                WHERE username_hash = ?
+                AND attempted_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+            ");
             $stmt->execute([$usernameHash]);
-            $userAttempts = (int)$stmt->fetchColumn();
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $userAttempts = (int)($row['cnt'] ?? 0);
 
             if ($userAttempts >= $maxAttempts) {
+                // Tell the user exactly when the lockout expires (15 min from first attempt)
                 return 'locked';
             }
         } catch (Exception $e) {
-            // If DB check fails, deny login to prevent brute force bypass (fail-closed)
             error_log('Login rate-limit DB check failed: ' . $e->getMessage());
             return 'locked';
         }
@@ -226,17 +232,18 @@ class Auth {
             return true;
         }
         
-        // Track failed attempt in DB
+        // Track failed attempt in DB — only if not already locked (prevents window extension)
         try {
-            $stmt = $this->db->prepare("INSERT INTO login_attempts (ip_address, username_hash) VALUES (?, ?)");
-            $stmt->execute([$ip, $usernameHash]);
+            if ($userAttempts < $maxAttempts) {
+                $stmt = $this->db->prepare("INSERT INTO login_attempts (ip_address, username_hash) VALUES (?, ?)");
+                $stmt->execute([$ip, $usernameHash]);
+            }
 
-            // Return remaining attempts so UI can warn the user
             $remaining = max(0, $maxAttempts - ($userAttempts + 1));
             if ($remaining === 0) {
                 return 'locked';
             }
-            return $remaining; // e.g. 4, 3, 2, 1
+            return $remaining;
         } catch (Exception $e) {}
         return false;
     }
