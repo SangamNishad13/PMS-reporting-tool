@@ -11,6 +11,11 @@ $userId = $_SESSION['user_id'];
 
 // Handle Add Phase
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_phase'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: phase_master.php');
+        exit;
+    }
     $phaseName = trim($_POST['phase_name']);
     $description = trim($_POST['phase_description']);
     $duration = !empty($_POST['typical_duration_days']) ? (int)$_POST['typical_duration_days'] : null;
@@ -34,6 +39,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_phase'])) {
 
 // Handle Update Phase
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_phase'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: phase_master.php');
+        exit;
+    }
     $phaseId = (int)$_POST['phase_id'];
     $phaseName = trim($_POST['phase_name']);
     $description = trim($_POST['phase_description']);
@@ -211,6 +221,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <div class="modal-header">
                     <h5 class="modal-title">Add New Phase</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -254,6 +265,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="phase_id" value="<?php echo $phase['id']; ?>">
                 <div class="modal-header">
                     <h5 class="modal-title">Edit Phase</h5>

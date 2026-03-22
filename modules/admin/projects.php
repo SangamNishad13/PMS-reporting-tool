@@ -13,6 +13,11 @@ $projectLeads = $db->query("SELECT id, full_name FROM users WHERE role IN ('proj
 
 // Handle project creation
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_project'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: projects.php');
+        exit;
+    }
     $projectMode = $_POST['project_mode'] ?? 'standalone';
     $hasSubprojects = $projectMode === 'parent';
     $projectData = [
@@ -289,6 +294,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <div class="modal-header">
                     <h5 class="modal-title">Create New Project</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

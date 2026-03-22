@@ -1,5 +1,6 @@
 <?php
 require_once '../../includes/auth.php';
+require_once '../../includes/helpers.php';
 requireAdmin();
 
 $page_title = 'Device Permissions';
@@ -7,6 +8,11 @@ $baseDir = getBaseDir();
 $db = Database::getInstance();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_device_perm'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: device_permissions.php');
+        exit;
+    }
     $userId = (int)($_POST['user_id'] ?? 0);
     $allow = isset($_POST['can_manage_devices']) ? 1 : 0;
     if ($userId > 0) {

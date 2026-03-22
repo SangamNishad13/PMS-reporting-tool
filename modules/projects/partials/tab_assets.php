@@ -104,6 +104,7 @@
                                 <form method="POST" action="<?php echo $baseDir; ?>/modules/projects/handle_asset.php" 
                                       onsubmit="var form = this; confirmModal('Are you sure you want to delete this asset?', function(){ form.submit(); }); return false;"
                                       class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                     <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
                                     <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
                                     <input type="hidden" name="delete_asset" value="1">
@@ -181,6 +182,7 @@
             <div class="modal-dialog">
                 <div class="modal-content">
                     <form method="POST" action="<?php echo $baseDir; ?>/modules/projects/handle_asset.php" enctype="multipart/form-data" id="editAssetForm">
+                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                         <input type="hidden" name="edit_asset" value="1">
                         <input type="hidden" name="project_id" id="edit_asset_project_id" value="<?php echo (int)$projectId; ?>">
                         <input type="hidden" name="asset_id" id="edit_asset_id">

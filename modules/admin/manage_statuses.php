@@ -9,6 +9,11 @@ $db = Database::getInstance();
 
 // Handle status updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: manage_statuses.php');
+        exit;
+    }
     if (isset($_POST['update_status'])) {
         $statusId = (int)$_POST['status_id'];
         $statusLabel = sanitizeInput($_POST['status_label']);
@@ -182,6 +187,7 @@ include __DIR__ . '/../../includes/header.php';
                             <div class="modal-dialog">
                                 <div class="modal-content">
                                     <form method="POST">
+                                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                         <div class="modal-header">
                                             <h5 class="modal-title">Edit Status: <?php echo htmlspecialchars($status['status_label']); ?></h5>
                                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

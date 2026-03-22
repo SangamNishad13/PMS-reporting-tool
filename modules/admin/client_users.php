@@ -111,6 +111,11 @@ try {
 
 // Handle Create Client User
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_client_user'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: client_users.php');
+        exit;
+    }
     $username = sanitizeInput($_POST['username']);
     $fullName = sanitizeInput($_POST['full_name']);
     $email = sanitizeInput($_POST['email']);
@@ -192,6 +197,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_client_user'])
 
 // Handle Update Client User
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_client_user'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: client_users.php');
+        exit;
+    }
     $userId = intval($_POST['user_id']);
     $username = sanitizeInput($_POST['username']);
     $fullName = sanitizeInput($_POST['full_name']);
@@ -216,6 +226,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_client_user'])
 
 // Handle Reset Password
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_password'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: client_users.php');
+        exit;
+    }
     $userId = intval($_POST['user_id']);
     $newPassword = $_POST['new_password'];
     
@@ -387,6 +402,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <div class="modal-header">
                     <h5 class="modal-title">Create Client User</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -441,6 +457,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="user_id" id="edit_user_id">
                 <div class="modal-header">
                     <h5 class="modal-title">Edit Client User</h5>
@@ -491,6 +508,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="user_id" id="reset_user_id">
                 <div class="modal-header">
                     <h5 class="modal-title">Reset Password</h5>

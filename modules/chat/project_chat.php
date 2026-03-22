@@ -65,6 +65,16 @@ function isChatMessageDeletedLocal($row) {
 // Send message (non-AJAX fallback; AJAX handled via api/chat_actions, but keep safe here)
 $isAjax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
 
+// CSRF check for all POST requests on this page
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $csrfToken = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (!verifyCsrfToken($csrfToken)) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Invalid request token.']);
+        exit;
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_message'])) {
     $messageId = (int)($_POST['message_id'] ?? 0);
     $newMessage = trim((string)($_POST['message'] ?? ''));

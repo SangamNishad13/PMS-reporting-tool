@@ -11,6 +11,12 @@ $userRole = $_SESSION['role'] ?? '';
 $projectId = (int)($_POST['project_id'] ?? 0);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $projectId > 0) {
+    // CSRF protection
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $_SESSION['error'] = "Invalid security token.";
+        redirect($baseDir . "/modules/admin/projects.php");
+        exit;
+    }
     $projectId = isset($_POST['project_id']) ? intval($_POST['project_id']) : 0;
     
     if ($projectId > 0) {

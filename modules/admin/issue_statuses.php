@@ -9,6 +9,11 @@ $db = Database::getInstance();
 
 // Handle status updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: issue_statuses.php');
+        exit;
+    }
     if (isset($_POST['update_status'])) {
         $statusId = (int)$_POST['status_id'];
         $statusName = sanitizeInput($_POST['status_name']);
@@ -195,6 +200,7 @@ include __DIR__ . '/../../includes/header.php';
 </div>
 
 <form method="POST" id="deleteIssueStatusForm" style="display:none;">
+    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
     <input type="hidden" name="delete_status" value="1">
     <input type="hidden" name="status_id" id="delete_issue_status_id">
 </form>
@@ -228,6 +234,7 @@ include __DIR__ . '/../../includes/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">Status Name *</label>
@@ -277,6 +284,7 @@ include __DIR__ . '/../../includes/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <div class="modal-body">
                     <input type="hidden" name="status_id" id="edit_status_id">
                     <div class="mb-3">

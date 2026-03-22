@@ -17,6 +17,10 @@ if (!$allowRegistration) {
 
 // Handle registration
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // CSRF protection
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $errors[] = "Invalid security token. Please try again.";
+    } else {
     $username = sanitizeInput($_POST['username']);
     $email = sanitizeInput($_POST['email']);
     $fullName = sanitizeInput($_POST['full_name']);
@@ -79,6 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = "Registration failed. Please try again.";
         }
     }
+    } // end CSRF check
 }
 
 include __DIR__ . '/../../includes/header.php';
@@ -95,13 +100,14 @@ include __DIR__ . '/../../includes/header.php';
                         <div class="alert alert-danger">
                             <ul class="mb-0">
                                 <?php foreach ($errors as $error): ?>
-                                <li><?php echo $error; ?></li>
+                                <li><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></li>
                                 <?php endforeach; ?>
                             </ul>
                         </div>
                     <?php endif; ?>
                     
                     <form method="POST">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label for="username" class="form-label">Username *</label>

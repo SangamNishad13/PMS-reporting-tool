@@ -54,6 +54,11 @@ $ftTesters = $db->query("SELECT id, full_name FROM users WHERE role = 'ft_tester
 $environments = $db->query("SELECT id, name FROM testing_environments ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: add_page.php' . ($projectId ? '?project_id=' . $projectId : ''));
+        exit;
+    }
     // Determine selected project for insertion (POST overrides GET)
     $selectedProjectId = null;
     if (!empty($_POST['project_id']) && is_numeric($_POST['project_id'])) {
@@ -193,6 +198,7 @@ include __DIR__ . '/../../includes/header.php';
                     <?php endif; ?>
 
                     <form method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                         <?php if (empty($projectId)): ?>
                             <div class="mb-3">
                                 <label class="form-label">Project (optional)</label>

@@ -65,6 +65,11 @@ function mapComputedToPageStatus(string $status): string {
 
 // Handle QA env status update from this page.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_env_status'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: ' . $tasksRedirectUrl);
+        exit;
+    }
     $pageId = (int)($_POST['page_id'] ?? 0);
     $environmentId = (int)($_POST['environment_id'] ?? 0);
     $status = trim((string)($_POST['status'] ?? ''));
@@ -370,6 +375,7 @@ include __DIR__ . '/../../includes/header.php';
                                 </td>
                                 <td>
                                     <form method="POST" class="d-inline-flex align-items-center gap-2">
+                                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                         <input type="hidden" name="page_id" value="<?php echo (int)$page['id']; ?>">
                                         <input type="hidden" name="environment_id" value="<?php echo (int)$page['environment_id']; ?>">
                                         <input type="hidden" name="filter_qa" value="<?php echo (int)$filterQaId; ?>">

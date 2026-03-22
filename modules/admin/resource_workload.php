@@ -314,7 +314,7 @@ include __DIR__ . '/../../includes/header.php';
                     <label class="form-label">&nbsp;</label>
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary">Apply Filters</button>
-                        <a href="<?php echo $_SERVER['PHP_SELF']; ?>" class="btn btn-outline-secondary">Clear</a>
+                        <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-secondary">Clear</a>
                     </div>
                 </div>
             </form>

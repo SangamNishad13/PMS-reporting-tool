@@ -10,6 +10,11 @@ $baseDir = getBaseDir();
 
 // Handle status updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: page_testing_status_master.php');
+        exit;
+    }
     if (isset($_POST['update_status'])) {
         $statusId = (int)$_POST['status_id'];
         $statusLabel = sanitizeInput($_POST['status_label']);
@@ -160,6 +165,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <div class="modal-header">
                     <h5 class="modal-title">Add New Testing Status</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -210,6 +216,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="status_id" id="edit_status_id">
                 <div class="modal-header">
                     <h5 class="modal-title">Edit Testing Status</h5>

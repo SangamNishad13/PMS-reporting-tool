@@ -53,6 +53,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="<?php echo $baseDir; ?>/modules/projects/phases.php" id="addPhaseForm">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
                 <input type="hidden" name="phase_name" id="phaseNameHidden">
                 <div class="modal-header">
@@ -128,6 +129,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="<?php echo $baseDir; ?>/modules/projects/phases.php">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
                 <input type="hidden" name="phase_id" id="edit_phase_id">
                 <div class="modal-header">
@@ -181,6 +183,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="<?php echo $baseDir; ?>/modules/projects/handle_asset.php" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
                 <div class="modal-header">
                     <h5 class="modal-title">Add Project Asset</h5>

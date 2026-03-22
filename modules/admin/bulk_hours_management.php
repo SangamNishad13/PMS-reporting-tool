@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/hours_validation.php';
 
 $auth = new Auth();
@@ -10,6 +11,11 @@ $db = Database::getInstance();
 
 // Handle bulk operations
 if ($_POST) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    }
     if (isset($_POST['bulk_update'])) {
         $updates = $_POST['updates'] ?? [];
         $reason = $_POST['bulk_reason'] ?? '';
@@ -225,7 +231,7 @@ include __DIR__ . '/../../includes/header.php';
                     <label class="form-label">&nbsp;</label>
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary">Apply Filters</button>
-                        <a href="<?php echo $_SERVER['PHP_SELF']; ?>" class="btn btn-outline-secondary">Clear</a>
+                        <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-secondary">Clear</a>
                     </div>
                 </div>
             </form>
@@ -253,6 +259,7 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
             <?php else: ?>
                 <form id="bulkUpdateForm" method="POST">
+                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                     <input type="hidden" name="bulk_update" value="1">
                     <div class="table-responsive">
                         <table class="table table-hover">

@@ -248,6 +248,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') ||
         (isset($_SERVER['HTTP_ACCEPT']) && stripos((string)$_SERVER['HTTP_ACCEPT'], 'application/json') !== false)
     );
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        if ($isAjaxRequest) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Invalid request token.']);
+        } else {
+            $_SESSION['error'] = 'Invalid request. Please try again.';
+            header('Location: edit_requests.php');
+        }
+        exit;
+    }
     $requestId = $_POST['request_id'] ?? null;
     $action = $_POST['action'] ?? null;
     $userId = $_POST['user_id'] ?? null;

@@ -716,6 +716,7 @@
                                 <div class="modal-dialog modal-lg">
                                     <div class="modal-content">
                                         <form method="POST" action="<?php echo $baseDir; ?>/modules/projects/manage_assignments.php?project_id=<?php echo $projectId; ?>&tab=pages">
+                                            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                             <input type="hidden" name="assign_page" value="1">
                                             <input type="hidden" name="page_id" value="<?php echo $pageIdForEnv; ?>">
                                             <input type="hidden" name="return_to" value="<?php echo htmlspecialchars($baseDir . '/modules/projects/view.php?id=' . $projectId . '#project_pages_sub'); ?>">

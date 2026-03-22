@@ -56,6 +56,11 @@ function savePdfTemplateConfigAdmin(array $data): bool {
 $config = loadPdfTemplateConfigAdmin();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: pdf_export_template.php');
+        exit;
+    }
     if (isset($_POST['remove_logo']) && $_POST['remove_logo'] === '1') {
         $newConfig = array_merge($config, ['logo_url' => '', 'logo_alt' => '']);
         if (!savePdfTemplateConfigAdmin($newConfig)) {
@@ -149,6 +154,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="card">
         <div class="card-body">
             <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <div class="form-check form-switch mb-3">
                     <input class="form-check-input" type="checkbox" id="enabled" name="enabled" <?php echo !empty($config['enabled']) ? 'checked' : ''; ?>>
                     <label class="form-check-label" for="enabled">Enable custom PDF template</label>

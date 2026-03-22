@@ -18,11 +18,15 @@ if (!($_SESSION['force_reset'] ?? false)) {
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // CSRF protection
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $error = "Invalid security token. Please try again.";
+    } else {
     $newPassword = $_POST['new_password'];
     $confirmPassword = $_POST['confirm_password'];
     
     if (strlen($newPassword) < 8) {
-        $error = "Password must be at least 6 characters long.";
+        $error = "Password must be at least 8 characters long.";
     } elseif ($newPassword !== $confirmPassword) {
         $error = "Passwords do not match!";
     } else {
@@ -42,6 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Failed to update password. Please try again.";
         }
     }
+    } // end CSRF check
 }
 
 // We don't include header.php because it might cause a redirect loop
@@ -68,10 +73,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div class="card-body">
                 <?php if ($error): ?>
-                    <div class="alert alert-danger"><?php echo $error; ?></div>
+                    <div class="alert alert-danger"><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
                 <?php endif; ?>
                 
                 <form method="POST">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
                     <div class="mb-3">
                         <label class="form-label">New Password</label>
                         <input type="password" name="new_password" autocomplete="new-password" class="form-control" required placeholder="Min 8 characters">

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
 $auth->requireRole(['qa', 'admin', 'super_admin']);
@@ -41,6 +42,11 @@ function mapComputedToPageStatus(string $status): string {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_env_status'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: dashboard.php');
+        exit;
+    }
     $pageId = (int)($_POST['page_id'] ?? 0);
     $environmentId = (int)($_POST['environment_id'] ?? 0);
     $projectId = (int)($_POST['project_id'] ?? 0);
@@ -734,6 +740,7 @@ if (!empty($qaPendingRows)) {
                             </td>
                             <td>
                                 <form method="POST" action="dashboard.php" class="d-inline-flex align-items-center gap-2">
+                                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                     <input type="hidden" name="page_id" value="<?php echo (int)$page['id']; ?>">
                                     <input type="hidden" name="environment_id" value="<?php echo (int)$page['environment_id']; ?>">
                                     <input type="hidden" name="project_id" value="<?php echo (int)$page['project_id']; ?>">

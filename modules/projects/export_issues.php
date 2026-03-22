@@ -216,6 +216,7 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 
     <form id="exportForm" method="POST" action="<?php echo $baseDir; ?>/api/export_issues.php">
+        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
         <input type="hidden" name="project_id" value="<?php echo $projectId; ?>">
         
         <div class="row">

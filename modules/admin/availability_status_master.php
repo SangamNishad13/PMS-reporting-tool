@@ -5,6 +5,7 @@
 
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
 $auth->requireRole(['admin', 'super_admin']);
@@ -15,6 +16,11 @@ $db = Database::getInstance();
 ensureAvailabilityStatusMaster($db);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    }
     $action = $_POST['action'] ?? '';
 
     if ($action === 'add') {
@@ -196,6 +202,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="action" value="add">
                 <div class="modal-header">
                     <h5 class="modal-title">Add Availability Status</h5>
@@ -245,6 +252,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="action" value="edit">
                 <input type="hidden" name="id" id="edit_id">
                 <div class="modal-header">
@@ -295,6 +303,7 @@ include __DIR__ . '/../../includes/header.php';
 </div>
 
 <form id="deleteStatusForm" method="POST" class="d-none">
+    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
     <input type="hidden" name="action" value="delete">
     <input type="hidden" name="id" id="delete_id">
 </form>

@@ -13,7 +13,9 @@ if (session_status() === PHP_SESSION_NONE) {
     // For localhost development, use Lax; for production, use Strict
     $samesite = (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false || strpos($_SERVER['HTTP_HOST'] ?? '', '127.0.0.1') !== false) ? 'Lax' : 'Strict';
     ini_set('session.cookie_samesite', $samesite);
-    ini_set('session.cookie_secure', isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 1 : 0);
+    // Always enforce secure cookies on HTTPS; on localhost allow HTTP for dev
+    $isLocalhost = (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false || strpos($_SERVER['HTTP_HOST'] ?? '', '127.0.0.1') !== false);
+    ini_set('session.cookie_secure', (!$isLocalhost || (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')) ? 1 : 0);
 
     // Try Redis session handler first — eliminates file-locking under concurrent load
     $redisSessionSet = false;
@@ -128,6 +130,8 @@ class Auth {
         // Rate limiting: max 5 failed attempts per IP per 15 minutes
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         $rateLimitKey = 'login_attempts_' . md5($ip);
+        // Also rate limit per username to prevent distributed brute force
+        $userRateLimitKey = 'login_attempts_user_' . md5(strtolower($username));
         $maxAttempts = 5;
         $lockoutTime = 900; // 15 minutes
         $now = time();
@@ -135,11 +139,17 @@ class Auth {
         if (!isset($_SESSION[$rateLimitKey])) {
             $_SESSION[$rateLimitKey] = [];
         }
+        if (!isset($_SESSION[$userRateLimitKey])) {
+            $_SESSION[$userRateLimitKey] = [];
+        }
         // Remove attempts older than lockout window
         $_SESSION[$rateLimitKey] = array_filter($_SESSION[$rateLimitKey], function($t) use ($now, $lockoutTime) {
             return ($now - $t) < $lockoutTime;
         });
-        if (count($_SESSION[$rateLimitKey]) >= $maxAttempts) {
+        $_SESSION[$userRateLimitKey] = array_filter($_SESSION[$userRateLimitKey], function($t) use ($now, $lockoutTime) {
+            return ($now - $t) < $lockoutTime;
+        });
+        if (count($_SESSION[$rateLimitKey]) >= $maxAttempts || count($_SESSION[$userRateLimitKey]) >= $maxAttempts) {
             return false; // Too many attempts
         }
         
@@ -155,6 +165,7 @@ class Auth {
         if ($user && password_verify($password, $user['password'])) {
             // Clear rate limit on successful login
             unset($_SESSION[$rateLimitKey]);
+            unset($_SESSION[$userRateLimitKey]);
             // Regenerate session ID to prevent session fixation
             session_regenerate_id(true);
             
@@ -203,6 +214,7 @@ class Auth {
         
         // Track failed attempt
         $_SESSION[$rateLimitKey][] = $now;
+        $_SESSION[$userRateLimitKey][] = $now;
         return false;
     }
     
@@ -256,6 +268,14 @@ class Auth {
     
     public function isLoggedIn() {
         if (!isset($_SESSION['user_id'])) {
+            return false;
+        }
+        
+        // Absolute session timeout: 8 hours regardless of activity
+        $absoluteTimeout = 8 * 60 * 60; // 8 hours
+        if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time'] > $absoluteTimeout)) {
+            session_unset();
+            session_destroy();
             return false;
         }
         

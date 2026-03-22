@@ -7,6 +7,9 @@ require_once __DIR__ . '/../includes/project_permissions.php';
 $auth = new Auth();
 $auth->requireRole(['admin', 'project_lead', 'qa', 'super_admin']);
 
+// CSRF protection for state-changing POST export
+enforceApiCsrf();
+
 $projectId = (int)($_POST['project_id'] ?? 0);
 $format = $_POST['format'] ?? 'excel';
 $selectedColumns = $_POST['columns'] ?? [];

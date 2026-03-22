@@ -77,15 +77,9 @@ if (!$insideAllowed) {
     exit;
 }
 
-// Simplified permission checking - only check for project assets if needed
-// Skip database queries for common file types that are likely safe
+// Always perform database ownership check - never skip for any file type
+// Skipping checks based on file extension is a security anti-pattern
 $skipDbCheck = false;
-$fileExt = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
-$commonImageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
-if (in_array($fileExt, $commonImageExts) && strpos($relPath, 'assets/uploads/') === 0) {
-    // For images in assets/uploads, skip heavy database checks
-    $skipDbCheck = true;
-}
 
 if (!$skipDbCheck) {
     // Only do database checks for non-image files or files outside assets/uploads

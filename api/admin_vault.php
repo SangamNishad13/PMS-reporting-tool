@@ -33,8 +33,11 @@ function getVaultKey() {
         // Derive from APP_KEY env var or a server-specific secret
         $appKey = getenv('APP_KEY') ?: (defined('APP_SECRET') ? APP_SECRET : '');
         if (empty($appKey)) {
-            // Fallback: derive from server-specific values (not ideal but better than hardcoded)
-            $appKey = php_uname('n') . $_SERVER['SERVER_ADDR'] ?? 'fallback';
+            // No key configured - refuse to operate rather than use a weak predictable key
+            error_log('SECURITY: VAULT_ENCRYPTION_KEY or APP_KEY environment variable not set. Vault operations disabled.');
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'Vault encryption key not configured. Set VAULT_ENCRYPTION_KEY environment variable.']);
+            exit;
         }
         $key = hash('sha256', $appKey, true); // 32 bytes for AES-256
     } else {

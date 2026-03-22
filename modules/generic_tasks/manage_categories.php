@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
 $auth->requireRole(['admin', 'super_admin']);
@@ -10,6 +11,11 @@ $userId = $_SESSION['user_id'];
 
 // Handle Add Category
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_category'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: manage_categories.php');
+        exit;
+    }
     $name = trim($_POST['name']);
     $desc = trim($_POST['description']);
     
@@ -33,6 +39,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_category'])) {
 
 // Handle Edit Category
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_category'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: manage_categories.php');
+        exit;
+    }
     $catId = (int)($_POST['category_id'] ?? 0);
     $name = trim($_POST['name'] ?? '');
     $desc = trim($_POST['description'] ?? '');
@@ -68,6 +79,11 @@ if (isset($_GET['toggle']) && isset($_GET['id'])) {
 
 // Handle Delete Category
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_category'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: manage_categories.php');
+        exit;
+    }
     $catId = (int)($_POST['category_id'] ?? 0);
     
     // Check if category has tasks
@@ -128,6 +144,7 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
                 <div class="card-body">
                     <form method="POST">
+                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                         <div class="mb-3">
                             <label class="form-label">Title *</label>
                             <input type="text" name="name" class="form-control" required maxlength="100">
@@ -193,6 +210,7 @@ include __DIR__ . '/../../includes/header.php';
                                             <div class="modal-dialog">
                                                 <div class="modal-content">
                                                     <form method="POST">
+                                                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                                         <input type="hidden" name="category_id" value="<?php echo (int)$cat['id']; ?>">
                                                         <div class="modal-header">
                                                             <h5 class="modal-title">Edit Generic Task</h5>
@@ -222,6 +240,7 @@ include __DIR__ . '/../../includes/header.php';
                                             <div class="modal-dialog">
                                                 <div class="modal-content">
                                                     <form method="POST">
+                                                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                                         <input type="hidden" name="category_id" value="<?php echo $cat['id']; ?>">
                                                         <div class="modal-header">
                                                             <h5 class="modal-title">Delete Generic Task</h5>

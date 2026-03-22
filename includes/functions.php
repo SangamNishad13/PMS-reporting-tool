@@ -158,26 +158,40 @@ function getStatusOptions($entityType) {
  * Allows <a href>, <img src> (data: or http/https), <b>, <strong>, <i>, <em>, <u>, <br>, <p>, <ul>, <ol>, <li>
  */
 function sanitize_chat_html($html) {
-    // Simple fallback sanitizer: strip <script> tags and on* attributes, prevent javascript: URIs.
     if (trim($html) === '') return '';
-    // Remove script blocks
-    $html = preg_replace('#<script.*?>.*?</script>#is', '', $html);
-    // Remove on* attributes (onclick, onerror, etc.)
-    $html = preg_replace('/\s+on[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html);
-    // Remove javascript: URIs in href/src
-    $html = preg_replace_callback('/<(a|img)\b([^>]*)>/i', function($m){
-        $tag = $m[1]; $attrs = $m[2];
-        // remove javascript: in attributes
-        $attrs = preg_replace_callback('/(href|src)\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', function($ma){
-            $name = $ma[1]; $val = trim($ma[2], "'\"");
-            if (preg_match('#^\s*javascript:#i', $val)) {
+
+    // Strip dangerous tags completely (including their content for script/style)
+    $html = preg_replace('#<(script|style|iframe|object|embed|form|input|button|select|textarea|base|link|meta|applet|frame|frameset|layer|ilayer|bgsound|xml)\b[^>]*>.*?</\1>#is', '', $html);
+    // Strip self-closing dangerous tags
+    $html = preg_replace('#<(script|style|iframe|object|embed|form|input|button|select|textarea|base|link|meta|applet|frame|frameset|layer|ilayer|bgsound|xml)\b[^>]*/?\>#is', '', $html);
+
+    // Remove ALL event handler attributes (on*)
+    $html = preg_replace('/\s+on[a-z][a-z0-9]*\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html);
+
+    // Sanitize href/src on <a> and <img> tags
+    $html = preg_replace_callback('/<(a|img)\b([^>]*)>/i', function ($m) {
+        $tag = strtolower($m[1]);
+        $attrs = $m[2];
+        $attrs = preg_replace_callback('/(href|src)\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', function ($ma) use ($tag) {
+            $name = strtolower($ma[1]);
+            $val = trim($ma[2], "'\"");
+            if (preg_match('#^\s*(javascript|vbscript)\s*:#i', $val)) {
+                return '';
+            }
+            if ($name === 'href' && preg_match('#^\s*data\s*:#i', $val)) {
                 return '';
             }
             return $name . '="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"';
         }, $attrs);
-        return '<' . $tag . $attrs . '>';
+        if ($tag === 'a' && preg_match('/href\s*=/i', $attrs) && !preg_match('/rel\s*=/i', $attrs)) {
+            $attrs .= ' rel="noopener noreferrer"';
+        }
+        return '<' . $tag . ' ' . trim($attrs) . '>';
     }, $html);
-    return $html;
+
+    // Strip any tags not in the allowed whitelist
+    $allowed = '<a><img><b><strong><i><em><u><br><p><ul><ol><li><span><code><pre><blockquote><h1><h2><h3><h4><h5><h6><hr><table><thead><tbody><tr><th><td>';
+    return strip_tags($html, $allowed);
 }
 
 if (!function_exists('ensureAvailabilityStatusMaster')) {

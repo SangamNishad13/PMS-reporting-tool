@@ -9,6 +9,11 @@ $auth->requireRole(['admin','super_admin']);
 $db = Database::getInstance();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: active_sessions.php');
+        exit;
+    }
     $postAction = trim((string)($_POST['cleanup_action'] ?? ''));
     $redirectTo = strtok($_SERVER['REQUEST_URI'], '?');
     $queryString = $_SERVER['QUERY_STRING'] ?? '';
@@ -221,6 +226,7 @@ require_once __DIR__ . '/../../includes/header.php';
         <div class="card-body py-3">
             <div class="fw-semibold mb-2">Session Storage Cleanup</div>
             <form method="post" class="row g-2 align-items-end" data-confirm="Delete old session records?">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="cleanup_action" value="purge_old">
                 <div class="col-md-3">
                     <label class="form-label form-label-sm">Delete sessions older than</label>
@@ -243,6 +249,7 @@ require_once __DIR__ . '/../../includes/header.php';
         <div class="card-body py-3">
             <div class="fw-semibold mb-2">User/Project Wise Session Cleanup</div>
             <form method="post" class="row g-2 align-items-end" data-confirm="Delete sessions for the selected scope?">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="cleanup_action" value="delete_by_scope">
                 <div class="col-md-2">
                     <label class="form-label form-label-sm">Scope</label>
@@ -320,6 +327,7 @@ require_once __DIR__ . '/../../includes/header.php';
     </form>
 
     <form method="post" data-confirm="Delete selected sessions?">
+    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
     <input type="hidden" name="cleanup_action" value="delete_selected">
     <div class="d-flex justify-content-between align-items-center mb-2">
         <div class="small text-muted">Select session rows to delete DB records directly.</div>

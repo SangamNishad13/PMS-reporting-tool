@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/hours_validation.php';
 
 $auth = new Auth();
@@ -29,6 +30,11 @@ if (!$user) {
 
 // Handle form submissions
 if ($_POST) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: ' . $_SERVER['PHP_SELF'] . '?user_id=' . $userId);
+        exit;
+    }
     if (isset($_POST['update_hours'])) {
         $assignmentId = $_POST['assignment_id'];
         $newHours = $_POST['new_hours'];
@@ -447,6 +453,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <div class="modal-header">
                     <h5 class="modal-title">Add New Assignment</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -508,6 +515,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <div class="modal-header">
                     <h5 class="modal-title">Edit Hours Allocation</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -545,6 +553,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <div class="modal-header">
                     <h5 class="modal-title">Remove Assignment</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

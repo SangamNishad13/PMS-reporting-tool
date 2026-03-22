@@ -445,6 +445,11 @@ try { $db->exec("ALTER TABLE user_pending_changes ADD COLUMN pending_time_logs T
 
 // Handle Status Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    }
     $isAdmin = hasAdminPrivileges();
     $targetUser = $userId;
     
@@ -1583,6 +1588,7 @@ include __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="card-body">
                     <form method="POST" id="statusForm">
+                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                         <div class="mb-3">
                             <label>Availability</label>
                             <select name="status" class="form-select" id="statusSelect" <?php echo $isPastDateReadonly ? 'disabled' : ''; ?>>

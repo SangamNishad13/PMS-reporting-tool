@@ -53,6 +53,14 @@ function isWithinRoot(string $root, string $candidate): bool {
 $roots = buildUploadRoots();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // CSRF protection for all state-changing POST actions
+    $csrfToken = $_POST['csrf_token'] ?? '';
+    if (!verifyCsrfToken($csrfToken)) {
+        $_SESSION['error'] = 'Invalid CSRF token.';
+        header('Location: ' . $baseDir . '/modules/admin/uploads_manager.php');
+        exit;
+    }
+
     if (isset($_POST['cleanup_action']) && $_POST['cleanup_action'] === 'purge_project_assets_scope') {
         $scopeType = trim((string)($_POST['scope_type'] ?? ''));
         $projectId = (int)($_POST['project_id'] ?? 0);
@@ -207,6 +215,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $target = $baseDir . '/modules/admin/uploads_manager.php';
         if ($redirectQuery !== '') {
+            // Sanitize redirectQuery - strip CRLF to prevent header injection
+            $redirectQuery = preg_replace('/[\r\n]/', '', $redirectQuery);
             $target .= '?' . ltrim($redirectQuery, '?');
         }
         header('Location: ' . $target);
@@ -369,6 +379,7 @@ require_once __DIR__ . '/../../includes/header.php';
             <div class="fw-semibold mb-2">Project/User Wise Upload Cleanup</div>
             <div class="small text-muted mb-2">This cleanup targets mapped uploads from <code>project_assets.file_path</code> only.</div>
             <form method="post" class="row g-2 align-items-end" data-confirm="Delete uploads for the selected scope?">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="cleanup_action" value="purge_project_assets_scope">
                 <div class="col-md-2">
                     <label class="form-label form-label-sm">Scope</label>
@@ -473,6 +484,7 @@ require_once __DIR__ . '/../../includes/header.php';
                                 <div class="d-flex gap-1">
                                     <a href="<?php echo htmlspecialchars($r['url']); ?>" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener">Open</a>
                                     <form method="post" class="d-inline" data-confirm="Delete this file?">
+                                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                         <input type="hidden" name="delete_upload" value="1">
                                         <input type="hidden" name="storage_key" value="<?php echo htmlspecialchars($r['storage_key']); ?>">
                                         <input type="hidden" name="relative_path" value="<?php echo htmlspecialchars($r['relative_path']); ?>">

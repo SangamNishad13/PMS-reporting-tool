@@ -9,6 +9,11 @@ $auth->requireRole(['super_admin', 'admin', 'project_lead']);
 $baseDir = getBaseDir();
 $projectId = (int)($_POST['project_id'] ?? 0);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $projectId > 0) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: ' . $baseDir . '/modules/projects/edit.php?id=' . $projectId);
+        exit;
+    }
     $projectId = isset($_POST['project_id']) ? intval($_POST['project_id']) : 0;
     
     if ($projectId > 0) {

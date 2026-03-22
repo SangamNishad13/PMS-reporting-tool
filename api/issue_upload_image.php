@@ -1,9 +1,10 @@
 <?php
 
-// Debug log function
+// Debug log function - disabled in production
 function issue_upload_debug_log($msg) {
-    $logfile = __DIR__ . '/../tmp/logs/issue_upload_debug.log';
-    @file_put_contents($logfile, date('Y-m-d H:i:s') . ' ' . $msg . "\n", FILE_APPEND);
+    // Production: debug logging disabled to prevent information disclosure
+    // Uncomment below line only for local debugging:
+    // @file_put_contents(__DIR__ . '/../tmp/logs/issue_upload_debug.log', date('Y-m-d H:i:s') . ' ' . $msg . "\n", FILE_APPEND);
 }
 
 require_once __DIR__ . '/../includes/auth.php';

@@ -48,19 +48,15 @@ try {
             $success = $notificationManager->updateCommunicationPreferences($clientId, $preferences);
             
             if ($success) {
-                // Redirect to confirmation page
-                $settings = include(__DIR__ . '/../config/settings.php');
-                $appUrl = $settings['app_url'] ?? '';
-                header("Location: $appUrl/preferences?client_id=$clientId&unsubscribed=1");
+                // Redirect to confirmation page - use only path, not full URL to prevent open redirect
+                header("Location: /preferences?client_id=" . (int)$clientId . "&unsubscribed=1");
                 exit;
             } else {
                 throw new Exception('Failed to update preferences');
             }
         } else {
             // Redirect to preferences page
-            $settings = include(__DIR__ . '/../config/settings.php');
-            $appUrl = $settings['app_url'] ?? '';
-            header("Location: $appUrl/preferences?client_id=$clientId");
+            header("Location: /preferences?client_id=" . (int)$clientId);
             exit;
         }
     }
@@ -73,6 +69,10 @@ try {
             echo json_encode(['success' => false, 'message' => 'Authentication required']);
             exit;
         }
+
+        // CSRF protection
+        require_once __DIR__ . '/../includes/helpers.php';
+        enforceApiCsrf();
         
         $clientUserId = $_SESSION['user_id'];
         $input = json_decode(file_get_contents('php://input'), true);

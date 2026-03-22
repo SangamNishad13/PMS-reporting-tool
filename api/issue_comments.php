@@ -185,7 +185,10 @@ try {
             $commentType = 'normal';
         }
 
-        $clean = function_exists('sanitize_chat_html') ? sanitize_chat_html($commentHtml) : $commentHtml;
+        if (!function_exists('sanitize_chat_html')) {
+            jsonError('Server configuration error: sanitizer unavailable', 500);
+        }
+        $clean = sanitize_chat_html($commentHtml);
 
         try {
             $stmt = $db->prepare("INSERT INTO issue_comments (issue_id, user_id, recipient_id, qa_status_id, comment_html, comment_type, reply_to) VALUES (?, ?, ?, ?, ?, ?, ?)");
@@ -281,7 +284,10 @@ try {
         if (!$isOwn && !$isAdmin) jsonError('Permission denied', 403);
         if (!empty($row['deleted_at'])) jsonError('Deleted comment cannot be edited', 400);
 
-        $clean = function_exists('sanitize_chat_html') ? sanitize_chat_html($commentHtml) : $commentHtml;
+        if (!function_exists('sanitize_chat_html')) {
+            jsonError('Server configuration error: sanitizer unavailable', 500);
+        }
+        $clean = sanitize_chat_html($commentHtml);
         $upd = $db->prepare("UPDATE issue_comments SET comment_html = ?, edited_at = NOW() WHERE id = ?");
         if (!$upd->execute([$clean, $commentId])) jsonError('Failed to edit comment', 500);
 

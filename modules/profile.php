@@ -48,6 +48,12 @@ function ensureUsernameHistoryTable($db) {
 
 // Allow users to update only their own username
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_username'])) {
+    // CSRF protection
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $_SESSION['error'] = "Invalid security token. Please try again.";
+        header("Location: " . $baseDir . "/modules/profile.php?id=" . $userId);
+        exit;
+    }
     $currentUserId = (int)($_SESSION['user_id'] ?? 0);
     if ($currentUserId !== (int)$userId) {
         $_SESSION['error'] = "You can only update your own username.";
@@ -413,6 +419,7 @@ include __DIR__ . '/../includes/header.php';
                     <?php if ((int)$userId === (int)($_SESSION['user_id'] ?? 0)): ?>
                     <form method="POST" action="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo (int)$userId; ?>" class="mb-2">
                         <input type="hidden" name="update_username" value="1">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
                         <label for="profileUsername" class="form-label mb-1"><strong>Username:</strong></label>
                         <div class="input-group input-group-sm">
                             <span class="input-group-text">@</span>

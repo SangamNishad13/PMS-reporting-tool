@@ -758,7 +758,7 @@ include __DIR__ . '/../../includes/header.php';
                             </div>
                             <div class="col-12">
                                 <button type="submit" class="btn btn-primary btn-sm w-100">Apply Filters</button>
-                                <a href="<?php echo $_SERVER['PHP_SELF']; ?>" class="btn btn-outline-secondary btn-sm w-100 mt-1">Clear Filters</a>
+                                <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-secondary btn-sm w-100 mt-1">Clear Filters</a>
                             </div>
                         </form>
                     </div>

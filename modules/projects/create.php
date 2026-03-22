@@ -57,6 +57,11 @@ $projectLeads = $db->query("SELECT id, full_name FROM users WHERE role IN ('proj
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_project'])) {
+    // CSRF protection
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $_SESSION['error'] = "Invalid security token. Please try again.";
+        redirect("/modules/projects/create.php");
+    }
     $clientId = intval($_POST['client_id']);
     
     // Verify permission again on submission
@@ -111,6 +116,7 @@ include __DIR__ . '/../../includes/header.php';
             <div class="card">
                 <div class="card-body">
                     <form method="POST" id="createProjectForm">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken()); ?>">
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Project Code (optional)</label>

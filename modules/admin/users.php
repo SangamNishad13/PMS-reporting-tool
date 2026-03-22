@@ -214,6 +214,17 @@ function sendCredentialsMailForUser(PDO $db, $uid, $mailMode, $requestId = '') {
 
 // Handle user actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $isAjaxAction = isset($_POST['send_credentials_email_single']);
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        if ($isAjaxAction) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Invalid request token.']);
+        } else {
+            $_SESSION['error'] = 'Invalid request. Please try again.';
+            header('Location: users.php');
+        }
+        exit;
+    }
     if (isset($_POST['send_credentials_email_single'])) {
         @set_time_limit(180);
         @ignore_user_abort(true);
@@ -874,6 +885,7 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                             <div class="modal-dialog">
                                 <div class="modal-content">
                                     <form method="POST">
+                                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                         <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
                                         <div class="modal-header">
                                             <h5 class="modal-title">Edit User: <?php echo renderUserNameLink(['id'=>$user['id'],'full_name'=>$user['full_name'],'role'=>$user['role']]); ?></h5>
@@ -936,6 +948,7 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                             <div class="modal-dialog">
                                 <div class="modal-content">
                                     <form method="POST">
+                                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                         <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
                                         <div class="modal-header">
                                             <h5 class="modal-title text-danger">Delete User</h5>
@@ -1046,6 +1059,7 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" id="bulkMailForm">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="send_credentials_email" value="1">
                 <input type="hidden" name="selected_user_ids" id="selectedUserIdsInput" value="">
                 <div class="modal-header">
@@ -1084,6 +1098,7 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <div class="modal-header">
                     <h5 class="modal-title">Add New User</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

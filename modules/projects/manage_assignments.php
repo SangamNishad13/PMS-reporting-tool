@@ -160,6 +160,13 @@ if (!$projectId) {
     $activeAllocatedStmtForTeam->execute([$projectId]);
     $activeAllocatedHoursForTeam = (float)$activeAllocatedStmtForTeam->fetchColumn();
 
+    // CSRF check for all POST actions on this page
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && !verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: ' . getBaseDir() . '/modules/projects/manage_assignments.php?id=' . $projectId);
+        exit;
+    }
+
     // Handle Team Assignment (Add/Remove) - Users with manage team permission
     if ($canManageTeam) {
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_member_hours'])) {
@@ -1389,6 +1396,7 @@ include __DIR__ . '/../../includes/header.php';
                                 <?php endif; ?>
                                 
                                 <form method="POST" id="teamAssignForm" action="manage_assignments.php?project_id=<?php echo (int)$projectId; ?>&tab=team">
+                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken()); ?>">
                                     <input type="hidden" name="project_id" value="<?php echo (int)$projectId; ?>">
                                     <div class="mb-3">
                                         <label class="form-label">Select Users</label>
@@ -1971,6 +1979,7 @@ include __DIR__ . '/../../includes/header.php';
                     </div>
                     <div class="card-body">
                         <form method="POST">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken()); ?>">
                             <div class="row">
                                 <div class="col-md-6">
                                     <h6 class="mb-3">Select Pages</h6>
@@ -2184,7 +2193,8 @@ window._manageAssignConfig = {
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="mb-3">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken()); ?>">
+                    <input type="hidden" name="quick_add_page" value="1">
                         <label class="form-label">Page Name *</label>
                         <input type="text" name="page_name" class="form-control" required placeholder="e.g. Login Page">
                     </div>
@@ -2216,6 +2226,7 @@ window._manageAssignConfig = {
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken()); ?>">
                     <input type="hidden" name="assignment_id" id="editMemberAssignmentId" value="">
                     <input type="hidden" name="project_id" value="<?php echo (int)$projectId; ?>">
 
@@ -2254,6 +2265,7 @@ window._manageAssignConfig = {
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken()); ?>">
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle"></i> This will assign the selected tester/QA and environments to ALL pages in this project at once.
                     </div>
@@ -2340,6 +2352,7 @@ window._manageAssignConfig = {
     <div class="modal-dialog">
         <div class="modal-content text-start">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken()); ?>">
                 <input type="hidden" name="page_id" value="<?php echo $p['id']; ?>">
                 <input type="hidden" name="return_to" value="<?php echo htmlspecialchars($_GET['return_to'] ?? ''); ?>">
                 <div class="modal-header">

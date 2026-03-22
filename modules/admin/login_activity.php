@@ -9,6 +9,11 @@ $auth->requireRole(['admin','super_admin']);
 $db = Database::getInstance();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: login_activity.php');
+        exit;
+    }
     $postAction = trim((string)($_POST['cleanup_action'] ?? ''));
     $redirectTo = strtok($_SERVER['REQUEST_URI'], '?');
     $queryString = $_SERVER['QUERY_STRING'] ?? '';
@@ -138,6 +143,7 @@ require_once __DIR__ . '/../../includes/header.php';
         <div class="card-body py-3">
             <div class="fw-semibold mb-2">Storage Cleanup</div>
             <form method="post" class="row g-2 align-items-end" data-confirm="Delete old login/logout records?">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="cleanup_action" value="purge_old">
                 <div class="col-md-3">
                     <label class="form-label form-label-sm">Delete records older than</label>
@@ -187,6 +193,7 @@ require_once __DIR__ . '/../../includes/header.php';
     <p class="text-muted">Showing <?php echo count($rows); ?> of <?php echo $total; ?> events (Page <?php echo $page; ?> of <?php echo $totalPages; ?>).</p>
 
     <form method="post" data-confirm="Delete selected login activity records?">
+    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
     <input type="hidden" name="cleanup_action" value="delete_selected">
     <div class="d-flex justify-content-between align-items-center mb-2">
         <div class="small text-muted">Select rows and delete selected records if needed.</div>

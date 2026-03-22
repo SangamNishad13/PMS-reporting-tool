@@ -79,6 +79,7 @@ if ($stmt->rowCount() > 0) {
         if ($canManageAssets) {
             $formId = "deleteAssetForm_" . $asset['id'];
             echo '<form id="' . $formId . '" method="POST" action="' . $baseDir . '/modules/projects/handle_asset.php" onsubmit="confirmModal(\'Are you sure you want to delete this asset?\', function(){ document.getElementById(\'' . $formId . '\').submit(); }); return false;" class="d-inline">';
+            echo '<input type="hidden" name="csrf_token" value="' . generateCsrfToken() . '">';
             echo '<input type="hidden" name="project_id" value="' . $projectId . '">';
             echo '<input type="hidden" name="asset_id" value="' . $asset['id'] . '">';
             echo '<input type="hidden" name="delete_asset" value="1">';

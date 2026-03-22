@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/helpers.php';
 
 $auth = new Auth();
 $auth->requireLogin();
@@ -16,6 +17,11 @@ $view = $_GET['view'] ?? 'send';
 
 // Handle feedback submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_feedback'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: feedback.php');
+        exit;
+    }
     $recipientIds = $_POST['recipient_ids'] ?? [];
     $projectId = !empty($_POST['project_id']) ? (int)$_POST['project_id'] : null;
     $isGeneric = isset($_POST['is_generic']) ? 1 : 0;
@@ -139,11 +145,11 @@ include __DIR__ . '/../includes/header.php';
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h2><i class="fas fa-comment-dots"></i> Feedback</h2>
                 <div class="btn-group" role="group">
-                    <a href="<?php echo $_SERVER['PHP_SELF']; ?>?view=send" 
+                    <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>?view=send" 
                        class="btn <?php echo $view === 'send' ? 'btn-primary' : 'btn-outline-primary'; ?>">
                         <i class="fas fa-paper-plane"></i> Send Feedback
                     </a>
-                    <a href="<?php echo $_SERVER['PHP_SELF']; ?>?view=my" 
+                    <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>?view=my" 
                        class="btn <?php echo $view === 'my' ? 'btn-primary' : 'btn-outline-primary'; ?>">
                         <i class="fas fa-list"></i> My Feedback
                     </a>
@@ -172,6 +178,7 @@ include __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="card-body">
                     <form method="POST">
+                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
@@ -262,7 +269,7 @@ include __DIR__ . '/../includes/header.php';
                         <i class="fas fa-inbox fa-3x mb-3"></i>
                         <h5>No feedback found</h5>
                         <p>You have no sent or received feedback yet.</p>
-                        <a href="<?php echo $_SERVER['PHP_SELF']; ?>?view=send" class="btn btn-primary">
+                        <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>?view=send" class="btn btn-primary">
                             <i class="fas fa-paper-plane"></i> Send Your First Feedback
                         </a>
                     </div>
