@@ -161,8 +161,10 @@ header('Content-Type: ' . $mime);
 header('Content-Length: ' . (string)filesize($fullPath));
 header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
 
-// Use output buffering to prevent connection issues
-ob_start();
+// Clear any accidental whitespace or output from included files
+while (ob_get_level()) {
+    ob_end_clean();
+}
+
 readfile($fullPath);
-ob_end_flush();
 exit;
