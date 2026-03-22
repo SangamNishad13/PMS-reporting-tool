@@ -801,6 +801,7 @@ include __DIR__ . '/../../includes/header.php';
 </script>
 
 <?php include 'partials/modals.php'; ?>
+<script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/chat-widget.js'); ?>"></script>
 <?php
     $viewJsBase = __DIR__ . '/js/';
     $viewJsVersion = function ($file) use ($viewJsBase) {
