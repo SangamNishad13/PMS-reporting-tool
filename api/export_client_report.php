@@ -80,9 +80,11 @@ function xstr(string $v): string {
     $v = preg_replace('/\xED[\xA0-\xBF][\x80-\xBF]/s', '', $v);
     // Normalize CR+LF and bare CR to LF
     $v = str_replace(["\r\n", "\r"], "\n", $v);
-    // Encode newlines as XML numeric entity — literal \n is invalid inside <t> elements
+    // Escape XML special chars FIRST (& must be escaped before we insert &#10;)
+    $v = htmlspecialchars($v, ENT_XML1 | ENT_SUBSTITUTE, 'UTF-8');
+    // Now encode newlines as XML numeric entity (after htmlspecialchars so & isn't double-escaped)
     $v = str_replace("\n", '&#10;', $v);
-    return htmlspecialchars($v, ENT_XML1 | ENT_SUBSTITUTE, 'UTF-8');
+    return $v;
 }
 
 /** Build an xlsx inlineStr cell — supports newlines and all text content */
@@ -253,11 +255,11 @@ function stripHtml(string $html): string {
     $text = preg_replace('/<br\s*\/?>/i', "\n", $html);
     $text = preg_replace('/<\/p>/i', "\n", $text);
     $text = preg_replace('/<li\b[^>]*>/i', '• ', $text);
-    // Strip all HTML tags (leaves entity-encoded content like &lt;header&gt; intact)
+    // Strip all HTML tags
     $text = strip_tags($text);
-    // NOW decode entities so &lt;header&gt; → <header> shows as literal text
+    // Decode HTML entities (e.g. &amp; → &, &lt; → <, &#10; → newline)
     $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-    // Collapse whitespace
+    // Collapse multiple spaces/tabs (but preserve newlines for xstr to encode as &#10;)
     $text = preg_replace('/[ \t]+/', ' ', $text);
     $text = preg_replace('/\n{3,}/', "\n\n", $text);
     return trim($text);
