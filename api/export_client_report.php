@@ -198,8 +198,64 @@ function injectRows(string &$xml, string $rows): void {
     $xml = preg_replace('/<dimension\s+ref="[^"]*"\s*\/>/s', '', $xml);
 }
 
+/** Convert a column letter (A, B, ..., Z, AA, ...) to a 1-based integer. */
+function colToNum(string $col): int {
+    $col = strtoupper($col);
+    $n = 0;
+    foreach (str_split($col) as $ch) {
+        $n = $n * 26 + (ord($ch) - ord('A') + 1);
+    }
+    return $n;
+}
+
+/**
+ * Sort cells within a row XML string by column order.
+ * Excel REQUIRES cells within a row to be in strictly increasing column order.
+ * Handles both self-closing <c .../> and normal <c ...>...</c> forms.
+ */
+function sortCellsInRow(string $rowXml): string {
+    // Extract the opening <row ...> tag
+    $openEnd = strpos($rowXml, '>');
+    if ($openEnd === false) return $rowXml;
+    $openTag = substr($rowXml, 0, $openEnd + 1);
+    $inner   = substr($rowXml, $openEnd + 1, -6); // strip </row>
+
+    // Parse cells
+    $cells = [];
+    $offset = 0;
+    $len = strlen($inner);
+    while ($offset < $len) {
+        $cStart = strpos($inner, '<c ', $offset);
+        if ($cStart === false) break;
+        // Get cell ref
+        $cAttrEnd = strpos($inner, '>', $cStart);
+        if ($cAttrEnd === false) break;
+        $cOpenTag = substr($inner, $cStart, $cAttrEnd - $cStart + 1);
+        if (!preg_match('/\br="([A-Z]+)(\d+)"/', $cOpenTag, $cm)) { $offset = $cAttrEnd + 1; continue; }
+        $colLetter = $cm[1];
+        $colNum = colToNum($colLetter);
+
+        // Self-closing cell?
+        if (substr($cOpenTag, -2) === '/>') {
+            $cells[$colNum] = $cOpenTag;
+            $offset = $cAttrEnd + 1;
+            continue;
+        }
+        // Normal cell — find </c>
+        $cClose = strpos($inner, '</c>', $cAttrEnd);
+        if ($cClose === false) break;
+        $cells[$colNum] = substr($inner, $cStart, $cClose + 4 - $cStart);
+        $offset = $cClose + 4;
+    }
+
+    if (empty($cells)) return $rowXml;
+    ksort($cells, SORT_NUMERIC);
+    return $openTag . implode('', $cells) . '</row>';
+}
+
 /** Remove duplicate rows or out-of-order rows.
  *  Excel REQUIRES rows in a worksheet to be in strictly increasing order of the 'r' attribute.
+ *  Also sorts cells within each row by column order (Excel requirement).
  */
 function sortRows(string &$xml): void {
     $startTag = '<sheetData>';
@@ -246,7 +302,9 @@ function sortRows(string &$xml): void {
     }
 
     ksort($rows, SORT_NUMERIC);
-    $xml = substr($xml, 0, $contentStart) . implode('', $rows) . substr($xml, $endPos);
+    // Sort cells within each row to satisfy Excel's column-order requirement
+    $sorted = array_map('sortCellsInRow', $rows);
+    $xml = substr($xml, 0, $contentStart) . implode('', $sorted) . substr($xml, $endPos);
 }
 
 /** Remove all data rows (row 2 onwards), keep header row 1.
