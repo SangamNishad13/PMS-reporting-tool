@@ -109,4 +109,3 @@ try {
     echo json_encode(['success' => false, 'error' => 'An internal error occurred']);
 }
 
-?>

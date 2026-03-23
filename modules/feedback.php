@@ -421,4 +421,4 @@ include __DIR__ . '/../includes/header.php';
 
 <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/feedback.js"></script>
 
-<?php include __DIR__ . '/../includes/footer.php'; ?>
+<?php include __DIR__ . '/../includes/footer.php'; 

@@ -146,4 +146,4 @@ window.selectedProjectId = '<?php echo $selectedProjectId ?? ""; ?>';
 window.baseUrl = '<?php echo $baseDir; ?>';
 if (typeof initializeDashboard === "function") initializeDashboard();
 </script>
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; 

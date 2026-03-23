@@ -212,4 +212,4 @@ window.ProjectConfig = window.ProjectConfig || { projectId: <?php echo json_enco
 <?php
 endif; ?>
 
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; 

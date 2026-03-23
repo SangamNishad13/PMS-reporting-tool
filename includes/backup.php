@@ -254,4 +254,3 @@ class BackupManager {
         return round($bytes, 2) . ' ' . $units[$pow];
     }
 }
-?>

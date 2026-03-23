@@ -68,4 +68,3 @@ if ($userRole === 'admin' || $userRole === 'admin') {
 } else {
     redirect($baseDir . "/index.php");
 }
-?>

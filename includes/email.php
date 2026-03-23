@@ -387,4 +387,3 @@ class EmailSender {
         return $this->send($userEmail, $subject, $body, true);
     }
 }
-?>

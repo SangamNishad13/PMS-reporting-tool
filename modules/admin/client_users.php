@@ -533,4 +533,4 @@ include __DIR__ . '/../../includes/header.php';
 
 <script src="<?php echo $baseDir; ?>/assets/js/client-users.js?v=<?php echo time(); ?>"></script>
 
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; 

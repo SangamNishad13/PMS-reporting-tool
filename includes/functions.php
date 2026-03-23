@@ -709,4 +709,3 @@ function renderUserNameLink($user) {
     return '<a href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</a>';
 }
 
-?>

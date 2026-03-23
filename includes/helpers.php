@@ -1016,4 +1016,3 @@ function get_geo_info($ip) {
         return [];
     }
 }
-?>

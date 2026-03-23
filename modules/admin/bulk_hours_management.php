@@ -450,4 +450,4 @@ window.BulkHoursConfig = {
 }
 </style>
 
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; 

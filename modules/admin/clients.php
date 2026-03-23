@@ -230,4 +230,4 @@ div.dataTables_length select {
     </div>
 </div>
 
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; 

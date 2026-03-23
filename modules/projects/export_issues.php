@@ -808,4 +808,4 @@ window.ProjectConfig = window.ProjectConfig || { projectId: <?php echo json_enco
 })();
 </script>
 
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; 

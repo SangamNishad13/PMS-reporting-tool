@@ -296,4 +296,3 @@ function getClientsWithPermission($db, $userId, $permissionType) {
         return [];
     }
 }
-?>

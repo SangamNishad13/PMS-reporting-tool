@@ -795,4 +795,3 @@ function normalizeUrlForGrouping($u) {
     return mb_strtolower($u);
 }
 
-?>

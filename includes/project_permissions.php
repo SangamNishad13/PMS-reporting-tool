@@ -846,4 +846,3 @@ function revokeQaStatusPermission($db, $permissionId) {
     $stmt = $db->prepare("UPDATE qa_status_permissions SET is_active = 0, updated_at = NOW() WHERE id = ?");
     return $stmt->execute([(int)$permissionId]);
 }
-?>

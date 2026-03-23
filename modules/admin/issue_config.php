@@ -269,4 +269,4 @@ include __DIR__ . '/../../includes/header.php';
 <script>window._issueConfigData = { baseDir: '<?php echo $baseDir; ?>' };</script>
 <script src="<?php echo $baseDir; ?>/assets/js/admin-issue-config.js"></script>
 
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; 

@@ -224,4 +224,4 @@ include '../../includes/header.php';
 window.HoursComplianceConfig = { apiUrl: '../../api/hours_reminder.php' };
 </script>
 <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/hours-compliance.js"></script>
-<?php include '../../includes/footer.php'; ?>
+<?php include '../../includes/footer.php'; 

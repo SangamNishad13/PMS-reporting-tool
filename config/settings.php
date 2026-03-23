@@ -68,4 +68,3 @@ return [
         return !in_array(strtolower(trim((string)$v)), ['0', 'false', 'no', 'off'], true);
     })(),
 ];
-?>

@@ -58,4 +58,3 @@ if (in_array($userRole, ['admin'])) {
     redirect($baseDir . "/index.php");
 }
 exit;
-?>

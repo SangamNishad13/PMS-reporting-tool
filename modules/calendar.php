@@ -706,4 +706,4 @@ window._calendarConfig = {
 <script src="<?php echo $baseDir; ?>/assets/js/calendar.js"></script>
 
 
-<?php include __DIR__ . '/../includes/footer.php'; ?>
+<?php include __DIR__ . '/../includes/footer.php'; 

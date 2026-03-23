@@ -406,4 +406,4 @@ body.chat-modal-open .chat-widget { visibility: hidden !important; pointer-event
 
 <script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>
 
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; 

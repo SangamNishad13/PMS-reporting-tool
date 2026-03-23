@@ -13,4 +13,3 @@ $query = $_SERVER['QUERY_STRING'] ?? '';
 $target = $baseDir . '/modules/admin/performance.php' . ($query ? ('?' . $query) : '');
 header('Location: ' . $target);
 exit;
-?>

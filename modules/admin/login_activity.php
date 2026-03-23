@@ -308,4 +308,3 @@ require_once __DIR__ . '/../../includes/header.php';
 <script src="<?php echo getBaseDir(); ?>/assets/js/login-activity.js?v=<?php echo time(); ?>"></script>
 <?php require_once __DIR__ . '/../../includes/footer.php';
 
-?>

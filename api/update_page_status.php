@@ -158,4 +158,3 @@ try {
     error_log("Page Status Update API Error: " . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'A database error occurred']);
 }
-?>

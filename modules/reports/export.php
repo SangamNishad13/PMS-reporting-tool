@@ -282,4 +282,3 @@ function exportAll($output, $startDate, $endDate) {
     fputcsv($output, ['PAGE STATISTICS']);
     exportPageStats($output, $startDate, $endDate);
 }
-?>

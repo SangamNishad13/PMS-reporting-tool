@@ -2187,4 +2187,4 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
 <script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>
 <?php endif; ?>
 
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; 

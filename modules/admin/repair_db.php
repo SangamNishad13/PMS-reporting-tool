@@ -49,4 +49,3 @@ foreach ($fixes as $sql) {
 
 echo "<p><strong>Database repair complete.</strong> You should now be able to delete projects without errors.</p>";
 echo "<a href='dashboard.php'>Back to Dashboard</a>";
-?>

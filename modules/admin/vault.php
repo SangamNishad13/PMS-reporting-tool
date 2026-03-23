@@ -281,4 +281,4 @@ include '../../includes/header.php';
 <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
 <script src="../../assets/js/admin-vault.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/admin-vault.js'); ?>"></script>
 
-<?php include '../../includes/footer.php'; ?>
+<?php include '../../includes/footer.php'; 

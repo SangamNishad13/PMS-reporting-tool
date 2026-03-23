@@ -2494,4 +2494,4 @@ jQuery(function ($) {
 
 <!-- manage-assignments.js handles multiselect delete -->
 
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; 

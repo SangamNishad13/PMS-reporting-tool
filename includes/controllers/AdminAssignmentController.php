@@ -551,4 +551,3 @@ class AdminAssignmentController {
         exit;
     }
 }
-?>

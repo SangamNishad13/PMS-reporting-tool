@@ -462,4 +462,4 @@ require_once __DIR__ . '/../../includes/header.php';
     <script>window._activeSessionsConfig = { baseDir: "<?php echo getBaseDir(); ?>" };</script>
     <script src="<?php echo getBaseDir(); ?>/assets/js/active-sessions.js?v=<?php echo time(); ?>"></script>
 
-<?php require_once __DIR__ . '/../../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../../includes/footer.php'; 

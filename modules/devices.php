@@ -199,4 +199,4 @@ window.DevicesConfig = { currentUserId: <?php echo (int)$_SESSION['user_id']; ?>
 </script>
 <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/devices.js"></script>
 
-<?php include '../includes/footer.php'; ?>
+<?php include '../includes/footer.php'; 

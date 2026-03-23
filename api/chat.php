@@ -305,4 +305,3 @@ function handlePostChat() {
         jsonError('An error occurred while sending message', 500);
     }
 }
-?>

@@ -386,4 +386,4 @@ include __DIR__ . '/../../includes/header.php';
 
 <script src="<?php echo getBaseDir(); ?>/assets/js/env-status-master.js?v=<?php echo time(); ?>"></script>
 
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; 

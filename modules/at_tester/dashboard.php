@@ -451,4 +451,4 @@ include __DIR__ . '/../../includes/header.php';
 <script>window._chatConfig = { fullSrc: <?php echo json_encode($chatFullSrc); ?> };</script>
 <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>
 
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php include __DIR__ . '/../../includes/footer.php'; 

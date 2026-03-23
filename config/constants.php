@@ -46,4 +46,3 @@ if (!defined('UPLOAD_PATH')) {
     define('UPLOAD_PATH', rtrim($uploadBase, '/\\') . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR);
 }
 define('MAX_UPLOAD_SIZE', 5242880); // 5MB
-?>

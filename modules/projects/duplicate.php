@@ -152,4 +152,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $projectId > 0) {
 
 header("Location: " . $baseDir . "/modules/admin/projects.php");
 exit;
-?>

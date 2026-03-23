@@ -178,4 +178,3 @@ catch (Exception $e) {
     error_log('Admin QA breakdown query failed: ' . $e->getMessage());
     echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
 }
-?>

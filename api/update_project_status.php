@@ -117,4 +117,3 @@ try {
     error_log("Update project status general error: " . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'An error occurred']);
 }
-?>

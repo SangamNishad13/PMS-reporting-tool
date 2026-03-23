@@ -1217,4 +1217,4 @@ if (!$embed) {
 <?php else: ?>
     </body>
     </html>
-<?php endif; ?>
+<?php endif; 

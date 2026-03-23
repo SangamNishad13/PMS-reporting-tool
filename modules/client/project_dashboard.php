@@ -107,4 +107,3 @@ $pageContent = ob_get_clean();
 
 // Include the complete page template
 include __DIR__ . '/../../includes/client_page_template.php';
-?>

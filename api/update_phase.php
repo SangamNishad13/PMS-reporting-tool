@@ -70,4 +70,3 @@ try {
     error_log("Phase Update API Error: " . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'Database error']);
 }
-?>
