@@ -565,13 +565,11 @@ foreach ($filteredIssues as $iss) {
         }
     }
 
-    // Severity — use meta field first, then issue severity column; skip blank (don't show empty row)
+    // Severity — use meta field first, then issue severity column; empty → "Missing Severity Info"
     $rawSev = trim(metaFirst($meta, 'severity'));
     if ($rawSev === '') $rawSev = trim((string)($iss['severity'] ?? ''));
-    if ($rawSev !== '') {
-        $sev = ucfirst(strtolower($rawSev));
-        $severityCounts[$sev] = ($severityCounts[$sev] ?? 0) + 1;
-    }
+    $sev = $rawSev !== '' ? ucfirst(strtolower($rawSev)) : 'Missing Severity Info';
+    $severityCounts[$sev] = ($severityCounts[$sev] ?? 0) + 1;
 
     $issuesWithMeta[] = [
         'title'    => $iss['title'],
