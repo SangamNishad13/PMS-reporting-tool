@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../includes/functions.php';
 $auth = new Auth();
 $auth->requireRole(['admin', 'project_lead']);
 
+/** @var PDO $db */
 $db = Database::getInstance();
 $baseDir = getBaseDir();
 

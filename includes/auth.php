@@ -168,7 +168,13 @@ class Auth {
             }
         } catch (Exception $e) {
             error_log('Login rate-limit DB check failed: ' . $e->getMessage());
-            return 'locked';
+            // If table is missing, don't block everyone. 
+            // Only block if we actually found a 'locked' state in the try block above.
+            if (strpos($e->getMessage(), '1146') !== false) {
+                // Table doesn't exist - don't block, but log it
+            } else {
+                return 'locked';
+            }
         }
         
         $stmt = $this->db->prepare("

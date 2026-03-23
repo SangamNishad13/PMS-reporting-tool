@@ -151,8 +151,10 @@ class CommentedIssuesAnalytics extends AnalyticsEngine {
      */
     private function getIssueComments($issueId) {
         try {
-            $pdo = $this->getDatabase();
-            $stmt = $pdo->prepare("
+            if (!$this->pdo) {
+                return [];
+            }
+            $stmt = $this->pdo->prepare("
                 SELECT 
                     id,
                     issue_id,

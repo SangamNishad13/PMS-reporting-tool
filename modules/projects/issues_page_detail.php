@@ -1116,24 +1116,31 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
 
         function renderTextWithCodeTags(inputText) {
             var txt = String(inputText || '');
-            var tokens = txt.split(/(<\/?[a-z][^>]*>)/gi);
-            return tokens.map(function (t) {
-                if (/^<\/?[a-z][^>]*>$/i.test(t)) {
-                    return '<code>' + esc(t) + '</code>';
+            var chunks = txt.split(/(<code>[\s\S]*?<\/code>)/i);
+            return chunks.map(function (chunk) {
+                if (/^<code>([\s\S]*)<\/code>$/i.test(chunk)) {
+                    var inner = chunk.replace(/^<code>/i, '').replace(/<\/code>$/i, '');
+                    return '<code>' + esc(inner) + '</code>';
                 }
-                var s = esc(t);
-                // Wrap complete attribute assignments first, then standalone aria/role tokens.
-                s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&quot;[^&]+&quot;/g, function (m) { return '<code>' + m + '</code>'; });
-                s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&#39;[^&]+&#39;/g, function (m) { return '<code>' + m + '</code>'; });
-                var parts = s.split(/(<code>[\s\S]*?<\/code>)/i);
-                s = parts.map(function (part) {
-                    if (/^<code>[\s\S]*<\/code>$/i.test(part)) return part;
-                    var out = part;
-                    out = out.replace(/\baria-[a-z-]+\b/gi, function (m) { return '<code>' + m + '</code>'; });
-                    out = out.replace(/\brole\b/gi, function (m) { return '<code>' + m + '</code>'; });
-                    return out;
+                var tokens = chunk.split(/(<\/?[a-z][^>]*>)/gi);
+                return tokens.map(function (t) {
+                    if (/^<\/?[a-z][^>]*>$/i.test(t)) {
+                        return '<code>' + esc(t) + '</code>';
+                    }
+                    var s = esc(t);
+                    // Wrap complete attribute assignments first, then standalone aria/role tokens.
+                    s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&quot;[^&]+&quot;/g, function (m) { return '<code>' + m + '</code>'; });
+                    s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&#39;[^&]+&#39;/g, function (m) { return '<code>' + m + '</code>'; });
+                    var parts = s.split(/(<code>[\s\S]*?<\/code>)/i);
+                    s = parts.map(function (part) {
+                        if (/^<code>[\s\S]*<\/code>$/i.test(part)) return part;
+                        var out = part;
+                        out = out.replace(/\baria-[a-z-]+\b/gi, function (m) { return '<code>' + m + '</code>'; });
+                        out = out.replace(/\brole\b/gi, function (m) { return '<code>' + m + '</code>'; });
+                        return out;
+                    }).join('');
+                    return s;
                 }).join('');
-                return s;
             }).join('');
         }
 
@@ -1199,23 +1206,30 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
 
         function renderTextWithCodeTags(inputText) {
             var txt = String(inputText || '');
-            var tokens = txt.split(/(<\/?[a-z][^>]*>)/gi);
-            return tokens.map(function (t) {
-                if (/^<\/?[a-z][^>]*>$/i.test(t)) {
-                    return '<code>' + esc(t) + '</code>';
+            var chunks = txt.split(/(<code>[\s\S]*?<\/code>)/i);
+            return chunks.map(function (chunk) {
+                if (/^<code>([\s\S]*)<\/code>$/i.test(chunk)) {
+                    var inner = chunk.replace(/^<code>/i, '').replace(/<\/code>$/i, '');
+                    return '<code>' + esc(inner) + '</code>';
                 }
-                var s = esc(t);
-                s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&quot;[^&]+&quot;/g, function (m) { return '<code>' + m + '</code>'; });
-                s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&#39;[^&]+&#39;/g, function (m) { return '<code>' + m + '</code>'; });
-                var parts = s.split(/(<code>[\s\S]*?<\/code>)/i);
-                s = parts.map(function (part) {
-                    if (/^<code>[\s\S]*<\/code>$/i.test(part)) return part;
-                    var out = part;
-                    out = out.replace(/\baria-[a-z-]+\b/gi, function (m) { return '<code>' + m + '</code>'; });
-                    out = out.replace(/\brole\b/gi, function (m) { return '<code>' + m + '</code>'; });
-                    return out;
+                var tokens = chunk.split(/(<\/?[a-z][^>]*>)/gi);
+                return tokens.map(function (t) {
+                    if (/^<\/?[a-z][^>]*>$/i.test(t)) {
+                        return '<code>' + esc(t) + '</code>';
+                    }
+                    var s = esc(t);
+                    s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&quot;[^&]+&quot;/g, function (m) { return '<code>' + m + '</code>'; });
+                    s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&#39;[^&]+&#39;/g, function (m) { return '<code>' + m + '</code>'; });
+                    var parts = s.split(/(<code>[\s\S]*?<\/code>)/i);
+                    s = parts.map(function (part) {
+                        if (/^<code>[\s\S]*<\/code>$/i.test(part)) return part;
+                        var out = part;
+                        out = out.replace(/\baria-[a-z-]+\b/gi, function (m) { return '<code>' + m + '</code>'; });
+                        out = out.replace(/\brole\b/gi, function (m) { return '<code>' + m + '</code>'; });
+                        return out;
+                    }).join('');
+                    return s;
                 }).join('');
-                return s;
             }).join('');
         }
 
@@ -1287,6 +1301,9 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             }
 
             function onConfirm() {
+                if (document.activeElement && document.activeElement !== document.body) {
+                    document.activeElement.blur();
+                }
                 finish(true);
                 bsModal.hide();
             }
@@ -1538,32 +1555,20 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         var rec = String(finding.recommendation || '').trim();
         var correct = String(finding.correct_code || '').trim();
 
-        // Keep final issue formatting stable: swap issue headline with recommendation text
-        // (as requested) and preserve line breaks after moving to Final Issues.
-        var actualLines = actual.split(/\r?\n/);
-        var firstActualLine = '';
-        for (var i = 0; i < actualLines.length; i++) {
-            var ln = String(actualLines[i] || '').trim();
-            if (ln !== '') { firstActualLine = ln; break; }
-        }
-        if (rec && firstActualLine && rec.toLowerCase() !== firstActualLine.toLowerCase()) {
-            actual = actual.replace(firstActualLine, rec);
-            rec = firstActualLine;
-        }
 
         return [
             '<p><strong>[Actual Results]</strong></p>',
-            '<pre class="mb-0" style="white-space: pre-wrap;"><code>' + esc(actual) + '</code></pre>',
+            '<div class="mb-2">' + (typeof renderActualResultsHtml === 'function' ? renderActualResultsHtml(actual, '') : '<p>' + esc(actual) + '</p>') + '</div>',
             '<p><strong>[Incorrect Code]</strong></p>',
             incorrectCodeHtml,
             '<p><strong>[Screenshots]</strong></p>',
             screenshots.length
                 ? ('<div class="issue-image-grid">' + screenshots.map(function (u, idx) {
-                    return '<img loading="lazy" src="' + esc(u) + '" alt="Screenshot ' + (idx + 1) + '" class="issue-image-thumb">';
+                    return '<img loading="lazy" src="' + esc(u) + '" alt="Screenshot ' + (idx + 1) + '" class="issue-image-thumb" onerror="this.style.display=\'none\'">';
                 }).join('') + '</div>')
                 : '<p></p>',
             '<p><strong>[Recommendation]</strong></p>',
-            '<p>' + esc(rec) + '</p>',
+            '<div class="mb-2">' + (typeof renderRecommendationHtml === 'function' ? renderRecommendationHtml(rec, '') : '<p>' + esc(rec) + '</p>') + '</div>',
             '<p><strong>[Correct Code]</strong></p>',
             '<code class="needs-review-inline-code">' + esc(correct || '-') + '</code>'
         ].join('\n');
@@ -1708,7 +1713,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                     + '<div class="mb-2"><strong>Incorrect Code</strong><div class="p-2 bg-light border rounded">' + renderIncorrectCodeBlocks(finding, 'mb-2') + '</div></div>'
                     + '<div class="mb-2"><strong>Recommendation</strong><div class="p-2 bg-light border rounded">' + renderRecommendationHtml(finding.recommendation, '-') + '</div></div>'
                     + '<div class="mb-2"><strong>Correct Code</strong><div class="p-2 bg-light border rounded"><code class="needs-review-inline-code mb-0">' + esc(String(finding.correct_code || '-')) + '</code></div></div>'
-                    + '<div><strong>Screenshots</strong><div class="mt-2 d-flex flex-wrap gap-2">' + (shots.length ? shots.map(function (u) { return '<img src="' + esc(u) + '" class="img-thumbnail needs-review-preview-image" style="max-height:180px;" data-src="' + esc(u) + '">'; }).join('') : '<span class="text-muted">No screenshots</span>') + '</div></div>';
+                    + '<div><strong>Screenshots</strong><div class="mt-2 d-flex flex-wrap gap-2">' + (shots.length ? shots.map(function (u) { return '<img src="' + esc(u) + '" class="img-thumbnail needs-review-preview-image" style="max-height:180px;" data-src="' + esc(u) + '" onerror="this.style.display=\'none\';">'; }).join('') : '<span class="text-muted">No screenshots</span>') + '</div></div>';
                 body.querySelectorAll('.needs-review-preview-image').forEach(function (img) {
                     img.addEventListener('click', function (ev) {
                         ev.preventDefault();
@@ -1729,7 +1734,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                 var shotHtml = shots.length
                     ? ('<div class="needs-review-shot-stack">'
                         + visibleShots.map(function (u) {
-                            return '<img loading="lazy" src="' + esc(u) + '" alt="Finding screenshot" class="needs-review-shot" onclick="event.stopPropagation(); if (typeof openImagePopup === \'function\') openImagePopup(this.src, this.alt);">';
+                            return '<img loading="lazy" src="' + esc(u) + '" alt="Finding screenshot" class="needs-review-shot" onerror="this.style.display=\'none\';" onclick="event.stopPropagation(); if (typeof openImagePopup === \'function\') openImagePopup(this.src, this.alt);">';
                         }).join('')
                         + (extraShots > 0 ? '<span class="needs-review-extra-badge">+' + extraShots + '</span>' : '')
                         + '</div>')

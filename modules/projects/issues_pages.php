@@ -441,8 +441,7 @@ include __DIR__ . '/../../includes/header.php';
                                 data-page-env="<?php echo htmlspecialchars($envs ?: '-'); ?>"
                                 data-page-status="<?php echo htmlspecialchars($pageStatusLabel); ?>"
                                 data-page-issues="<?php echo $count; ?>"
-                                style="cursor: pointer;"
-                                onclick="window.location.href='<?php echo $baseDir; ?>/modules/projects/issues_page_detail.php?project_id=<?php echo $projectId; ?>&page_id=<?php echo (int)$mappedPageId; ?>'">
+                                style="cursor: pointer;">
                                 <td class="text-muted"><?php echo $rowNum++; ?></td>
                                 <td>
                                     <span class="badge bg-primary-subtle text-primary">
@@ -478,8 +477,7 @@ include __DIR__ . '/../../includes/header.php';
                                             type="button" 
                                             data-bs-toggle="collapse" 
                                             data-bs-target="#urls-<?php echo (int)$u['unique_id']; ?>" 
-                                            aria-expanded="false"
-                                            onclick="event.stopPropagation();">
+                                            aria-expanded="false">
                                         <i class="fas fa-link me-1"></i> <?php echo $urlCount; ?>
                                     </button>
                                     <?php else: ?>
@@ -553,8 +551,18 @@ include __DIR__ . '/partials/issues_modals.php';
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 
 <script nonce="<?php echo $cspNonce ?? ''; ?>">
-// Filters for issues_pages.php
+// Row clicks and Filters for issues_pages.php
 (function() {
+    $(document).on('click', '.issues-page-row', function(e) {
+        // Prevent action if clicking inside a button, link, or input
+        if ($(e.target).closest('button, a, input, select').length) return;
+        var pageId = $(this).data('page-id');
+        var projectId = window.ProjectConfig ? window.ProjectConfig.projectId : null;
+        if (projectId && pageId) {
+            window.location.href = window.ProjectConfig.baseDir + '/modules/projects/issues_page_detail.php?project_id=' + projectId + '&page_id=' + pageId;
+        }
+    });
+
     function updateIssuesPagesNoDataRow() {
         var $tbody = $('#issuesPageList table tbody');
         if (!$tbody.length) return;

@@ -7,6 +7,7 @@ $auth = new Auth();
 $auth->requireLogin();
 
 $projectManager = new ProjectManager();
+/** @var PDO $db */
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 

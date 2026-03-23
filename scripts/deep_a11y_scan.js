@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
 function loadLocalEngineSource() {
@@ -175,13 +175,10 @@ function normalizeIssueDescription(description, recommendation, ruleId) {
 
 function formatActualResults(url, description, groupedFailures, recommendation, ruleId) {
   const lines = [];
-  const cleanedDescription = normalizeIssueDescription(description, recommendation, ruleId);
-  if (cleanedDescription) lines.push(cleanedDescription);
-  lines.push("");
   lines.push(`URL: ${url}`);
     const groups = Array.isArray(groupedFailures) ? groupedFailures : [];
   if (!groups.length) {
-    lines.push("");
+    lines.push('');
     lines.push('- "No instance details available" in "page section"');
     return lines.join("\n");
   }
@@ -189,7 +186,7 @@ function formatActualResults(url, description, groupedFailures, recommendation, 
   for (const g of groups) {
     const summary = simplifyFailureSummary(g && g.summary ? g.summary : "", ruleId);
     const instances = Array.isArray(g && g.instances) ? g.instances : [];
-    lines.push("");
+    lines.push('');
     if (summary) lines.push(summary);
     if (instances.length) {
       for (const item of instances) {
@@ -201,7 +198,7 @@ function formatActualResults(url, description, groupedFailures, recommendation, 
       lines.push('- "No instance details available" in Page section');
     }
     // Leave one blank line after each issue summary block for readability.
-    lines.push("");
+    lines.push('');
   }
   return lines.join("\n");
 }
