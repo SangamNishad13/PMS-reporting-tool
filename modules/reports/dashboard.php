@@ -65,17 +65,36 @@ foreach ($statusCountRows as $row) {
     $statusCounts[(string)$row['status_key']] = (int)$row['total'];
 }
 
-// 1b. Filtered Projects List (if status is clicked)
+// 1b. Filtered Projects List (if status is clicked OR total projects clicked)
+$showProjectList = !empty($filterStatus) || isset($_GET['show_all']);
 $filteredProjects = [];
-if (!empty($filterStatus)) {
-    $fpWhere = "(p.status = ? OR (? = 'not_started' AND (p.status IS NULL OR p.status = '' OR p.status = 'not_started')))";
-    $fpParams = [$filterStatus, $filterStatus];
+$fpTotalCount = 0;
+$fpPage = max(1, (int)($_GET['fp_page'] ?? 1));
+$fpPerPage = 15;
+$fpOffset = ($fpPage - 1) * $fpPerPage;
+
+if ($showProjectList) {
+    if (!empty($filterStatus)) {
+        $fpWhere = "(p.status = ? OR (? = 'not_started' AND (p.status IS NULL OR p.status = '' OR p.status = 'not_started')))";
+        $fpParams = [$filterStatus, $filterStatus];
+        $fpCountParams = [$filterStatus, $filterStatus];
+    } else {
+        // show_all: all projects
+        $fpWhere = "1=1";
+        $fpParams = [];
+        $fpCountParams = [];
+    }
     if ($projectId > 0) {
         $fpWhere .= " AND p.id = ?";
         $fpParams[] = $projectId;
+        $fpCountParams[] = $projectId;
     }
-    
+
     try {
+        $fpCountStmt = $db->prepare("SELECT COUNT(*) FROM projects p WHERE $fpWhere");
+        $fpCountStmt->execute($fpCountParams);
+        $fpTotalCount = (int)$fpCountStmt->fetchColumn();
+
         $fpStmt = $db->prepare("
             SELECT p.*, c.name as client_name, u.full_name as lead_name,
                 (SELECT phase_name FROM project_phases ph WHERE ph.project_id = p.id AND ph.status = 'in_progress' ORDER BY ph.start_date DESC LIMIT 1) as current_phase
@@ -84,6 +103,7 @@ if (!empty($filterStatus)) {
             LEFT JOIN users u ON p.project_lead_id = u.id
             WHERE $fpWhere
             ORDER BY p.title ASC
+            LIMIT $fpPerPage OFFSET $fpOffset
         ");
         $fpStmt->execute($fpParams);
         $filteredProjects = $fpStmt->fetchAll();
@@ -93,12 +113,18 @@ if (!empty($filterStatus)) {
 }
 
 
-// 2. Project completion by type
-$whereType = "(created_at BETWEEN ? AND ? OR updated_at BETWEEN ? AND ?)";
-$paramsType = [$startDate, $dateExtendedEnd, $startDate, $dateExtendedEnd];
+// 2. Project completion by type — no date filter so it matches stat card counts
+$whereType = "1=1";
+$paramsType = [];
 if ($projectId > 0) {
     $whereType .= " AND p.id = ?";
     $paramsType[] = $projectId;
+}
+// Apply status filter if set
+if (!empty($filterStatus)) {
+    $whereType .= " AND (p.status = ? OR (? = 'not_started' AND (p.status IS NULL OR p.status = '' OR p.status = 'not_started')))";
+    $paramsType[] = $filterStatus;
+    $paramsType[] = $filterStatus;
 }
 
 $completionByType = [];
@@ -131,6 +157,7 @@ try {
             ];
         }
         $completionMap[$type]['total']++;
+        // Only count completed for completion_rate when no status filter is active
         if ($p['status'] === 'completed') {
             $completionMap[$type]['completed']++;
         }
@@ -143,7 +170,7 @@ try {
         ];
     }
     foreach ($completionMap as &$typeData) {
-        if ($typeData['total'] > 0) {
+        if ($typeData['total'] > 0 && empty($filterStatus)) {
             $typeData['completion_rate'] = round(($typeData['completed'] * 100.0) / $typeData['total'], 2);
         }
     }
@@ -332,16 +359,15 @@ include __DIR__ . '/../../includes/header.php';
     </div>
     
     <!-- Statistics Cards -->
-    <div class="row mb-3">
+    <div class="row mb-3" id="stat-cards-row">
         <div class="col-md-3">
-            <a href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo (int)$projectId; ?>" class="text-decoration-none">
-                <div class="card text-center bg-primary text-white dashboard-stat-card <?php echo empty($filterStatus) ? 'active-filter' : ''; ?>">
-                    <div class="card-body">
-                        <h3><?php echo $stats['total_projects']; ?></h3>
-                        <p class="mb-0">Total Projects</p>
-                    </div>
+            <div class="card text-center bg-primary text-white dashboard-stat-card stat-filter-card <?php echo (empty($filterStatus) && isset($_GET['show_all'])) ? 'active-filter' : ''; ?>"
+                 data-status="" data-show-all="1" style="cursor:pointer">
+                <div class="card-body">
+                    <h3><?php echo $stats['total_projects']; ?></h3>
+                    <p class="mb-0">Total Projects</p>
                 </div>
-            </a>
+            </div>
         </div>
         <?php foreach ($projectStatusOptions as $opt): ?>
             <?php
@@ -353,14 +379,13 @@ include __DIR__ . '/../../includes/header.php';
                 $textClass = in_array($badgeClass, ['warning', 'info', 'light'], true) ? 'text-dark' : 'text-white';
             ?>
             <div class="col-md-3">
-                <a href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo (int)$projectId; ?>&status=<?php echo urlencode($statusKey); ?>" class="text-decoration-none">
-                    <div class="card text-center bg-<?php echo $badgeClass; ?> <?php echo $textClass; ?> dashboard-stat-card <?php echo $filterStatus === $statusKey ? 'active-filter' : ''; ?>">
-                        <div class="card-body">
-                            <h3><?php echo $statusCount; ?></h3>
-                            <p class="mb-0"><?php echo htmlspecialchars($statusLabel); ?></p>
-                        </div>
+                <div class="card text-center bg-<?php echo $badgeClass; ?> <?php echo $textClass; ?> dashboard-stat-card stat-filter-card <?php echo $filterStatus === $statusKey ? 'active-filter' : ''; ?>"
+                     data-status="<?php echo htmlspecialchars($statusKey); ?>" data-show-all="" style="cursor:pointer">
+                    <div class="card-body">
+                        <h3><?php echo $statusCount; ?></h3>
+                        <p class="mb-0"><?php echo htmlspecialchars($statusLabel); ?></p>
                     </div>
-                </a>
+                </div>
             </div>
         <?php endforeach; ?>
     </div>
@@ -380,12 +405,22 @@ include __DIR__ . '/../../includes/header.php';
         }
     </style>
 
-    <?php if (!empty($filterStatus)): ?>
-    <!-- Filtered Project List -->
-    <div class="card mb-4 border-<?php echo projectStatusBadgeClass($filterStatus); ?>">
-        <div class="card-header bg-<?php echo projectStatusBadgeClass($filterStatus); ?> text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Projects: <?php echo htmlspecialchars($projectStatusLabelMap[$filterStatus] ?? formatProjectStatusLabel($filterStatus)); ?></h5>
-            <a href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo (int)$projectId; ?>" class="btn btn-sm btn-light">Clear Status Filter</a>
+    <!-- Project List Container (AJAX updated) -->
+    <div id="project-list-container">
+    <?php if ($showProjectList): 
+        $fpTotalPages = $fpTotalCount > 0 ? ceil($fpTotalCount / $fpPerPage) : 1;
+        $fpListTitle = !empty($filterStatus) 
+            ? 'Projects: ' . htmlspecialchars($projectStatusLabelMap[$filterStatus] ?? formatProjectStatusLabel($filterStatus))
+            : 'All Projects';
+        $fpHeaderClass = !empty($filterStatus) ? projectStatusBadgeClass($filterStatus) : 'primary';
+        $fpClearUrl = '?start_date=' . urlencode($startDate) . '&end_date=' . urlencode($endDate) . '&project_id=' . (int)$projectId;
+        $fpPaginationBase = '?start_date=' . urlencode($startDate) . '&end_date=' . urlencode($endDate) . '&project_id=' . (int)$projectId . '&status=' . urlencode($filterStatus) . (isset($_GET['show_all']) ? '&show_all=1' : '');
+    ?>
+    <!-- Filtered / All Project List -->
+    <div class="card mb-4 border-<?php echo $fpHeaderClass; ?>">
+        <div class="card-header bg-<?php echo $fpHeaderClass; ?> text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><?php echo $fpListTitle; ?> <span class="badge bg-light text-dark ms-2"><?php echo $fpTotalCount; ?></span></h5>
+            <a href="<?php echo $fpClearUrl; ?>" class="btn btn-sm btn-light">Clear Filter</a>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -403,7 +438,7 @@ include __DIR__ . '/../../includes/header.php';
                     </thead>
                     <tbody>
                         <?php if (empty($filteredProjects)): ?>
-                        <tr><td colspan="6" class="text-center py-4">No projects found with status "<?php echo htmlspecialchars($projectStatusLabelMap[$filterStatus] ?? formatProjectStatusLabel($filterStatus)); ?>"</td></tr>
+                        <tr><td colspan="7" class="text-center py-4">No projects found.</td></tr>
                         <?php else: ?>
                             <?php foreach ($filteredProjects as $fp): ?>
                             <tr>
@@ -428,17 +463,49 @@ include __DIR__ . '/../../includes/header.php';
                     </tbody>
                 </table>
             </div>
+            <?php if ($fpTotalPages > 1): ?>
+            <div class="px-3 py-2">
+                <nav aria-label="Projects pagination">
+                    <ul class="pagination pagination-sm justify-content-center mb-0">
+                        <li class="page-item <?php echo $fpPage <= 1 ? 'disabled' : ''; ?>">
+                            <a class="page-link" href="<?php echo $fpPaginationBase; ?>&fp_page=<?php echo $fpPage - 1; ?>">Prev</a>
+                        </li>
+                        <?php for ($i = max(1, $fpPage - 2); $i <= min($fpTotalPages, $fpPage + 2); $i++): ?>
+                        <li class="page-item <?php echo $fpPage == $i ? 'active' : ''; ?>">
+                            <a class="page-link" href="<?php echo $fpPaginationBase; ?>&fp_page=<?php echo $i; ?>"><?php echo $i; ?></a>
+                        </li>
+                        <?php endfor; ?>
+                        <li class="page-item <?php echo $fpPage >= $fpTotalPages ? 'disabled' : ''; ?>">
+                            <a class="page-link" href="<?php echo $fpPaginationBase; ?>&fp_page=<?php echo $fpPage + 1; ?>">Next</a>
+                        </li>
+                    </ul>
+                </nav>
+                <p class="text-center text-muted small mt-1 mb-0">
+                    Showing <?php echo $fpOffset + 1; ?>–<?php echo min($fpOffset + $fpPerPage, $fpTotalCount); ?> of <?php echo $fpTotalCount; ?> projects
+                </p>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
     <?php endif; ?>
+    </div><!-- /#project-list-container -->
 
     
     <div class="row">
         <!-- Project Completion by Type -->
         <div class="col-md-6">
-            <div class="card">
+            <div class="card" id="projects-by-type-card">
                 <div class="card-header">
-                    <h5>Project Completion by Type</h5>
+                    <h5>
+                        <?php if (!empty($filterStatus)): ?>
+                            Projects by Type
+                            <span class="badge bg-<?php echo projectStatusBadgeClass($filterStatus); ?> ms-2" style="font-size:0.75rem">
+                                <?php echo htmlspecialchars($projectStatusLabelMap[$filterStatus] ?? formatProjectStatusLabel($filterStatus)); ?>
+                            </span>
+                        <?php else: ?>
+                            Project Completion by Type
+                        <?php endif; ?>
+                    </h5>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -447,19 +514,23 @@ include __DIR__ . '/../../includes/header.php';
                                 <tr>
                                     <th>Project Type</th>
                                     <th>Total</th>
+                                    <?php if (empty($filterStatus)): ?>
                                     <th>Completed</th>
                                     <th>Completion Rate</th>
+                                    <?php endif; ?>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($completionByType)): ?>
-                                <tr><td colspan="4" class="text-center text-muted py-3"><i class="fas fa-inbox"></i> No data found</td></tr>
+                                <tr><td colspan="<?php echo empty($filterStatus) ? 4 : 2; ?>" class="text-center text-muted py-3"><i class="fas fa-inbox"></i> No data found</td></tr>
                                 <?php else: foreach ($completionByType as $type): 
                                     $typeProjects = isset($type['projects_list']) ? $type['projects_list'] : [];
+                                    $colspan = empty($filterStatus) ? 4 : 2;
                                 ?>
                                 <tr class="type-row" style="cursor:pointer" onclick="toggleTypeRow(this)">
                                     <td><i class="fas fa-chevron-right expand-icon" style="transition:transform 0.2s"></i> <strong><?php echo strtoupper($type['project_type'] ?: 'N/A'); ?></strong></td>
                                     <td><?php echo $type['total']; ?></td>
+                                    <?php if (empty($filterStatus)): ?>
                                     <td><?php echo $type['completed']; ?></td>
                                     <td>
                                         <div class="progress" style="height: 20px;">
@@ -471,9 +542,10 @@ include __DIR__ . '/../../includes/header.php';
                                             </div>
                                         </div>
                                     </td>
+                                    <?php endif; ?>
                                 </tr>
                                 <tr class="type-detail-row d-none">
-                                    <td colspan="4" class="p-0 bg-light">
+                                    <td colspan="<?php echo $colspan; ?>" class="p-0 bg-light">
                                         <div class="p-3">
                                             <?php if (empty($typeProjects)): ?>
                                                 <p class="text-muted mb-0">No project details available.</p>
@@ -555,7 +627,7 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-striped">
+                        <table class="table table-striped" id="tester-table">
                             <thead>
                                 <tr>
                                     <th>Tester</th>
@@ -565,7 +637,7 @@ include __DIR__ . '/../../includes/header.php';
                                     <th>Issues Found</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="tester-tbody">
                                 <?php if (empty($testerPerformance)): ?>
                                 <tr><td colspan="5" class="text-center text-muted py-3"><i class="fas fa-user-check fa-2x d-block mb-2"></i>No tester activity found.</td></tr>
                                 <?php else: foreach ($testerPerformance as $tester): ?>
@@ -595,6 +667,7 @@ include __DIR__ . '/../../includes/header.php';
                             </tbody>
                         </table>
                     </div>
+                    <div id="tester-pagination">
                     <?php if (isset($totalTesters) && isset($perPage) && $totalTesters > $perPage): 
                         $totalPages = ceil($totalTesters / $perPage);
                         $tPage = isset($testerPage) ? $testerPage : 1;
@@ -603,19 +676,20 @@ include __DIR__ . '/../../includes/header.php';
                     <nav aria-label="Tester pagination" class="mt-3">
                         <ul class="pagination pagination-sm justify-content-center mb-0">
                             <li class="page-item <?php echo $tPage <= 1 ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo urlencode((string)$projectId); ?>&status=<?php echo urlencode($filterStatus); ?>&t_page=<?php echo $tPage - 1; ?>&q_page=<?php echo $qPage; ?>">Prev</a>
+                                <a class="page-link perf-page-btn" href="#" data-type="tester" data-page="<?php echo $tPage - 1; ?>">Prev</a>
                             </li>
                             <?php for ($i = max(1, $tPage - 2); $i <= min($totalPages, $tPage + 2); $i++): ?>
                             <li class="page-item <?php echo $tPage == $i ? 'active' : ''; ?>">
-                                <a class="page-link" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo urlencode((string)$projectId); ?>&status=<?php echo urlencode($filterStatus); ?>&t_page=<?php echo $i; ?>&q_page=<?php echo $qPage; ?>"><?php echo $i; ?></a>
+                                <a class="page-link perf-page-btn" href="#" data-type="tester" data-page="<?php echo $i; ?>"><?php echo $i; ?></a>
                             </li>
                             <?php endfor; ?>
                             <li class="page-item <?php echo $tPage >= $totalPages ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo urlencode((string)$projectId); ?>&status=<?php echo urlencode($filterStatus); ?>&t_page=<?php echo $tPage + 1; ?>&q_page=<?php echo $qPage; ?>">Next</a>
+                                <a class="page-link perf-page-btn" href="#" data-type="tester" data-page="<?php echo $tPage + 1; ?>">Next</a>
                             </li>
                         </ul>
                     </nav>
                     <?php endif; ?>
+                    </div>
                 </div>
             </div>
         </div>
@@ -628,7 +702,7 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-striped">
+                        <table class="table table-striped" id="qa-table">
                             <thead>
                                 <tr>
                                     <th>QA</th>
@@ -637,7 +711,7 @@ include __DIR__ . '/../../includes/header.php';
                                     <th>Issues Found</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="qa-tbody">
                                 <?php if (empty($qaPerformance)): ?>
                                 <tr><td colspan="4" class="text-center text-muted py-3"><i class="fas fa-clipboard-check fa-2x d-block mb-2"></i>No QA activity found.</td></tr>
                                 <?php else: foreach ($qaPerformance as $qa): ?>
@@ -662,6 +736,7 @@ include __DIR__ . '/../../includes/header.php';
                             </tbody>
                         </table>
                     </div>
+                    <div id="qa-pagination">
                     <?php if (isset($totalQAs) && isset($perPage) && $totalQAs > $perPage): 
                         $totalPagesQA = ceil($totalQAs / $perPage);
                         $tPage = isset($testerPage) ? $testerPage : 1;
@@ -670,19 +745,20 @@ include __DIR__ . '/../../includes/header.php';
                     <nav aria-label="QA pagination" class="mt-3">
                         <ul class="pagination pagination-sm justify-content-center mb-0">
                             <li class="page-item <?php echo $qPage <= 1 ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo urlencode((string)$projectId); ?>&status=<?php echo urlencode($filterStatus); ?>&t_page=<?php echo $tPage; ?>&q_page=<?php echo $qPage - 1; ?>">Prev</a>
+                                <a class="page-link perf-page-btn" href="#" data-type="qa" data-page="<?php echo $qPage - 1; ?>">Prev</a>
                             </li>
                             <?php for ($i = max(1, $qPage - 2); $i <= min($totalPagesQA, $qPage + 2); $i++): ?>
                             <li class="page-item <?php echo $qPage == $i ? 'active' : ''; ?>">
-                                <a class="page-link" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo urlencode((string)$projectId); ?>&status=<?php echo urlencode($filterStatus); ?>&t_page=<?php echo $tPage; ?>&q_page=<?php echo $i; ?>"><?php echo $i; ?></a>
+                                <a class="page-link perf-page-btn" href="#" data-type="qa" data-page="<?php echo $i; ?>"><?php echo $i; ?></a>
                             </li>
                             <?php endfor; ?>
                             <li class="page-item <?php echo $qPage >= $totalPagesQA ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo urlencode((string)$projectId); ?>&status=<?php echo urlencode($filterStatus); ?>&t_page=<?php echo $tPage; ?>&q_page=<?php echo $qPage + 1; ?>">Next</a>
+                                <a class="page-link perf-page-btn" href="#" data-type="qa" data-page="<?php echo $qPage + 1; ?>">Next</a>
                             </li>
                         </ul>
                     </nav>
                     <?php endif; ?>
+                    </div>
                 </div>
             </div>
         </div>
@@ -724,7 +800,7 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 </div>
-<script>
+<script nonce="<?php echo $cspNonce; ?>">
 function toggleTypeRow(row) {
     const detailRow = row.nextElementSibling;
     const icon = row.querySelector('.expand-icon');
@@ -733,5 +809,411 @@ function toggleTypeRow(row) {
         if (icon) icon.style.transform = detailRow.classList.contains('d-none') ? 'rotate(0deg)' : 'rotate(90deg)';
     }
 }
+
+// ── AJAX Project List ──────────────────────────────────────────────
+(function () {
+    const API_BASE   = '<?php echo $baseDir; ?>/api/report_projects.php';
+    const VIEW_BASE  = '<?php echo $baseDir; ?>/modules/projects/view.php';
+    const START_DATE = '<?php echo addslashes($startDate); ?>';
+    const END_DATE   = '<?php echo addslashes($endDate); ?>';
+    const PROJECT_ID = '<?php echo (int)$projectId; ?>';
+
+    let currentStatus  = '<?php echo addslashes($filterStatus); ?>';
+    let currentShowAll = <?php echo isset($_GET['show_all']) ? 'true' : 'false'; ?>;
+    let currentPage    = 1;
+
+    const container = document.getElementById('project-list-container');
+
+    function statusBadgeClass(status) {
+        const map = {
+            planning: 'secondary', in_progress: 'primary', on_hold: 'warning',
+            completed: 'success', cancelled: 'danger', not_started: 'light'
+        };
+        return map[status] || 'secondary';
+    }
+
+    function formatDate(dateStr) {
+        if (!dateStr) return '—';
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+    }
+
+    function renderList(data, status, showAll) {
+        if (!data.success) {
+            container.innerHTML = '<div class="alert alert-danger">Failed to load projects.</div>';
+            return;
+        }
+
+        const headerClass = status ? statusBadgeClass(status) : 'primary';
+        const title       = status
+            ? 'Projects: ' + (status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))
+            : 'All Projects';
+
+        let rows = '';
+        if (!data.projects || data.projects.length === 0) {
+            rows = '<tr><td colspan="7" class="text-center py-4">No projects found.</td></tr>';
+        } else {
+            data.projects.forEach(p => {
+                const phase = p.current_phase
+                    ? `<span class="badge bg-secondary">${escHtml(p.current_phase)}</span>`
+                    : '<span class="text-muted">—</span>';
+                rows += `<tr>
+                    <td><strong>${escHtml(p.title)}</strong></td>
+                    <td>${escHtml(p.po_number || '')}</td>
+                    <td>${escHtml(p.client_name || 'N/A')}</td>
+                    <td>${escHtml(p.lead_name || 'Unassigned')}</td>
+                    <td>${formatDate(p.created_at)}</td>
+                    <td>${phase}</td>
+                    <td><a href="${VIEW_BASE}?id=${p.id}" class="btn btn-xs btn-outline-primary">View</a></td>
+                </tr>`;
+            });
+        }
+
+        let pagination = '';
+        if (data.total_pages > 1) {
+            let pages = '';
+            const cur = data.page, total = data.total_pages;
+            for (let i = Math.max(1, cur - 2); i <= Math.min(total, cur + 2); i++) {
+                pages += `<li class="page-item ${i === cur ? 'active' : ''}">
+                    <a class="page-link fp-page-btn" href="#" data-page="${i}">${i}</a></li>`;
+            }
+            const from = (cur - 1) * data.per_page + 1;
+            const to   = Math.min(cur * data.per_page, data.total);
+            pagination = `
+            <div class="px-3 py-2">
+                <nav aria-label="Projects pagination">
+                    <ul class="pagination pagination-sm justify-content-center mb-0">
+                        <li class="page-item ${cur <= 1 ? 'disabled' : ''}">
+                            <a class="page-link fp-page-btn" href="#" data-page="${cur - 1}">Prev</a></li>
+                        ${pages}
+                        <li class="page-item ${cur >= total ? 'disabled' : ''}">
+                            <a class="page-link fp-page-btn" href="#" data-page="${cur + 1}">Next</a></li>
+                    </ul>
+                </nav>
+                <p class="text-center text-muted small mt-1 mb-0">Showing ${from}–${to} of ${data.total} projects</p>
+            </div>`;
+        }
+
+        container.innerHTML = `
+        <div class="card mb-4 border-${headerClass}">
+            <div class="card-header bg-${headerClass} text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">${title} <span class="badge bg-light text-dark ms-2">${data.total}</span></h5>
+                <button class="btn btn-sm btn-light" id="fp-clear-btn">Clear Filter</button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr><th>Project Title</th><th>Project Code</th><th>Client</th>
+                                <th>Lead</th><th>Created</th><th>Phase</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+                ${pagination}
+            </div>
+        </div>`;
+
+        // Bind pagination clicks
+        container.querySelectorAll('.fp-page-btn').forEach(btn => {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                const pg = parseInt(this.dataset.page);
+                if (!isNaN(pg) && pg >= 1) loadProjects(currentStatus, currentShowAll, pg);
+            });
+        });
+
+        // Bind clear button
+        const clearBtn = document.getElementById('fp-clear-btn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function () {
+                container.innerHTML = '';
+                // deactivate all stat cards
+                document.querySelectorAll('.stat-filter-card').forEach(c => c.classList.remove('active-filter'));
+                currentStatus  = '';
+                currentShowAll = false;
+                currentPage    = 1;
+            });
+        }
+    }
+
+    function loadProjects(status, showAll, page) {
+        currentStatus  = status;
+        currentShowAll = showAll;
+        currentPage    = page;
+
+        container.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>';
+
+        const params = new URLSearchParams({
+            start_date: START_DATE,
+            end_date:   END_DATE,
+            project_id: PROJECT_ID,
+            status:     status,
+            fp_page:    page,
+        });
+        if (showAll) params.set('show_all', '1');
+
+        fetch(`${API_BASE}?${params.toString()}`)
+            .then(r => r.json())
+            .then(data => renderList(data, status, showAll))
+            .catch(() => {
+                container.innerHTML = '<div class="alert alert-danger">Failed to load projects.</div>';
+            });
+    }
+
+    function escHtml(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Stat card click handlers
+    document.querySelectorAll('.stat-filter-card').forEach(card => {
+        card.addEventListener('click', function () {
+            document.querySelectorAll('.stat-filter-card').forEach(c => c.classList.remove('active-filter'));
+            this.classList.add('active-filter');
+            const status  = this.dataset.status || '';
+            const showAll = !!this.dataset.showAll;
+            loadProjects(status, showAll, 1);
+            loadProjectsByType(status);
+            // Smooth scroll to list
+            setTimeout(() => container.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+        });
+    });
+
+    // If page loaded with a filter already active, list is already rendered server-side — just bind pagination
+    container.querySelectorAll('.fp-page-btn').forEach(btn => {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            const pg = parseInt(this.dataset.page);
+            if (!isNaN(pg) && pg >= 1) loadProjects(currentStatus, currentShowAll, pg);
+        });
+    });
+    const clearBtn = document.getElementById('fp-clear-btn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function () {
+            container.innerHTML = '';
+            document.querySelectorAll('.stat-filter-card').forEach(c => c.classList.remove('active-filter'));
+            currentStatus = ''; currentShowAll = false; currentPage = 1;
+            loadProjectsByType('');
+        });
+    }
+})();
+
+// ── AJAX Projects by Type ─────────────────────────────────────────
+(function () {
+    const PBT_API    = '<?php echo $baseDir; ?>/api/report_projects_by_type.php';
+    const VIEW_BASE  = '<?php echo $baseDir; ?>/modules/projects/view.php';
+    const START_DATE = '<?php echo addslashes($startDate); ?>';
+    const END_DATE   = '<?php echo addslashes($endDate); ?>';
+    const PROJECT_ID = '<?php echo (int)$projectId; ?>';
+
+    // Status label map from PHP
+    const STATUS_LABEL_MAP = <?php echo json_encode($projectStatusLabelMap); ?>;
+    const STATUS_BADGE_MAP = {
+        planning: 'secondary', in_progress: 'primary', on_hold: 'warning',
+        completed: 'success', cancelled: 'danger', not_started: 'light'
+    };
+
+    function badgeClass(status) {
+        return STATUS_BADGE_MAP[status] || 'secondary';
+    }
+    function statusLabel(status) {
+        return STATUS_LABEL_MAP[status] || status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+    function escHtml(s) {
+        return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function renderCard(data) {
+        const card = document.getElementById('projects-by-type-card');
+        if (!card) return;
+
+        const filterStatus = data.filter_status || '';
+        const hasFilter    = filterStatus !== '';
+        const colCount     = hasFilter ? 2 : 4;
+
+        let badgeHtml = '';
+        if (hasFilter) {
+            const bc = badgeClass(filterStatus);
+            const tc = ['warning','info','light'].includes(bc) ? 'text-dark' : 'text-white';
+            badgeHtml = `<span class="badge bg-${bc} ${tc} ms-2" style="font-size:0.75rem">${escHtml(statusLabel(filterStatus))}</span>`;
+        }
+
+        const title = hasFilter ? `Projects by Type ${badgeHtml}` : 'Project Completion by Type';
+
+        let extraHeaders = hasFilter ? '' : '<th>Completed</th><th>Completion Rate</th>';
+
+        let rows = '';
+        if (!data.data || data.data.length === 0) {
+            rows = `<tr><td colspan="${colCount}" class="text-center text-muted py-3"><i class="fas fa-inbox"></i> No data found</td></tr>`;
+        } else {
+            data.data.forEach((type, idx) => {
+                const projects = type.projects_list || [];
+                let extraCols = '';
+                if (!hasFilter) {
+                    const rate = type.completion_rate ?? 0;
+                    extraCols = `<td>${type.completed}</td>
+                    <td><div class="progress" style="height:20px">
+                        <div class="progress-bar" role="progressbar" style="width:${rate}%" aria-valuenow="${rate}" aria-valuemin="0" aria-valuemax="100">${rate}%</div>
+                    </div></td>`;
+                }
+                rows += `<tr class="type-row" style="cursor:pointer" onclick="toggleTypeRow(this)">
+                    <td><i class="fas fa-chevron-right expand-icon" style="transition:transform 0.2s"></i> <strong>${escHtml((type.project_type||'N/A').toUpperCase())}</strong></td>
+                    <td>${type.total}</td>${extraCols}
+                </tr>
+                <tr class="type-detail-row d-none">
+                    <td colspan="${colCount}" class="p-0 bg-light"><div class="p-3">`;
+
+                if (projects.length === 0) {
+                    rows += '<p class="text-muted mb-0">No project details available.</p>';
+                } else {
+                    rows += `<table class="table table-sm mb-0">
+                        <thead><tr><th>Code</th><th>Title</th><th>Client</th><th>Status</th><th></th></tr></thead><tbody>`;
+                    projects.forEach(p => {
+                        const bc = badgeClass(p.status);
+                        rows += `<tr>
+                            <td><code>${escHtml(p.code||'')}</code></td>
+                            <td>${escHtml(p.title||'')}</td>
+                            <td>${escHtml(p.client||'N/A')}</td>
+                            <td><span class="badge bg-${bc}">${escHtml(statusLabel(p.status||''))}</span></td>
+                            <td><a href="${VIEW_BASE}?id=${p.id}" class="btn btn-xs btn-outline-primary" target="_blank"><i class="fas fa-eye"></i></a></td>
+                        </tr>`;
+                    });
+                    rows += '</tbody></table>';
+                }
+                rows += '</div></td></tr>';
+            });
+        }
+
+        card.innerHTML = `
+        <div class="card-header"><h5>${title}</h5></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead><tr><th>Project Type</th><th>Total</th>${extraHeaders}</tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>`;
+    }
+
+    window.loadProjectsByType = function (status) {
+        const card = document.getElementById('projects-by-type-card');
+        if (!card) return;
+        card.innerHTML = '<div class="card-body text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>';
+
+        const params = new URLSearchParams({
+            start_date: START_DATE, end_date: END_DATE,
+            project_id: PROJECT_ID, status: status || ''
+        });
+
+        fetch(`${PBT_API}?${params}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) { card.innerHTML = '<div class="card-body text-danger">Failed to load.</div>'; return; }
+                renderCard(data);
+            })
+            .catch(() => { card.innerHTML = '<div class="card-body text-danger">Failed to load.</div>'; });
+    };
+})();
+
+// ── AJAX Tester / QA Performance Pagination ───────────────────────
+(function () {
+    const PERF_API  = '<?php echo $baseDir; ?>/api/report_performance.php';
+    const PROF_BASE = '<?php echo $baseDir; ?>/modules/profile.php';
+    const START_DATE = '<?php echo addslashes($startDate); ?>';
+    const END_DATE   = '<?php echo addslashes($endDate); ?>';
+    const PROJECT_ID = '<?php echo (int)$projectId; ?>';
+
+    const state = { tester: <?php echo $testerPage; ?>, qa: <?php echo $qaPage; ?> };
+
+    function issueBadge(n) {
+        const cls = n > 20 ? 'danger' : (n > 10 ? 'warning' : 'success');
+        return `<span class="badge bg-${cls}">${n}</span>`;
+    }
+
+    function renderTesterRows(rows) {
+        if (!rows || rows.length === 0)
+            return '<tr><td colspan="5" class="text-center text-muted py-3">No tester activity found.</td></tr>';
+        return rows.map(r => `<tr>
+            <td><a href="${PROF_BASE}?id=${r.id}">${escHtml(r.full_name)}</a></td>
+            <td><span class="badge bg-info">${escHtml(r.role.toUpperCase())}</span></td>
+            <td>${r.pages_tested}</td>
+            <td>${r.total_hours || '0'}</td>
+            <td>${issueBadge(parseInt(r.total_issues))}</td>
+        </tr>`).join('');
+    }
+
+    function renderQaRows(rows) {
+        if (!rows || rows.length === 0)
+            return '<tr><td colspan="4" class="text-center text-muted py-3">No QA activity found.</td></tr>';
+        return rows.map(r => `<tr>
+            <td><a href="${PROF_BASE}?id=${r.id}">${escHtml(r.full_name)}</a></td>
+            <td>${r.pages_reviewed}</td>
+            <td>${r.total_hours || '0'}</td>
+            <td>${issueBadge(parseInt(r.total_issues))}</td>
+        </tr>`).join('');
+    }
+
+    function renderPagination(type, cur, total) {
+        if (total <= 1) return '';
+        let items = '';
+        for (let i = Math.max(1, cur - 2); i <= Math.min(total, cur + 2); i++) {
+            items += `<li class="page-item ${i === cur ? 'active' : ''}">
+                <a class="page-link perf-page-btn" href="#" data-type="${type}" data-page="${i}">${i}</a></li>`;
+        }
+        return `<nav class="mt-3"><ul class="pagination pagination-sm justify-content-center mb-0">
+            <li class="page-item ${cur <= 1 ? 'disabled' : ''}">
+                <a class="page-link perf-page-btn" href="#" data-type="${type}" data-page="${cur - 1}">Prev</a></li>
+            ${items}
+            <li class="page-item ${cur >= total ? 'disabled' : ''}">
+                <a class="page-link perf-page-btn" href="#" data-type="${type}" data-page="${cur + 1}">Next</a></li>
+        </ul></nav>`;
+    }
+
+    function loadPerf(type, page) {
+        state[type] = page;
+        const tbody  = document.getElementById(type + '-tbody');
+        const pagDiv = document.getElementById(type + '-pagination');
+        if (!tbody) return;
+
+        tbody.innerHTML = `<tr><td colspan="${type === 'tester' ? 5 : 4}" class="text-center py-3">
+            <div class="spinner-border spinner-border-sm text-primary" role="status"></div></td></tr>`;
+
+        const params = new URLSearchParams({
+            type, start_date: START_DATE, end_date: END_DATE,
+            project_id: PROJECT_ID, page
+        });
+
+        fetch(`${PERF_API}?${params}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Error loading data.</td></tr>'; return; }
+                tbody.innerHTML = type === 'tester' ? renderTesterRows(data.rows) : renderQaRows(data.rows);
+                if (pagDiv) pagDiv.innerHTML = renderPagination(type, data.page, data.total_pages);
+                bindPerfPagination(pagDiv);
+            })
+            .catch(() => { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Failed to load.</td></tr>'; });
+    }
+
+    function bindPerfPagination(container) {
+        if (!container) return;
+        container.querySelectorAll('.perf-page-btn').forEach(btn => {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                const pg = parseInt(this.dataset.page);
+                const tp = this.dataset.type;
+                if (!isNaN(pg) && pg >= 1) loadPerf(tp, pg);
+            });
+        });
+    }
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Bind initial server-rendered pagination buttons
+    bindPerfPagination(document.getElementById('tester-pagination'));
+    bindPerfPagination(document.getElementById('qa-pagination'));
+})();
 </script>
 <?php include __DIR__ . '/../../includes/footer.php'; 
