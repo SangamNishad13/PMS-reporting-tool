@@ -153,9 +153,22 @@ function injectCell(string &$xml, int $rowNum, string $ref, string $value, strin
     if (preg_match($rowPat, $xml, $rowMatch, PREG_OFFSET_CAPTURE)) {
         $rowStart   = $rowMatch[0][1];
         $rowFull    = $rowMatch[0][0];
+        // Update spans to include the new cell's column (e.g. B=2, C=3)
+        // Extract column letter(s) from ref (e.g. "B33" -> "B")
+        $colLetter = preg_replace('/\d+/', '', $ref);
+        $colNum = 0;
+        foreach (str_split(strtoupper($colLetter)) as $ch) {
+            $colNum = $colNum * 26 + (ord($ch) - ord('A') + 1);
+        }
+        // Update spans="min:max" to include colNum
+        $newRowFull = preg_replace_callback('/\bspans="(\d+):(\d+)"/', function($sm) use ($colNum) {
+            $min = min((int)$sm[1], $colNum);
+            $max = max((int)$sm[2], $colNum);
+            return 'spans="' . $min . ':' . $max . '"';
+        }, $rowFull);
         // Find </row> within this match and insert before it
-        $closePos   = strrpos($rowFull, '</row>');
-        $newRowFull = substr($rowFull, 0, $closePos) . $newCell . '</row>';
+        $closePos   = strrpos($newRowFull, '</row>');
+        $newRowFull = substr($newRowFull, 0, $closePos) . $newCell . '</row>';
         $xml = substr($xml, 0, $rowStart) . $newRowFull . substr($xml, $rowStart + strlen($rowFull));
         return;
     }
@@ -609,11 +622,14 @@ for ($si = 0; $si < count($severityCountsSorted); $si++) {
 }
 
 // B29 onwards: team members (row 28 = header "Resource Name"/"Resource Type" — leave as-is)
+// Template has 4 pre-styled data rows (29-32): rows 29-31 use s=62/63, row 32 uses s=65/66 (bottom border).
+// For overflow rows (33+) that don't exist in the template, use s=62/63 (standard data row style).
 for ($mi = 0; $mi < count($teamMembers); $mi++) {
     $rn   = 29 + $mi;
     $role = $roleLabels[$teamMembers[$mi]['role']] ?? ucfirst(str_replace('_', ' ', $teamMembers[$mi]['role']));
-    injectCell($sh1, $rn, 'B' . $rn, $teamMembers[$mi]['full_name'], ' s="101"');
-    injectCell($sh1, $rn, 'C' . $rn, $role, ' s="102"');
+    // s=62/63 are the correct data-row styles; injectCell preserves existing styles for rows 29-32
+    injectCell($sh1, $rn, 'B' . $rn, $teamMembers[$mi]['full_name'], ' s="62"');
+    injectCell($sh1, $rn, 'C' . $rn, $role, ' s="63"');
 }
 
 // Remove dimension element from sheet1 to prevent Excel repair dialog
