@@ -1518,6 +1518,8 @@ CREATE TABLE `users` (
   `username` varchar(50) NOT NULL,
   `email` varchar(100) NOT NULL,
   `password` varchar(255) NOT NULL,
+  `two_factor_secret` varchar(255) DEFAULT NULL COMMENT 'Stores Base32 TOTP secret',
+  `two_factor_enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT '1 if 2FA is active',
   `full_name` varchar(100) NOT NULL,
   `role` enum('admin','project_lead','qa','at_tester','ft_tester') NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),

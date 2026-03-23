@@ -334,5 +334,57 @@ class EmailSender {
         
         return $this->send($userEmail, $subject, $body, true);
     }
+
+    public function send2FAReminderEmail($userEmail, $userName) {
+        $subject = "Security Update: Enable Two-Factor Authentication (2FA)";
+        $appUrl = $this->settings['app_url'] ?? '';
+        $profileUrl = rtrim($appUrl, '/') . '/modules/profile.php';
+        
+        $body = "
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 20px auto; border: 1px solid #e1e1e1; border-radius: 8px; overflow: hidden; }
+                    .header { background-color: #1a73e8; color: white; padding: 30px; text-align: center; }
+                    .content { padding: 30px; background-color: #ffffff; }
+                    .button { display: inline-block; padding: 12px 25px; background-color: #1a73e8; 
+                              color: white !important; text-decoration: none; border-radius: 4px; font-weight: bold; margin-top: 20px; }
+                    .footer { text-align: center; padding: 20px; font-size: 12px; color: #777; background-color: #f9f9f9; }
+                    .shield-icon { font-size: 48px; margin-bottom: 10px; }
+                </style>
+            </head>
+            <body>
+                <div class='container'>
+                    <div class='header'>
+                        <div class='shield-icon'>🛡️</div>
+                        <h1>Security Reminder</h1>
+                    </div>
+                    <div class='content'>
+                        <h2>Hi $userName,</h2>
+                        <p>To ensure the security of your account and the project data, we highly recommend enabling <strong>Two-Factor Authentication (2FA)</strong>.</p>
+                        <p>2FA adds an extra layer of protection by requiring a verification code from your mobile device when you log in.</p>
+                        <p>It only takes a minute to set up using Google Authenticator or any other TOTP app.</p>
+                        <p style='text-align: center;'>
+                            <a href='$profileUrl' class='button'>Enable 2FA Now</a>
+                        </p>
+                        <p style='margin-top: 25px;'><strong>Steps to Enable:</strong></p>
+                        <ol>
+                            <li>Go to your Profile settings.</li>
+                            <li>Find the Security section.</li>
+                            <li>Click 'Setup 2FA' and scan the QR code.</li>
+                        </ol>
+                    </div>
+                    <div class='footer'>
+                        <p>This is an automated security reminder from the Project Management System.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        ";
+        
+        return $this->send($userEmail, $subject, $body, true);
+    }
 }
 ?>

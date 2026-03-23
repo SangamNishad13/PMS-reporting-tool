@@ -143,6 +143,7 @@ $(document).ready(function() {
         const selected = getSelectedUserIds();
         const count = selected.length;
         $('#bulkMailBtn').prop('disabled', count === 0);
+        $('#bulk2FAReminderBtn').prop('disabled', count === 0);
         $('#selectedUsersHint').text(count + ' users selected');
         $('#selectedUsersCount').text(count);
         $('#selectedUserIdsInput').val(selected.join(','));
@@ -379,6 +380,83 @@ $(document).ready(function() {
 
         $('#confirmResetEmailModal').on('hidden.bs.modal', function() {
             $(this).remove();
+        });
+    });
+
+    // Handle 2FA Reminder button click
+    $(document).on('click', '.send-2fa-reminder-btn', function() {
+        const userId = $(this).data('user-id');
+        const fullName = $(this).data('fullname');
+        const btn = $(this);
+
+        if (!confirm('Send a 2FA configuration reminder email to ' + fullName + '?')) {
+            return;
+        }
+
+        const oldHtml = btn.html();
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+        $.ajax({
+            url: window._adminUsersConfig.baseDir + '/api/admin_2fa_reminder.php',
+            method: 'POST',
+            data: {
+                user_id: userId,
+                csrf_token: window._csrfToken || (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute('content') || ''
+            },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    showToast(response.message || 'Reminder sent successfully.', 'success');
+                } else {
+                    showToast(response.error || 'Failed to send reminder.', 'warning');
+                }
+            },
+            error: function(xhr) {
+                showToast('Error: ' + (xhr.responseText || xhr.statusText), 'danger');
+            },
+            complete: function() {
+                btn.prop('disabled', false).html(oldHtml);
+            }
+        });
+    });
+
+    // Handle Bulk 2FA Reminder button click
+    $(document).on('click', '#bulk2FAReminderBtn', function() {
+        const selected = getSelectedUserIds();
+        if (!selected.length) return;
+
+        if (!confirm('Send 2FA configuration reminder emails to ' + selected.length + ' selected users?')) {
+            return;
+        }
+
+        const btn = $(this);
+        const oldHtml = btn.html();
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
+
+        $.ajax({
+            url: window._adminUsersConfig.baseDir + '/api/admin_2fa_reminder.php',
+            method: 'POST',
+            data: {
+                user_ids: selected,
+                csrf_token: window._csrfToken || (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute('content') || ''
+            },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    showToast(response.message || 'Reminders sent successfully.', 'success');
+                    if (response.fail_count > 0) {
+                        console.warn('Reminder failures:', response.errors);
+                    }
+                } else {
+                    showToast(response.error || 'Failed to send reminders.', 'danger');
+                }
+            },
+            error: function(xhr) {
+                showToast('Error: ' + (xhr.responseText || xhr.statusText), 'danger');
+            },
+            complete: function() {
+                btn.prop('disabled', false).html(oldHtml);
+            }
         });
     });
 });

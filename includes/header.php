@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Global Session Check - MUST be before any HTML output
 if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
     $currentPage = $_SERVER['PHP_SELF'];
@@ -72,6 +72,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
     <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">

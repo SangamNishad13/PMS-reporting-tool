@@ -694,6 +694,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'verify_credentials_mail') {
 // Get all users (excluding client role - they have separate management page)
 $users = $db->query("
     SELECT u.*, 
+           u.two_factor_enabled,
            COUNT(DISTINCT p.id) as project_count,
            COUNT(DISTINCT pp.id) as page_count
     FROM users u
@@ -706,7 +707,7 @@ $users = $db->query("
     WHERE u.role != 'client'
     GROUP BY u.id
     ORDER BY u.role, u.full_name
-")->fetchAll();
+") -> fetchAll();
 
 // Recent credentials mail logs for admin visibility
 $credentialsMailLogs = [];
@@ -788,6 +789,9 @@ if (!empty($_SESSION['success'])) {
         <button type="button" class="btn btn-outline-success" id="bulkMailBtn" data-bs-toggle="modal" data-bs-target="#bulkMailModal" disabled>
             <i class="fas fa-paper-plane"></i> Send Setup/Reset Mail
         </button>
+        <button type="button" class="btn btn-outline-info" id="bulk2FAReminderBtn" disabled>
+            <i class="fas fa-shield-alt"></i> Send 2FA Reminders
+        </button>
         <span class="align-self-center text-muted small" id="selectedUsersHint">0 users selected</span>
     </div>
 
@@ -815,6 +819,7 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                             <th>Setup Status</th>
                             <th>Temp Password</th>
                             <th>Status</th>
+                            <th>2FA</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -859,6 +864,13 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                                 <?php endif; ?>
                             </td>
                             <td>
+                                <?php if (!empty($user['two_factor_enabled'])): ?>
+                                    <span class="badge bg-success" title="2FA Enabled"><i class="fas fa-shield-alt"></i> On</span>
+                                <?php else: ?>
+                                    <span class="badge bg-secondary" title="2FA Disabled"><i class="fas fa-shield-alt"></i> Off</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
                                 <button type="button" class="btn btn-sm btn-warning" 
                                         data-bs-toggle="modal" 
                                         data-bs-target="#editUserModal<?php echo $user['id']; ?>">
@@ -873,6 +885,14 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                                     <button type="button" class="btn btn-sm btn-secondary view-user-btn" data-user-id="<?php echo $user['id']; ?>">
                                         <i class="fas fa-eye"></i>
                                     </button>
+                                <?php if (empty($user['two_factor_enabled']) && $user['is_active']): ?>
+                                    <button type="button" class="btn btn-sm btn-outline-primary send-2fa-reminder-btn" 
+                                             data-user-id="<?php echo $user['id']; ?>"
+                                             data-fullname="<?php echo htmlspecialchars($user['full_name']); ?>"
+                                             title="Send 2FA Reminder Email">
+                                         <i class="fas fa-shield-alt"></i>
+                                     </button>
+                                <?php endif; ?>
                                 <button type="button" class="btn btn-sm btn-danger" 
                                         data-bs-toggle="modal" 
                                         data-bs-target="#deleteUserModal<?php echo $user['id']; ?>">

@@ -66,6 +66,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $moduleDir = getModuleDirectory($role);
                     redirect("/modules/{$moduleDir}/dashboard.php");
                 }
+            } elseif ($loginResult === '2fa_required') {
+                redirect("/modules/auth/verify_2fa.php");
             } elseif ($loginResult === 'locked') {
                 $error = "Too many failed login attempts. Your account has been temporarily locked for 15 minutes. Please try again later.";
             } elseif (is_int($loginResult) && $loginResult > 0) {

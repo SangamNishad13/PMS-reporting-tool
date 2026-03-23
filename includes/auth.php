@@ -172,7 +172,8 @@ class Auth {
         }
         
         $stmt = $this->db->prepare("
-            SELECT id, username, email, password, full_name, role, is_active, force_password_reset, can_manage_issue_config, can_manage_devices
+            SELECT id, username, email, password, full_name, role, is_active, force_password_reset, can_manage_issue_config, can_manage_devices,
+                   two_factor_secret, two_factor_enabled
             FROM users 
             WHERE (username = ? OR email = ?) AND is_active = 1
             LIMIT 1
@@ -192,6 +193,14 @@ class Auth {
             // Regenerate session ID to prevent session fixation
             session_regenerate_id(true);
             
+            // Check if 2FA is enabled
+            if (!empty($user['two_factor_enabled'])) {
+                if (!$this->isDeviceTrusted($user['id'])) {
+                    $_SESSION['2fa_pending_user_id'] = $user['id'];
+                    return '2fa_required';
+                }
+            }
+
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
             $_SESSION['email'] = $user['email'];
@@ -301,6 +310,102 @@ class Auth {
 
         require_once __DIR__ . '/helpers.php';
         redirect("/modules/auth/login.php");
+    }
+
+    public function verify2FALogin($userId, $code) {
+        if (empty($code)) return false;
+
+        $stmt = $this->db->prepare("SELECT * FROM users WHERE id = ? AND is_active = 1 LIMIT 1");
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch();
+
+        if (!$user || empty($user['two_factor_secret'])) return false;
+
+        require_once __DIR__ . '/GoogleAuthenticator.php';
+        $ga = new GoogleAuthenticator();
+        
+        if ($ga->verifyCode($user['two_factor_secret'], $code, 1)) {
+            // Success! Complete the login
+            unset($_SESSION['2fa_pending_user_id']);
+            
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['username'] = $user['username'];
+            $_SESSION['email'] = $user['email'];
+            $_SESSION['full_name'] = $user['full_name'];
+            $_SESSION['role'] = $user['role'];
+            $_SESSION['can_manage_issue_config'] = (bool)$user['can_manage_issue_config'];
+            $_SESSION['can_manage_devices'] = !empty($user['can_manage_devices']);
+            $_SESSION['force_reset'] = $user['force_password_reset'];
+            $_SESSION['login_time'] = time();
+            $_SESSION['last_activity'] = time();
+
+            // Log activity
+            try {
+                $details = [
+                    'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
+                    'session_id' => session_id(),
+                    'device_ip' => $_SERVER['REMOTE_ADDR'] ?? '',
+                    'login_type' => '2fa'
+                ];
+                logActivity($this->db, $user['id'], 'login_2fa', 'auth', null, $details);
+                
+                // Persist session
+                $stmt = $this->db->prepare("INSERT INTO user_sessions (user_id, session_id, user_agent, ip_address, active) VALUES (?, ?, ?, ?, 1) ON DUPLICATE KEY UPDATE last_activity = NOW(), active = 1");
+                $stmt->execute([$user['id'], session_id(), $details['user_agent'], $details['device_ip']]);
+            } catch (Exception $e) {}
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public function trustDevice($userId) {
+        if (empty($userId)) return false;
+        
+        try {
+            $token = bin2hex(random_bytes(32));
+            $hashedToken = hash('sha256', $token);
+            $days = 30;
+            $expiresTs = time() + ($days * 24 * 60 * 60);
+            $expiresAt = date('Y-m-d H:i:s', $expiresTs);
+            
+            $stmt = $this->db->prepare("INSERT INTO user_2fa_trusted_devices (user_id, trust_token, expires_at) VALUES (?, ?, ?)");
+            $result = $stmt->execute([$userId, $hashedToken, $expiresAt]);
+            
+            if ($result) {
+                // Set cookie for 30 days. Use basic params for maximum compatibility.
+                setcookie('pms_2fa_trust', $token, [
+                    'expires' => $expiresTs,
+                    'path' => '/',
+                    'secure' => false, // Set to false for now to ensure skip works in development
+                    'httponly' => true,
+                    'samesite' => 'Lax'
+                ]);
+                return true;
+            }
+            return false;
+        } catch (Exception $e) {
+            return false;
+        }
+    }
+
+    public function isDeviceTrusted($userId) {
+        $token = $_COOKIE['pms_2fa_trust'] ?? '';
+        if (empty($token) || empty($userId)) return false;
+        
+        $hashedToken = hash('sha256', $token);
+        try {
+            $stmt = $this->db->prepare("
+                SELECT id FROM user_2fa_trusted_devices 
+                WHERE user_id = ? AND trust_token = ? AND expires_at > NOW() 
+                LIMIT 1
+            ");
+            $stmt->execute([$userId, $hashedToken]);
+            return (bool)$stmt->fetchColumn();
+        } catch (Exception $e) {
+            return false;
+        }
     }
     
     public function isLoggedIn() {

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -442,7 +442,7 @@ include __DIR__ . '/../includes/header.php';
                                    value="<?php echo htmlspecialchars($user['username']); ?>"
                                    minlength="3"
                                    maxlength="50"
-                                   pattern="[A-Za-z0-9._-]+"
+                                   pattern="[A-Za-z0-9._\-]+"
                                    required>
                             <button type="submit" class="btn btn-primary">Update</button>
                         </div>
@@ -451,7 +451,6 @@ include __DIR__ . '/../includes/header.php';
                     <?php else: ?>
                     <p><strong>Username:</strong> @<?php echo htmlspecialchars($user['username']); ?></p>
                     <?php endif; ?>
-                    <p><strong>Member Since:</strong> <?php echo date('M d, Y', strtotime($user['created_at'])); ?></p>
                     <p><strong>Status:</strong>
                         <span class="badge bg-<?php echo $user['is_active'] ? 'success' : 'danger'; ?>">
                             <?php echo $user['is_active'] ? 'Active' : 'Inactive'; ?>
@@ -459,6 +458,60 @@ include __DIR__ . '/../includes/header.php';
                     </p>
                 </div>
             </div>
+
+            <!-- Two-Factor Authentication Settings -->
+            <?php if ((int)$userId === (int)($_SESSION['user_id'] ?? 0)): ?>
+            <div class="card mt-3 border-<?php echo !empty($user['two_factor_enabled']) ? 'success' : 'warning'; ?>">
+                <div class="card-header bg-<?php echo !empty($user['two_factor_enabled']) ? 'success text-white' : 'light'; ?>">
+                    <h5 class="mb-0">
+                        <i class="fas fa-shield-alt"></i> Two-Factor Authentication (2FA)
+                        <?php if (!empty($user['two_factor_enabled'])): ?>
+                            <span class="badge bg-white text-success float-end"><i class="fas fa-check-circle"></i> Enabled</span>
+                        <?php else: ?>
+                            <span class="badge bg-warning text-dark float-end"><i class="fas fa-exclamation-triangle"></i> Disabled</span>
+                        <?php endif; ?>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <?php if (empty($user['two_factor_enabled'])): ?>
+                        <p class="text-muted small">Enhance your account security by enabling 2FA. You will need an authenticator app like Google Authenticator.</p>
+                        <button class="btn btn-warning btn-sm" onclick="start2FASetup()">
+                            <i class="fas fa-qrcode"></i> Setup 2FA
+                        </button>
+                    <?php else: ?>
+                        <p class="text-success small">Your account is secured with Two-Factor Authentication.</p>
+                        <button class="btn btn-outline-danger btn-sm" onclick="disable2FA()">
+                            <i class="fas fa-times-circle"></i> Disable 2FA
+                        </button>
+                    <?php endif; ?>
+                </div>
+            </div>
+            
+            <!-- 2FA Setup Modal -->
+            <div class="modal fade" id="modal2FASetup" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header bg-warning">
+                            <h5 class="modal-title"><i class="fas fa-shield-alt"></i> Setup Two-Factor Authentication</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body text-center">
+                            <p>1. Scan this QR code with your Google Authenticator app.</p>
+                            <div class="mb-3 p-3 bg-light border rounded" id="qrCodeContainer">
+                                <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                            </div>
+                            <p class="small text-muted">Or enter this secret manually: <code id="secretText" class="user-select-all fw-bold fs-6"></code></p>
+                            <hr>
+                            <p>2. Enter the 6-digit code from the app to verify.</p>
+                            <div class="input-group mb-3 px-4">
+                                <input type="text" id="verificationCode" class="form-control text-center fs-4 tracking-widest" placeholder="000000" maxlength="6" autocomplete="off" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+                                <button class="btn btn-success" type="button" id="btnVerify2FA" onclick="verifyAndEnable2FA()">Verify & Enable</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
             <!-- Admin: View Production Hours By Day -->
             <?php if (isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin'])): ?>
             <div class="card mt-3">

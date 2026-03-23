@@ -62,3 +62,97 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 });
+
+// 2FA Functions
+function start2FASetup() {
+    var cfg = window.ProfileConfig || {};
+    $.ajax({
+        url: cfg.baseDir + '/api/profile_2fa.php',
+        method: 'POST',
+        data: { action: 'generate_secret' },
+        dataType: 'json',
+        success: function(res) {
+            if (res.success) {
+                // Clear and render QR locally
+                const qrContainer = document.getElementById('qrCodeContainer');
+                qrContainer.innerHTML = ''; 
+                new QRCode(qrContainer, {
+                    text: res.otpauth_uri,
+                    width: 200,
+                    height: 200,
+                    colorDark : "#000000",
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.H
+                });
+                
+                // Add some styling to center the canvas if it's generated
+                $(qrContainer).find('canvas, img').addClass('mx-auto shadow-sm border rounded p-1 p-2 bg-white');
+
+                $('#secretText').text(res.secret);
+                $('#verificationCode').val('');
+                var modal = new bootstrap.Modal(document.getElementById('modal2FASetup'));
+                modal.show();
+            } else {
+                showToast(res.message || 'Failed to generate 2FA secret.', 'danger');
+            }
+        },
+        error: function() {
+            showToast('A network error occurred while setting up 2FA.', 'danger');
+        }
+    });
+}
+
+function verifyAndEnable2FA() {
+    var code = $('#verificationCode').val();
+    if (code.length !== 6) {
+        showToast('Please enter a 6-digit code.', 'warning');
+        return;
+    }
+    
+    var btn = $('#btnVerify2FA');
+    btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Verifying...');
+    
+    var cfg = window.ProfileConfig || {};
+    $.ajax({
+        url: cfg.baseDir + '/api/profile_2fa.php',
+        method: 'POST',
+        data: { action: 'verify_and_enable', code: code },
+        dataType: 'json',
+        success: function(res) {
+            if (res.success) {
+                showToast(res.message, 'success');
+                setTimeout(function() { window.location.reload(); }, 1500);
+            } else {
+                showToast(res.message || 'Verification failed. Try again.', 'danger');
+                btn.prop('disabled', false).text('Verify & Enable');
+            }
+        },
+        error: function() {
+            showToast('A network error occurred.', 'danger');
+            btn.prop('disabled', false).text('Verify & Enable');
+        }
+    });
+}
+
+function disable2FA() {
+    if (!confirm('Are you sure you want to disable Two-Factor Authentication? Your account will be less secure.')) return;
+    
+    var cfg = window.ProfileConfig || {};
+    $.ajax({
+        url: cfg.baseDir + '/api/profile_2fa.php',
+        method: 'POST',
+        data: { action: 'disable_2fa' },
+        dataType: 'json',
+        success: function(res) {
+            if (res.success) {
+                showToast(res.message, 'success');
+                setTimeout(function() { window.location.reload(); }, 1500);
+            } else {
+                showToast(res.message || 'Failed to disable 2FA.', 'danger');
+            }
+        },
+        error: function() {
+            showToast('A network error occurred.', 'danger');
+        }
+    });
+}
