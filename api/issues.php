@@ -58,6 +58,7 @@ register_shutdown_function(function () {
 });
 
 function jsonResponse($data, $statusCode = 200) {
+    while (ob_get_level()) ob_end_clean();
     http_response_code($statusCode);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
