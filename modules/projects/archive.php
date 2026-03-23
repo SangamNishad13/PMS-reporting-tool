@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
+require_once __DIR__ . '/../../includes/client_permissions.php';
 
 $auth = new Auth();
 $auth->requireRole(['admin', 'project_lead']);
@@ -10,6 +11,16 @@ $baseDir = getBaseDir();
 /** @var \PDO $db */
 $db = Database::getInstance();
 $projectId = (int)($_POST['project_id'] ?? 0);
+$userId = $_SESSION['user_id'];
+
+if ($projectId > 0) {
+    if (!canEditProjectById($db, $userId, $projectId)) {
+        $_SESSION['error'] = "You do not have permission to archive this project.";
+        header('Location: ' . $baseDir . '/modules/projects/view.php?id=' . $projectId);
+        exit;
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $projectId > 0) {
     if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
         $_SESSION['error'] = 'Invalid request. Please try again.';

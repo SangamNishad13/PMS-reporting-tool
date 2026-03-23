@@ -138,7 +138,7 @@ if (!$projectId) {
     // Check if user has permission to manage this project's team
     $canManageTeam = hasAdminPrivileges() || 
                      ($userRole === 'project_lead' && $project['project_lead_id'] == $userId) ||
-                     ($userRole === 'qa');
+                     ($userRole === 'qa' && hasProjectAccess($db, $userId, $projectId));
     
     // Also check client permissions for edit access
     if (!$canManageTeam) {

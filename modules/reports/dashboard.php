@@ -321,11 +321,11 @@ include __DIR__ . '/../../includes/header.php';
             <form method="GET" class="row g-3">
                 <div class="col-md-3">
                     <label>Start Date</label>
-                    <input type="date" name="start_date" class="form-control" value="<?php echo $startDate; ?>">
+                    <input type="date" name="start_date" class="form-control" value="<?php echo htmlspecialchars($startDate); ?>">
                 </div>
                 <div class="col-md-3">
                     <label>End Date</label>
-                    <input type="date" name="end_date" class="form-control" value="<?php echo $endDate; ?>">
+                    <input type="date" name="end_date" class="form-control" value="<?php echo htmlspecialchars($endDate); ?>">
                 </div>
                 <div class="col-md-3">
                     <label>Project</label>
@@ -821,7 +821,7 @@ function toggleTypeRow(row) {
     const END_DATE   = '<?php echo addslashes($endDate); ?>';
     const PROJECT_ID = '<?php echo (int)$projectId; ?>';
 
-    let currentStatus  = '<?php echo addslashes($filterStatus); ?>';
+    let currentStatus  = <?php echo json_encode($filterStatus); ?>;
     let currentShowAll = <?php echo isset($_GET['show_all']) ? 'true' : 'false'; ?>;
     let currentPage    = 1;
 

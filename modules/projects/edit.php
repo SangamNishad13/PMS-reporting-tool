@@ -18,6 +18,14 @@ if (!$projectId) {
 }
 
 $db = Database::getInstance();
+$userId = $_SESSION['user_id'];
+
+// Check permission
+if (!canEditProjectById($db, $userId, $projectId)) {
+    $_SESSION['error'] = "You do not have permission to edit this project.";
+    header("Location: " . $base_url . "/modules/projects/view.php?id=" . $projectId);
+    exit;
+}
 
 // Get project details
 try {

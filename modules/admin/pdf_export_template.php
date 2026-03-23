@@ -93,9 +93,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $tmpPath = $_FILES['logo_file']['tmp_name'] ?? '';
         $ext = strtolower(pathinfo($_FILES['logo_file']['name'] ?? '', PATHINFO_EXTENSION));
-        $allowed = ['png', 'jpg', 'jpeg', 'svg', 'webp'];
+        $allowed = ['png', 'jpg', 'jpeg', 'webp'];
         if (!in_array($ext, $allowed, true)) {
-            $_SESSION['error'] = 'Invalid logo format. Allowed: png, jpg, jpeg, svg, webp.';
+            $_SESSION['error'] = 'Invalid logo format. Allowed: png, jpg, jpeg, webp.';
             header('Location: ' . $baseDir . '/modules/admin/pdf_export_template.php');
             exit;
         }
