@@ -66,6 +66,8 @@ class ClientUser {
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$user) {
+                // Log failed attempt for unknown user (best practice to detect enumeration/brute-force)
+                self::logAuthAttempt(0, 'login_failed_unknown', 'Login attempted with unknown user: ' . $username);
                 return ['success' => false, 'error' => 'Invalid credentials or access denied'];
             }
             

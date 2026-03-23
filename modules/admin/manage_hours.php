@@ -44,13 +44,18 @@ if ($_POST) {
         
         try {
             // Get current assignment details
-            $assignmentQuery = "SELECT ua.*, p.title as project_title FROM user_assignments ua JOIN projects p ON ua.project_id = p.id WHERE ua.id = ?";
+            $assignmentQuery = "SELECT ua.*, p.title as project_title, p.project_lead_id FROM user_assignments ua JOIN projects p ON ua.project_id = p.id WHERE ua.id = ?";
             $stmt = $db->prepare($assignmentQuery);
             $stmt->execute([$assignmentId]);
             $assignment = $stmt->fetch();
             
             if (!$assignment) {
                 throw new Exception("Assignment not found.");
+            }
+
+            // IDOR check: project lead can only update their own projects
+            if ($_SESSION['role'] === 'project_lead' && (int)$assignment['project_lead_id'] !== (int)$_SESSION['user_id']) {
+                throw new Exception("Unauthorized access to this project.");
             }
             
             // Validate hours allocation
@@ -90,6 +95,16 @@ if ($_POST) {
         $reason = $_POST['reason'] ?? '';
         
         try {
+            // IDOR check: project lead can only add to their own projects
+            if ($_SESSION['role'] === 'project_lead') {
+                $checkStmt = $db->prepare("SELECT project_lead_id FROM projects WHERE id = ?");
+                $checkStmt->execute([$projectId]);
+                $projectLeadId = $checkStmt->fetchColumn();
+                if ((int)$projectLeadId !== (int)$_SESSION['user_id']) {
+                    throw new Exception("Unauthorized access to this project.");
+                }
+            }
+
             // Validate hours allocation
             $validation = validateHoursAllocation($db, $projectId, $hours);
             
@@ -133,10 +148,19 @@ if ($_POST) {
         
         try {
             // Get assignment details before deletion
-            $getQuery = "SELECT ua.*, p.title as project_title FROM user_assignments ua JOIN projects p ON ua.project_id = p.id WHERE ua.id = ?";
+            $getQuery = "SELECT ua.*, p.title as project_title, p.project_lead_id FROM user_assignments ua JOIN projects p ON ua.project_id = p.id WHERE ua.id = ?";
             $stmt = $db->prepare($getQuery);
             $stmt->execute([$assignmentId]);
             $assignment = $stmt->fetch();
+
+            if (!$assignment) {
+                throw new Exception("Assignment not found.");
+            }
+
+            // IDOR check: project lead can only remove from their own projects
+            if ($_SESSION['role'] === 'project_lead' && (int)$assignment['project_lead_id'] !== (int)$_SESSION['user_id']) {
+                throw new Exception("Unauthorized access to this project.");
+            }
             
             // Remove assignment
             $deleteQuery = "DELETE FROM user_assignments WHERE id = ?";
@@ -148,6 +172,7 @@ if ($_POST) {
             $logDetails = json_encode([
                 'target_user_id' => $userId,
                 'target_user_name' => $user['full_name'],
+                'project_id' => $assignment['project_id'],
                 'project_title' => $assignment['project_title'],
                 'role' => $assignment['role'],
                 'hours' => $assignment['hours_allocated'],
@@ -169,6 +194,7 @@ if ($_POST) {
 }
 
 // Get current assignments
+$pLeadAnd = ($_SESSION['role'] === 'project_lead') ? " AND p.project_lead_id = " . (int)$_SESSION['user_id'] : "";
 $assignmentsQuery = "
     SELECT ua.*, p.title as project_title, p.po_number, p.status as project_status,
            COALESCE(ptl.utilized_hours, 0) as utilized_hours
@@ -180,7 +206,7 @@ $assignmentsQuery = "
         WHERE is_utilized = 1
         GROUP BY user_id, project_id
     ) ptl ON ua.user_id = ptl.user_id AND ua.project_id = ptl.project_id
-    WHERE ua.user_id = ?
+    WHERE ua.user_id = ? $pLeadAnd
     ORDER BY p.status, p.title
 ";
 $stmt = $db->prepare($assignmentsQuery);
@@ -194,7 +220,7 @@ $projectsQuery = "
            (p.total_hours - COALESCE(SUM(ua.hours_allocated), 0)) as available_hours
     FROM projects p
     LEFT JOIN user_assignments ua ON p.id = ua.project_id
-    WHERE p.status NOT IN ('completed', 'cancelled')
+    WHERE p.status NOT IN ('completed', 'cancelled') $pLeadAnd
     GROUP BY p.id, p.title, p.po_number, p.status, p.total_hours
     HAVING p.total_hours > 0
     ORDER BY p.title

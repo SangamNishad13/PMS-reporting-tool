@@ -39,7 +39,7 @@ if ($_POST) {
                 // Get current assignment details with utilized hours for this user/project.
                 $getQuery = "
                     SELECT ua.*, u.full_name, p.title as project_title, p.id as project_id,
-                           p.total_hours,
+                           p.total_hours, p.project_lead_id,
                            (SELECT COALESCE(SUM(ua2.hours_allocated), 0)
                             FROM user_assignments ua2
                             WHERE ua2.project_id = ua.project_id
@@ -61,6 +61,13 @@ if ($_POST) {
                 $assignment = $stmt->fetch();
                 
                 if (!$assignment) {
+                    continue;
+                }
+
+                // IDOR check: project lead can only update their own projects
+                if ($_SESSION['role'] === 'project_lead' && (int)$assignment['project_lead_id'] !== (int)$_SESSION['user_id']) {
+                    error_log("IDOR attempt: User " . $_SESSION['user_id'] . " tried to update hours for project " . $assignment['project_id']);
+                    $errorCount++;
                     continue;
                 }
 
@@ -132,6 +139,11 @@ $roleFilter = $_GET['role_filter'] ?? '';
 // Build query
 $whereConditions = ["p.status NOT IN ('completed', 'cancelled')"];
 $params = [];
+
+if ($_SESSION['role'] === 'project_lead') {
+    $whereConditions[] = "p.project_lead_id = ?";
+    $params[] = $_SESSION['user_id'];
+}
 
 if ($projectFilter) {
     $whereConditions[] = "ua.project_id = ?";

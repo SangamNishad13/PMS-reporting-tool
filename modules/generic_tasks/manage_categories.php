@@ -71,6 +71,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_category'])) {
 
 // Handle Toggle Status
 if (isset($_GET['toggle']) && isset($_GET['id'])) {
+    if (!verifyCsrfToken($_GET['csrf_token'] ?? '')) {
+        $_SESSION['error'] = 'Invalid request. Please try again.';
+        header('Location: manage_categories.php');
+        exit;
+    }
     $id = $_GET['id'];
     // Toggle active status
     $db->prepare("UPDATE generic_task_categories SET is_active = NOT is_active WHERE id = ?")->execute([$id]);
@@ -196,7 +201,7 @@ include __DIR__ . '/../../includes/header.php';
                                                 data-bs-target="#editCatModal<?php echo $cat['id']; ?>">
                                             <i class="fas fa-edit"></i>
                                         </button>
-                                        <a href="manage_categories.php?toggle=1&id=<?php echo $cat['id']; ?>" 
+                                        <a href="manage_categories.php?toggle=1&id=<?php echo $cat['id']; ?>&csrf_token=<?php echo generateCsrfToken(); ?>" 
                                            class="btn btn-sm btn-<?php echo $cat['is_active'] ? 'warning' : 'success'; ?>">
                                             <?php echo $cat['is_active'] ? 'Deactivate' : 'Activate'; ?>
                                         </a>

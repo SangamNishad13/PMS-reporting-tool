@@ -18,6 +18,15 @@ $endDate = $_GET['end_date'] ?? date('Y-m-t');
 $projectId = (int)($_GET['project_id'] ?? 0);
 $filterStatus = $_GET['status'] ?? '';
 
+// IDOR check: project lead can only view their own projects
+if ($projectId > 0 && $userRole === 'project_lead') {
+    $checkLead = $db->prepare("SELECT project_lead_id FROM projects WHERE id = ?");
+    $checkLead->execute([$projectId]);
+    if ((int)$checkLead->fetchColumn() !== (int)$userId) {
+        $projectId = 0; // Silently unauthorized, default to all of lead's projects
+    }
+}
+
 // Project statuses from status master (same source as project create/edit)
 $projectStatusOptions = getStatusOptions('project');
 if (empty($projectStatusOptions)) {
@@ -38,9 +47,15 @@ foreach ($projectStatusOptions as $opt) {
 // Base parameters for queries
 $dateExtendedEnd = $endDate . ' 23:59:59';
 
-// 1. Overall statistics (Ignore date filter for high-level counts unless project is specific)
+// 1. Overall statistics
 $statsWhere = "1=1";
 $statsParams = [];
+
+if ($userRole === 'project_lead') {
+    $statsWhere .= " AND p.project_lead_id = ?";
+    $statsParams[] = $userId;
+}
+
 if ($projectId > 0) {
     $statsWhere .= " AND p.id = ?";
     $statsParams[] = $projectId;
@@ -87,6 +102,13 @@ if ($showProjectList) {
         $fpParams = [];
         $fpCountParams = [];
     }
+
+    if ($userRole === 'project_lead') {
+        $fpWhere .= " AND p.project_lead_id = ?";
+        $fpParams[] = $userId;
+        $fpCountParams[] = $userId;
+    }
+
     if ($projectId > 0) {
         $fpWhere .= " AND p.id = ?";
         $fpParams[] = $projectId;
@@ -119,6 +141,12 @@ if ($showProjectList) {
 // 2. Project completion by type — no date filter so it matches stat card counts
 $whereType = "1=1";
 $paramsType = [];
+
+if ($userRole === 'project_lead') {
+    $whereType .= " AND p.project_lead_id = ?";
+    $paramsType[] = $userId;
+}
+
 if ($projectId > 0) {
     $whereType .= " AND p.id = ?";
     $paramsType[] = $projectId;
@@ -192,8 +220,14 @@ $testerOffset = ($testerPage - 1) * $perPage;
 
 $testerParams = [$startDate, $dateExtendedEnd, $startDate, $dateExtendedEnd];
 $testerProjectFilter = "";
+
+if ($userRole === 'project_lead') {
+    $testerProjectFilter .= " AND ptl.project_id IN (SELECT id FROM projects WHERE project_lead_id = ?) ";
+    $testerParams[] = $userId;
+}
+
 if ($projectId > 0) {
-    $testerProjectFilter = " AND ptl.project_id = ? ";
+    $testerProjectFilter .= " AND ptl.project_id = ? ";
     $testerParams[] = $projectId;
 }
 $testerPerformance = [];
@@ -234,8 +268,14 @@ $qaOffset = ($qaPage - 1) * $perPage;
 
 $qaParams = [$startDate, $dateExtendedEnd, $startDate, $dateExtendedEnd];
 $qaProjectFilter = "";
+
+if ($userRole === 'project_lead') {
+    $qaProjectFilter .= " AND ptl.project_id IN (SELECT id FROM projects WHERE project_lead_id = ?) ";
+    $qaParams[] = $userId;
+}
+
 if ($projectId > 0) {
-    $qaProjectFilter = " AND ptl.project_id = ? ";
+    $qaProjectFilter .= " AND ptl.project_id = ? ";
     $qaParams[] = $projectId;
 }
 $qaPerformance = [];
@@ -302,7 +342,8 @@ try {
 // Get projects for filter
 $projects = [];
 try {
-    $projects = $db->query("SELECT id, title, po_number FROM projects ORDER BY title")->fetchAll();
+    $pLeadAndDropdown = ($userRole === 'project_lead') ? " WHERE project_lead_id = " . (int)$userId : "";
+    $projects = $db->query("SELECT id, title, po_number FROM projects $pLeadAndDropdown ORDER BY title")->fetchAll();
 } catch (Throwable $e) {
     error_log("Filter Projects Error: " . $e->getMessage());
 }
