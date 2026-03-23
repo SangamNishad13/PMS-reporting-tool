@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
@@ -75,117 +75,207 @@ if (!empty($filterStatus)) {
         $fpParams[] = $projectId;
     }
     
-    $fpStmt = $db->prepare(<<<SQL
-        SELECT p.*, c.name as client_name, u.full_name as lead_name,
-            (SELECT phase_name FROM project_phases ph WHERE ph.project_id = p.id AND ph.status = 'in_progress' ORDER BY ph.start_date DESC LIMIT 1) as current_phase
-        FROM projects p
-        LEFT JOIN clients c ON p.client_id = c.id
-        LEFT JOIN users u ON p.project_lead_id = u.id
-        WHERE $fpWhere
-        ORDER BY p.title ASC
-    SQL);
-    $fpStmt->execute($fpParams);
-    $filteredProjects = $fpStmt->fetchAll();
+    try {
+        $fpStmt = $db->prepare("
+            SELECT p.*, c.name as client_name, u.full_name as lead_name,
+                (SELECT phase_name FROM project_phases ph WHERE ph.project_id = p.id AND ph.status = 'in_progress' ORDER BY ph.start_date DESC LIMIT 1) as current_phase
+            FROM projects p
+            LEFT JOIN clients c ON p.client_id = c.id
+            LEFT JOIN users u ON p.project_lead_id = u.id
+            WHERE $fpWhere
+            ORDER BY p.title ASC
+        ");
+        $fpStmt->execute($fpParams);
+        $filteredProjects = $fpStmt->fetchAll();
+    } catch (Throwable $e) {
+        error_log("Filtered Projects Error: " . $e->getMessage());
+    }
 }
 
 
 // 2. Project completion by type
-$whereType = "created_at BETWEEN ? AND ?";
-$paramsType = [$startDate, $dateExtendedEnd];
+$whereType = "(created_at BETWEEN ? AND ? OR updated_at BETWEEN ? AND ?)";
+$paramsType = [$startDate, $dateExtendedEnd, $startDate, $dateExtendedEnd];
 if ($projectId > 0) {
-    $whereType .= " AND id = ?";
+    $whereType .= " AND p.id = ?";
     $paramsType[] = $projectId;
 }
-$completionByType = $db->prepare("
-    SELECT 
-        project_type,
-        COUNT(*) as total,
-        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-        ROUND(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0), 2) as completion_rate
-    FROM projects
-    WHERE $whereType
-    GROUP BY project_type
-");
-$completionByType->execute($paramsType);
-$completionByType = $completionByType->fetchAll();
+
+$completionByType = [];
+try {
+    $completionByTypeStmt = $db->prepare("
+        SELECT 
+            p.id, 
+            p.project_type, 
+            p.title, 
+            p.po_number as code, 
+            p.status, 
+            c.name as client
+        FROM projects p
+        LEFT JOIN clients c ON p.client_id = c.id
+        WHERE $whereType
+    ");
+    $completionByTypeStmt->execute($paramsType);
+    $allProjects = $completionByTypeStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $completionMap = [];
+    foreach ($allProjects as $p) {
+        $type = $p['project_type'] ?: 'N/A';
+        if (!isset($completionMap[$type])) {
+            $completionMap[$type] = [
+                'project_type' => $type,
+                'total' => 0,
+                'completed' => 0,
+                'completion_rate' => 0,
+                'projects_list' => []
+            ];
+        }
+        $completionMap[$type]['total']++;
+        if ($p['status'] === 'completed') {
+            $completionMap[$type]['completed']++;
+        }
+        $completionMap[$type]['projects_list'][] = [
+            'id' => $p['id'],
+            'title' => $p['title'],
+            'code' => $p['code'],
+            'status' => $p['status'],
+            'client' => $p['client']
+        ];
+    }
+    foreach ($completionMap as &$typeData) {
+        if ($typeData['total'] > 0) {
+            $typeData['completion_rate'] = round(($typeData['completed'] * 100.0) / $typeData['total'], 2);
+        }
+    }
+    unset($typeData);
+    $completionByType = array_values($completionMap);
+} catch (PDOException $e) {
+    error_log("Project Completion Type Error: " . $e->getMessage());
+    $completionByType = [];
+}
 
 // 3. Tester performance
-$whereTester = "u.role IN ('at_tester', 'ft_tester') AND u.is_active = 1 AND tr.tested_at BETWEEN ? AND ?";
-$paramsTester = [$startDate, $dateExtendedEnd];
-$joinTester = "";
+$testerPage = (int)(isset($_GET['t_page']) ? $_GET['t_page'] : 1);
+if ($testerPage < 1) $testerPage = 1;
+$perPage = 10;
+$testerOffset = ($testerPage - 1) * $perPage;
+
+$testerParams = [$startDate, $dateExtendedEnd, $startDate, $dateExtendedEnd];
+$testerProjectFilter = "";
 if ($projectId > 0) {
-    $joinTester = "JOIN project_pages pp ON tr.page_id = pp.id";
-    $whereTester .= " AND pp.project_id = ?";
-    $paramsTester[] = $projectId;
+    $testerProjectFilter = " AND ptl.project_id = ? ";
+    $testerParams[] = $projectId;
 }
-$testerPerformance = $db->prepare("
-    SELECT 
-        u.id, u.full_name, u.role,
-        COUNT(DISTINCT tr.page_id) as pages_tested,
-        SUM(tr.hours_spent) as total_hours,
-        SUM(tr.issues_found) as total_issues
-    FROM users u
-    LEFT JOIN testing_results tr ON u.id = tr.tester_id
-    $joinTester
-    WHERE $whereTester
-    GROUP BY u.id
-    ORDER BY pages_tested DESC
-");
-$testerPerformance->execute($paramsTester);
-$testerPerformance = $testerPerformance->fetchAll();
+$testerPerformance = [];
+$totalTesters = 0;
+try {
+    $testerCountStmt = $db->prepare("
+        SELECT COUNT(DISTINCT u.id)
+        FROM users u
+        LEFT JOIN project_time_logs ptl ON u.id = ptl.user_id AND ptl.log_date BETWEEN ? AND ? $testerProjectFilter
+        WHERE u.role IN ('at_tester', 'ft_tester') AND u.is_active = 1
+    ");
+    $testerCountStmt->execute(array_slice($testerParams, 0, count($testerParams) - 2)); 
+    $totalTesters = $testerCountStmt->fetchColumn();
+
+    $testerPerformanceStmt = $db->prepare("
+        SELECT 
+            u.id, u.full_name, u.role,
+            COUNT(DISTINCT ptl.project_id) as pages_tested,
+            COALESCE(SUM(ptl.hours_spent), 0) as total_hours,
+            (SELECT COUNT(*) FROM issues i WHERE i.reporter_id = u.id AND i.created_at BETWEEN ? AND ?) as total_issues
+        FROM users u
+        LEFT JOIN project_time_logs ptl ON u.id = ptl.user_id AND ptl.log_date BETWEEN ? AND ? $testerProjectFilter
+        WHERE u.role IN ('at_tester', 'ft_tester') AND u.is_active = 1
+        GROUP BY u.id
+        ORDER BY total_hours DESC
+        LIMIT $perPage OFFSET $testerOffset
+    ");
+    $testerPerformanceStmt->execute($testerParams);
+    $testerPerformance = $testerPerformanceStmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log("Tester Performance Error: " . $e->getMessage());
+}
 
 // 4. QA performance
-$whereQA = "u.role = 'qa' AND u.is_active = 1 AND qr.qa_date BETWEEN ? AND ?";
-$paramsQA = [$startDate, $dateExtendedEnd];
-$joinQA = "";
+$qaPage = (int)(isset($_GET['q_page']) ? $_GET['q_page'] : 1);
+if ($qaPage < 1) $qaPage = 1;
+$qaOffset = ($qaPage - 1) * $perPage;
+
+$qaParams = [$startDate, $dateExtendedEnd, $startDate, $dateExtendedEnd];
+$qaProjectFilter = "";
 if ($projectId > 0) {
-    $joinQA = "JOIN project_pages pp ON qr.page_id = pp.id";
-    $whereQA .= " AND pp.project_id = ?";
-    $paramsQA[] = $projectId;
+    $qaProjectFilter = " AND ptl.project_id = ? ";
+    $qaParams[] = $projectId;
 }
-$qaPerformance = $db->prepare("
-    SELECT 
-        u.id, u.full_name,
-        COUNT(DISTINCT qr.page_id) as pages_reviewed,
-        SUM(qr.hours_spent) as total_hours,
-        SUM(qr.issues_found) as total_issues
-    FROM users u
-    LEFT JOIN qa_results qr ON u.id = qr.qa_id
-    $joinQA
-    WHERE $whereQA
-    GROUP BY u.id
-    ORDER BY pages_reviewed DESC
-");
-$qaPerformance->execute($paramsQA);
-$qaPerformance = $qaPerformance->fetchAll();
+$qaPerformance = [];
+$totalQAs = 0;
+try {
+    $qaCountStmt = $db->prepare("
+        SELECT COUNT(DISTINCT u.id)
+        FROM users u
+        LEFT JOIN project_time_logs ptl ON u.id = ptl.user_id AND ptl.log_date BETWEEN ? AND ? $qaProjectFilter
+        WHERE u.role = 'qa' AND u.is_active = 1
+    ");
+    $qaCountStmt->execute(array_slice($qaParams, 0, count($qaParams) - 2));
+    $totalQAs = $qaCountStmt->fetchColumn();
+
+    $qaPerformanceStmt = $db->prepare("
+        SELECT 
+            u.id, u.full_name,
+            COUNT(DISTINCT ptl.project_id) as pages_reviewed,
+            COALESCE(SUM(ptl.hours_spent), 0) as total_hours,
+            (SELECT COUNT(*) FROM issues i WHERE i.reporter_id = u.id AND i.created_at BETWEEN ? AND ?) as total_issues
+        FROM users u
+        LEFT JOIN project_time_logs ptl ON u.id = ptl.user_id AND ptl.log_date BETWEEN ? AND ? $qaProjectFilter
+        WHERE u.role = 'qa' AND u.is_active = 1
+        GROUP BY u.id
+        ORDER BY total_hours DESC
+        LIMIT $perPage OFFSET $qaOffset
+    ");
+    $qaPerformanceStmt->execute($qaParams);
+    $qaPerformance = $qaPerformanceStmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log("QA Performance Error: " . $e->getMessage());
+}
 
 // 5. Recent project completions
-$whereRecent = "p.status = 'completed' AND p.completed_at BETWEEN ? AND ?";
-$paramsRecent = [$startDate, $dateExtendedEnd];
+$whereRecent = "p.status = 'completed' AND (p.completed_at BETWEEN ? AND ? OR (p.completed_at IS NULL AND p.updated_at BETWEEN ? AND ?))";
+$paramsRecent = [$startDate, $dateExtendedEnd, $startDate, $dateExtendedEnd];
 if ($projectId > 0) {
     $whereRecent .= " AND p.id = ?";
     $paramsRecent[] = $projectId;
 }
-$recentCompletions = $db->prepare("
-    SELECT 
-        p.title,
-        p.po_number,
-        c.name as client_name,
-        p.project_type,
-        p.completed_at,
-        DATEDIFF(p.completed_at, p.created_at) as days_taken,
-        p.total_hours
-    FROM projects p
-    LEFT JOIN clients c ON p.client_id = c.id
-    WHERE $whereRecent
-    ORDER BY p.completed_at DESC
-    LIMIT 10
-");
-$recentCompletions->execute($paramsRecent);
-$recentCompletions = $recentCompletions->fetchAll();
+$recentCompletions = [];
+try {
+    $recentCompletionsStmt = $db->prepare("
+        SELECT 
+            p.title,
+            p.po_number,
+            c.name as client_name,
+            p.project_type,
+            p.completed_at,
+            DATEDIFF(p.completed_at, p.created_at) as days_taken,
+            p.total_hours
+        FROM projects p
+        LEFT JOIN clients c ON p.client_id = c.id
+        WHERE $whereRecent
+        ORDER BY p.completed_at DESC
+        LIMIT 10
+    ");
+    $recentCompletionsStmt->execute($paramsRecent);
+    $recentCompletions = $recentCompletionsStmt->fetchAll();
+} catch (Throwable $e) {
+    error_log("Recent Completions Error: " . $e->getMessage());
+}
 
 // Get projects for filter
-$projects = $db->query("SELECT id, title, po_number FROM projects ORDER BY title")->fetchAll();
+$projects = [];
+try {
+    $projects = $db->query("SELECT id, title, po_number FROM projects ORDER BY title")->fetchAll();
+} catch (Throwable $e) {
+    error_log("Filter Projects Error: " . $e->getMessage());
+}
 
 include __DIR__ . '/../../includes/header.php';
 ?>
@@ -362,9 +452,13 @@ include __DIR__ . '/../../includes/header.php';
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($completionByType as $type): ?>
-                                <tr>
-                                    <td><?php echo strtoupper($type['project_type']); ?></td>
+                                <?php if (empty($completionByType)): ?>
+                                <tr><td colspan="4" class="text-center text-muted py-3"><i class="fas fa-inbox"></i> No data found</td></tr>
+                                <?php else: foreach ($completionByType as $type): 
+                                    $typeProjects = isset($type['projects_list']) ? $type['projects_list'] : [];
+                                ?>
+                                <tr class="type-row" style="cursor:pointer" onclick="toggleTypeRow(this)">
+                                    <td><i class="fas fa-chevron-right expand-icon" style="transition:transform 0.2s"></i> <strong><?php echo strtoupper($type['project_type'] ?: 'N/A'); ?></strong></td>
                                     <td><?php echo $type['total']; ?></td>
                                     <td><?php echo $type['completed']; ?></td>
                                     <td>
@@ -378,7 +472,31 @@ include __DIR__ . '/../../includes/header.php';
                                         </div>
                                     </td>
                                 </tr>
-                                <?php endforeach; ?>
+                                <tr class="type-detail-row d-none">
+                                    <td colspan="4" class="p-0 bg-light">
+                                        <div class="p-3">
+                                            <?php if (empty($typeProjects)): ?>
+                                                <p class="text-muted mb-0">No project details available.</p>
+                                            <?php else: ?>
+                                                <table class="table table-sm mb-0">
+                                                    <thead><tr><th>Code</th><th>Title</th><th>Client</th><th>Status</th><th></th></tr></thead>
+                                                    <tbody>
+                                                    <?php foreach ($typeProjects as $tp): ?>
+                                                    <tr>
+                                                        <td><code><?php echo htmlspecialchars(isset($tp['code']) ? $tp['code'] : ''); ?></code></td>
+                                                        <td><?php echo htmlspecialchars(isset($tp['title']) ? $tp['title'] : ''); ?></td>
+                                                        <td><?php echo htmlspecialchars(isset($tp['client']) ? $tp['client'] : 'N/A'); ?></td>
+                                                        <td><span class="badge bg-<?php echo projectStatusBadgeClass(isset($tp['status']) ? $tp['status'] : ''); ?>"><?php echo htmlspecialchars(isset($projectStatusLabelMap[isset($tp['status']) ? $tp['status'] : '']) ? $projectStatusLabelMap[isset($tp['status']) ? $tp['status'] : ''] : formatProjectStatusLabel(isset($tp['status']) ? $tp['status'] : '')); ?></span></td>
+                                                        <td><a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $tp['id']; ?>" class="btn btn-xs btn-outline-primary" target="_blank"><i class="fas fa-eye"></i></a></td>
+                                                    </tr>
+                                                    <?php endforeach; ?>
+                                                    </tbody>
+                                                </table>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <?php endforeach; endif; ?>
                             </tbody>
                         </table>
                     </div>
@@ -405,7 +523,9 @@ include __DIR__ . '/../../includes/header.php';
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($recentCompletions as $project): ?>
+                                <?php if (empty($recentCompletions)): ?>
+                                <tr><td colspan="5" class="text-center text-muted py-3"><i class="fas fa-check-circle fa-2x d-block mb-2"></i>No completed projects found.</td></tr>
+                                <?php else: foreach ($recentCompletions as $project): ?>
                                 <tr>
                                     <td><?php echo $project['title']; ?></td>
                                     <td><?php echo $project['client_name']; ?></td>
@@ -417,7 +537,7 @@ include __DIR__ . '/../../includes/header.php';
                                     <td><?php echo $project['days_taken']; ?> days</td>
                                     <td><?php echo $project['total_hours'] ?: 'N/A'; ?></td>
                                 </tr>
-                                <?php endforeach; ?>
+                                <?php endforeach; endif; ?>
                             </tbody>
                         </table>
                     </div>
@@ -446,7 +566,9 @@ include __DIR__ . '/../../includes/header.php';
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($testerPerformance as $tester): ?>
+                                <?php if (empty($testerPerformance)): ?>
+                                <tr><td colspan="5" class="text-center text-muted py-3"><i class="fas fa-user-check fa-2x d-block mb-2"></i>No tester activity found.</td></tr>
+                                <?php else: foreach ($testerPerformance as $tester): ?>
                                 <tr>
                                     <td>
                                         <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo $tester['id']; ?>">
@@ -469,10 +591,31 @@ include __DIR__ . '/../../includes/header.php';
                                         </span>
                                     </td>
                                 </tr>
-                                <?php endforeach; ?>
+                                <?php endforeach; endif; ?>
                             </tbody>
                         </table>
                     </div>
+                    <?php if (isset($totalTesters) && isset($perPage) && $totalTesters > $perPage): 
+                        $totalPages = ceil($totalTesters / $perPage);
+                        $tPage = isset($testerPage) ? $testerPage : 1;
+                        $qPage = isset($qaPage) ? $qaPage : 1;
+                    ?>
+                    <nav aria-label="Tester pagination" class="mt-3">
+                        <ul class="pagination pagination-sm justify-content-center mb-0">
+                            <li class="page-item <?php echo $tPage <= 1 ? 'disabled' : ''; ?>">
+                                <a class="page-link" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo urlencode((string)$projectId); ?>&status=<?php echo urlencode($filterStatus); ?>&t_page=<?php echo $tPage - 1; ?>&q_page=<?php echo $qPage; ?>">Prev</a>
+                            </li>
+                            <?php for ($i = max(1, $tPage - 2); $i <= min($totalPages, $tPage + 2); $i++): ?>
+                            <li class="page-item <?php echo $tPage == $i ? 'active' : ''; ?>">
+                                <a class="page-link" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo urlencode((string)$projectId); ?>&status=<?php echo urlencode($filterStatus); ?>&t_page=<?php echo $i; ?>&q_page=<?php echo $qPage; ?>"><?php echo $i; ?></a>
+                            </li>
+                            <?php endfor; ?>
+                            <li class="page-item <?php echo $tPage >= $totalPages ? 'disabled' : ''; ?>">
+                                <a class="page-link" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo urlencode((string)$projectId); ?>&status=<?php echo urlencode($filterStatus); ?>&t_page=<?php echo $tPage + 1; ?>&q_page=<?php echo $qPage; ?>">Next</a>
+                            </li>
+                        </ul>
+                    </nav>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -495,7 +638,9 @@ include __DIR__ . '/../../includes/header.php';
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($qaPerformance as $qa): ?>
+                                <?php if (empty($qaPerformance)): ?>
+                                <tr><td colspan="4" class="text-center text-muted py-3"><i class="fas fa-clipboard-check fa-2x d-block mb-2"></i>No QA activity found.</td></tr>
+                                <?php else: foreach ($qaPerformance as $qa): ?>
                                 <tr>
                                     <td>
                                         <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo $qa['id']; ?>">
@@ -513,10 +658,31 @@ include __DIR__ . '/../../includes/header.php';
                                         </span>
                                     </td>
                                 </tr>
-                                <?php endforeach; ?>
+                                <?php endforeach; endif; ?>
                             </tbody>
                         </table>
                     </div>
+                    <?php if (isset($totalQAs) && isset($perPage) && $totalQAs > $perPage): 
+                        $totalPagesQA = ceil($totalQAs / $perPage);
+                        $tPage = isset($testerPage) ? $testerPage : 1;
+                        $qPage = isset($qaPage) ? $qaPage : 1;
+                    ?>
+                    <nav aria-label="QA pagination" class="mt-3">
+                        <ul class="pagination pagination-sm justify-content-center mb-0">
+                            <li class="page-item <?php echo $qPage <= 1 ? 'disabled' : ''; ?>">
+                                <a class="page-link" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo urlencode((string)$projectId); ?>&status=<?php echo urlencode($filterStatus); ?>&t_page=<?php echo $tPage; ?>&q_page=<?php echo $qPage - 1; ?>">Prev</a>
+                            </li>
+                            <?php for ($i = max(1, $qPage - 2); $i <= min($totalPagesQA, $qPage + 2); $i++): ?>
+                            <li class="page-item <?php echo $qPage == $i ? 'active' : ''; ?>">
+                                <a class="page-link" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo urlencode((string)$projectId); ?>&status=<?php echo urlencode($filterStatus); ?>&t_page=<?php echo $tPage; ?>&q_page=<?php echo $i; ?>"><?php echo $i; ?></a>
+                            </li>
+                            <?php endfor; ?>
+                            <li class="page-item <?php echo $qPage >= $totalPagesQA ? 'disabled' : ''; ?>">
+                                <a class="page-link" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&project_id=<?php echo urlencode((string)$projectId); ?>&status=<?php echo urlencode($filterStatus); ?>&t_page=<?php echo $tPage; ?>&q_page=<?php echo $qPage + 1; ?>">Next</a>
+                            </li>
+                        </ul>
+                    </nav>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -557,4 +723,15 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
 </div>
+</div>
+<script>
+function toggleTypeRow(row) {
+    const detailRow = row.nextElementSibling;
+    const icon = row.querySelector('.expand-icon');
+    if (detailRow && detailRow.classList.contains('type-detail-row')) {
+        detailRow.classList.toggle('d-none');
+        if (icon) icon.style.transform = detailRow.classList.contains('d-none') ? 'rotate(0deg)' : 'rotate(90deg)';
+    }
+}
+</script>
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

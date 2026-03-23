@@ -1,4 +1,4 @@
-﻿        <!-- Feedback Tab -->
+        <!-- Feedback Tab -->
         <div class="tab-pane fade" id="feedback" role="tabpanel">
             <span id="feedback_probe" data-file="tab_feedback.php" style="display:none;"></span>
             <div class="mb-3">

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * ClientProjectAssignment Model
  * Represents the relationship between client users and assigned projects

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Environment Status Master Management
  * Allows admin to manage environment testing status options

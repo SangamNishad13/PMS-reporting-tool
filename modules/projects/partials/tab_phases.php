@@ -1,4 +1,4 @@
-﻿        <!-- Phases Tab -->
+        <!-- Phases Tab -->
         <div class="tab-pane fade show active" id="phases" role="tabpanel">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h5 class="mb-0">Project Phases</h5>

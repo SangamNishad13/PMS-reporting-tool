@@ -614,4 +614,3 @@ function requireRole($role) {
         }
     }
 }
-?>

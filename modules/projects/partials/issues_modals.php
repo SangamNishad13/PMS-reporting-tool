@@ -1,4 +1,4 @@
-﻿<!-- Final Issue Modal -->
+<!-- Final Issue Modal -->
 <div class="modal fade" id="finalIssueModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">

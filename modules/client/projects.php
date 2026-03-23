@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Client Projects Listing Page
  * 

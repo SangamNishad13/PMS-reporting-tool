@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Individual Project Dashboard Template
  * 

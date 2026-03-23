@@ -1,4 +1,4 @@
-﻿        <!-- Production Hours Tab -->
+        <!-- Production Hours Tab -->
         <div class="tab-pane fade" id="production-hours" role="tabpanel">
             <span id="production_hours_probe" data-file="tab_production_hours.php" style="display:none;"></span>
             <div class="mb-3">

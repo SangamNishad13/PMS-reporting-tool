@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Client Permissions Helper Functions
  * Provides functions to check if a user has specific permissions for a client

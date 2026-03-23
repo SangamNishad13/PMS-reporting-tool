@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Availability Status Master Management
  */

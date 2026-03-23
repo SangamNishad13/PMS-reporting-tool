@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Unified Dashboard View Template
  * 

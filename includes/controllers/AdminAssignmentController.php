@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * AdminAssignmentController
  * Handles project assignment requests with admin validation

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * ProjectAssignmentManager
  * Manages admin assignment of projects to client users

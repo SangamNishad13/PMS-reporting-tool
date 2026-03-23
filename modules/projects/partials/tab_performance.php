@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Get project-specific performance data
 $projectId = $project['id'];
 
