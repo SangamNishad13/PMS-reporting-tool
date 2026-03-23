@@ -382,11 +382,26 @@ function enforceApiCsrf() {
     if (in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) {
         return; // Safe methods don't need CSRF
     }
+
     $token = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    
+    // Check if token is missing but Content-Length is high (potential post_max_size issue)
+    if ($token === '' && empty($_POST) && ($contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0)) > 1024) {
+        $postMaxSize = ini_get('post_max_size');
+        http_response_code(413); // Payload Too Large preferred, or stay with 403 for security
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => "Request body potentially exceeded 'post_max_size' ($postMaxSize). Please upload a smaller file or split the request."]);
+        exit;
+    }
+
     if (!verifyCsrfToken($token)) {
         http_response_code(403);
         header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['error' => 'Invalid or missing CSRF token']);
+        echo json_encode([
+            'error' => 'Invalid or missing CSRF token', 
+            'received' => ($token === '' ? 'none' : 'provided'),
+            'hint' => 'Ensure X-CSRF-Token header or csrf_token POST field is present.'
+        ]);
         exit;
     }
 }

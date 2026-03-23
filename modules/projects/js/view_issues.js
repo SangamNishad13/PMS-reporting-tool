@@ -1,4 +1,4 @@
-﻿/**
+/**
  * view_issues.js
  * Logic for the Issues tab: issue management, drafting, rendering, and interaction.
  */
@@ -823,7 +823,12 @@
                 : (function () {
                     var fd = new FormData();
                     fd.append('image', file);
-                    return fetch(issueImageUploadUrl, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); });
+                    return fetch(issueImageUploadUrl, { 
+                        method: 'POST', 
+                        body: fd, 
+                        headers: { 'X-CSRF-Token': window._csrfToken || '' },
+                        credentials: 'same-origin' 
+                    }).then(function (r) { return r.json(); });
                 })();
             uploadPromise
                 .then(function (res) {

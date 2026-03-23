@@ -350,15 +350,16 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
                 var method = (options.method || 'GET').toUpperCase();
                 var safeMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE'];
                 if (safeMethods.indexOf(method) === -1 && csrfToken) {
+                    // Always add header for maximum reliability (works even if body is discarded)
+                    options.headers = options.headers || {};
+                    if (!options.headers['X-CSRF-Token']) {
+                        options.headers['X-CSRF-Token'] = csrfToken;
+                    }
+
                     if (options.body instanceof FormData) {
-                        // Only append if not already present
+                        // Also append to body for traditional form handling
                         if (!options.body.has('csrf_token')) {
                             options.body.append('csrf_token', csrfToken);
-                        }
-                    } else {
-                        options.headers = options.headers || {};
-                        if (!options.headers['X-CSRF-Token']) {
-                            options.headers['X-CSRF-Token'] = csrfToken;
                         }
                     }
                 }

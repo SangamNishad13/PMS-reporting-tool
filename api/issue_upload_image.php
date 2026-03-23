@@ -7,9 +7,8 @@ ob_end_clean();
 
 // Debug log function - disabled in production
 function issue_upload_debug_log($msg) {
-    // Production: debug logging disabled to prevent information disclosure
-    // Uncomment below line only for local debugging:
-    // @file_put_contents(__DIR__ . '/../tmp/logs/issue_upload_debug.log', date('Y-m-d H:i:s') . ' ' . $msg . "\n", FILE_APPEND);
+    // Enable logging temporarily for debugging upload issues
+    @file_put_contents(__DIR__ . '/../tmp/issue_upload_debug.log', date('Y-m-d H:i:s') . ' ' . $msg . "\n", FILE_APPEND);
 }
 
 
