@@ -565,12 +565,13 @@ foreach ($filteredIssues as $iss) {
         }
     }
 
-    // Severity — fallback chain: meta severity → issue severity column → 'Minor'
+    // Severity — use meta field first, then issue severity column; skip blank (don't show empty row)
     $rawSev = trim(metaFirst($meta, 'severity'));
     if ($rawSev === '') $rawSev = trim((string)($iss['severity'] ?? ''));
-    if ($rawSev === '') $rawSev = 'Minor';
-    $sev = ucfirst(strtolower($rawSev));
-    $severityCounts[$sev] = ($severityCounts[$sev] ?? 0) + 1;
+    if ($rawSev !== '') {
+        $sev = ucfirst(strtolower($rawSev));
+        $severityCounts[$sev] = ($severityCounts[$sev] ?? 0) + 1;
+    }
 
     $issuesWithMeta[] = [
         'title'    => $iss['title'],
