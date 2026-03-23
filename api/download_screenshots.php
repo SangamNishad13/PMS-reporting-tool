@@ -44,9 +44,16 @@ if ($pageId) {
         die("Invalid Page ID");
     }
     
-    // Complex page check similar to issues.php logic (metadata + direct col)
-    $query .= " AND (i.page_id = ? OR EXISTS (SELECT 1 FROM issue_metadata im WHERE im.issue_id = i.id AND im.meta_key = 'page_ids' AND (im.meta_value = ? OR im.meta_value LIKE ? OR im.meta_value LIKE ? OR im.meta_value LIKE ? OR im.meta_value = ?)))";
-    $params = array_merge($params, [$pageId, (string)$pageId, '%,' . $pageId . ',%', '[' . $pageId . ',%', '%,' . $pageId . ']', '[' . $pageId . ']']);
+    // Use issue_pages as authoritative source (always wiped+re-inserted on save).
+    // Fall back to i.page_id for legacy issues that predate the issue_pages table.
+    $query .= " AND (
+        EXISTS (SELECT 1 FROM issue_pages ip WHERE ip.issue_id = i.id AND ip.page_id = ?)
+        OR (
+            i.page_id = ?
+            AND NOT EXISTS (SELECT 1 FROM issue_pages ip2 WHERE ip2.issue_id = i.id)
+        )
+    )";
+    $params = array_merge($params, [$pageId, $pageId]);
 }
 
 // Filter for clients

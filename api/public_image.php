@@ -56,7 +56,9 @@ if (!$allowed) {
 }
 
 $ext = strtolower((string)pathinfo($relPath, PATHINFO_EXTENSION));
-$allowedExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'];
+// SVG intentionally excluded: SVGs can contain embedded scripts that execute
+// when the signed URL is opened directly in a browser tab (Content-Disposition: inline).
+$allowedExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'avif'];
 if (!in_array($ext, $allowedExts, true)) {
     http_response_code(403);
     header('Content-Type: text/plain; charset=utf-8');

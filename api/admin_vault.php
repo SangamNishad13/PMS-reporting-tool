@@ -42,8 +42,11 @@ function getVaultKey() {
             echo json_encode(['success' => false, 'message' => 'Vault encryption key not configured. Set VAULT_ENCRYPTION_KEY environment variable.']);
             exit;
         }
-        // Use PBKDF2 for proper key derivation from APP_KEY (not raw hash)
-        $key = hash_pbkdf2('sha256', $appKey, 'vault_key_salt_v1', 100000, 32, true);
+        // Use PBKDF2 for proper key derivation from APP_KEY.
+        // Security: salt should come from env var, not a hardcoded constant.
+        // Set VAULT_KEY_SALT to a random base64 string in your .env file.
+        $salt = getenv('VAULT_KEY_SALT') ?: 'vault_key_salt_v1'; // TODO: migrate to unique env var
+        $key = hash_pbkdf2('sha256', $appKey, $salt, 100000, 32, true);
     } else {
         $key = base64_decode($key) ?: hash('sha256', $key, true);
     }
@@ -66,9 +69,13 @@ function decryptPassword($stored) {
     $raw = base64_decode($stored);
     if ($raw === false || strlen($raw) < 28) {
         // Legacy AES-128-ECB fallback (for old records only)
+        // SECURITY: Legacy AES-128-ECB fallback — ECB mode lacks diffusion and leaks plaintext patterns.
+        // This path is ONLY for migrating old records. REMOVE once all records are re-encrypted.
+        // To disable: unset VAULT_LEGACY_KEY from your environment after running migration.
         $legacyKey = getenv('VAULT_LEGACY_KEY') ?: '';
         if ($legacyKey) {
-            error_log("Security Warning: Legacy AES-128-ECB fallback triggered for vault decryption. Pattern leakage risk.");
+            error_log('SECURITY WARNING: Legacy AES-128-ECB vault fallback triggered. '
+                . 'Re-encrypt this record and then unset VAULT_LEGACY_KEY to remove this risk.');
             $result = @openssl_decrypt(base64_decode($stored), 'AES-128-ECB', $legacyKey);
             return $result !== false ? $result : '';
         }

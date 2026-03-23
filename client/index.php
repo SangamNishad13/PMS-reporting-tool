@@ -5,9 +5,14 @@
  * Implements role-based access control for all client endpoints
  */
 
-// Enable error reporting for development
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Security: only display errors in development — never in production
+if (getenv('APP_ENV') === 'development') {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 1);
+} else {
+    error_reporting(0);
+    ini_set('display_errors', 0);
+}
 
 // Include authentication system first (handles sessions, session paths, and constants)
 require_once __DIR__ . '/../includes/auth.php';
@@ -240,7 +245,9 @@ try {
     
     http_response_code(500);
     if (isAjaxRequest()) {
-        echo json_encode(['error' => 'Internal server error', 'debug' => $e->getMessage()]);
+        // Security: never expose raw exception details to clients in production
+        $debugMode = (getenv('APP_ENV') === 'development');
+        echo json_encode(['error' => 'Internal server error', 'debug' => $debugMode ? $e->getMessage() : null]);
     } else {
         // Show detailed error in development
         if (ini_get('display_errors')) {

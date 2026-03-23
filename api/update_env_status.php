@@ -47,7 +47,23 @@ if (isset($_POST['environment_id'])) {
 }
 $envIds = array_values(array_filter($envIds, function($v){ return $v > 0; }));
 
-$testerType = $_POST['tester_type'] ?? '';
+// Security fix: derive tester_type from server-side session role.
+// Do NOT trust POST tester_type for locked roles — prevents QA writing AT status and vice versa.
+$validTesterTypes = ['at', 'ft', 'qa'];
+$testerType = '';
+if ($userRole === 'at_tester') {
+    $testerType = 'at'; // locked — cannot write to qa_status column
+} elseif ($userRole === 'ft_tester') {
+    $testerType = 'ft'; // locked — cannot write to qa_status column
+} elseif ($userRole === 'qa') {
+    $testerType = 'qa'; // locked — can only write qa_status
+} else {
+    // admin / project_lead: allow POST tester_type but validate it
+    $testerType = $_POST['tester_type'] ?? '';
+    if (!in_array($testerType, $validTesterTypes, true)) {
+        $testerType = 'at'; // safe fallback
+    }
+}
 
 function mapComputedToPageStatus(string $status): string {
     $map = [
@@ -90,18 +106,6 @@ if ($testerType === 'qa') {
     }
 }
 
-// Infer tester type from session if missing
-$validTesterTypes = ['at', 'ft', 'qa'];
-if (empty($testerType)) {
-    if ($userRole === 'at_tester') $testerType = 'at';
-    elseif ($userRole === 'ft_tester') $testerType = 'ft';
-    elseif ($userRole === 'qa') $testerType = 'qa';
-    else $testerType = 'at';
-}
-if (!in_array($testerType, $validTesterTypes)) {
-    echo json_encode(['success' => false, 'message' => 'Invalid tester type']);
-    exit;
-}
 
 try {
     $updated = [];

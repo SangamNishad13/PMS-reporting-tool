@@ -329,6 +329,11 @@ switch ($action) {
             echo json_encode(['error' => 'Message not found']);
             exit;
         }
+        // IDOR fix: verify user has access to the project this message belongs to
+        if (!empty($row['project_id']) && !hasProjectAccess($db, $userId, (int)$row['project_id'])) {
+            echo json_encode(['error' => 'Unauthorized']);
+            exit;
+        }
         if (!empty($row['deleted_at'])) {
             echo json_encode(['error' => 'Deleted message cannot be edited']);
             exit;
@@ -373,6 +378,11 @@ switch ($action) {
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$row) {
             echo json_encode(['error' => 'Message not found']);
+            exit;
+        }
+        // IDOR fix: verify user has access to the project this message belongs to
+        if (!empty($row['project_id']) && !hasProjectAccess($db, $userId, (int)$row['project_id'])) {
+            echo json_encode(['error' => 'Unauthorized']);
             exit;
         }
         if (!$isAdmin && (int)$row['user_id'] !== (int)$userId) {
