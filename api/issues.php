@@ -858,10 +858,17 @@ try {
                 LEFT JOIN users reporter ON i.reporter_id = reporter.id
                 LEFT JOIN users assignee ON i.assignee_id = assignee.id";
         if ($pageId) {
-            $sql .= " LEFT JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'page_ids'";
-            $sql .= " WHERE i.project_id = ? AND (i.page_id = ? OR im.meta_value = ?)";
+            // Use issue_pages as the authoritative source (always wiped+re-inserted on save).
+            // Fall back to i.page_id for legacy issues that were created before issue_pages existed.
+            $sql .= " WHERE i.project_id = ? AND (
+                EXISTS (SELECT 1 FROM issue_pages ip WHERE ip.issue_id = i.id AND ip.page_id = ?)
+                OR (
+                    i.page_id = ?
+                    AND NOT EXISTS (SELECT 1 FROM issue_pages ip2 WHERE ip2.issue_id = i.id)
+                )
+            )";
             $params[] = $pageId;
-            $params[] = (string)$pageId;
+            $params[] = $pageId;
         } else {
             $sql .= " WHERE i.project_id = ?";
         }
