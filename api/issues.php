@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/project_permissions.php';
+require_once __DIR__ . '/../includes/models/AuditLogger.php';
 ob_end_clean();
 
 header('Content-Type: application/json; charset=utf-8');
@@ -1455,12 +1456,13 @@ try {
                 
                 // --- HISTORY LOGGING ---
                 // Fetch current state
-                $oldStmt = $db->prepare("SELECT * FROM issues WHERE id = ? FOR UPDATE");
-                $oldStmt->execute([$id]);
+                // IDOR Fix: Ensure issue belongs to the provided projectId
+                $oldStmt = $db->prepare("SELECT * FROM issues WHERE id = ? AND project_id = ? FOR UPDATE");
+                $oldStmt->execute([$id, $projectId]);
                 $oldIssue = $oldStmt->fetch(PDO::FETCH_ASSOC);
                 if (!$oldIssue) {
                     if ($db->inTransaction()) $db->rollBack();
-                    jsonError('Issue not found', 404);
+                    jsonError('Issue not found or unauthorized access to this project.', 404);
                 }
 
                 if ($expectedUpdatedAt !== '' && !empty($oldIssue['updated_at']) && $expectedUpdatedAt !== (string)$oldIssue['updated_at']) {
@@ -1982,7 +1984,19 @@ try {
         $ids = is_array($idsRaw) ? $idsRaw : array_filter(array_map('intval', explode(',', $idsRaw)));
         if (empty($ids)) jsonError('ids required', 400);
 
-        // Permission check BEFORE fetching HTML blocks (avoid wasted work on 403)
+        // IDOR Fix: Verify all IDs belong to the current projectId
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $checkStmt = $db->prepare("SELECT id FROM issues WHERE id IN ($placeholders) AND project_id = ?");
+        $checkStmt->execute(array_merge($ids, [$projectId]));
+        $verifiedIds = $checkStmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        if (count($verifiedIds) !== count($ids)) {
+            // Some IDs are invalid or belong to other projects.
+            // We only process the verified ones or block entirely.
+            // Blocking entirely is safer for security.
+            jsonError('One or more Issue IDs are invalid or belong to another project.', 403);
+        }
+
         if ($isTesterRole) {
             $blockedIds = getTesterBlockedIssueIdsForDelete($db, $projectId, $ids);
             if (!empty($blockedIds)) {
@@ -1995,14 +2009,16 @@ try {
 
         $htmlBlocksForCleanup = collectIssueDeleteHtmlBlocks($db, $projectId, $ids);
 
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $params = array_merge($ids, [$projectId]);
 
         $db->beginTransaction();
         try {
             // Remove dependent rows first to avoid FK failures.
-            $delMeta = $db->prepare("DELETE FROM issue_metadata WHERE issue_id IN ($placeholders)");
-            $delMeta->execute($ids);
+            $db->prepare("DELETE FROM issue_metadata WHERE issue_id IN ($placeholders)")->execute($ids);
+            $db->prepare("DELETE FROM issue_pages WHERE issue_id IN ($placeholders)")->execute($ids);
+            $db->prepare("DELETE FROM issue_comments WHERE issue_id IN ($placeholders)")->execute($ids);
+            $db->prepare("DELETE FROM issue_history WHERE issue_id IN ($placeholders)")->execute($ids);
+            $db->prepare("DELETE FROM issue_reporter_qa_status WHERE issue_id IN ($placeholders)")->execute($ids);
 
             $delCommon = $db->prepare("DELETE FROM common_issues WHERE issue_id IN ($placeholders) AND project_id = ?");
             $delCommon->execute($params);
@@ -2011,6 +2027,21 @@ try {
             $stmt->execute($params);
 
             $db->commit();
+            
+            // Security Logging: Log issue deletion
+            try {
+                $auditLogger = new AuditLogger();
+                $auditLogger->logAdminActivity(
+                    $userId,
+                    'issue_bulk_delete',
+                    "User deleted issues: " . implode(', ', $ids) . " in project " . $projectId,
+                    null,
+                    true
+                );
+            } catch (Exception $al_e) {
+                error_log("Failed to log issue deletion to audit log: " . $al_e->getMessage());
+            }
+
             cleanupIssueUploadsFromHtmlBlocks($htmlBlocksForCleanup);
             // Invalidate get_all cache
             if (function_exists('apcu_delete')) {
@@ -2151,8 +2182,31 @@ try {
         if (!empty($issueIds)) {
             $issueIds = array_map('intval', $issueIds);
             $ph = implode(',', array_fill(0, count($issueIds), '?'));
+            
+            // Cleanup metadata, pages, history, comments, and the issues themselves
+            $db->prepare("DELETE FROM issue_metadata WHERE issue_id IN ($ph)")->execute($issueIds);
+            $db->prepare("DELETE FROM issue_pages WHERE issue_id IN ($ph)")->execute($issueIds);
+            $db->prepare("DELETE FROM issue_comments WHERE issue_id IN ($ph)")->execute($issueIds);
+            $db->prepare("DELETE FROM issue_history WHERE issue_id IN ($ph)")->execute($issueIds);
+            $db->prepare("DELETE FROM issue_reporter_qa_status WHERE issue_id IN ($ph)")->execute($issueIds);
+            
             $db->prepare("DELETE FROM issues WHERE id IN ($ph) AND project_id = ?")->execute(array_merge($issueIds, [$projectId]));
         }
+
+        // Security Logging: Log common issue deletion
+        try {
+            $auditLogger = new AuditLogger();
+            $auditLogger->logAdminActivity(
+                $userId,
+                'common_issue_bulk_delete',
+                "User deleted common issues: " . implode(', ', $ids) . " (Issue IDs: " . implode(', ', $issueIds) . ") in project " . $projectId,
+                null,
+                true
+            );
+        } catch (Exception $al_e) {
+            error_log("Failed to log common issue deletion to audit log: " . $al_e->getMessage());
+        }
+
         cleanupIssueUploadsFromHtmlBlocks($htmlBlocksForCleanup);
         jsonResponse(['success' => true]);
     }

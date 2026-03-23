@@ -14,6 +14,24 @@ $action = $_POST['action'] ?? '';
 $user_id = $_SESSION['user_id'];
 $db = Database::getInstance();
 
+// CSRF protection
+enforceApiCsrf();
+
+// For sensitive operations, require password re-authentication
+if (in_array($action, ['disable_2fa', 'generate_secret'], true)) {
+    $password = $_POST['password'] ?? '';
+    
+    $stmt = $db->prepare("SELECT password FROM users WHERE id = ?");
+    $stmt->execute([$user_id]);
+    $user = $stmt->fetch();
+    
+    if (!$user || !password_verify($password, $user['password'])) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'message' => 'Incorrect password. Re-authentication failed.']);
+        exit;
+    }
+}
+
 header('Content-Type: application/json');
 
 try {

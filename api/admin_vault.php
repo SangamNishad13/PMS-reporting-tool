@@ -68,6 +68,7 @@ function decryptPassword($stored) {
         // Legacy AES-128-ECB fallback (for old records only)
         $legacyKey = getenv('VAULT_LEGACY_KEY') ?: '';
         if ($legacyKey) {
+            error_log("Security Warning: Legacy AES-128-ECB fallback triggered for vault decryption. Pattern leakage risk.");
             $result = @openssl_decrypt(base64_decode($stored), 'AES-128-ECB', $legacyKey);
             return $result !== false ? $result : '';
         }

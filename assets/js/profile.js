@@ -65,11 +65,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
 // 2FA Functions
 function start2FASetup() {
+    var password = prompt('Please enter your account password to proceed with 2FA setup:');
+    if (!password) return;
+
     var cfg = window.ProfileConfig || {};
     $.ajax({
         url: cfg.baseDir + '/api/profile_2fa.php',
         method: 'POST',
-        data: { action: 'generate_secret' },
+        data: { action: 'generate_secret', password: password },
         dataType: 'json',
         success: function(res) {
             if (res.success) {
@@ -137,11 +140,14 @@ function verifyAndEnable2FA() {
 function disable2FA() {
     if (!confirm('Are you sure you want to disable Two-Factor Authentication? Your account will be less secure.')) return;
     
+    var password = prompt('Please enter your account password to confirm disabling 2FA:');
+    if (!password) return;
+
     var cfg = window.ProfileConfig || {};
     $.ajax({
         url: cfg.baseDir + '/api/profile_2fa.php',
         method: 'POST',
-        data: { action: 'disable_2fa' },
+        data: { action: 'disable_2fa', password: password },
         dataType: 'json',
         success: function(res) {
             if (res.success) {
