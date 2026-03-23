@@ -4,10 +4,12 @@
  * Opens template xlsx, injects data into XML, streams result.
  * Preserves ALL formatting, charts, images, and formulas.
  */
+ob_start();
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/constants.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
+ob_end_clean();
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) { http_response_code(401); exit('Unauthorized'); }
@@ -76,11 +78,10 @@ function xstr(string $v): string {
     $v = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $v);
     // Strip UTF-8 encoded surrogates (U+D800–U+DFFF)
     $v = preg_replace('/\xED[\xA0-\xBF][\x80-\xBF]/s', '', $v);
-    // Strip emoji and supplementary plane characters that can cause issues (U+10000+)
-    // These are encoded as 4-byte UTF-8 sequences: F0-F4 ...
-    // Keep them but ensure they're valid; mb_convert_encoding above handles this
     // Normalize CR+LF and bare CR to LF
     $v = str_replace(["\r\n", "\r"], "\n", $v);
+    // Encode newlines as XML numeric entity — literal \n is invalid inside <t> elements
+    $v = str_replace("\n", '&#10;', $v);
     return htmlspecialchars($v, ENT_XML1 | ENT_SUBSTITUTE, 'UTF-8');
 }
 
@@ -112,8 +113,7 @@ function setCell(string &$xml, string $ref, string $value, bool $isNum = false):
     }
 
     // Normal form: find opening <c r="REF" ...> then scan to matching </c>
-    // Use strpos-based approach to handle multiline formula content safely
-    $openPat = '/<c\s+r="' . $rq . '"([^>\/][^>]*)>/';
+    $openPat = '/<c\s+r="' . $rq . '"([^>]*)>/';
     if (!preg_match($openPat, $xml, $m, PREG_OFFSET_CAPTURE)) return;
     if (preg_match('/\bs="(\d+)"/', $m[1][0], $sm)) $style = ' s="' . $sm[1] . '"';
     $start    = $m[0][1];
@@ -145,19 +145,17 @@ function injectCell(string &$xml, int $rowNum, string $ref, string $value, strin
         ? '<c r="' . $ref . '"' . $styleAttr . '><v>' . (int)$value . '</v></c>'
         : '<c r="' . $ref . '"' . $styleAttr . ' t="inlineStr"><is><t xml:space="preserve">' . xstr($value) . '</t></is></c>';
 
-    // Find existing row using strpos-based approach (avoids regex backtracking on large XML)
-    $rowTag = '<row r="' . $rowNum . '"';
-    $rowPos = strpos($xml, $rowTag);
-    if ($rowPos !== false) {
-        // Find end of opening row tag
-        $rowOpenEnd = strpos($xml, '>', $rowPos) + 1;
-        // Find closing </row>
-        $rowClosePos = strpos($xml, '</row>', $rowOpenEnd);
-        if ($rowClosePos !== false) {
-            // Insert cell before </row>
-            $xml = substr($xml, 0, $rowClosePos) . $newCell . substr($xml, $rowClosePos);
-            return;
-        }
+    // Find existing row — use exact match with word boundary to avoid matching r="160" when looking for r="16"
+    // Pattern: <row r="N" followed by space, >, or />
+    $rowPat = '/<row\s+r="' . $rowNum . '"(\s[^>]*)?>.*?<\/row>/s';
+    if (preg_match($rowPat, $xml, $rowMatch, PREG_OFFSET_CAPTURE)) {
+        $rowStart   = $rowMatch[0][1];
+        $rowFull    = $rowMatch[0][0];
+        // Find </row> within this match and insert before it
+        $closePos   = strrpos($rowFull, '</row>');
+        $newRowFull = substr($rowFull, 0, $closePos) . $newCell . '</row>';
+        $xml = substr($xml, 0, $rowStart) . $newRowFull . substr($xml, $rowStart + strlen($rowFull));
+        return;
     }
 
     // Row doesn't exist — create it before </sheetData>
@@ -185,16 +183,68 @@ function injectRows(string &$xml, string $rows): void {
     $xml = preg_replace('/<dimension\s+ref="[^"]*"\s*\/>/s', '', $xml);
 }
 
+/** Remove duplicate rows or out-of-order rows.
+ *  Excel REQUIRES rows in a worksheet to be in strictly increasing order of the 'r' attribute.
+ */
+function sortRows(string &$xml): void {
+    $startTag = '<sheetData>';
+    $endTag   = '</sheetData>';
+    $startPos = strpos($xml, $startTag);
+    $endPos   = strpos($xml, $endTag);
+
+    if ($startPos === false || $endPos === false) return;
+
+    $contentStart = $startPos + strlen($startTag);
+    $content = substr($xml, $contentStart, $endPos - $contentStart);
+
+    // Extract rows using a non-backtracking approach
+    $rows = [];
+    $offset = 0;
+    $len = strlen($content);
+    while ($offset < $len) {
+        // Find next <row
+        $rowStart = strpos($content, '<row ', $offset);
+        if ($rowStart === false) break;
+
+        // Get row number
+        $attrEnd = strpos($content, '>', $rowStart);
+        if ($attrEnd === false) break;
+        $openTag = substr($content, $rowStart, $attrEnd - $rowStart + 1);
+
+        if (!preg_match('/\br="(\d+)"/', $openTag, $rm)) { $offset = $attrEnd + 1; continue; }
+        $rNum = (int)$rm[1];
+
+        // Self-closing row?
+        if (substr($openTag, -2) === '/>') {
+            $rows[$rNum] = substr($content, $rowStart, $attrEnd - $rowStart + 1);
+            $offset = $attrEnd + 1;
+            continue;
+        }
+
+        // Find matching </row>
+        $closePos = strpos($content, '</row>', $attrEnd);
+        if ($closePos === false) break;
+        $rowFull = substr($content, $rowStart, $closePos + 6 - $rowStart);
+        // Keep last injection for same row number (most recent wins)
+        $rows[$rNum] = $rowFull;
+        $offset = $closePos + 6;
+    }
+
+    ksort($rows, SORT_NUMERIC);
+    $xml = substr($xml, 0, $contentStart) . implode('', $rows) . substr($xml, $endPos);
+}
+
 /** Remove all data rows (row 2 onwards), keep header row 1.
  *  Handles both <row ...>...</row> and self-closing <row .../> forms.
  */
 function clearDataRows(string &$xml): void {
     // Self-closing rows: <row r="N" ... />
-    $xml = preg_replace('/<row\s+r="[1-9]\d+"[^>]*\/>/s', '', $xml);  // 10+
-    $xml = preg_replace('/<row\s+r="[2-9]"[^>]*\/>/s', '', $xml);     // 2-9
+    // First, clear rows 10-99... then 2-9
+    $xml = preg_replace('/<row\s+r="[1-9]\d+"[^>]*\/>/s', '', $xml);
+    $xml = preg_replace('/<row\s+r="[2-9]"[^>]*\/>/s', '', $xml);
     // Normal rows: <row r="N" ...>...</row>
-    $xml = preg_replace('/<row\s+r="[1-9]\d+"[^>]*>.*?<\/row>/s', '', $xml); // 10+
-    $xml = preg_replace('/<row\s+r="[2-9]"[^>]*>.*?<\/row>/s', '', $xml);    // 2-9
+    $xml = preg_replace('/<row\s+r="[1-9]\d+"[^>]*>.*?<\/row>/s', '', $xml);
+    $xml = preg_replace('/<row\s+r="[2-9]"[^>]*>.*?<\/row>/s', '', $xml);
 }
 
 function stripHtml(string $html): string {
@@ -566,6 +616,7 @@ for ($mi = 0; $mi < count($teamMembers); $mi++) {
 
 // Remove dimension element from sheet1 to prevent Excel repair dialog
 $sh1 = preg_replace('/<dimension\s+ref="[^"]*"\s*\/>/s', '', $sh1);
+sortRows($sh1);
 
 $zip->addFromString('xl/worksheets/sheet1.xml', $sh1);
 // Delete calcChain — stale chain prevents recalculation
@@ -601,6 +652,7 @@ foreach ($projectPages as $idx => $page) {
         . '</row>';
 }
 injectRows($sh2, $rows2);
+sortRows($sh2);
 $zip->addFromString('xl/worksheets/sheet2.xml', $sh2);
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -615,6 +667,7 @@ foreach ($allGroupedUrls as $idx => $url) {
     $rows3 .= '<row r="' . $rn . '" spans="1:1">' . xcell('A', $rn, (string)$url) . '</row>';
 }
 injectRows($sh3, $rows3);
+sortRows($sh3);
 $zip->addFromString('xl/worksheets/sheet3.xml', $sh3);
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -698,6 +751,7 @@ foreach ($filteredIssues as $iss) {
     $srNo++;
 }
 injectRows($sh4, $rows4);
+sortRows($sh4);
 $zip->addFromString('xl/worksheets/sheet4.xml', $sh4);
 
 // ── stream ────────────────────────────────────────────────────────────────────
@@ -727,6 +781,8 @@ header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetm
 header('Content-Disposition: attachment; filename="' . $filename . '"');
 header('Content-Length: ' . filesize($tmpFile));
 header('Cache-Control: private, no-cache');
+// Discard any accidental output (warnings, notices) before streaming binary
+if (ob_get_level()) ob_end_clean();
 readfile($tmpFile);
 unlink($tmpFile);
 exit;
