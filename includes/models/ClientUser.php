@@ -50,11 +50,11 @@ class ClientUser {
      * Authenticate client user with credentials
      */
     public static function authenticate($username, $password) {
-        $db = Database::getInstance();
+        $pdo = Database::getInstance();
         
         try {
             // Find user with client role
-            $stmt = $db->prepare("
+            $stmt = $pdo->prepare("
                 SELECT id, username, email, password, full_name, is_active, 
                        account_setup_completed, force_password_reset
                 FROM users 
@@ -115,10 +115,10 @@ class ClientUser {
      * Validate if user has client role
      */
     public static function isClientUser($userId) {
-        $db = Database::getInstance();
+        $pdo = Database::getInstance();
         
         try {
-            $stmt = $db->prepare("
+            $stmt = $pdo->prepare("
                 SELECT id FROM users 
                 WHERE id = ? AND role = 'client' AND is_active = 1
             ");
@@ -272,10 +272,10 @@ class ClientUser {
      * Log authentication attempts and activities
      */
     private static function logAuthAttempt($userId, $actionType, $details) {
-        $db = Database::getInstance();
+        $pdo = Database::getInstance();
         
         try {
-            $stmt = $db->prepare("
+            $stmt = $pdo->prepare("
                 INSERT INTO client_audit_log 
                 (client_user_id, action_type, action_details, ip_address, user_agent, success, created_at)
                 VALUES (?, ?, ?, ?, ?, 1, NOW())

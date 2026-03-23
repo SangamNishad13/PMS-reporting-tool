@@ -7,7 +7,10 @@ $auth->requireRole(['admin', 'project_lead', 'admin']);
 
 $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'];
+/** @var \PDO $db */
 $db = Database::getInstance();
+$baseDir = getBaseDir();
+$cspNonce = generateCspNonce();
 
 // Get report parameters
 $startDate = $_GET['start_date'] ?? date('Y-m-01');

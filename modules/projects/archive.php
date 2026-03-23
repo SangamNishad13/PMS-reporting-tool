@@ -7,6 +7,8 @@ $auth = new Auth();
 $auth->requireRole(['admin', 'project_lead']);
 
 $baseDir = getBaseDir();
+/** @var \PDO $db */
+$db = Database::getInstance();
 $projectId = (int)($_POST['project_id'] ?? 0);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $projectId > 0) {
     if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
@@ -18,7 +20,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $projectId > 0) {
     
     if ($projectId > 0) {
         try {
-            $db = Database::getInstance();
             
             // Update project status
             $stmt = $db->prepare("

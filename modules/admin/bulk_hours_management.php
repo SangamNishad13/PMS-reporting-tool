@@ -4,6 +4,8 @@ require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/hours_validation.php';
 
+$baseDir = getBaseDir();
+
 $auth = new Auth();
 $auth->requireRole(['admin', 'project_lead']); // Admin and Project Lead can manage hours
 

@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../includes/helpers.php';
 $auth = new Auth();
 $auth->requireRole(['admin']);
 
+/** @var \PDO $db */
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 
