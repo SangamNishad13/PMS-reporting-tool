@@ -682,6 +682,11 @@ function handleEditLogRequest(logId, dateStr, logData) {
     var baseDir = cfg.baseDir || '';
     var isAdmin = !!cfg.isAdmin;
     if (isAdmin) { if (typeof showToast === 'function') showToast('Admins can edit logs from admin tools.', 'info'); return false; }
+    
+    // Check if it's today for direct edit bypass
+    var todayStr = cfg.today || '';
+    var isToday = String(dateStr || '') === todayStr;
+
     var modalEl = ensureEditRequestModal();
     reqEditWireEvents();
     var data = logData || {};
@@ -699,6 +704,20 @@ function handleEditLogRequest(logId, dateStr, logData) {
     var hoursEl = document.getElementById('reqEditHours');
     var descEl = document.getElementById('reqEditDesc');
     var submitBtn = document.getElementById('reqEditSubmitBtn');
+    
+    // Update Modal UI for direct edit if it's today
+    var modalTitle = modalEl.querySelector('.modal-title');
+    var modalHint = modalEl.querySelector('.text-muted');
+    if (isToday) {
+        if (modalTitle) modalTitle.textContent = 'Edit Log';
+        if (modalHint) modalHint.textContent = 'No admin approval required for same-day edits.';
+        if (submitBtn) submitBtn.textContent = 'Update';
+    } else {
+        if (modalTitle) modalTitle.textContent = 'Request Log Edit Approval';
+        if (modalHint) modalHint.textContent = 'Admin approval is required. This will send an edit request.';
+        if (submitBtn) submitBtn.textContent = 'Send Request';
+    }
+
     if (!modalEl || !projectSel || !taskTypeSel || !hoursEl || !descEl || !submitBtn) return false;
     var rawTaskType = String(data.task_type || 'other');
     if (rawTaskType === 'regression') rawTaskType = 'regression_testing';
@@ -738,8 +757,12 @@ function handleEditLogRequest(logId, dateStr, logData) {
         var h = parseFloat(hoursEl.value || '0');
         var d = (descEl.value || '').trim();
         if (!projectId || !taskType || !(h > 0) || !d) { if (typeof showToast === 'function') showToast('Project, task type, hours and description are required.', 'warning'); return; }
-        var url = '?date=' + encodeURIComponent(dateStr) + '&edit_log_request=' + encodeURIComponent(logId) + '&new_project_id=' + encodeURIComponent(projectId) + '&new_task_type=' + encodeURIComponent(taskType) + '&new_page_id=' + encodeURIComponent(pageId) + '&new_environment_id=' + encodeURIComponent(environmentId) + '&new_issue_id=' + encodeURIComponent(issueId) + '&new_phase_id=' + encodeURIComponent(phaseId) + '&new_generic_category_id=' + encodeURIComponent(genericCategoryId) + '&new_testing_type=' + encodeURIComponent(testingType) + '&new_phase_activity=' + encodeURIComponent(phaseActivity) + '&new_generic_task_detail=' + encodeURIComponent(genericDetail) + '&new_hours=' + encodeURIComponent(h) + '&new_description=' + encodeURIComponent(d);
-        submitBtn.disabled = true; submitBtn.textContent = 'Sending...';
+        
+        // Use edit_log for direct, edit_log_request for approval bypass
+        var actionKey = isToday ? 'edit_log' : 'edit_log_request';
+        var url = '?date=' + encodeURIComponent(dateStr) + '&' + actionKey + '=' + encodeURIComponent(logId) + '&new_project_id=' + encodeURIComponent(projectId) + '&new_task_type=' + encodeURIComponent(taskType) + '&new_page_id=' + encodeURIComponent(pageId) + '&new_environment_id=' + encodeURIComponent(environmentId) + '&new_issue_id=' + encodeURIComponent(issueId) + '&new_phase_id=' + encodeURIComponent(phaseId) + '&new_generic_category_id=' + encodeURIComponent(genericCategoryId) + '&new_testing_type=' + encodeURIComponent(testingType) + '&new_phase_activity=' + encodeURIComponent(phaseActivity) + '&new_generic_task_detail=' + encodeURIComponent(genericDetail) + '&new_hours=' + encodeURIComponent(h) + '&new_description=' + encodeURIComponent(d);
+        
+        submitBtn.disabled = true; submitBtn.textContent = 'Processing...';
         try { bootstrap.Modal.getOrCreateInstance(modalEl).hide(); } catch(e) {}
         setTimeout(function(){ window.location.href = url; }, 60);
     };

@@ -1062,6 +1062,94 @@ if (isset($_GET['delete_log_request'])) {
     exit;
 }
 
+// Handle direct log edit (same day only for non-admins)
+if (isset($_GET['edit_log'])) {
+    $logId = (int)$_GET['edit_log'];
+    $date = $_GET['date'] ?? date('Y-m-d');
+    $isAdmin = hasAdminPrivileges();
+    
+    // Safety check: must be today OR admin
+    if (!$isAdmin && $date !== date('Y-m-d')) {
+        $_SESSION['toast_message'] = "Direct editing is only allowed for today's logs.";
+        $_SESSION['toast_type'] = "warning";
+        header("Location: ?date=" . urlencode($date));
+        exit;
+    }
+
+    $newProjectId = (int)$_GET['new_project_id'];
+    $newTaskTypeInput = trim((string)($_GET['new_task_type'] ?? ''));
+    $taskTypeMap = ['regression_testing' => 'regression', 'page_qa' => 'page_testing'];
+    $newTaskType = $taskTypeMap[$newTaskTypeInput] ?? $newTaskTypeInput;
+
+    $newHours = (float)$_GET['new_hours'];
+    $newDescription = $_GET['new_description'];
+    $newPageId = !empty($_GET['new_page_id']) ? (int)$_GET['new_page_id'] : null;
+    $newEnvironmentId = !empty($_GET['new_environment_id']) ? (int)$_GET['new_environment_id'] : null;
+    $newIssueId = !empty($_GET['new_issue_id']) ? (int)$_GET['new_issue_id'] : null;
+    $newPhaseId = !empty($_GET['new_phase_id']) ? (int)$_GET['new_phase_id'] : null;
+    $newGenericCategoryId = !empty($_GET['new_generic_category_id']) ? (int)$_GET['new_generic_category_id'] : null;
+    $newTestingType = $_GET['new_testing_type'] ?? '';
+    $newPhaseActivity = $_GET['new_phase_activity'] ?? '';
+    $newGenericTaskDetail = $_GET['new_generic_task_detail'] ?? '';
+
+    try {
+        $db->beginTransaction();
+        
+        // Verify log belongs to user and is on the correct date
+        $checkStmt = $db->prepare("SELECT * FROM project_time_logs WHERE id = ? AND user_id = ? AND log_date = ? LIMIT 1");
+        $checkStmt->execute([$logId, $userId, $date]);
+        $oldLog = $checkStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$oldLog) {
+            throw new Exception("Log not found or access denied.");
+        }
+
+        $updateStmt = $db->prepare("
+            UPDATE project_time_logs 
+            SET project_id = ?, task_type = ?, hours_spent = ?, description = ?, 
+                page_id = ?, environment_id = ?, issue_id = ?, phase_id = ?, 
+                generic_category_id = ?, testing_type = ?
+            WHERE id = ?
+        ");
+        $updateStmt->execute([
+            $newProjectId, $newTaskType, $newHours, $newDescription,
+            $newPageId, $newEnvironmentId, $newIssueId, $newPhaseId,
+            $newGenericCategoryId, $newTestingType,
+            $logId
+        ]);
+
+        // Log the action using the correct function
+        recordProjectTimeLogHistory($db, [
+            'time_log_id' => $logId,
+            'project_id' => $newProjectId,
+            'user_id' => $userId,
+            'action_type' => 'updated',
+            'old_log_date' => $oldLog['log_date'],
+            'new_log_date' => $date,
+            'old_hours' => $oldLog['hours_spent'],
+            'new_hours' => $newHours,
+            'old_description' => $oldLog['description'],
+            'new_description' => $newDescription,
+            'changed_by' => $userId,
+            'context_json' => json_encode([
+                'task_type' => $newTaskType,
+                'page_id' => $newPageId,
+                'environment_id' => $newEnvironmentId,
+                'issue_id' => $newIssueId,
+                'phase_id' => $newPhaseId,
+                'testing_type' => $newTestingType
+            ], JSON_UNESCAPED_UNICODE)
+        ]);
+
+        $db->commit();
+        setMyDailyStatusToast('success', 'Log updated successfully.');
+    } catch (Exception $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        setMyDailyStatusToast('danger', 'Error updating log: ' . $e->getMessage());
+    }
+    header("Location: ?date=" . urlencode($date));
+    exit;
+}
+
 if (isset($_GET['edit_log_request'])) {
     $logId = (int)$_GET['edit_log_request'];
     $newHours = isset($_REQUEST['new_hours']) ? (float)$_REQUEST['new_hours'] : 0;

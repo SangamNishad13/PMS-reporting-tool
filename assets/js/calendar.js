@@ -222,6 +222,29 @@ document.addEventListener('DOMContentLoaded', function() {
                         document.getElementById('utilizedProgress').style.width = utilizedPercent + '%';
                         document.getElementById('benchProgress').style.width = benchPercent + '%';
                     }
+
+                    // Add Edit/Delete capability for today's logs
+                    var t = new Date();
+                    var todayStr = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+                    if (date === todayStr && !isAdmin) {
+                        var items = document.querySelectorAll('#hoursEntries .list-group-item:not(.bg-light)');
+                        var logEntries = data.entries || [];
+                        items.forEach(function(item, idx) {
+                            var entry = logEntries[idx];
+                            if (!entry) return;
+                            var actions = document.createElement('div');
+                            actions.className = 'ms-2 mt-1';
+                            actions.innerHTML = `
+                                <a href="my_daily_status.php?date=${date}&delete_log=${entry.id}" class="text-danger me-2 small" onclick="return confirm('Delete this log?')">
+                                    <i class="fas fa-trash"></i> Delete
+                                </a>
+                                <a href="my_daily_status.php?date=${date}" class="text-primary small">
+                                    <i class="fas fa-external-link-alt"></i> Go to Daily Status to Edit
+                                </a>
+                            `;
+                            item.querySelector('.flex-grow-1').appendChild(actions);
+                        });
+                    }
                 } else {
                     document.getElementById('hoursEntries').innerHTML = '<p class="text-danger text-center">Failed to load production hours: ' + (data.error || 'Unknown error') + '</p>';
                 }
@@ -253,9 +276,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         // Default hidden; each branch decides explicitly.
         showRequestFooter(false);
-
-        if (isPastDate) {
-            // Request Edit is handled by fixed footer button.
+        
+        // NEVER show Request Edit if it's today
+        if (normalizedDate === todayStr) {
+            showRequestFooter(false);
+        } else if (isPastDate) {
+            // Past dates - handled by logic below
         }
 
         if (isEditableDate(normalizedDate) || isFutureDate) {
