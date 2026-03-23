@@ -565,8 +565,11 @@ foreach ($filteredIssues as $iss) {
         }
     }
 
-    // Severity
-    $sev = ucfirst(strtolower(trim(metaFirst($meta, 'severity') ?: ($iss['severity'] ?? 'minor'))));
+    // Severity — fallback chain: meta severity → issue severity column → 'Minor'
+    $rawSev = trim(metaFirst($meta, 'severity'));
+    if ($rawSev === '') $rawSev = trim((string)($iss['severity'] ?? ''));
+    if ($rawSev === '') $rawSev = 'Minor';
+    $sev = ucfirst(strtolower($rawSev));
     $severityCounts[$sev] = ($severityCounts[$sev] ?? 0) + 1;
 
     $issuesWithMeta[] = [
