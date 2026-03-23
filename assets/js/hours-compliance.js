@@ -11,17 +11,47 @@
         loadReport();
     });
 
-    function initComplianceTables() {
+    var complianceTable = null;
+
+    function initComplianceTable() {
         if (!$.fn.DataTable) return;
-        var commonOptions = {
-            pageLength: 10, lengthMenu: [[10, 25, 50], [10, 25, 50]],
-            paging: true, searching: true, info: true, autoWidth: false,
-            language: { search: 'Filter:', lengthMenu: 'Show _MENU_ entries', info: 'Showing _START_ to _END_ of _TOTAL_ entries' }
-        };
-        if ($.fn.DataTable.isDataTable('#nonCompliantTable')) $('#nonCompliantTable').DataTable().destroy();
-        if ($.fn.DataTable.isDataTable('#compliantTable')) $('#compliantTable').DataTable().destroy();
-        $('#nonCompliantTable').DataTable($.extend(true, {}, commonOptions, { order: [[1, 'asc']], columnDefs: [{ targets: [0], orderable: false, searchable: false }, { targets: [7], orderable: false, searchable: false }] }));
-        $('#compliantTable').DataTable($.extend(true, {}, commonOptions, { order: [[1, 'asc']], columnDefs: [{ targets: [0], orderable: false, searchable: false }] }));
+        
+        if ($.fn.DataTable.isDataTable('#complianceTable')) {
+            return complianceTable;
+        }
+
+        complianceTable = $('#complianceTable').DataTable({
+            pageLength: 25,
+            lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]],
+            paging: true,
+            searching: true,
+            info: true,
+            autoWidth: false,
+            order: [[5, 'asc'], [1, 'asc']], // Sort by gap/status then name
+            language: {
+                search: 'Filter:',
+                lengthMenu: 'Show _MENU_ entries',
+                info: 'Showing _START_ to _END_ of _TOTAL_ entries'
+            },
+            columnDefs: [
+                { targets: [0, 6, 7], orderable: false, searchable: false }
+            ]
+        });
+
+        // Add custom filtering for status
+        $('input[name="statusFilter"]').on('change', function() {
+            var val = $(this).val();
+            if (val === 'all') {
+                complianceTable.column(5).search('').draw();
+            } else if (val === 'compliant') {
+                complianceTable.column(5).search('Compliant').draw();
+            } else if (val === 'non-compliant') {
+                // Search for anything EXCEPT 'Compliant' or specifically the badge 'hrs'
+                complianceTable.column(5).search('hrs').draw();
+            }
+        });
+
+        return complianceTable;
     }
 
     function loadSettings() {
@@ -45,50 +75,40 @@
         $('#complianceRate').text(currentReport.summary.compliance_rate + '%');
         $('#minHoursDisplay').text(currentReport.minimum_hours);
 
-        var nonCompliantTbody = $('#nonCompliantTable tbody');
-        nonCompliantTbody.empty();
-        if (currentReport.non_compliant.length === 0) {
-            nonCompliantTbody.html('<tr><td colspan="8" class="text-center text-success">All users are compliant!</td></tr>');
-        } else {
-            currentReport.non_compliant.forEach(function (user) {
-                var hoursShort = (currentReport.minimum_hours - user.total_hours).toFixed(2);
-                var reminderStatus = user.reminder_sent ?
-                    '<span class="badge bg-success">Sent at ' + new Date(user.reminder_sent_at).toLocaleTimeString() + '</span>' :
-                    '<span class="badge bg-secondary">Not Sent</span>';
-                nonCompliantTbody.append(
-                    '<tr id="nc-row-' + user.id + '" data-user-id="' + user.id + '">' +
-                    '<td><i class="fas fa-chevron-right expand-btn" onclick="toggleUserDetails(' + user.id + ', \'nc\')"></i></td>' +
-                    '<td><strong>' + escapeHtml(user.full_name || user.username) + '</strong></td>' +
-                    '<td><span class="badge bg-secondary">' + escapeHtml(user.role) + '</span></td>' +
-                    '<td>' + escapeHtml(user.email) + '</td>' +
-                    '<td><span class="badge bg-warning">' + user.total_hours + ' hrs</span></td>' +
-                    '<td><span class="badge bg-danger">-' + hoursShort + ' hrs</span></td>' +
-                    '<td>' + reminderStatus + '</td>' +
-                    '<td><a href="mailto:' + escapeHtml(user.email) + '" class="btn btn-sm btn-primary" title="Send Email"><i class="fas fa-envelope"></i></a></td>' +
-                    '</tr>'
-                );
-            });
-        }
+        var table = initComplianceTable();
+        table.clear();
 
-        var compliantTbody = $('#compliantTable tbody');
-        compliantTbody.empty();
-        if (currentReport.compliant.length === 0) {
-            compliantTbody.html('<tr><td colspan="6" class="text-center text-muted">No compliant users found</td></tr>');
-        } else {
-            currentReport.compliant.forEach(function (user) {
-                compliantTbody.append(
-                    '<tr id="c-row-' + user.id + '" data-user-id="' + user.id + '">' +
-                    '<td><i class="fas fa-chevron-right expand-btn" onclick="toggleUserDetails(' + user.id + ', \'c\')"></i></td>' +
-                    '<td><strong>' + escapeHtml(user.full_name || user.username) + '</strong></td>' +
-                    '<td><span class="badge bg-secondary">' + escapeHtml(user.role) + '</span></td>' +
-                    '<td>' + escapeHtml(user.email) + '</td>' +
-                    '<td><span class="badge bg-success">' + user.total_hours + ' hrs</span></td>' +
-                    '<td><span class="badge bg-success"><i class="fas fa-check"></i> Compliant</span></td>' +
-                    '</tr>'
-                );
-            });
-        }
-        initComplianceTables();
+        // Combine all users for the unified table
+        var allUsers = currentReport.non_compliant.concat(currentReport.compliant);
+        
+        allUsers.forEach(function (user) {
+            var isCompliant = user.total_hours >= currentReport.minimum_hours;
+            var hoursShort = (currentReport.minimum_hours - user.total_hours).toFixed(2);
+            
+            var statusHtml = isCompliant ? 
+                '<span class="badge bg-success"><i class="fas fa-check"></i> Compliant</span>' :
+                '<span class="badge bg-danger">-' + hoursShort + ' hrs</span>';
+            
+            var reminderStatus = isCompliant ? '-' : (user.reminder_sent ?
+                '<span class="badge bg-success">Sent ' + new Date(user.reminder_sent_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + '</span>' :
+                '<span class="badge bg-secondary">Not Sent</span>');
+
+            table.row.add([
+                '<i class="fas fa-chevron-right expand-btn" onclick="toggleUserDetails(' + user.id + ', this)"></i>',
+                '<strong>' + escapeHtml(user.full_name || user.username) + '</strong>',
+                '<span class="badge bg-secondary">' + escapeHtml(user.role) + '</span>',
+                escapeHtml(user.email),
+                '<span class="badge ' + (isCompliant ? 'bg-success' : 'bg-warning') + '">' + user.total_hours + ' hrs</span>',
+                statusHtml,
+                reminderStatus,
+                '<a href="mailto:' + escapeHtml(user.email) + '" class="btn btn-sm btn-primary" title="Send Email"><i class="fas fa-envelope"></i></a>'
+            ]).node().id = 'row-' + user.id;
+        });
+
+        table.draw();
+        
+        // Trigger filter if one is selected
+        $('input[name="statusFilter"]:checked').trigger('change');
     }
 
     window.showSettingsModal = function () {
@@ -121,62 +141,56 @@
 
     window.loadReport = loadReport;
 
-    window.toggleUserDetails = function (userId, tablePrefix) {
-        var rowId = tablePrefix + '-row-' + userId;
-        var detailsRowId = tablePrefix + '-details-' + userId;
-        var expandBtn = $('#' + rowId + ' .expand-btn');
-        var existingDetailsRow = $('#' + detailsRowId);
-        if (existingDetailsRow.length > 0) {
-            existingDetailsRow.remove();
+    window.toggleUserDetails = function (userId, btn) {
+        var table = $('#complianceTable').DataTable();
+        var tr = $(btn).closest('tr');
+        var row = table.row(tr);
+        var expandBtn = $(btn);
+
+        if (row.child.isShown()) {
+            row.child.hide();
+            tr.removeClass('shown');
             expandBtn.removeClass('expanded');
         } else {
             expandBtn.addClass('expanded');
             var date = $('#reportDate').val();
-            var colCount = tablePrefix === 'nc' ? 8 : 6;
-            $('#' + rowId).after(
-                '<tr id="' + detailsRowId + '" class="details-row"><td colspan="' + colCount + '">' +
-                '<div class="details-content"><div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading time logs...</div></div></td></tr>'
-            );
+            
+            // Show loading
+            row.child('<div class="details-content"><div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading time logs...</div></div>', 'details-row').show();
+            tr.addClass('shown');
+
             $.get(apiUrl, { action: 'get_user_time_logs', user_id: userId, date: date }, function (response) {
                 if (response.success) {
-                    renderTimeLogDetails(detailsRowId, response.logs, response.total_hours);
+                    var html = renderTimeLogDetailsHtml(response.logs, response.total_hours);
+                    row.child(html, 'details-row').show();
                 } else {
-                    $('#' + detailsRowId + ' .details-content').html('<div class="alert alert-danger mb-0"><i class="fas fa-exclamation-triangle"></i> Error: ' + escapeHtml(response.message || 'Unknown error') + '</div>');
+                    row.child('<div class="details-content"><div class="alert alert-danger mb-0">Error: ' + escapeHtml(response.message) + '</div></div>', 'details-row').show();
                 }
-            }).fail(function (xhr) {
-                var errorMsg = 'Failed to load time logs';
-                try { var r = JSON.parse(xhr.responseText); errorMsg = r.message || errorMsg; } catch (e) {}
-                $('#' + detailsRowId + ' .details-content').html('<div class="alert alert-danger mb-0"><i class="fas fa-exclamation-triangle"></i> ' + escapeHtml(errorMsg) + '</div>');
             });
         }
     };
 
-    function renderTimeLogDetails(detailsRowId, logs, totalHours) {
-        var detailsContent = $('#' + detailsRowId + ' .details-content');
+    function renderTimeLogDetailsHtml(logs, totalHours) {
         if (logs.length === 0) {
-            detailsContent.html('<div class="alert alert-info mb-0"><i class="fas fa-info-circle"></i> No time logs found for this date</div>');
-            return;
+            return '<div class="details-content"><div class="alert alert-info mb-0">No time logs found</div></div>';
         }
-        var html = '<div class="mb-2"><strong>Total Hours: ' + totalHours + '</strong></div>';
+        var html = '<div class="details-content"><div class="mb-2"><strong>Total Hours: ' + totalHours + '</strong></div>';
         logs.forEach(function (log) {
             var taskInfo = '';
             if (log.task_type === 'page_testing' || log.task_type === 'page_qa' || log.task_type === 'regression') {
                 taskInfo = '<div class="time-log-details"><span class="badge bg-info">' + escapeHtml(log.task_type.replace('_', ' ').toUpperCase()) + '</span>' +
-                    (log.page_name ? ' <strong>Page:</strong> ' + escapeHtml((log.page_number ? log.page_number + ' - ' : '') + log.page_name) : '') +
-                    (log.env_name ? ' | <strong>Environment:</strong> ' + escapeHtml(log.env_name) : '') + '</div>';
+                    (log.page_name ? ' <strong>Page:</strong> ' + escapeHtml((log.page_number ? log.page_number + ' - ' : '') + log.page_name) : '') + '</div>';
             } else if (log.task_type === 'project_phase') {
                 taskInfo = '<div class="time-log-details"><span class="badge bg-info">PROJECT PHASE</span>' + (log.phase_name ? ' <strong>Phase:</strong> ' + escapeHtml(log.phase_name) : '') + '</div>';
-            } else if (log.task_type === 'generic_task') {
-                taskInfo = '<div class="time-log-details"><span class="badge bg-info">GENERIC TASK</span>' + (log.task_category ? ' <strong>Category:</strong> ' + escapeHtml(log.task_category) : '') + '</div>';
             }
             html += '<div class="time-log-entry">' +
                 '<div class="time-log-header"><span class="time-log-project">' + escapeHtml(log.project_name || 'No Project') + '</span><span class="time-log-hours">' + log.hours_spent + ' hrs</span></div>' +
                 taskInfo +
                 (log.description ? '<div class="time-log-details mt-2"><strong>Description:</strong> ' + escapeHtml(log.description) + '</div>' : '') +
-                '<div class="time-log-details mt-1"><small class="text-muted"><i class="fas fa-clock"></i> Logged at ' + new Date(log.created_at).toLocaleString() + '</small></div>' +
                 '</div>';
         });
-        detailsContent.html(html);
+        html += '</div>';
+        return html;
     }
 
     function escapeHtml(str) {

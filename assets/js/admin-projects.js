@@ -63,35 +63,97 @@
     }
     if (addBtn) addBtn.addEventListener('click', addSubRow);
 
-    // Project table filtering
-    $(document).ready(function () {
-        function filterProjects() {
-            var statusFilter = $('#statusFilter').val().toLowerCase();
-            var typeFilter = $('#typeFilter').val().toLowerCase();
-            var priorityFilter = $('#priorityFilter').val().toLowerCase();
-            var searchText = $('#searchProject').val().toLowerCase();
+    var projectsTable = null;
 
-            $('#projectsTable tbody > tr').each(function () {
-                var row = $(this);
-                if (row.hasClass('collapse')) return;
-                var status = row.data('status');
-                var type = row.data('type');
-                var priority = row.data('priority');
-                var title = row.data('title');
-                var code = row.data('code');
-                var showRow = true;
-                if (statusFilter && status !== statusFilter) showRow = false;
-                if (typeFilter && type !== typeFilter) showRow = false;
-                if (priorityFilter && priority !== priorityFilter) showRow = false;
-                if (searchText && String(title).indexOf(searchText) === -1 && String(code).indexOf(searchText) === -1) showRow = false;
-                row.toggle(showRow);
-                var collapseRow = row.next('.collapse');
-                if (collapseRow.length) collapseRow.toggle(showRow);
+    $(document).ready(function () {
+        if ($.fn.DataTable) {
+            // Register a custom search function that uses data-* attributes on the TR
+            $.fn.dataTable.ext.search.push(function (settings, data, dataIndex, rowData, counter) {
+                if (settings.nTable.id !== 'projectsTable') return true;
+                var tr = $(settings.nTable).find('tbody tr').eq(counter);
+                var status   = tr.data('status')   || '';
+                var type     = tr.data('type')     || '';
+                var priority = tr.data('priority') || '';
+
+                var fStatus   = $('#statusFilter').val();
+                var fType     = $('#typeFilter').val();
+                var fPriority = $('#priorityFilter').val();
+
+                if (fStatus   && status   !== fStatus)   return false;
+                if (fType     && type     !== fType)     return false;
+                if (fPriority && priority !== fPriority) return false;
+                return true;
+            });
+
+            projectsTable = $('#projectsTable').DataTable({
+                pageLength: 25,
+                lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]],
+                order: [[1, 'asc']],
+                columnDefs: [
+                    { targets: [0, 7], orderable: false, searchable: false }
+                ],
+                language: {
+                    search: 'Global Filter:',
+                    lengthMenu: 'Show _MENU_ entries',
+                    info: 'Showing _START_ to _END_ of _TOTAL_ entries'
+                }
+            });
+
+            // Status / Type / Priority filter dropdowns trigger DataTables redraw
+            $('#statusFilter, #typeFilter, #priorityFilter').on('change', function () {
+                projectsTable.draw();
+            });
+
+            // Search box wired to DataTables global search
+            $('#searchProject').on('keyup', function () {
+                projectsTable.search(this.value).draw();
             });
         }
-        $('#statusFilter, #typeFilter, #priorityFilter').on('change', filterProjects);
-        $('#searchProject').on('keyup', filterProjects);
     });
+
+    function escapeSearch(val) {
+        return val.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&"); // Simple regex escape
+    }
+
+    window.toggleSubprojects = function (projectId, btn) {
+        var tr = $(btn).closest('tr');
+        var row = projectsTable.row(tr);
+        var subDataStr = tr.attr('data-subprojects');
+        
+        if (!subDataStr) return;
+        var subs = JSON.parse(subDataStr);
+
+        if (row.child.isShown()) {
+            row.child.hide();
+            $(btn).removeClass('expanded');
+        } else {
+            var html = renderSubprojectsHtml(subs);
+            row.child(html, 'sub-projects-row').show();
+            $(btn).addClass('expanded');
+        }
+    };
+
+    function renderSubprojectsHtml(subs) {
+        var baseDir = window.location.pathname.split('/modules/')[0];
+        var html = '<div class="sub-projects-wrapper"><table class="table table-sm table-borderless mb-0"><thead>' +
+            '<tr><th>Code</th><th>Title</th><th>Type</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+        
+        subs.forEach(function (sub) {
+            var priorityClass = sub.priority === 'critical' ? 'danger' : (sub.priority === 'high' ? 'warning' : 'secondary');
+            var statusClass = sub.status === 'completed' ? 'success' : (sub.status === 'in_progress' ? 'primary' : 'secondary');
+            
+            html += '<tr>' +
+                '<td>' + escapeHtml(sub.project_code || sub.po_number) + '</td>' +
+                '<td>' + escapeHtml(sub.title) + '</td>' +
+                '<td><span class="badge bg-info">' + escapeHtml(sub.project_type || 'N/A') + '</span></td>' +
+                '<td><span class="badge bg-' + priorityClass + '">' + escapeHtml(sub.priority) + '</span></td>' +
+                '<td><span class="badge bg-' + statusClass + '">' + escapeHtml(sub.status.replace('_', ' ')) + '</span></td>' +
+                '<td><a href="' + baseDir + '/modules/projects/view.php?id=' + sub.id + '" class="btn btn-xs btn-info"><i class="fas fa-eye"></i></a></td>' +
+                '</tr>';
+        });
+        html += '</tbody></table></div>';
+        return html;
+    }
 
     function escapeHtml(str) {
         if (!str) return '';

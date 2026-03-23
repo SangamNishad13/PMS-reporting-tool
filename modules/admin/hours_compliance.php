@@ -6,11 +6,10 @@ $page_title = 'Hours Compliance Report';
 include '../../includes/header.php';
 ?>
 <style>
-#nonCompliantTable_wrapper .dataTables_length select,
-#compliantTable_wrapper .dataTables_length select {
-    min-width: 86px;
-    padding-right: 2rem !important;
-    background-position: right 0.6rem center;
+#complianceTable_wrapper .dataTables_length select {
+    min-width: 100px;
+    padding-right: 2.5rem !important;
+    background-position: right 0.8rem center;
     text-overflow: clip;
 }
 
@@ -138,40 +137,24 @@ include '../../includes/header.php';
         </div>
     </div>
 
-    <!-- Non-Compliant Users -->
+    <!-- Compliance Report Table -->
     <div class="card mb-4">
-        <div class="card-header bg-danger text-white">
-            <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Non-Compliant Users</h5>
-        </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover" id="nonCompliantTable">
-                    <thead>
-                        <tr>
-                            <th style="width: 30px;"></th>
-                            <th>User</th>
-                            <th>Role</th>
-                            <th>Email</th>
-                            <th>Hours Logged</th>
-                            <th>Hours Short</th>
-                            <th>Reminder Sent</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-list"></i> Compliance Report</h5>
+            <div class="btn-group btn-group-sm" role="group">
+                <input type="radio" class="btn-check" name="statusFilter" id="filterAll" value="all" checked>
+                <label class="btn btn-outline-light" for="filterAll">All</label>
+
+                <input type="radio" class="btn-check" name="statusFilter" id="filterCompliant" value="compliant">
+                <label class="btn btn-outline-light" for="filterCompliant">Compliant</label>
+
+                <input type="radio" class="btn-check" name="statusFilter" id="filterNonCompliant" value="non-compliant">
+                <label class="btn btn-outline-light" for="filterNonCompliant">Non-Compliant</label>
             </div>
         </div>
-    </div>
-
-    <!-- Compliant Users -->
-    <div class="card">
-        <div class="card-header bg-success text-white">
-            <h5 class="mb-0"><i class="fas fa-check-circle"></i> Compliant Users</h5>
-        </div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-hover" id="compliantTable">
+                <table class="table table-hover" id="complianceTable">
                     <thead>
                         <tr>
                             <th style="width: 30px;"></th>
@@ -179,7 +162,9 @@ include '../../includes/header.php';
                             <th>Role</th>
                             <th>Email</th>
                             <th>Hours Logged</th>
-                            <th>Status</th>
+                            <th>Status / Gap</th>
+                            <th>Reminder</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody></tbody>

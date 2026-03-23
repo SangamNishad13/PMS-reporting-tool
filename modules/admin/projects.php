@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
@@ -91,7 +91,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_project'])) {
         redirect("/modules/projects/view.php?id=$projectId");
     }
 }
-
+?>
+<style>
+#projectsTable_wrapper .dataTables_length select {
+    min-width: 100px;
+    padding-right: 2.5rem !important;
+    background-position: right 0.8rem center;
+    text-overflow: clip;
+}
+.expand-btn { cursor: pointer; transition: transform 0.2s; display: inline-block; }
+.expand-btn.expanded { transform: rotate(90deg); }
+.sub-projects-wrapper { padding: 10px 15px; background: #f8f9fa; border-radius: 4px; }
+</style>
+<?php
 include __DIR__ . '/../../includes/header.php';
 ?>
 <div class="container-fluid">
@@ -184,31 +196,28 @@ include __DIR__ . '/../../includes/header.php';
 
                     foreach ($parents as $project):
                         $subs = $children[$project['id']] ?? [];
-                        $collapseId = 'subprojects-' . $project['id'];
                     ?>
-                    <tr data-status="<?php echo htmlspecialchars($project['status']); ?>" 
+                    <tr id="project-row-<?php echo $project['id']; ?>" 
+                        data-status="<?php echo htmlspecialchars($project['status']); ?>" 
                         data-type="<?php echo htmlspecialchars($project['project_type'] ?? ''); ?>"
                         data-priority="<?php echo htmlspecialchars($project['priority'] ?? ''); ?>"
-                        data-title="<?php echo htmlspecialchars(strtolower($project['title'])); ?>"
-                        data-code="<?php echo htmlspecialchars(strtolower($project['project_code'] ?: $project['po_number'])); ?>">
+                        data-subprojects='<?php echo !empty($subs) ? json_encode($subs, JSON_HEX_APOS | JSON_HEX_QUOT) : ""; ?>'>
                         <td>
                             <?php if (!empty($subs)): ?>
-                            <button class="btn btn-link p-0" data-bs-toggle="collapse" data-bs-target="#<?php echo $collapseId; ?>" aria-expanded="false" aria-controls="<?php echo $collapseId; ?>">
-                                <i class="fas fa-chevron-down"></i>
-                            </button>
+                            <i class="fas fa-chevron-right expand-btn text-primary" onclick="toggleSubprojects(<?php echo $project['id']; ?>, this)"></i>
                             <?php endif; ?>
                         </td>
                         <td><?php echo htmlspecialchars($project['project_code'] ?: $project['po_number']); ?></td>
                         <td>
-                            <?php echo htmlspecialchars($project['title']); ?>
+                            <strong><?php echo htmlspecialchars($project['title']); ?></strong>
                             <?php if (!empty($subs)): ?>
-                                <span class="badge bg-secondary ms-2"><?php echo count($subs); ?> sub</span>
+                                <span class="badge bg-secondary ms-1"><?php echo count($subs); ?> sub</span>
                             <?php endif; ?>
                         </td>
-                        <td><?php echo $project['client_name']; ?></td>
+                        <td><?php echo htmlspecialchars($project['client_name']); ?></td>
                         <td>
                             <span class="badge bg-info">
-                                <?php echo ucfirst($project['project_type']); ?>
+                                <?php echo ucfirst($project['project_type'] ?: 'N/A'); ?>
                             </span>
                         </td>
                         <td>
@@ -228,60 +237,10 @@ include __DIR__ . '/../../includes/header.php';
                             </span>
                         </td>
                         <td>
-                            <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $project['id']; ?>" 
-                               class="btn btn-sm btn-info">
-                                <i class="fas fa-eye"></i>
-                            </a>
-                            <a href="<?php echo $baseDir; ?>/modules/projects/edit.php?id=<?php echo $project['id']; ?>" 
-                               class="btn btn-sm btn-warning">
-                                <i class="fas fa-edit"></i>
-                            </a>
+                            <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $project['id']; ?>" class="btn btn-sm btn-outline-info" title="View"><i class="fas fa-eye"></i></a>
+                            <a href="<?php echo $baseDir; ?>/modules/projects/edit.php?id=<?php echo $project['id']; ?>" class="btn btn-sm btn-outline-warning" title="Edit"><i class="fas fa-edit"></i></a>
                         </td>
                     </tr>
-                    <?php if (!empty($subs)): ?>
-                    <tr class="collapse" id="<?php echo $collapseId; ?>">
-                        <td></td>
-                        <td colspan="7">
-                            <div class="table-responsive">
-                                <table class="table table-sm mb-0">
-                                    <thead>
-                                        <tr>
-                                            <th>Sub-Project Code</th>
-                                            <th>Title</th>
-                                            <th>Client</th>
-                                            <th>Type</th>
-                                            <th>Priority</th>
-                                            <th>Status</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php foreach ($subs as $sub): ?>
-                                        <tr>
-                                            <td><?php echo htmlspecialchars($sub['project_code'] ?: $sub['po_number']); ?></td>
-                                            <td><?php echo htmlspecialchars($sub['title']); ?></td>
-                                            <td><?php echo htmlspecialchars($sub['client_name']); ?></td>
-                                            <td><span class="badge bg-info"><?php echo ucfirst($sub['project_type']); ?></span></td>
-                                            <td><span class="badge bg-<?php 
-                                                echo $sub['priority'] === 'critical' ? 'danger' : 
-                                                     ($sub['priority'] === 'high' ? 'warning' : 'secondary');
-                                            ?>"><?php echo ucfirst($sub['priority']); ?></span></td>
-                                            <td><span class="badge bg-<?php 
-                                                echo $sub['status'] === 'completed' ? 'success' : 
-                                                     ($sub['status'] === 'in_progress' ? 'primary' : 'secondary');
-                                            ?>"><?php echo formatProjectStatusLabel($sub['status']); ?></span></td>
-                                            <td>
-                                                <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $sub['id']; ?>" class="btn btn-sm btn-info"><i class="fas fa-eye"></i></a>
-                                                <a href="<?php echo $baseDir; ?>/modules/projects/edit.php?id=<?php echo $sub['id']; ?>" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i></a>
-                                            </td>
-                                        </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endif; ?>
                     <?php endforeach; ?>
                 </tbody>
             </table>
