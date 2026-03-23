@@ -75,7 +75,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8'); ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -132,8 +132,8 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
         font-size: 0.72rem;
     }
     </style>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/chart-manager.js?v=<?php echo $assetVersion; ?>"></script>
     <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/dashboard.js?v=<?php echo $assetVersion; ?>"></script>
     <?php $summernoteHelperPath = __DIR__ . '/../assets/js/summernote_image_helper.js'; ?>
@@ -763,7 +763,10 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
     <!-- Notification Loading System -->
     <script nonce="<?php echo $cspNonce; ?>">
     (function() {
+        var _notifPollingActive = true;
+
         function loadNotifications() {
+            if (!_notifPollingActive) return;
             $.get('<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/api/status.php?action=get_notifications', function(response) {
                 if (response.success) {
                     const notifications = response.notifications || [];
@@ -793,25 +796,25 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
                             if (link !== '#' && baseDir && !/^https?:\/\//i.test(link) && link.indexOf(baseDir + '/') !== 0) {
                                 link = baseDir + link;
                             }
-                            html += `
-                                <li>
-                                    <a class="dropdown-item ${readClass} py-2 notification-item" href="${escapeHtml(link)}" data-id="${notif.id}">
-                                        <div class="d-flex align-items-start">
-                                            <i class="fas ${icon} text-primary me-2 mt-1"></i>
-                                            <div class="flex-grow-1">
-                                                <div class="notification-message small mb-1">${escapeHtml(notif.message)}</div>
-                                                <div class="notification-time text-muted">${notif.time_ago}</div>
-                                            </div>
-                                        </div>
-                                    </a>
-                                </li>
-                            `;
+                            html += '<li>' +
+                                '<a class="dropdown-item ' + readClass + ' py-2 notification-item" href="' + escapeHtml(link) + '" data-id="' + notif.id + '">' +
+                                '<div class="d-flex align-items-start">' +
+                                '<i class="fas ' + icon + ' text-primary me-2 mt-1"></i>' +
+                                '<div class="flex-grow-1">' +
+                                '<div class="notification-message small mb-1">' + escapeHtml(notif.message) + '</div>' +
+                                '<div class="notification-time text-muted">' + notif.time_ago + '</div>' +
+                                '</div></div></a></li>';
                         });
                         content.html(html);
                     }
                 }
-            }).fail(function() {
-                // Silently fail
+            }).fail(function(xhr) {
+                if (xhr.status === 401) {
+                    // Session expired — stop polling and redirect to login
+                    _notifPollingActive = false;
+                    window.location.href = '<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/auth/login.php?session=expired';
+                }
+                // Other errors: silently ignore
             });
         }
         
@@ -859,8 +862,10 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$
                     reminderShown = true;
                     showHoursReminderModal(response);
                 }
-            }).fail(function() {
-                // Silently fail
+            }).fail(function(xhr) {
+                if (xhr.status === 401) {
+                    window.location.href = '<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/auth/login.php?session=expired';
+                }
             });
         }
         
