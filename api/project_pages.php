@@ -1,9 +1,11 @@
 <?php
+ob_start();
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/project_permissions.php';
+ob_end_clean();
 
 header('Content-Type: application/json; charset=utf-8');
 

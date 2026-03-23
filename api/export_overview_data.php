@@ -2,10 +2,12 @@
 /**
  * Returns all data needed to populate the Overview sheet of the client Excel report.
  */
+ob_start();
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/constants.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
+ob_end_clean();
 
 header('Content-Type: application/json; charset=utf-8');
 

@@ -4,9 +4,11 @@
  * Provides real-time project hours information for validation
  */
 
+ob_start();
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/hours_validation.php';
+ob_end_clean();
 
 header('Content-Type: application/json');
 

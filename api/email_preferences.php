@@ -1,13 +1,11 @@
 <?php
 /**
  * Email Preferences API
- * 
- * Handles email preference updates and unsubscribe requests
- * for client users via API endpoints.
  */
-
+ob_start();
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/models/NotificationManager.php';
+ob_end_clean();
 
 header('Content-Type: application/json');
 

@@ -1,7 +1,9 @@
 <?php
+ob_start();
 require_once '../config/database.php';
 require_once '../includes/auth.php';
 require_once '../includes/helpers.php';
+ob_end_clean();
 
 header('Content-Type: application/json');
 

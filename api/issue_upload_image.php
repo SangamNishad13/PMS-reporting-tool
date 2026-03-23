@@ -1,4 +1,9 @@
 <?php
+ob_start();
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/helpers.php';
+ob_end_clean();
 
 // Debug log function - disabled in production
 function issue_upload_debug_log($msg) {
@@ -6,10 +11,6 @@ function issue_upload_debug_log($msg) {
     // Uncomment below line only for local debugging:
     // @file_put_contents(__DIR__ . '/../tmp/logs/issue_upload_debug.log', date('Y-m-d H:i:s') . ' ' . $msg . "\n", FILE_APPEND);
 }
-
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
-require_once __DIR__ . '/../includes/helpers.php';
 
 
 issue_upload_debug_log('--- New upload request ---');
