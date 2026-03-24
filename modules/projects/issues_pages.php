@@ -95,9 +95,10 @@ try {
              WHERE pe3.page_id = pp.id) AS testers,
             (SELECT COUNT(DISTINCT i.id) 
              FROM issues i 
-             LEFT JOIN issue_metadata im ON im.issue_id = i.id AND im.meta_key = 'page_ids'
-             WHERE i.project_id = pp.project_id 
-             AND (i.page_id = pp.id OR im.meta_value = CAST(pp.id AS CHAR) OR im.meta_value LIKE CONCAT('%,', pp.id, ',%') OR im.meta_value LIKE CONCAT('[', pp.id, ',%') OR im.meta_value LIKE CONCAT('%,', pp.id, ']') OR im.meta_value = CONCAT('[', pp.id, ']'))
+             WHERE i.project_id = pp.project_id AND (
+                 EXISTS (SELECT 1 FROM issue_pages ip WHERE ip.issue_id = i.id AND ip.page_id = pp.id)
+                 OR (i.page_id = pp.id AND NOT EXISTS (SELECT 1 FROM issue_pages ip2 WHERE ip2.issue_id = i.id))
+             )
              $clientFilter) AS issues_count,
             (SELECT COALESCE(SUM(ptl.hours_spent), 0)
              FROM project_time_logs ptl

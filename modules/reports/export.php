@@ -3,7 +3,7 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'admin']);
+$auth->requireRole(['admin', 'project_lead']);
 
 $db = Database::getInstance();
 $type = $_GET['type'] ?? 'projects';

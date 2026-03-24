@@ -45,7 +45,10 @@ function getVaultKey() {
         // Use PBKDF2 for proper key derivation from APP_KEY.
         // Security: salt should come from env var, not a hardcoded constant.
         // Set VAULT_KEY_SALT to a random base64 string in your .env file.
-        $salt = getenv('VAULT_KEY_SALT') ?: 'vault_key_salt_v1'; // TODO: migrate to unique env var
+        $salt = getenv('VAULT_KEY_SALT');
+        if (!$salt) {
+            throw new Exception('VAULT_KEY_SALT environment variable is required for vault security');
+        }
         $key = hash_pbkdf2('sha256', $appKey, $salt, 100000, 32, true);
     } else {
         $key = base64_decode($key) ?: hash('sha256', $key, true);

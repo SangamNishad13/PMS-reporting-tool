@@ -29,11 +29,16 @@ if (isset($_SERVER['HTTP_X_SESSION_REFRESH']) && $_SERVER['HTTP_X_SESSION_REFRES
     // Update session record in database
     try {
         $db = Database::getInstance();
-        $stmt = $db->prepare("UPDATE user_sessions SET last_activity = NOW() WHERE session_id = ? AND user_id = ?");
-        $stmt->execute([session_id(), $_SESSION['user_id']]);
+        $sessionStmt = $db->prepare("UPDATE user_sessions SET last_activity = NOW() WHERE session_id = ?");
+        $sessionStmt->execute([session_id()]);
+        
+        echo json_encode(['success' => true, 'message' => 'Session refreshed']);
+        exit;
     } catch (Exception $e) {
-        // Non-fatal, continue processing
         error_log("Session refresh failed: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['error' => 'Session refresh failed', 'message' => 'Unable to refresh session']);
+        exit;
     }
 }
 

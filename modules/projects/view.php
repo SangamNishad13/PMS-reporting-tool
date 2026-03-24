@@ -24,7 +24,7 @@ if ($userRole === 'client' && $projectId) {
 
 if (!$projectId) {
     // Redirect to role-specific projects page
-    if ($userRole === 'admin' || $userRole === 'admin') {
+    if ($userRole === 'admin') {
         header('Location: ' . $baseDir . '/modules/admin/projects.php');
     } elseif ($userRole === 'project_lead') {
         header('Location: ' . $baseDir . '/modules/project_lead/my_projects.php');
@@ -43,7 +43,7 @@ if (!$projectId) {
 if (!hasProjectAccess($db, $userId, $projectId)) {
     $_SESSION['error'] = "You don't have access to this project.";
     // Redirect to role-specific projects page
-    if ($userRole === 'admin' || $userRole === 'admin') {
+    if ($userRole === 'admin') {
         header('Location: ' . $baseDir . '/modules/admin/projects.php');
     } elseif ($userRole === 'project_lead') {
         header('Location: ' . $baseDir . '/modules/project_lead/my_projects.php');
@@ -87,7 +87,7 @@ $project = $stmt->fetch();
 if (!$project) {
     $_SESSION['error'] = 'Project not found.';
     // Redirect to role-specific projects page
-    if ($userRole === 'admin' || $userRole === 'admin') {
+    if ($userRole === 'admin') {
         header('Location: ' . $baseDir . '/modules/admin/projects.php');
     } elseif ($userRole === 'project_lead') {
         header('Location: ' . $baseDir . '/modules/project_lead/my_projects.php');
@@ -197,7 +197,13 @@ try {
             pp.page_name,
             (SELECT GROUP_CONCAT(DISTINCT te.name SEPARATOR ', ') FROM page_environments pe2 JOIN testing_environments te ON pe2.environment_id = te.id WHERE pe2.page_id = pp.id) AS envs,
             (SELECT GROUP_CONCAT(DISTINCT u.full_name SEPARATOR ', ') FROM users u JOIN page_environments pe3 ON u.id = pe3.at_tester_id OR u.id = pe3.ft_tester_id OR u.id = pe3.qa_id WHERE pe3.page_id = pp.id) AS testers,
-            ((SELECT COALESCE(SUM(tr.issues_found), 0) FROM testing_results tr WHERE tr.page_id = pp.id) + (SELECT COALESCE(SUM(qr.issues_found), 0) FROM qa_results qr WHERE qr.page_id = pp.id)) AS issues_count
+            (SELECT COUNT(DISTINCT i.id) 
+             FROM issues i 
+             WHERE i.project_id = pp.project_id AND (
+                 EXISTS (SELECT 1 FROM issue_pages ip WHERE ip.issue_id = i.id AND ip.page_id = pp.id)
+                 OR (i.page_id = pp.id AND NOT EXISTS (SELECT 1 FROM issue_pages ip2 WHERE ip2.issue_id = i.id))
+             )
+            ) AS issues_count
         FROM project_pages pp
         WHERE pp.project_id = ?
         ORDER BY pp.page_name

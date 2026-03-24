@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $projectId > 0) {
 }
 
 // Redirect to role-specific projects page
-if ($userRole === 'admin' || $userRole === 'admin') {
+if ($userRole === 'admin') {
     redirect($baseDir . "/modules/admin/projects.php");
 } elseif ($userRole === 'project_lead') {
     redirect($baseDir . "/modules/project_lead/my_projects.php");

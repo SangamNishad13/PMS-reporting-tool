@@ -169,7 +169,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'request_edit') {
         $stmt->execute([$userId, $reqDate, $reason]);
 
         // Insert notification for all admins
-        $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin','admin') AND is_active = 1");
+        $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin') AND is_active = 1");
         $adminStmt->execute();
         $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
         
@@ -793,7 +793,7 @@ if ($isTimeLogPost) {
                 }
                 $reqStmt->execute([$userId, $date, $reason]);
 
-                $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin','admin') AND is_active = 1");
+                $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin') AND is_active = 1");
                 $adminStmt->execute();
                 $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
                 $userName = $_SESSION['full_name'] ?? 'User';
@@ -1041,7 +1041,7 @@ if (isset($_GET['delete_log_request'])) {
             ");
             $delReqStmt->execute([$userId, $date, $logId, $reason]);
 
-            $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin','admin') AND is_active = 1");
+            $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin') AND is_active = 1");
             $adminStmt->execute();
             $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
             $userName = $_SESSION['full_name'] ?? 'User';
@@ -1274,7 +1274,7 @@ if (isset($_GET['edit_log_request'])) {
                 $reason
             ]);
 
-            $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin','admin') AND is_active = 1");
+            $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin') AND is_active = 1");
             $adminStmt->execute();
             $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
             $userName = $_SESSION['full_name'] ?? 'User';
