@@ -21,13 +21,21 @@
         } 
     }
 
-    // Load all modules in the correct order (relative to current script)
+    // Simple approach: use absolute path from window.location
+    var currentPath = window.location.pathname;
+    var pathParts = currentPath.split('/');
+    var basePath = window.location.origin + '/' + pathParts[1] + '/modules/projects/js/';
+    
+    console.log('Current path:', currentPath);
+    console.log('Base path for modules:', basePath);
+
+    // Load all modules in the correct order
     var moduleScripts = [
-        './view_issues-core.js',
-        './view_issues-utilities.js', 
-        './view_issues-modals.js',
-        './view_issues-interactions.js',
-        './view_issues-init.js'
+        basePath + 'view_issues-core.js',
+        basePath + 'view_issues-utilities.js', 
+        basePath + 'view_issues-modals.js',
+        basePath + 'view_issues-interactions.js',
+        basePath + 'view_issues-init.js'
     ];
 
     var loadedModules = 0;
@@ -35,18 +43,13 @@
 
     function loadModuleScript(src, callback) {
         var script = document.createElement('script');
-        script.src = src;
+        script.src = src + '?v=' + Date.now(); // Add cache buster
         script.onload = callback;
         script.onerror = function() {
-            console.error('Failed to load module:', src, 'Path attempted:', src);
-            // Try fallback path
-            if (src.indexOf('/modules/') === -1) {
-                var fallbackSrc = '/modules/projects/js/' + src.split('/').pop();
-                console.log('Trying fallback path:', fallbackSrc);
-                script.src = fallbackSrc;
-            } else {
-                callback();
-            }
+            console.error('Failed to load module:', src);
+            console.log('Current path:', currentPath);
+            console.log('Base path:', basePath);
+            callback();
         };
         document.head.appendChild(script);
     }
