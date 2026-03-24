@@ -21,13 +21,13 @@
         } 
     }
 
-    // Load all modules in the correct order
+    // Load all modules in the correct order (relative to current script)
     var moduleScripts = [
-        'view_issues-core.js',
-        'view_issues-utilities.js', 
-        'view_issues-modals.js',
-        'view_issues-interactions.js',
-        'view_issues-init.js'
+        './view_issues-core.js',
+        './view_issues-utilities.js', 
+        './view_issues-modals.js',
+        './view_issues-interactions.js',
+        './view_issues-init.js'
     ];
 
     var loadedModules = 0;
@@ -38,8 +38,15 @@
         script.src = src;
         script.onload = callback;
         script.onerror = function() {
-            console.error('Failed to load module:', src);
-            callback();
+            console.error('Failed to load module:', src, 'Path attempted:', src);
+            // Try fallback path
+            if (src.indexOf('/modules/') === -1) {
+                var fallbackSrc = '/modules/projects/js/' + src.split('/').pop();
+                console.log('Trying fallback path:', fallbackSrc);
+                script.src = fallbackSrc;
+            } else {
+                callback();
+            }
         };
         document.head.appendChild(script);
     }
