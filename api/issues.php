@@ -22,6 +22,7 @@ if (!$auth->isLoggedIn()) {
 enforceApiCsrf();
 
 // Handle session refresh requests to prevent timeout during active use
+$sessionRefreshed = false;
 if (isset($_SERVER['HTTP_X_SESSION_REFRESH']) && $_SERVER['HTTP_X_SESSION_REFRESH'] === '1') {
     // Update last activity time to prevent session timeout
     $_SESSION['last_activity'] = time();
@@ -31,15 +32,17 @@ if (isset($_SERVER['HTTP_X_SESSION_REFRESH']) && $_SERVER['HTTP_X_SESSION_REFRES
         $db = Database::getInstance();
         $sessionStmt = $db->prepare("UPDATE user_sessions SET last_activity = NOW() WHERE session_id = ?");
         $sessionStmt->execute([session_id()]);
-        
-        echo json_encode(['success' => true, 'message' => 'Session refreshed']);
-        exit;
+        $sessionRefreshed = true;
     } catch (Exception $e) {
         error_log("Session refresh failed: " . $e->getMessage());
-        http_response_code(500);
-        echo json_encode(['error' => 'Session refresh failed', 'message' => 'Unable to refresh session']);
-        exit;
+        // Don't exit - continue with the actual request
     }
+}
+
+// If this is ONLY a session refresh request (no other data), return success
+if ($sessionRefreshed && empty($_POST) && empty($_GET)) {
+    echo json_encode(['success' => true, 'message' => 'Session refreshed']);
+    exit;
 }
 
 // Dedicated error log for issues API.
@@ -1383,7 +1386,70 @@ try {
         jsonResponse(['success' => true]);
     }
 
-    if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
+    function logHistory($db, $issueId, $userId, $field, $oldVal, $newVal) {
+    if ($oldVal === $newVal) return;
+    $stmt = $db->prepare("INSERT INTO issue_history (issue_id, user_id, field_name, old_value, new_value) VALUES (?, ?, ?, ?, ?)");
+    $stmt->execute([$issueId, $userId, $field, $oldVal, $newVal]);
+}
+
+function normalizeHistoryMetaValues($values, $allowCsv = false) {
+    $out = [];
+    $push = function($v) use (&$out) {
+        if ($v === null) return;
+        $s = trim((string)$v);
+        if ($s === '') return;
+        $out[] = $s;
+    };
+
+    $walk = function($input) use (&$walk, $push, $allowCsv) {
+        if ($input === null) return;
+        if (is_array($input)) {
+            foreach ($input as $v) $walk($v);
+            return;
+        }
+        $raw = trim((string)$input);
+        if ($raw === '') return;
+
+        if ($raw[0] === '[') {
+            $decoded = json_decode($raw, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                foreach ($decoded as $v) $walk($v);
+                return;
+            }
+        }
+
+        if ($allowCsv && strpos($raw, ',') !== false) {
+            foreach (explode(',', $raw) as $part) $push($part);
+            return;
+        }
+
+        $push($raw);
+    };
+
+    $walk($values);
+    $out = array_values(array_unique(array_filter($out, function($v){ return $v !== ''; })));
+    sort($out, SORT_NATURAL | SORT_FLAG_CASE);
+    return $out;
+}
+
+function handleMetaHistory($db, $issueId, $userId, $key, $newValues, $oldMeta) {
+    $multiKeys = ['qa_status', 'page_ids', 'reporter_ids', 'grouped_urls', 'reporter_qa_status_map'];
+    $allowCsv = in_array($key, $multiKeys, true);
+    $oldVals = normalizeHistoryMetaValues($oldMeta[$key] ?? [], $allowCsv);
+    $newVals = normalizeHistoryMetaValues($newValues, $allowCsv);
+
+    if (json_encode($oldVals) === json_encode($newVals)) return;
+
+    $oldVal = implode(', ', $oldVals);
+    $newVal = implode(', ', $newVals);
+    $stmt = $db->prepare("INSERT INTO issue_history (issue_id, user_id, field_name, old_value, new_value) VALUES (?, ?, ?, ?, ?)");
+    $stmt->execute([$issueId, $userId, "meta:$key", $oldVal, $newVal]);
+}
+
+if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
+        // Debug logging
+        error_log("Issue API: Starting $action action. Project ID: $projectId, User ID: $userId");
+        
         $id = (int)($_POST['id'] ?? 0);
         $expectedUpdatedAt = trim((string)($_POST['expected_updated_at'] ?? ''));
         $expectedHistoryId = isset($_POST['expected_history_id']) ? (int)$_POST['expected_history_id'] : null;
@@ -1522,12 +1588,6 @@ try {
                 if ((int)($oldIssue['client_ready'] ?? 0) !== $clientReady) $hasChanged = true;
                 if ((int)($oldIssue['assignee_id'] ?? 0) !== (int)($assigneeId ?? 0)) $hasChanged = true;
 
-                function logHistory($db, $issueId, $userId, $field, $oldVal, $newVal) {
-                    if ($oldVal === $newVal) return;
-                    $stmt = $db->prepare("INSERT INTO issue_history (issue_id, user_id, field_name, old_value, new_value) VALUES (?, ?, ?, ?, ?)");
-                    $stmt->execute([$issueId, $userId, $field, $oldVal, $newVal]);
-                }
-
                 logHistory($db, $id, $userId, 'title', $oldIssue['title'], $title);
                 logHistory($db, $id, $userId, 'description', $oldIssue['description'], $description);
                 logHistory($db, $id, $userId, 'severity', $oldIssue['severity'], $severity);
@@ -1543,77 +1603,8 @@ try {
                 $stmt->execute([$title, $description, $priorityId, $statusId, $reporterId, $assigneeId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady, $id, $projectId]);
             }
 
-        function normalizeHistoryMetaValues($values, $allowCsv = false) {
-            $out = [];
-            $push = function($v) use (&$out) {
-                if ($v === null) return;
-                $s = trim((string)$v);
-                if ($s === '') return;
-                $out[] = $s;
-            };
-
-            $walk = function($input) use (&$walk, $push, $allowCsv) {
-                if ($input === null) return;
-                if (is_array($input)) {
-                    foreach ($input as $v) $walk($v);
-                    return;
-                }
-                $raw = trim((string)$input);
-                if ($raw === '') return;
-
-                if ($raw[0] === '[') {
-                    $decoded = json_decode($raw, true);
-                    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                        foreach ($decoded as $v) $walk($v);
-                        return;
-                    }
-                }
-
-                if ($allowCsv && strpos($raw, ',') !== false) {
-                    foreach (explode(',', $raw) as $part) $push($part);
-                    return;
-                }
-
-                $push($raw);
-            };
-
-            $walk($values);
-            $out = array_values(array_unique(array_filter($out, function($v){ return $v !== ''; })));
-            sort($out, SORT_NATURAL | SORT_FLAG_CASE);
-            return $out;
-        }
-
-        function handleMetaHistory($db, $issueId, $userId, $key, $newValues, $oldMeta) {
-            $multiKeys = ['qa_status', 'page_ids', 'reporter_ids', 'grouped_urls', 'reporter_qa_status_map'];
-            $allowCsv = in_array($key, $multiKeys, true);
-            $oldVals = normalizeHistoryMetaValues($oldMeta[$key] ?? [], $allowCsv);
-            $newVals = normalizeHistoryMetaValues($newValues, $allowCsv);
-
-            if ($oldVals === $newVals) return;
-
-            $oldVal = implode(', ', $oldVals);
-            $newVal = implode(', ', $newVals);
-            $stmt = $db->prepare("INSERT INTO issue_history (issue_id, user_id, field_name, old_value, new_value) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$issueId, $userId, "meta:$key", $oldVal, $newVal]);
-        }
-
         // For update operations, check if QA status is actually being changed
-        // NOTE: Must initialize before the history logging block below uses it.
         $isActuallyUpdatingQaStatus = false;
-
-        if ($action === 'update') {
-            handleMetaHistory($db, $id, $userId, 'issue_status', $_POST['issue_status'] ?? '', $oldMeta);
-            // Only track QA status history if user has permission and is actually updating QA status
-            if ($canUpdateQaStatus && $isActuallyUpdatingQaStatus) {
-                handleMetaHistory($db, $id, $userId, 'qa_status', $_POST['qa_status'] ?? '', $oldMeta);
-                handleMetaHistory($db, $id, $userId, 'reporter_qa_status_map', $_POST['reporter_qa_status_map'] ?? '', $oldMeta);
-            }
-            handleMetaHistory($db, $id, $userId, 'page_ids', $pageIds, $oldMeta);
-            handleMetaHistory($db, $id, $userId, 'reporter_ids', $reporters, $oldMeta);
-            // Add other meta fields as needed
-        }
-
-        replaceMeta($db, $id, 'issue_status', [$_POST['issue_status'] ?? '']);
         
         // Handle QA status as array (multi-select)
         $qaStatusInput = $_POST['qa_status'] ?? [];
@@ -1641,9 +1632,6 @@ try {
         $reporterQaStatusMapInput = parseReporterQaStatusMapInput($_POST['reporter_qa_status_map'] ?? null);
         $reporterQaStatusMap = normalizeReporterQaStatusMap($reporterQaStatusMapInput, $reporters, $validQaStatusKeys);
 
-        // For update operations, check if QA status is actually being changed
-        $isActuallyUpdatingQaStatus = false;
-        
         // If user doesn't have QA permission, don't check for QA status changes at all
         if (!$canUpdateQaStatus) {
             $isActuallyUpdatingQaStatus = false;
@@ -1680,40 +1668,32 @@ try {
             $isActuallyUpdatingQaStatus = !empty($qaStatusInput) || !empty($reporterQaStatusMap);
         }
 
+        if ($action === 'update') {
+            handleMetaHistory($db, $id, $userId, 'issue_status', $_POST['issue_status'] ?? '', $oldMeta);
+            // Only track QA status history if user has permission and is actually updating QA status
+            if ($canUpdateQaStatus && $isActuallyUpdatingQaStatus) {
+                handleMetaHistory($db, $id, $userId, 'qa_status', $qaStatusInput, $oldMeta);
+                handleMetaHistory($db, $id, $userId, 'reporter_qa_status_map', $reporterQaStatusMap, $oldMeta);
+            }
+            handleMetaHistory($db, $id, $userId, 'page_ids', $pageIds, $oldMeta);
+            handleMetaHistory($db, $id, $userId, 'reporter_ids', $reporters, $oldMeta);
+            // Add other meta fields as needed
+        }
+
         // Only check QA permissions if user is actually trying to change QA status
         if (!$canUpdateQaStatus && $isActuallyUpdatingQaStatus) {
             jsonError('You do not have permission to update QA status for this project.', 403);
         }
         // Only process QA status updates if user has permission and is actually updating QA status
         if ($canUpdateQaStatus && $isActuallyUpdatingQaStatus) {
-            if (empty($reporterQaStatusMap) && !empty($qaStatusInput) && !empty($reporters)) {
-                // Backward-compatible behavior: if only global QA status is sent, apply selected statuses to all selected reporters.
-                $defaultStatuses = array_values(array_unique(array_filter(array_map(static function($v){
-                    return strtolower(trim((string)$v));
-                }, $qaStatusInput), static function($v){
-                    return $v !== '';
-                })));
-                foreach ($reporters as $rid) {
-                    $reporterQaStatusMap[(int)$rid] = $defaultStatuses;
-                }
-            }
-            if (!empty($reporterQaStatusMap)) {
-                $flatQaStatuses = [];
-                foreach ($reporterQaStatusMap as $statusValues) {
-                    $vals = is_array($statusValues) ? $statusValues : [$statusValues];
-                    foreach ($vals as $sv) {
-                        $key = strtolower(trim((string)$sv));
-                        if ($key !== '') $flatQaStatuses[] = $key;
-                    }
-                }
-                $qaStatusInput = array_values(array_unique($flatQaStatuses));
-            }
             replaceMeta($db, $id, 'qa_status', $qaStatusInput);
             // Store as a single JSON-encoded object (plain object, not array-of-strings)
             // This is the canonical format; parseReporterQaStatusMapFromMetaValues handles legacy array-of-strings too.
             replaceMeta($db, $id, 'reporter_qa_status_map', [json_encode((object)$reporterQaStatusMap, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
             persistIssueReporterQaStatuses($db, $id, $reporterQaStatusMap, $userId);
         }
+        
+        replaceMeta($db, $id, 'issue_status', [$_POST['issue_status'] ?? '']);
         
         replaceMeta($db, $id, 'page_ids', $pageIds);
         replaceMeta($db, $id, 'grouped_urls', parseArrayInput($_POST['grouped_urls'] ?? []));
@@ -1765,8 +1745,15 @@ try {
         }
 
         $db->commit();
+        
+        // Debug logging
+        error_log("Issue API: Transaction committed successfully for $action action. Issue ID: $id");
     } catch (Exception $e) {
         if ($db->inTransaction()) $db->rollBack();
+        
+        // Debug logging
+        error_log("Issue API: Exception in $action action: " . $e->getMessage());
+        
         jsonError($e->getMessage(), 500);
     }
 
@@ -1962,6 +1949,9 @@ try {
         }
 
         jsonResponse(['success' => true, 'id' => $id, 'issue_key' => $issueKey, 'issue' => $updatedIssue]);
+        
+        // Debug logging
+        error_log("Issue API: Successfully processed issue creation/update. ID: $id, Key: $issueKey, Action: $action");
     }
 
     if ($method === 'POST' && $action === 'bulk_client_ready') {

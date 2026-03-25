@@ -23,7 +23,8 @@ if (hasAdminPrivileges()) {
         SELECT DISTINCT p.id, p.title, p.po_number 
         FROM projects p
         JOIN user_assignments ua ON p.id = ua.project_id
-        WHERE ua.user_id = ? AND ua.role = 'qa' AND p.status != 'cancelled'
+        WHERE ua.user_id = ? AND p.status != 'cancelled'
+        AND (ua.is_removed IS NULL OR ua.is_removed = 0)
         ORDER BY p.title
     ");
     $stmt->execute([$userId]);

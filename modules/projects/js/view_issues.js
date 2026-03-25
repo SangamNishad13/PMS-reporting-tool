@@ -5953,13 +5953,16 @@
             } finally {
                 clearTimeout(timeoutId);
             }
-            
+
             var json = null;
             try {
                 var text = await res.text();
+                console.log('Raw API response:', text);
                 json = text ? JSON.parse(text) : null;
+                console.log('Parsed API response:', json);
             } catch (pE) {
                 console.error('Failed to parse JSON response', pE);
+                console.error('Raw text that failed to parse:', text);
             }
 
             if (res.status === 409 || (json && json.conflict)) {

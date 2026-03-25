@@ -66,8 +66,9 @@ function hasProjectPermission($db, $userId, $projectId, $permission) {
 function getBasicPermissionsForRole($role) {
     $rolePermissions = [
         'qa' => [
-            'project_view', 'pages_view', 'status_view', 'qa_status_update', 
-            'team_view', 'assets_view', 'phases_view', 'chat_view', 'chat_send',
+            'project_view', 'pages_view', 'pages_assign', 'status_view', 'qa_status_update', 
+            'team_view', 'team_assign', 'team_remove', 'team_manage_roles',
+            'assets_view', 'phases_view', 'chat_view', 'chat_send',
             'feedback_view', 'feedback_submit', 'activity_log_view'
         ],
         'at_tester' => [

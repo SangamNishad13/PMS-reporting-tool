@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_env_status']))
             $teamStmt = $db->prepare("
                 SELECT 1
                 FROM user_assignments
-                WHERE project_id = ? AND user_id = ? AND role = 'qa'
+                WHERE project_id = ? AND user_id = ?
                   AND (is_removed IS NULL OR is_removed = 0)
                 LIMIT 1
             ");
@@ -165,9 +165,20 @@ if (hasAdminPrivileges()) {
         LEFT JOIN users at_user ON pp.at_tester_id = at_user.id
         LEFT JOIN users ft_user ON pp.ft_tester_id = ft_user.id
         LEFT JOIN testing_results tr ON pp.id = tr.page_id AND tr.tester_role IN ('at_tester', 'ft_tester')
-        WHERE pp.qa_id = ? 
+        LEFT JOIN page_environments pe ON pp.id = pe.page_id
+        WHERE (
+            pp.qa_id = ? 
+            OR pe.qa_id = ?
+            OR EXISTS (
+                SELECT 1 FROM user_assignments ua 
+                WHERE ua.project_id = pp.project_id 
+                  AND ua.user_id = ? 
+                  AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+            )
+        )
         AND p.status NOT IN ('completed', 'cancelled')
         AND (pp.status IS NULL OR LOWER(pp.status) NOT IN ('on_hold', 'hold', 'completed'))
+        GROUP BY pp.id
         ORDER BY 
             CASE p.priority 
                 WHEN 'critical' THEN 1
@@ -177,7 +188,7 @@ if (hasAdminPrivileges()) {
             END,
             pp.created_at
     ");
-    $pages->execute([$userId]);
+    $pages->execute([$userId, $userId, $userId]);
     $pagesList = $pages->fetchAll();
 }
 
@@ -214,9 +225,20 @@ if (hasAdminPrivileges()) {
             COUNT(DISTINCT pp.project_id) as total_assigned_projects
         FROM project_pages pp
         JOIN projects p ON pp.project_id = p.id
-        WHERE pp.qa_id = ? AND p.status NOT IN ('cancelled')
+        LEFT JOIN page_environments pe ON pp.id = pe.page_id
+        WHERE (
+            pp.qa_id = ? 
+            OR pe.qa_id = ?
+            OR EXISTS (
+                SELECT 1 FROM user_assignments ua 
+                WHERE ua.project_id = pp.project_id 
+                  AND ua.user_id = ? 
+                  AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+            )
+        )
+        AND p.status NOT IN ('cancelled')
     ");
-    $stmt->execute([$userId]);
+    $stmt->execute([$userId, $userId, $userId]);
     $stats = $stmt->fetch(PDO::FETCH_ASSOC);
 
     // Get Active Projects Count (from user_assignments) - refined to not include completed/cancelled
@@ -224,8 +246,9 @@ if (hasAdminPrivileges()) {
         SELECT COUNT(*) 
         FROM user_assignments ua 
         JOIN projects p ON ua.project_id = p.id 
-        WHERE ua.user_id = ? AND ua.role = 'qa' 
+        WHERE ua.user_id = ? 
         AND p.status NOT IN ('completed', 'cancelled')
+        AND (ua.is_removed IS NULL OR ua.is_removed = 0)
     ");
     $projStats->execute([$userId]);
     $stats['active_projects'] = $projStats->fetchColumn();
@@ -236,8 +259,9 @@ $compProjStats = $db->prepare("
     SELECT COUNT(*) 
     FROM user_assignments ua 
     JOIN projects p ON ua.project_id = p.id 
-    WHERE ua.user_id = ? AND ua.role = 'qa' 
+    WHERE ua.user_id = ? 
     AND p.status = 'completed'
+    AND (ua.is_removed IS NULL OR ua.is_removed = 0)
 ");
 $compProjStats->execute([$userId]);
 $stats['completed_projects'] = $compProjStats->fetchColumn();
@@ -252,8 +276,9 @@ $assignedProjectsQuery = "
     FROM projects p
     JOIN user_assignments ua ON p.id = ua.project_id
     LEFT JOIN project_pages pp ON p.id = pp.project_id
-    WHERE ua.user_id = ? AND ua.role = 'qa'
+    WHERE ua.user_id = ?
     AND p.status IN ('in_progress', 'planning')
+    AND (ua.is_removed IS NULL OR ua.is_removed = 0)
     GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
     ORDER BY p.created_at DESC
     LIMIT 5
@@ -278,7 +303,6 @@ if (!hasAdminPrivileges()) {
             SELECT 1 FROM user_assignments ua
             WHERE ua.project_id = pp.project_id
               AND ua.user_id = ?
-              AND ua.role = 'qa'
               AND (ua.is_removed IS NULL OR ua.is_removed = 0)
         )
     )";
@@ -286,6 +310,22 @@ if (!hasAdminPrivileges()) {
     $qaPendingParams[] = $userId;
     $qaPendingParams[] = $userId;
 }
+
+// Pagination for Pending QA Review
+$p_perPage = 10;
+$p_page = max(1, (int)($_GET['p_page'] ?? 1));
+$p_offset = ($p_page - 1) * $p_perPage;
+
+$qaPendingCountSql = "
+    SELECT COUNT(*)
+    FROM project_pages pp
+    JOIN projects p ON pp.project_id = p.id
+    JOIN page_environments pe ON pp.id = pe.page_id
+    WHERE " . implode(' AND ', $qaPendingWhere);
+$qaPendingCountStmt = $db->prepare($qaPendingCountSql);
+$qaPendingCountStmt->execute($qaPendingParams);
+$qaPendingTotalCount = (int)$qaPendingCountStmt->fetchColumn();
+$qaPendingTotalPages = ceil($qaPendingTotalCount / $p_perPage);
 
 $qaPendingSql = "
     SELECT
@@ -307,6 +347,7 @@ $qaPendingSql = "
     JOIN testing_environments te ON pe.environment_id = te.id
     WHERE " . implode(' AND ', $qaPendingWhere) . "
     ORDER BY p.priority, pp.page_name, te.name
+    LIMIT $p_perPage OFFSET $p_offset
 ";
 $qaPendingStmt = $db->prepare($qaPendingSql);
 $qaPendingStmt->execute($qaPendingParams);
@@ -762,6 +803,34 @@ if (!empty($qaPendingRows)) {
                     </tbody>
                 </table>
             </div>
+
+            <?php if ($qaPendingTotalPages > 1): ?>
+            <div class="mt-3">
+                <nav aria-label="Pending QA review pagination">
+                    <ul class="pagination pagination-sm justify-content-center mb-0">
+                        <li class="page-item <?php echo $p_page <= 1 ? 'disabled' : ''; ?>">
+                            <a class="page-link" href="?p_page=<?php echo $p_page - 1; ?>">Previous</a>
+                        </li>
+                        <?php 
+                        $startPage = max(1, $p_page - 2);
+                        $endPage = min($qaPendingTotalPages, $p_page + 2);
+                        for ($i = $startPage; $i <= $endPage; $i++): 
+                        ?>
+                        <li class="page-item <?php echo $p_page == $i ? 'active' : ''; ?>">
+                            <a class="page-link" href="?p_page=<?php echo $i; ?>"><?php echo $i; ?></a>
+                        </li>
+                        <?php endfor; ?>
+                        <li class="page-item <?php echo $p_page >= $qaPendingTotalPages ? 'disabled' : ''; ?>">
+                            <a class="page-link" href="?p_page=<?php echo $p_page + 1; ?>">Next</a>
+                        </li>
+                    </ul>
+                </nav>
+                <div class="text-center text-muted small mt-1">
+                    Showing <?php echo $p_offset + 1; ?>-<?php echo min($p_offset + $p_perPage, $qaPendingTotalCount); ?> of <?php echo $qaPendingTotalCount; ?> tasks
+                </div>
+            </div>
+            <?php endif; ?>
+
             <?php else: ?>
             <div class="text-center text-muted py-4">
                 <i class="fas fa-inbox fa-3x mb-3"></i>

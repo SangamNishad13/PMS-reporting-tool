@@ -21,13 +21,14 @@ $assignedProjectsQuery = "
     FROM projects p
     LEFT JOIN clients c ON p.client_id = c.id
     LEFT JOIN project_pages pp ON p.id = pp.project_id
-    WHERE p.project_lead_id = ? OR p.created_by = ?
+    WHERE (p.project_lead_id = ? OR p.created_by = ?)
+       OR p.id IN (SELECT project_id FROM user_assignments WHERE user_id = ? AND (is_removed IS NULL OR is_removed = 0))
     GROUP BY p.id, p.title, p.po_number, p.project_code, p.status, p.project_type, p.priority, c.name
     ORDER BY p.created_at DESC
 ";
 
 $assignedProjects = $db->prepare($assignedProjectsQuery);
-$assignedProjects->execute([$userId, $userId]);
+$assignedProjects->execute([$userId, $userId, $userId]);
 $projects = $assignedProjects->fetchAll();
 
 include __DIR__ . '/../../includes/header.php';

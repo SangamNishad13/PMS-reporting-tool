@@ -328,25 +328,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $prevStmt->execute([$userId]);
         $prev = $prevStmt->fetch(PDO::FETCH_ASSOC) ?: ['can_manage_issue_config' => 0, 'can_manage_devices' => 0];
         
-        $stmt = $db->prepare("
-            UPDATE users 
-            SET full_name = ?, role = ?, is_active = ?, can_manage_issue_config = ?, can_manage_devices = ?
-            WHERE id = ?
-        ");
-        
-        $stmt->execute([$fullName, $role, $isActive, $canManageConfig, $canManageDevices, $userId]);
+        try {
+            $db->beginTransaction();
+            
+            $stmt = $db->prepare("
+                UPDATE users 
+                SET full_name = ?, role = ?, is_active = ?, can_manage_issue_config = ?, can_manage_devices = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([$fullName, $role, $isActive, $canManageConfig, $canManageDevices, $userId]);
 
-        // Notify user if permission changed
-        $baseDir = getBaseDir();
-        if ((int)$prev['can_manage_issue_config'] !== (int)$canManageConfig) {
-            $msg = $canManageConfig ? 'You have been granted Issue Config access.' : 'Your Issue Config access has been removed.';
-            createNotification($db, (int)$userId, 'system', $msg, $baseDir . "/modules/admin/issue_config.php");
+            // Sync role in user_assignments for active assignments
+            $syncStmt = $db->prepare("
+                UPDATE user_assignments 
+                SET role = ? 
+                WHERE user_id = ? AND (is_removed IS NULL OR is_removed = 0)
+            ");
+            $syncStmt->execute([$role, $userId]);
+
+            $db->commit();
+            
+            // Notify user if permission changed
+            $baseDir = getBaseDir();
+            if ((int)$prev['can_manage_issue_config'] !== (int)$canManageConfig) {
+                $msg = $canManageConfig ? 'You have been granted Issue Config access.' : 'Your Issue Config access has been removed.';
+                createNotification($db, (int)$userId, 'system', $msg, $baseDir . "/modules/admin/issue_config.php");
+            }
+            if ((int)$prev['can_manage_devices'] !== (int)$canManageDevices) {
+                $msg = $canManageDevices ? 'You have been granted Device Management access.' : 'Your Device Management access has been removed.';
+                createNotification($db, (int)$userId, 'system', $msg, $baseDir . "/modules/admin/devices.php");
+            }
+            
+            $_SESSION['success'] = "User updated successfully and project roles synchronized!";
+        } catch (Exception $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            error_log("User update/sync failed: " . $e->getMessage());
+            $_SESSION['error'] = "Failed to update user. Please try again.";
         }
-        if ((int)$prev['can_manage_devices'] !== (int)$canManageDevices) {
-            $msg = $canManageDevices ? 'You have been granted Device Management access.' : 'Your Device Management access has been removed.';
-            createNotification($db, (int)$userId, 'system', $msg, $baseDir . "/modules/admin/devices.php");
-        }
-        $_SESSION['success'] = "User updated successfully!";
     } elseif (isset($_POST['reset_password'])) {
         $isAjax = (
             (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') ||

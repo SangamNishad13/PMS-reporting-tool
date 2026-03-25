@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_env_status']))
         if (in_array($userRole, ['admin'], true)) {
             $canUpdate = true;
         } else {
-            $teamStmt = $db->prepare("\n                SELECT 1\n                FROM user_assignments\n                WHERE project_id = ? AND user_id = ? AND role = 'qa'\n                  AND (is_removed IS NULL OR is_removed = 0)\n                LIMIT 1\n            ");
+            $teamStmt = $db->prepare("\n                SELECT 1\n                FROM user_assignments\n                WHERE project_id = ? AND user_id = ?\n                  AND (is_removed IS NULL OR is_removed = 0)\n                LIMIT 1\n            ");
             $teamStmt->execute([$projectId, $userId]);
             $isProjectQa = (bool)$teamStmt->fetchColumn();
 
@@ -143,7 +143,7 @@ $where = ['pp.project_id = ?'];
 $params = [$projectId];
 
 if ($userRole === 'qa') {
-    $where[] = "(\n        pe.qa_id = ?\n        OR pp.qa_id = ?\n        OR EXISTS (\n            SELECT 1 FROM user_assignments ua\n            WHERE ua.project_id = pp.project_id\n              AND ua.user_id = ?\n              AND ua.role = 'qa'\n              AND (ua.is_removed IS NULL OR ua.is_removed = 0)\n        )\n    )";
+    $where[] = "(\n        pe.qa_id = ?\n        OR pp.qa_id = ?\n        OR EXISTS (\n            SELECT 1 FROM user_assignments ua\n            WHERE ua.project_id = pp.project_id\n              AND ua.user_id = ?\n              AND (ua.is_removed IS NULL OR ua.is_removed = 0)\n        )\n    )";
     $params[] = $userId;
     $params[] = $userId;
     $params[] = $userId;
