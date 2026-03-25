@@ -357,6 +357,13 @@ try {
                 $name = $pageLabel;
             }
 
+            // Check for existing page with same name or URL in the same project
+            $checkStmt = $db->prepare("SELECT id FROM project_pages WHERE project_id = ? AND (page_name = ? OR (url IS NOT NULL AND url = ?)) LIMIT 1");
+            $checkStmt->execute([$projectId, $name, $canonical ?: null]);
+            if ($checkStmt->fetch()) {
+                jsonRes(['error' => 'A page with this name or URL already exists in this project.'], 409);
+            }
+
             try {
                 $ins = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
                 $ins->execute([$projectId, $name, $pageLabel, $canonical ?: null, $_SESSION['user_id'] ?? null]);

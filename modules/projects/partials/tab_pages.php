@@ -1,4 +1,4 @@
-        <?php $canManageAssignmentsInView = in_array($userRole, ['admin', 'project_lead'], true); ?>
+        <?php $canManageAssignmentsInView = in_array($userRole, ['admin', 'project_lead', 'qa'], true); ?>
         <!-- Pages Tab -->
         <div class="tab-pane fade" id="pages" role="tabpanel">
             <div class="d-flex justify-content-between align-items-center mb-3">

@@ -4,7 +4,7 @@
                 <h5 class="mb-0">Project Team</h5>
                 <?php 
                 // Check if user can manage team
-                $canManageTeam = in_array($userRole, ['admin', 'project_lead', 'admin']);
+                $canManageTeam = in_array($userRole, ['admin', 'project_lead', 'qa']);
                 
                 // Also check client permissions for edit access
                 if (!$canManageTeam) {

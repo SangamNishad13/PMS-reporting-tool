@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/hours_validation.php';
 require_once __DIR__ . '/../../includes/client_permissions.php';
+require_once __DIR__ . '/../../includes/project_permissions.php';
 
 $auth = new Auth();
 $auth->requireLogin(); // Allow any logged-in user, we'll check specific permissions after loading the project
@@ -772,19 +773,25 @@ if (!$projectId) {
             $maxRow = $maxStmt->fetch(PDO::FETCH_ASSOC);
             $nextN = (int)($maxRow['maxn'] ?? 0) + 1;
             $pageNumber = 'Page ' . $nextN;
-            
-            $stmt = $db->prepare("INSERT INTO project_pages (project_id, page_name, page_number, url, screen_name, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-            $stmt->execute([$projectId, $pageName, $pageNumber, $url, $screenName, $userId]);
-            $newPageId = $db->lastInsertId();
-            
-            // Log Activity
-            logActivity($db, $userId, 'quick_add_page', 'page', $newPageId, [
-                'project_id' => $projectId,
-                'page_name' => $pageName,
-                'page_number' => $pageNumber
-            ]);
-            
-            $_SESSION['success'] = "Page '$pageName' added successfully as $pageNumber.";
+            // Check for existing page with same name or URL in same project
+            $checkStmt = $db->prepare("SELECT id FROM project_pages WHERE project_id = ? AND (page_name = ? OR (url IS NOT NULL AND url = ?)) LIMIT 1");
+            $checkStmt->execute([$projectId, $pageName, $url ?: null]);
+            if ($checkStmt->fetch()) {
+                $_SESSION['error'] = "A page with this name or URL already exists in this project.";
+            } else {
+                $stmt = $db->prepare("INSERT INTO project_pages (project_id, page_name, page_number, url, screen_name, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
+                $stmt->execute([$projectId, $pageName, $pageNumber, $url, $screenName, $userId]);
+                $newPageId = $db->lastInsertId();
+                
+                // Log Activity
+                logActivity($db, $userId, 'quick_add_page', 'page', $newPageId, [
+                    'project_id' => $projectId,
+                    'page_name' => $pageName,
+                    'page_number' => $pageNumber
+                ]);
+                
+                $_SESSION['success'] = "Page '$pageName' added successfully as $pageNumber.";
+            }
         } else {
             $_SESSION['error'] = "Page Name is required.";
         }
