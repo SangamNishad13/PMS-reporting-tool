@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/project_permissions.php';
 
 // Only log errors, not every request
 if (!isset($_SESSION['user_id'])) {
@@ -77,42 +78,118 @@ if (!$insideAllowed) {
     exit;
 }
 
-// Always perform database ownership check - never skip for any file type
-// Skipping checks based on file extension is a security anti-pattern
-$skipDbCheck = false;
+function escapeLikeValue($value) {
+    return strtr((string)$value, [
+        '\\' => '\\\\',
+        '%' => '\\%',
+        '_' => '\\_'
+    ]);
+}
 
-if (!$skipDbCheck) {
-    // Only do database checks for non-image files or files outside assets/uploads
-    try {
-        $db = Database::getInstance();
-        $userId = (int)$_SESSION['user_id'];
-        
-        // Check if file is a project asset
-        $assetStmt = $db->prepare("SELECT project_id FROM project_assets WHERE file_path = ? LIMIT 1");
-        $assetStmt->execute([$relPath]);
-        $asset = $assetStmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($asset) {
-            // This is a project asset - check if user has access to the project
-            $projectId = (int)$asset['project_id'];
-            
-            // Use the standard hasProjectAccess function for consistent permission checking
-            require_once __DIR__ . '/../includes/project_permissions.php';
-            if (!hasProjectAccess($db, $userId, $projectId)) {
-                http_response_code(403);
-                header('Content-Type: text/plain; charset=utf-8');
-                echo 'Forbidden: You do not have access to this project asset';
-                exit;
-            }
+function userCanAccessReferencedIssueProject(PDO $db, int $userId, string $role, string $relPath): bool {
+    $like = '%' . escapeLikeValue($relPath) . '%';
+
+    $issueSql = "
+        SELECT DISTINCT i.project_id
+        FROM issues i
+        WHERE i.description LIKE ? ESCAPE '\\\\'
+    ";
+    $params = [$like];
+    if ($role === 'client') {
+        $issueSql .= " AND i.client_ready = 1";
+    }
+    $issueStmt = $db->prepare($issueSql);
+    $issueStmt->execute($params);
+    while (($projectId = (int)$issueStmt->fetchColumn()) > 0) {
+        if (hasProjectAccess($db, $userId, $projectId)) {
+            return true;
         }
-    } catch (Exception $e) {
-        // If database check fails, deny access (fail-closed for security)
-        error_log('secure_file.php: Failed to check project asset permissions: ' . $e->getMessage());
+    }
+
+    $commentSql = "
+        SELECT DISTINCT i.project_id
+        FROM issue_comments ic
+        JOIN issues i ON i.id = ic.issue_id
+        WHERE ic.comment_html LIKE ? ESCAPE '\\\\'
+    ";
+    $commentParams = [$like];
+    if ($role === 'client') {
+        $commentSql .= " AND i.client_ready = 1";
+    }
+    $commentStmt = $db->prepare($commentSql);
+    $commentStmt->execute($commentParams);
+    while (($projectId = (int)$commentStmt->fetchColumn()) > 0) {
+        if (hasProjectAccess($db, $userId, $projectId)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function userCanAccessReferencedChat(PDO $db, int $userId, string $role, string $relPath): bool {
+    $like = '%' . escapeLikeValue($relPath) . '%';
+
+    $chatStmt = $db->prepare("SELECT DISTINCT project_id FROM chat_messages WHERE project_id IS NOT NULL AND message LIKE ? ESCAPE '\\\\'");
+    $chatStmt->execute([$like]);
+    while (($projectId = (int)$chatStmt->fetchColumn()) > 0) {
+        if (hasProjectAccess($db, $userId, $projectId)) {
+            return true;
+        }
+    }
+
+    if ($role === 'admin') {
+        $adminStmt = $db->prepare("SELECT 1 FROM chat_messages WHERE message LIKE ? ESCAPE '\\\\' LIMIT 1");
+        $adminStmt->execute([$like]);
+        return (bool)$adminStmt->fetchColumn();
+    }
+
+    $ownStmt = $db->prepare("SELECT 1 FROM chat_messages WHERE project_id IS NULL AND user_id = ? AND message LIKE ? ESCAPE '\\\\' LIMIT 1");
+    $ownStmt->execute([$userId, $like]);
+    return (bool)$ownStmt->fetchColumn();
+}
+
+function userCanAccessFilePath(PDO $db, int $userId, string $role, string $relPath): bool {
+    $assetStmt = $db->prepare("SELECT project_id FROM project_assets WHERE file_path = ? LIMIT 1");
+    $assetStmt->execute([$relPath]);
+    $projectId = (int)$assetStmt->fetchColumn();
+    if ($projectId > 0) {
+        return hasProjectAccess($db, $userId, $projectId);
+    }
+
+    if (strpos($relPath, 'uploads/issues/') === 0) {
+        return userCanAccessReferencedIssueProject($db, $userId, $role, $relPath);
+    }
+
+    if (strpos($relPath, 'uploads/chat/') === 0) {
+        return userCanAccessReferencedIssueProject($db, $userId, $role, $relPath)
+            || userCanAccessReferencedChat($db, $userId, $role, $relPath);
+    }
+
+    if (strpos($relPath, 'assets/uploads/') === 0) {
+        return false;
+    }
+
+    return false;
+}
+
+try {
+    $db = Database::getInstance();
+    $userId = (int)$_SESSION['user_id'];
+    $userRole = (string)($_SESSION['role'] ?? '');
+
+    if (!userCanAccessFilePath($db, $userId, $userRole, $relPath)) {
         http_response_code(403);
         header('Content-Type: text/plain; charset=utf-8');
-        echo 'Forbidden: Permission check failed';
+        echo 'Forbidden';
         exit;
     }
+} catch (Exception $e) {
+    error_log('secure_file.php: permission check failed: ' . $e->getMessage());
+    http_response_code(403);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'Forbidden';
+    exit;
 }
 
 // Set appropriate MIME type

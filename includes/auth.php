@@ -130,6 +130,96 @@ class Auth {
     public function __construct() {
         $this->db = Database::getInstance();
     }
+
+    private function get2FARateLimitKey($userId) {
+        $ip = (string)($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+        return '2fa_attempts_' . (int)$userId . '_' . md5($ip);
+    }
+
+    private function ensure2FAAttemptsTable() {
+        static $checked = false;
+        if ($checked) {
+            return;
+        }
+        $checked = true;
+        $this->db->exec("CREATE TABLE IF NOT EXISTS user_2fa_attempts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            ip_address VARCHAR(64) NOT NULL,
+            attempted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_2fa_user_attempted (user_id, attempted_at),
+            INDEX idx_2fa_ip_attempted (ip_address, attempted_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    private function get2FAAttemptStats($userId) {
+        $key = $this->get2FARateLimitKey($userId);
+        $window = 600;
+        $maxAttempts = 5;
+        $ip = (string)($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+
+        try {
+            $this->ensure2FAAttemptsTable();
+            $this->db->prepare("DELETE FROM user_2fa_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)")->execute();
+
+            $stmt = $this->db->prepare("SELECT COUNT(*) AS cnt, MIN(attempted_at) AS first_attempt FROM user_2fa_attempts WHERE user_id = ? AND ip_address = ? AND attempted_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)");
+            $stmt->execute([(int)$userId, $ip]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+            $_SESSION[$key] = [
+                'count' => (int)($row['cnt'] ?? 0),
+                'window_start' => isset($row['first_attempt']) && $row['first_attempt'] ? strtotime((string)$row['first_attempt']) : time()
+            ];
+
+            return [
+                'count' => (int)($row['cnt'] ?? 0),
+                'max' => $maxAttempts,
+                'window' => $window
+            ];
+        } catch (Exception $e) {
+            $bucket = $_SESSION[$key] ?? ['count' => 0, 'window_start' => time()];
+            if (!isset($bucket['window_start']) || (time() - (int)$bucket['window_start']) > $window) {
+                $bucket = ['count' => 0, 'window_start' => time()];
+            }
+            $_SESSION[$key] = $bucket;
+            return [
+                'count' => (int)($bucket['count'] ?? 0),
+                'max' => $maxAttempts,
+                'window' => $window
+            ];
+        }
+    }
+
+    private function register2FAFailure($userId) {
+        $key = $this->get2FARateLimitKey($userId);
+        $ip = (string)($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+
+        try {
+            $this->ensure2FAAttemptsTable();
+            $stmt = $this->db->prepare("INSERT INTO user_2fa_attempts (user_id, ip_address) VALUES (?, ?)");
+            $stmt->execute([(int)$userId, $ip]);
+        } catch (Exception $e) {
+            $bucket = $_SESSION[$key] ?? ['count' => 0, 'window_start' => time()];
+            if (!isset($bucket['window_start']) || (time() - (int)$bucket['window_start']) > 600) {
+                $bucket = ['count' => 0, 'window_start' => time()];
+            }
+            $bucket['count'] = (int)($bucket['count'] ?? 0) + 1;
+            $_SESSION[$key] = $bucket;
+        }
+    }
+
+    private function clear2FAFailures($userId) {
+        $key = $this->get2FARateLimitKey($userId);
+        unset($_SESSION[$key]);
+
+        try {
+            $this->ensure2FAAttemptsTable();
+            $stmt = $this->db->prepare("DELETE FROM user_2fa_attempts WHERE user_id = ? AND ip_address = ?");
+            $stmt->execute([(int)$userId, (string)($_SERVER['REMOTE_ADDR'] ?? 'unknown')]);
+        } catch (Exception $e) {
+            // Session fallback already cleared.
+        }
+    }
     
     public function login($username, $password) {
         // Validate input
@@ -321,6 +411,11 @@ class Auth {
     public function verify2FALogin($userId, $code) {
         if (empty($code)) return false;
 
+        $rate = $this->get2FAAttemptStats($userId);
+        if ($rate['count'] >= $rate['max']) {
+            return 'locked';
+        }
+
         $stmt = $this->db->prepare("SELECT * FROM users WHERE id = ? AND is_active = 1 LIMIT 1");
         $stmt->execute([$userId]);
         $user = $stmt->fetch();
@@ -333,6 +428,7 @@ class Auth {
         if ($ga->verifyCode($user['two_factor_secret'], $code, 1)) {
             // Success! Complete the login
             unset($_SESSION['2fa_pending_user_id']);
+            $this->clear2FAFailures($user['id']);
             
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
@@ -361,6 +457,13 @@ class Auth {
             } catch (Exception $e) {}
 
             return true;
+        }
+
+        $this->register2FAFailure($user['id']);
+
+        $rate = $this->get2FAAttemptStats($user['id']);
+        if ($rate['count'] >= $rate['max']) {
+            return 'locked';
         }
 
         return false;

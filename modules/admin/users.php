@@ -148,10 +148,7 @@ function sendCredentialsMailForUser(PDO $db, $uid, $mailMode, $requestId = '') {
     }
 
     $mailMode = in_array($mailMode, ['setup', 'reset'], true) ? $mailMode : 'setup';
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $baseDir = rtrim((string)getBaseDir(), '/');
-    $loginUrl = $scheme . '://' . $host . $baseDir . '/modules/auth/login.php';
+    $loginUrl = getConfiguredAppUrl() . '/modules/auth/login.php';
 
     try {
         $db->beginTransaction();
@@ -174,8 +171,8 @@ function sendCredentialsMailForUser(PDO $db, $uid, $mailMode, $requestId = '') {
 
         $tempPassword = generateTemporaryPassword(12);
         $newHash = password_hash($tempPassword, PASSWORD_DEFAULT);
-        $upd = $db->prepare("UPDATE users SET password = ?, force_password_reset = 1, temp_password = ?, account_setup_completed = 0 WHERE id = ?");
-        $upd->execute([$newHash, $tempPassword, $uid]);
+        $upd = $db->prepare("UPDATE users SET password = ?, force_password_reset = 1, temp_password = NULL, account_setup_completed = 0 WHERE id = ?");
+        $upd->execute([$newHash, $uid]);
 
         $subject = ($mailMode === 'reset')
             ? "PMS Password Reset - Login Details"
@@ -190,7 +187,6 @@ function sendCredentialsMailForUser(PDO $db, $uid, $mailMode, $requestId = '') {
         );
 
         // Commit first so the new password is always saved before attempting email send.
-        // This ensures the temp_password column is up-to-date even if the mailer is slow or fails.
         $db->commit();
 
         $sent = $mailer->send($recipientEmail, $subject, $body, true);
@@ -201,7 +197,7 @@ function sendCredentialsMailForUser(PDO $db, $uid, $mailMode, $requestId = '') {
         }
 
         logCredentialsMailAttempt($db, $requestId, $uid, $mailMode, 'fail', (string)($user['username'] ?? "User#{$uid}") . ' mail send failed.');
-        return ['success' => false, 'error' => (string)($user['username'] ?? "User#{$uid}") . ' mail send failed. Temporary password is visible in the users table.', 'temp_password_saved' => true];
+        return ['success' => false, 'error' => (string)($user['username'] ?? "User#{$uid}") . ' mail send failed. Generate a new reset email if needed.'];
     } catch (Exception $e) {
         if ($db->inTransaction()) {
             $db->rollBack();
@@ -270,23 +266,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } else {
                 $stmt = $db->prepare(
-                    "INSERT INTO users (username, email, password, full_name, role, force_password_reset, can_manage_issue_config, can_manage_devices, temp_password, account_setup_completed) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, 0)"
+                    "INSERT INTO users (username, email, password, full_name, role, force_password_reset, can_manage_issue_config, can_manage_devices, temp_password, account_setup_completed) VALUES (?, ?, ?, ?, ?, 1, ?, ?, NULL, 0)"
                 );
                 $canManageConfig = isset($_POST['can_manage_issue_config']) ? 1 : 0;
                 $canManageDevices = isset($_POST['can_manage_devices']) ? 1 : 0;
 
                 try {
-                    if ($stmt->execute([$username, $email, $password, $fullName, $role, $canManageConfig, $canManageDevices, $rawPassword])) {
+                    if ($stmt->execute([$username, $email, $password, $fullName, $role, $canManageConfig, $canManageDevices])) {
                         $mailNote = '';
                         if (!empty($_POST['send_setup_email'])) {
                             try {
                                 require_once __DIR__ . '/../../includes/email.php';
                                 $mailer = class_exists('EmailSender') ? new EmailSender() : null;
                                 if ($mailer && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                                    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-                                    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                                    $baseDir = rtrim((string)getBaseDir(), '/');
-                                    $loginUrl = $scheme . '://' . $host . $baseDir . '/modules/auth/login.php';
+                                    $loginUrl = getConfiguredAppUrl() . '/modules/auth/login.php';
                                     $subject = "PMS Account Setup - Login Details";
                                     $body = buildAccountMailBody($fullName, $username, $email, $rawPassword, $loginUrl, 'setup');
                                     $sent = $mailer->send($email, $subject, $body, true);
@@ -567,10 +560,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$mailer) {
                 $_SESSION['error'] = "Email service is not available.";
             } else {
-                $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                $baseDir = rtrim((string)getBaseDir(), '/');
-                $loginUrl = $scheme . '://' . $host . $baseDir . '/modules/auth/login.php';
+                $loginUrl = getConfiguredAppUrl() . '/modules/auth/login.php';
 
                 $ok = 0;
                 $failed = 0;
@@ -868,11 +858,7 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <?php if (empty($user['account_setup_completed']) && !empty($user['temp_password'])): ?>
-                                    <code class="text-danger"><?php echo htmlspecialchars($user['temp_password']); ?></code>
-                                <?php else: ?>
-                                    <span class="text-muted">-</span>
-                                <?php endif; ?>
+                                <span class="text-muted">Not stored</span>
                             </td>
                             <td>
                                 <?php if ($user['is_active']): ?>

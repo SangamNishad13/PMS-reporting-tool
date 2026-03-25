@@ -1,7 +1,16 @@
 <?php
 // Derive app URL dynamically when APP_URL is not provided.
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$rawHost = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+$hostOnly = strtolower((string)(parse_url('http://' . ($rawHost !== '' ? $rawHost : 'localhost'), PHP_URL_HOST) ?? 'localhost'));
+if ($hostOnly === '' || !preg_match('/^[a-z0-9.-]+$/', $hostOnly)) {
+    $hostOnly = 'localhost';
+}
+$port = (int)(parse_url('http://' . ($rawHost !== '' ? $rawHost : 'localhost'), PHP_URL_PORT) ?? 0);
+$host = $hostOnly;
+if ($port > 0 && $port <= 65535) {
+    $host .= ':' . $port;
+}
 $scriptDir = isset($_SERVER['SCRIPT_NAME']) ? str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])) : '';
 if ($scriptDir === '/' || $scriptDir === '\\' || $scriptDir === '.') {
     $scriptDir = '';

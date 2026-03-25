@@ -481,6 +481,21 @@ function extract_local_upload_paths_from_html($html, $allowedPrefixes = ['upload
             parse_str($query, $qp);
             $path = (string)($qp['path'] ?? '');
             $path = rawurldecode($path);
+        } elseif ($urlPath !== '' && stripos($urlPath, '/api/public_image.php') !== false) {
+            $qp = [];
+            parse_str($query, $qp);
+            $token = trim((string)($qp['t'] ?? ''));
+            if ($token !== '' && strpos($token, '.') !== false) {
+                $parts = explode('.', $token, 2);
+                $payloadB64 = (string)($parts[0] ?? '');
+                $sig = (string)($parts[1] ?? '');
+                $expected = hash_hmac('sha256', $payloadB64, get_public_image_token_secret());
+                if (hash_equals($expected, $sig)) {
+                    $decoded = base64url_decode($payloadB64);
+                    $payload = is_string($decoded) ? json_decode($decoded, true) : null;
+                    $path = (string)($payload['p'] ?? '');
+                }
+            }
         } else {
             $candidate = $urlPath !== '' ? $urlPath : $url;
             $candidate = str_replace('\\', '/', $candidate);
@@ -617,6 +632,21 @@ function normalize_local_upload_path_from_src($src, $allowedPrefixes = ['uploads
         $qp = [];
         parse_str($query, $qp);
         $path = rawurldecode((string)($qp['path'] ?? ''));
+    } elseif ($urlPath !== '' && stripos($urlPath, '/api/public_image.php') !== false) {
+        $qp = [];
+        parse_str($query, $qp);
+        $token = trim((string)($qp['t'] ?? ''));
+        if ($token !== '' && strpos($token, '.') !== false) {
+            $parts = explode('.', $token, 2);
+            $payloadB64 = (string)($parts[0] ?? '');
+            $sig = (string)($parts[1] ?? '');
+            $expected = hash_hmac('sha256', $payloadB64, get_public_image_token_secret());
+            if (hash_equals($expected, $sig)) {
+                $decoded = base64url_decode($payloadB64);
+                $payload = is_string($decoded) ? json_decode($decoded, true) : null;
+                $path = (string)($payload['p'] ?? '');
+            }
+        }
     } else {
         $candidate = $urlPath !== '' ? $urlPath : $src;
         $candidate = str_replace('\\', '/', $candidate);

@@ -22,7 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Please enter the 6-digit code from your app.";
         } else {
             $userId = $_SESSION['2fa_pending_user_id'];
-            if ($auth->verify2FALogin($userId, $code)) {
+            $verifyResult = $auth->verify2FALogin($userId, $code);
+            if ($verifyResult === true) {
                 // Handle "Remember this device"
                 if (!empty($_POST['trust_device'])) {
                     $auth->trustDevice($userId);
@@ -35,6 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $moduleDir = getModuleDirectory($role);
                     redirect("/modules/{$moduleDir}/dashboard.php");
                 }
+            } elseif ($verifyResult === 'locked') {
+                $error = "Too many invalid verification attempts. Please wait 10 minutes and try again.";
             } else {
                 $error = "Invalid or expired verification code. Please try again.";
             }

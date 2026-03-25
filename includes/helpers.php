@@ -331,6 +331,42 @@ function redirect($path, $statusCode = 302) {
     exit;
 }
 
+function getSanitizedHttpHost() {
+    $rawHost = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($rawHost === '') {
+        return 'localhost';
+    }
+
+    $host = strtolower((string)(parse_url('http://' . $rawHost, PHP_URL_HOST) ?? ''));
+    if ($host === '' || !preg_match('/^[a-z0-9.-]+$/', $host)) {
+        return 'localhost';
+    }
+
+    $port = (int)(parse_url('http://' . $rawHost, PHP_URL_PORT) ?? 0);
+    if ($port > 0 && $port <= 65535) {
+        return $host . ':' . $port;
+    }
+
+    return $host;
+}
+
+function getConfiguredAppUrl() {
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    $settings = @include(__DIR__ . '/../config/settings.php');
+    $appUrl = is_array($settings) ? trim((string)($settings['app_url'] ?? '')) : '';
+    if ($appUrl !== '' && preg_match('#^https?://#i', $appUrl)) {
+        return $cached = rtrim($appUrl, '/');
+    }
+
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $baseDir = getBaseDir();
+    return $cached = rtrim($protocol . '://' . getSanitizedHttpHost() . $baseDir, '/');
+}
+
 /**
  * Generate CSRF token
  * Token is rotated after each successful verification to prevent replay attacks.
@@ -412,15 +448,7 @@ function enforceApiCsrf() {
  * @return string Base URL
  */
 function getBaseUrl() {
-    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $script = dirname($_SERVER['SCRIPT_NAME']);
-    
-    if ($script === '/' || $script === '\\') {
-        $script = '';
-    }
-    
-    return $protocol . '://' . $host . $script;
+    return getConfiguredAppUrl();
 }
 
 /**

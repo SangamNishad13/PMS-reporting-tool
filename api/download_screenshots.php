@@ -77,8 +77,9 @@ if ($zip->open($tempFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== TRUE) 
 }
 
 $addedFiles = 0;
-$baseUrl = getBaseDir(); // e.g. /PMS
 $docRoot = realpath(__DIR__ . '/..');
+$uploadsRoot = $docRoot ? realpath($docRoot . '/uploads') : false;
+$assetsUploadsRoot = $docRoot ? realpath($docRoot . '/assets/uploads') : false;
 
 foreach ($issues as $issue) {
     $issueKey = $issue['issue_key'] ?: 'ISSUE-' . $issue['id'];
@@ -93,40 +94,34 @@ foreach ($issues as $issue) {
 
     if (empty($htmlContent)) continue;
 
-    // Extract images
-    $dom = new DOMDocument();
-    @$dom->loadHTML('<?xml encoding="UTF-8">' . $htmlContent, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-    $images = $dom->getElementsByTagName('img');
-    
     $counter = 1;
-    foreach ($images as $img) {
-        $src = $img->getAttribute('src');
-        if (empty($src)) continue;
+    $relPaths = extract_local_upload_paths_from_html($htmlContent, ['uploads/issues/', 'uploads/chat/']);
+    foreach ($relPaths as $relPath) {
+        $relPath = ltrim(str_replace('\\', '/', (string)$relPath), '/');
+        if ($relPath === '' || !$docRoot || strpos($relPath, '..') !== false) continue;
 
-        // Strip base URL if present to get relative path
-        if ($baseUrl && strpos($src, $baseUrl) === 0) {
-            $relPath = substr($src, strlen($baseUrl));
-        } else {
-            $relPath = $src;
-        }
-        
-        // Clean leading slash
-        $relPath = ltrim($relPath, '/');
-        
-        // Check if it's an internal upload
-        if (strpos($relPath, 'uploads/issues/') === 0 || strpos($relPath, 'uploads/chat/') === 0) {
-            $absolutePath = $docRoot . '/' . $relPath;
-            
-            if (file_exists($absolutePath) && is_file($absolutePath)) {
-                $ext = pathinfo($absolutePath, PATHINFO_EXTENSION);
-                $newName = $issueKey . '-' . $counter . '.' . $ext;
-                
-                // Add to ZIP
-                if ($zip->addFile($absolutePath, $newName)) {
-                    $counter++;
-                    $addedFiles++;
-                }
+        $candidate = $docRoot . '/' . $relPath;
+        $absolutePath = realpath($candidate);
+        if ($absolutePath === false || !is_file($absolutePath)) continue;
+
+        $absoluteNorm = str_replace('\\', '/', $absolutePath);
+        $isAllowedUpload = false;
+        foreach ([$uploadsRoot, $assetsUploadsRoot] as $allowedRoot) {
+            if ($allowedRoot === false) continue;
+            $allowedNorm = rtrim(str_replace('\\', '/', $allowedRoot), '/') . '/';
+            if (strpos($absoluteNorm, $allowedNorm) === 0) {
+                $isAllowedUpload = true;
+                break;
             }
+        }
+        if (!$isAllowedUpload) continue;
+
+        $ext = pathinfo($absolutePath, PATHINFO_EXTENSION);
+        $newName = $issueKey . '-' . $counter . '.' . $ext;
+
+        if ($zip->addFile($absolutePath, $newName)) {
+            $counter++;
+            $addedFiles++;
         }
     }
 }
