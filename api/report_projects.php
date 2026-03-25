@@ -8,6 +8,7 @@ ob_end_clean();
 
 header('Content-Type: application/json');
 header('X-Content-Type-Options: nosniff');
+header('Cache-Control: private, max-age=20, stale-while-revalidate=20');
 
 // Auth: must be logged in with admin or project_lead role
 $auth = new Auth();
@@ -74,6 +75,26 @@ if ($projectId > 0) {
     $fpCountParams[] = $projectId;
 }
 
+$cacheTtl = 30;
+$cacheKey = '';
+if (function_exists('apcu_fetch')) {
+    $cacheKey = 'rp:' . md5(json_encode([
+        'uid' => (int)($_SESSION['user_id'] ?? 0),
+        'role' => (string)($_SESSION['role'] ?? ''),
+        'sd' => $startDate,
+        'ed' => $endDate,
+        'pid' => $projectId,
+        'st' => $filterStatus,
+        'p' => $fpPage,
+        'pp' => $fpPerPage
+    ]));
+    $cached = apcu_fetch($cacheKey, $hit);
+    if ($hit && is_string($cached)) {
+        echo $cached;
+        exit;
+    }
+}
+
 try {
     $db = Database::getInstance();
 
@@ -95,7 +116,7 @@ try {
     $fpStmt->execute($fpParams);
     $projects = $fpStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    echo json_encode([
+    $response = json_encode([
         'success'     => true,
         'projects'    => $projects,
         'total'       => $fpTotalCount,
@@ -103,6 +124,12 @@ try {
         'per_page'    => $fpPerPage,
         'total_pages' => $fpTotalCount > 0 ? (int)ceil($fpTotalCount / $fpPerPage) : 1,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    if ($cacheKey !== '' && function_exists('apcu_store') && is_string($response)) {
+        apcu_store($cacheKey, $response, $cacheTtl);
+    }
+
+    echo $response;
 
 } catch (Throwable $e) {
     error_log("report_projects API Error: " . $e->getMessage());

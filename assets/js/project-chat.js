@@ -1186,6 +1186,16 @@
             scrollToBottom();
         }
 
+        let chatPollTimer = null;
+        let chatPollIntervalMs = 2000;
+        const chatPollMinMs = 1500;
+        const chatPollMaxMs = 10000;
+
+        function scheduleNextFetch(ms) {
+            if (chatPollTimer) clearTimeout(chatPollTimer);
+            chatPollTimer = setTimeout(fetchMessages, Math.max(chatPollMinMs, Math.min(chatPollMaxMs, ms || chatPollIntervalMs)));
+        }
+
         function fetchMessages() {
             const params = new URLSearchParams({
                 action: 'fetch_messages',
@@ -1197,7 +1207,20 @@
                 headers: { 'Accept': 'application/json' }
             }).then(res => res.text())
             .then(text => { try { return JSON.parse(text); } catch (e) { return []; } })
-            .then(messages => { if (messages && Array.isArray(messages) && messages.length > 0) appendMessages(messages); });
+            .then(messages => {
+                const hasNew = !!(messages && Array.isArray(messages) && messages.length > 0);
+                if (hasNew) {
+                    appendMessages(messages);
+                    chatPollIntervalMs = chatPollMinMs;
+                } else {
+                    chatPollIntervalMs = Math.min(chatPollMaxMs, Math.round(chatPollIntervalMs * 1.35));
+                }
+                scheduleNextFetch(chatPollIntervalMs);
+            })
+            .catch(() => {
+                chatPollIntervalMs = Math.min(chatPollMaxMs, Math.round(chatPollIntervalMs * 1.5));
+                scheduleNextFetch(chatPollIntervalMs);
+            });
         }
 
         function escapeHtml(text) {
@@ -1209,7 +1232,6 @@
         function capitalize(s) { return (s && s.length) ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
         fetchMessages();
-        setInterval(fetchMessages, 2000);
         applyEmbedTabOrder();
         bindMessageKeyboardNavigation();
         if (!initialRecentMessageFocused) {

@@ -8,6 +8,7 @@ ob_end_clean();
 
 header('Content-Type: application/json');
 header('X-Content-Type-Options: nosniff');
+header('Cache-Control: private, max-age=20, stale-while-revalidate=20');
 
 // Auth: must be logged in with admin or project_lead role
 $auth = new Auth();
@@ -48,6 +49,26 @@ $perPage   = 10;
 $offset    = ($page - 1) * $perPage;
 $dateEnd   = $endDate . ' 23:59:59';
 
+$cacheTtl = 30;
+$cacheKey = '';
+if (function_exists('apcu_fetch')) {
+    $cacheKey = 'rperf:' . md5(json_encode([
+        'uid' => (int)($_SESSION['user_id'] ?? 0),
+        'role' => (string)($_SESSION['role'] ?? ''),
+        'type' => $type,
+        'start' => $startDate,
+        'end' => $endDate,
+        'pid' => $projectId,
+        'page' => $page,
+        'pp' => $perPage,
+    ]));
+    $cached = apcu_fetch($cacheKey, $hit);
+    if ($hit && is_string($cached)) {
+        echo $cached;
+        exit;
+    }
+}
+
 try {
     $db = Database::getInstance();
 
@@ -69,7 +90,6 @@ try {
         $countStmt->execute($countParams);
         $total = (int)$countStmt->fetchColumn();
 
-        // subquery: 2 params, main JOIN: 2 params, optional projectId: 1
         $dataParams = [$startDate, $dateEnd, $startDate, $dateEnd];
         if ($projectId > 0) $dataParams[] = $projectId;
 
@@ -77,11 +97,16 @@ try {
             SELECT u.id, u.full_name, u.role,
                 COUNT(DISTINCT ptl.project_id) as pages_tested,
                 COALESCE(SUM(ptl.hours_spent), 0) as total_hours,
-                (SELECT COUNT(*) FROM issues i
-                 WHERE i.reporter_id = u.id AND i.created_at BETWEEN ? AND ?) as total_issues
+                COALESCE(ic.total_issues, 0) as total_issues
             FROM users u
             LEFT JOIN project_time_logs ptl
                 ON u.id = ptl.user_id AND ptl.log_date BETWEEN ? AND ? $projectFilter
+            LEFT JOIN (
+                SELECT reporter_id, COUNT(*) AS total_issues
+                FROM issues
+                WHERE created_at BETWEEN ? AND ?
+                GROUP BY reporter_id
+            ) ic ON ic.reporter_id = u.id
             WHERE $roleWhere AND u.is_active = 1
             GROUP BY u.id
             ORDER BY total_hours DESC
@@ -113,11 +138,16 @@ try {
             SELECT u.id, u.full_name,
                 COUNT(DISTINCT ptl.project_id) as pages_reviewed,
                 COALESCE(SUM(ptl.hours_spent), 0) as total_hours,
-                (SELECT COUNT(*) FROM issues i
-                 WHERE i.reporter_id = u.id AND i.created_at BETWEEN ? AND ?) as total_issues
+                COALESCE(ic.total_issues, 0) as total_issues
             FROM users u
             LEFT JOIN project_time_logs ptl
                 ON u.id = ptl.user_id AND ptl.log_date BETWEEN ? AND ? $projectFilter
+            LEFT JOIN (
+                SELECT reporter_id, COUNT(*) AS total_issues
+                FROM issues
+                WHERE created_at BETWEEN ? AND ?
+                GROUP BY reporter_id
+            ) ic ON ic.reporter_id = u.id
             WHERE $roleWhere AND u.is_active = 1
             GROUP BY u.id
             ORDER BY total_hours DESC
@@ -127,7 +157,7 @@ try {
         $rows = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    echo json_encode([
+    $response = json_encode([
         'success'     => true,
         'type'        => $type,
         'rows'        => $rows,
@@ -136,6 +166,12 @@ try {
         'per_page'    => $perPage,
         'total_pages' => $total > 0 ? (int)ceil($total / $perPage) : 1,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    if ($cacheKey !== '' && function_exists('apcu_store') && is_string($response)) {
+        apcu_store($cacheKey, $response, $cacheTtl);
+    }
+
+    echo $response;
 
 } catch (Throwable $e) {
     error_log("report_performance API Error: " . $e->getMessage());

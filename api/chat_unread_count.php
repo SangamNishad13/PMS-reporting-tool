@@ -7,6 +7,7 @@ require_once __DIR__ . '/../config/database.php';
 ob_end_clean();
 
 header('Content-Type: application/json');
+header('Cache-Control: private, max-age=5, stale-while-revalidate=10');
 
 $auth = new Auth();
 $auth->requireLogin();
@@ -16,13 +17,34 @@ $userId = $_SESSION['user_id'];
 $projectId = isset($_GET['project_id']) ? intval($_GET['project_id']) : null;
 $pageId = isset($_GET['page_id']) ? intval($_GET['page_id']) : null;
 
+$cacheTtl = 8;
+$cacheKey = '';
+if (function_exists('apcu_fetch')) {
+    $cacheKey = 'chat_unread:' . md5(json_encode([
+        'uid' => (int)$userId,
+        'pid' => (int)($projectId ?? 0),
+        'pg' => (int)($pageId ?? 0),
+    ]));
+    $cached = apcu_fetch($cacheKey, $hit);
+    if ($hit && is_string($cached)) {
+        echo $cached;
+        exit;
+    }
+}
+
 try {
     $unreadCount = getUnreadChatCount($db, $userId, $projectId, $pageId);
     
-    echo json_encode([
+    $response = json_encode([
         'success' => true,
         'unread_count' => $unreadCount
     ]);
+
+    if ($cacheKey !== '' && function_exists('apcu_store') && is_string($response)) {
+        apcu_store($cacheKey, $response, $cacheTtl);
+    }
+
+    echo $response;
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode([

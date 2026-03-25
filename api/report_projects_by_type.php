@@ -6,6 +6,7 @@ ob_end_clean();
 
 header('Content-Type: application/json');
 header('X-Content-Type-Options: nosniff');
+header('Cache-Control: private, max-age=20, stale-while-revalidate=20');
 
 $auth = new Auth();
 if (!$auth->isLoggedIn() || !isset($_SESSION['role']) || !in_array($_SESSION['role'], ['admin', 'project_lead'])) {
@@ -36,6 +37,22 @@ if ($filterStatus !== '') {
         }
     } catch (Throwable $e) {
         // allow through if table unavailable
+    }
+}
+
+$cacheTtl = 45;
+$cacheKey = '';
+if (function_exists('apcu_fetch')) {
+    $cacheKey = 'rpbt:' . md5(json_encode([
+        'uid' => (int)($_SESSION['user_id'] ?? 0),
+        'role' => (string)($_SESSION['role'] ?? ''),
+        'pid' => $projectId,
+        'st' => $filterStatus
+    ]));
+    $cached = apcu_fetch($cacheKey, $hit);
+    if ($hit && is_string($cached)) {
+        echo $cached;
+        exit;
     }
 }
 
@@ -96,7 +113,13 @@ try {
     // Sort by project_type
     usort($result, fn($a, $b) => strcmp($a['project_type'], $b['project_type']));
 
-    echo json_encode(['success' => true, 'data' => $result, 'filter_status' => $filterStatus], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $response = json_encode(['success' => true, 'data' => $result, 'filter_status' => $filterStatus], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    if ($cacheKey !== '' && function_exists('apcu_store') && is_string($response)) {
+        apcu_store($cacheKey, $response, $cacheTtl);
+    }
+
+    echo $response;
 
 } catch (Throwable $e) {
     error_log("report_projects_by_type Error: " . $e->getMessage());
