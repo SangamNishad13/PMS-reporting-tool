@@ -835,7 +835,24 @@ if ($method === 'POST' && $action === 'delete_image') {
     
     // Convert to absolute path
     $basePath = dirname(__DIR__);
-    $fullPath = $basePath . $imagePath;
+        // IDOR CHECK: Ensure the image belongs to a project the user has access to.
+        // The image path format is typically: /assets/uploads/projects/{project_id}/...
+        $pathParts = explode('/', ltrim($imagePath, '/'));
+        $projectDirIndex = array_search('projects', $pathParts);
+        if ($projectDirIndex !== false && isset($pathParts[$projectDirIndex + 1])) {
+            $projectIdFromPath = (int)$pathParts[$projectDirIndex + 1];
+            if (!hasProjectAccess($db, $_SESSION['user_id'], $projectIdFromPath)) {
+                jsonError('Permission denied', 403);
+            }
+        } else {
+            // If path doesn't contain project ID, it might be a global asset or legacy.
+            // For security, only allow admin to delete these if they don't follow the pattern.
+            if ($_SESSION['role'] !== 'admin') {
+                jsonError('Permission denied: invalid path format', 403);
+            }
+        }
+
+        $fullPath = __DIR__ . '/..' . $imagePath;
     
     // Check if file exists and delete it
     if (file_exists($fullPath)) {

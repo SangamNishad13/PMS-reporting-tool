@@ -486,10 +486,10 @@ include __DIR__ . '/../../includes/header.php';
                         <?php else: ?>
                             <?php foreach ($filteredProjects as $fp): ?>
                             <tr>
-                                <td><strong><?php echo htmlspecialchars($fp['title']); ?></strong></td>
-                                <td><?php echo htmlspecialchars($fp['po_number']); ?></td>
-                                <td><?php echo htmlspecialchars($fp['client_name'] ?? 'N/A'); ?></td>
-                                <td><?php echo htmlspecialchars($fp['lead_name'] ?? 'Unassigned'); ?></td>
+                                <td><strong><?php echo e($fp['title']); ?></strong></td>
+                                <td><?php echo e($fp['po_number']); ?></td>
+                                <td><?php echo e($fp['client_name'] ?? 'N/A'); ?></td>
+                                <td><?php echo e($fp['lead_name'] ?? 'Unassigned'); ?></td>
                                 <td><?php echo date('M d, Y', strtotime($fp['created_at'])); ?></td>
                                 <td>
                                     <?php if (!empty($fp['current_phase'])): ?>
@@ -599,11 +599,11 @@ include __DIR__ . '/../../includes/header.php';
                                                     <tbody>
                                                     <?php foreach ($typeProjects as $tp): ?>
                                                     <tr>
-                                                        <td><code><?php echo htmlspecialchars(isset($tp['code']) ? $tp['code'] : ''); ?></code></td>
-                                                        <td><?php echo htmlspecialchars(isset($tp['title']) ? $tp['title'] : ''); ?></td>
-                                                        <td><?php echo htmlspecialchars(isset($tp['client']) ? $tp['client'] : 'N/A'); ?></td>
-                                                        <td><span class="badge bg-<?php echo projectStatusBadgeClass(isset($tp['status']) ? $tp['status'] : ''); ?>"><?php echo htmlspecialchars(isset($projectStatusLabelMap[isset($tp['status']) ? $tp['status'] : '']) ? $projectStatusLabelMap[isset($tp['status']) ? $tp['status'] : ''] : formatProjectStatusLabel(isset($tp['status']) ? $tp['status'] : '')); ?></span></td>
-                                                        <td><a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $tp['id']; ?>" class="btn btn-xs btn-outline-primary" target="_blank"><i class="fas fa-eye"></i></a></td>
+                                                         <td><code><?php echo e(isset($tp['code']) ? $tp['code'] : ''); ?></code></td>
+                                                         <td><?php echo e(isset($tp['title']) ? $tp['title'] : ''); ?></td>
+                                                         <td><?php echo e(isset($tp['client']) ? $tp['client'] : 'N/A'); ?></td>
+                                                         <td><span class="badge bg-<?php echo projectStatusBadgeClass(isset($tp['status']) ? $tp['status'] : ''); ?>"><?php echo e(isset($projectStatusLabelMap[isset($tp['status']) ? $tp['status'] : '']) ? $projectStatusLabelMap[isset($tp['status']) ? $tp['status'] : ''] : formatProjectStatusLabel(isset($tp['status']) ? $tp['status'] : '')); ?></span></td>
+                                                         <td><a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $tp['id']; ?>" class="btn btn-xs btn-outline-primary" target="_blank"><i class="fas fa-eye"></i></a></td>
                                                     </tr>
                                                     <?php endforeach; ?>
                                                     </tbody>
@@ -643,15 +643,15 @@ include __DIR__ . '/../../includes/header.php';
                                 <tr><td colspan="5" class="text-center text-muted py-3"><i class="fas fa-check-circle fa-2x d-block mb-2"></i>No completed projects found.</td></tr>
                                 <?php else: foreach ($recentCompletions as $project): ?>
                                 <tr>
-                                    <td><?php echo $project['title']; ?></td>
-                                    <td><?php echo $project['client_name']; ?></td>
+                                    <td><?php echo e($project['title']); ?></td>
+                                    <td><?php echo e($project['client_name']); ?></td>
                                     <td>
                                         <span class="badge bg-info">
-                                            <?php echo strtoupper($project['project_type']); ?>
+                                            <?php echo e(strtoupper($project['project_type'])); ?>
                                         </span>
                                     </td>
-                                    <td><?php echo $project['days_taken']; ?> days</td>
-                                    <td><?php echo $project['total_hours'] ?: 'N/A'; ?></td>
+                                    <td><?php echo e($project['days_taken']); ?> days</td>
+                                    <td><?php echo e($project['total_hours'] ?: 'N/A'); ?></td>
                                 </tr>
                                 <?php endforeach; endif; ?>
                             </tbody>
@@ -661,7 +661,7 @@ include __DIR__ . '/../../includes/header.php';
             </div>
         </div>
     </div>
-    
+
     <div class="row mt-3">
         <!-- Tester Performance -->
         <div class="col-md-6">
@@ -687,23 +687,23 @@ include __DIR__ . '/../../includes/header.php';
                                 <?php else: foreach ($testerPerformance as $tester): ?>
                                 <tr>
                                     <td>
-                                        <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo $tester['id']; ?>">
-                                            <?php echo $tester['full_name']; ?>
+                                        <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo (int)$tester['id']; ?>">
+                                            <?php echo e($tester['full_name']); ?>
                                         </a>
                                     </td>
                                     <td>
                                         <span class="badge bg-info">
-                                            <?php echo strtoupper($tester['role']); ?>
+                                            <?php echo e(strtoupper($tester['role'])); ?>
                                         </span>
                                     </td>
-                                    <td><?php echo $tester['pages_tested']; ?></td>
-                                    <td><?php echo $tester['total_hours'] ?: '0'; ?></td>
+                                    <td><?php echo e($tester['pages_tested']); ?></td>
+                                    <td><?php echo e($tester['total_hours'] ?: '0'); ?></td>
                                     <td>
                                         <span class="badge bg-<?php 
                                             echo $tester['total_issues'] > 20 ? 'danger' : 
                                                  ($tester['total_issues'] > 10 ? 'warning' : 'success');
                                         ?>">
-                                            <?php echo $tester['total_issues']; ?>
+                                            <?php echo e($tester['total_issues']); ?>
                                         </span>
                                     </td>
                                 </tr>
@@ -761,18 +761,18 @@ include __DIR__ . '/../../includes/header.php';
                                 <?php else: foreach ($qaPerformance as $qa): ?>
                                 <tr>
                                     <td>
-                                        <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo $qa['id']; ?>">
-                                            <?php echo $qa['full_name']; ?>
+                                        <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo (int)$qa['id']; ?>">
+                                            <?php echo e($qa['full_name']); ?>
                                         </a>
                                     </td>
-                                    <td><?php echo $qa['pages_reviewed']; ?></td>
-                                    <td><?php echo $qa['total_hours'] ?: '0'; ?></td>
+                                    <td><?php echo e($qa['pages_reviewed']); ?></td>
+                                    <td><?php echo e($qa['total_hours'] ?: '0'); ?></td>
                                     <td>
                                         <span class="badge bg-<?php 
                                             echo $qa['total_issues'] > 20 ? 'danger' : 
                                                  ($qa['total_issues'] > 10 ? 'warning' : 'success');
                                         ?>">
-                                            <?php echo $qa['total_issues']; ?>
+                                            <?php echo e($qa['total_issues']); ?>
                                         </span>
                                     </td>
                                 </tr>

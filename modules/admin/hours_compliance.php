@@ -1,9 +1,9 @@
 <?php
-require_once '../../includes/auth.php';
+require_once __DIR__ . '/../../includes/auth.php';
 requireAdmin();
 
 $page_title = 'Hours Compliance Report';
-include '../../includes/header.php';
+include __DIR__ . '/../../includes/header.php';
 ?>
 <style>
 #complianceTable_wrapper .dataTables_length select {

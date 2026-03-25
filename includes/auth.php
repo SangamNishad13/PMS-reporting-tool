@@ -380,11 +380,16 @@ class Auth {
             $result = $stmt->execute([$userId, $hashedToken, $expiresAt]);
             
             if ($result) {
+                // Determine if connection is HTTPS
+                $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['SERVER_PORT'] ?? null) == 443;
+                // Determine if connection is from localhost (for development)
+                $isLocalhost = in_array($_SERVER['REMOTE_ADDR'] ?? '127.0.0.1', ['127.0.0.1', '::1']);
+
                 // Set cookie for 30 days. Use basic params for maximum compatibility.
                 setcookie('pms_2fa_trust', $token, [
                     'expires' => $expiresTs,
                     'path' => '/',
-                    'secure' => false, // Set to false for now to ensure skip works in development
+                    'secure' => ($isHttps || !$isLocalhost) ? true : false,
                     'httponly' => true,
                     'samesite' => 'Lax'
                 ]);
