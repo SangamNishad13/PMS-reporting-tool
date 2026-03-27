@@ -11,6 +11,22 @@ $projectManager = new ProjectManager();
 $baseDir = getBaseDir();
 $devicesApiUrl = $baseDir . '/api/devices.php';
 
+function dashboardColumnExists(PDO $db, string $table, string $column): bool {
+    static $cache = [];
+    $key = strtolower($table . '.' . $column);
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+    try {
+        $stmt = $db->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+        $stmt->execute([$column]);
+        $cache[$key] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $cache[$key] = false;
+    }
+    return $cache[$key];
+}
+
 function loadPendingDashboardData(PDO $db, $baseDir) {
     $pendingBuckets = [];
     $pendingFeed = [];
@@ -233,28 +249,28 @@ $sql = "
         (SELECT COUNT(DISTINCT p2.id) 
          FROM project_pages pp2 
          JOIN projects p2 ON pp2.project_id = p2.id 
-         WHERE (pp2.at_tester_id = u.id OR pp2.ft_tester_id = u.id OR pp2.qa_id = u.id
-                OR (pp2.at_tester_ids IS NOT NULL AND JSON_CONTAINS(pp2.at_tester_ids, JSON_ARRAY(u.id)))
-                OR (pp2.ft_tester_ids IS NOT NULL AND JSON_CONTAINS(pp2.ft_tester_ids, JSON_ARRAY(u.id))))
+          WHERE (pp2.at_tester_id = u.id OR pp2.ft_tester_id = u.id OR pp2.qa_id = u.id
+              OR (pp2.at_tester_ids IS NOT NULL AND JSON_VALID(pp2.at_tester_ids) AND JSON_CONTAINS(pp2.at_tester_ids, JSON_ARRAY(u.id)))
+              OR (pp2.ft_tester_ids IS NOT NULL AND JSON_VALID(pp2.ft_tester_ids) AND JSON_CONTAINS(pp2.ft_tester_ids, JSON_ARRAY(u.id))))
          AND p2.status NOT IN ('completed', 'cancelled')) as active_projects,
         (SELECT COUNT(DISTINCT pp3.id) 
          FROM project_pages pp3 
-         WHERE (pp3.at_tester_id = u.id OR pp3.ft_tester_id = u.id OR pp3.qa_id = u.id
-                OR (pp3.at_tester_ids IS NOT NULL AND JSON_CONTAINS(pp3.at_tester_ids, JSON_ARRAY(u.id)))
-                OR (pp3.ft_tester_ids IS NOT NULL AND JSON_CONTAINS(pp3.ft_tester_ids, JSON_ARRAY(u.id))))) as assigned_pages,
+          WHERE (pp3.at_tester_id = u.id OR pp3.ft_tester_id = u.id OR pp3.qa_id = u.id
+              OR (pp3.at_tester_ids IS NOT NULL AND JSON_VALID(pp3.at_tester_ids) AND JSON_CONTAINS(pp3.at_tester_ids, JSON_ARRAY(u.id)))
+              OR (pp3.ft_tester_ids IS NOT NULL AND JSON_VALID(pp3.ft_tester_ids) AND JSON_CONTAINS(pp3.ft_tester_ids, JSON_ARRAY(u.id))))) as assigned_pages,
         (SELECT COUNT(DISTINCT p3.id) 
          FROM project_pages pp4 
          JOIN projects p3 ON pp4.project_id = p3.id 
-         WHERE (pp4.at_tester_id = u.id OR pp4.ft_tester_id = u.id OR pp4.qa_id = u.id
-                OR (pp4.at_tester_ids IS NOT NULL AND JSON_CONTAINS(pp4.at_tester_ids, JSON_ARRAY(u.id)))
-                OR (pp4.ft_tester_ids IS NOT NULL AND JSON_CONTAINS(pp4.ft_tester_ids, JSON_ARRAY(u.id))))
+          WHERE (pp4.at_tester_id = u.id OR pp4.ft_tester_id = u.id OR pp4.qa_id = u.id
+              OR (pp4.at_tester_ids IS NOT NULL AND JSON_VALID(pp4.at_tester_ids) AND JSON_CONTAINS(pp4.at_tester_ids, JSON_ARRAY(u.id)))
+              OR (pp4.ft_tester_ids IS NOT NULL AND JSON_VALID(pp4.ft_tester_ids) AND JSON_CONTAINS(pp4.ft_tester_ids, JSON_ARRAY(u.id))))
          AND p3.status = 'in_progress') as in_progress_projects,
         (SELECT COUNT(DISTINCT p4.id) 
          FROM project_pages pp5 
          JOIN projects p4 ON pp5.project_id = p4.id 
-         WHERE (pp5.at_tester_id = u.id OR pp5.ft_tester_id = u.id OR pp5.qa_id = u.id
-                OR (pp5.at_tester_ids IS NOT NULL AND JSON_CONTAINS(pp5.at_tester_ids, JSON_ARRAY(u.id)))
-                OR (pp5.ft_tester_ids IS NOT NULL AND JSON_CONTAINS(pp5.ft_tester_ids, JSON_ARRAY(u.id))))
+          WHERE (pp5.at_tester_id = u.id OR pp5.ft_tester_id = u.id OR pp5.qa_id = u.id
+              OR (pp5.at_tester_ids IS NOT NULL AND JSON_VALID(pp5.at_tester_ids) AND JSON_CONTAINS(pp5.at_tester_ids, JSON_ARRAY(u.id)))
+              OR (pp5.ft_tester_ids IS NOT NULL AND JSON_VALID(pp5.ft_tester_ids) AND JSON_CONTAINS(pp5.ft_tester_ids, JSON_ARRAY(u.id))))
          AND p4.priority = 'critical') as critical_projects,
         (SELECT COALESCE(SUM(hours_spent), 0) FROM testing_results tr WHERE tr.tester_id = u.id AND DATE(tr.tested_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as hours_last_30_days,
         (SELECT COALESCE(SUM(hours_spent), 0) FROM testing_results tr WHERE tr.tester_id = u.id) as total_hours,
@@ -264,12 +280,18 @@ $sql = "
     ORDER BY $orderBy
 ";
 
-if (!empty($params)) {
-    $stmt = $db->prepare($sql);
-    $stmt->execute($params);
-    $workload = $stmt->fetchAll();
-} else {
-    $workload = $db->query($sql)->fetchAll();
+$workload = [];
+try {
+    if (!empty($params)) {
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $workload = $stmt->fetchAll();
+    } else {
+        $workload = $db->query($sql)->fetchAll();
+    }
+} catch (Exception $e) {
+    error_log('dashboard workload query failed: ' . $e->getMessage());
+    $workload = [];
 }
 
 // Apply workload filter after query
@@ -309,6 +331,93 @@ if (!empty($workloadUserIds)) {
 foreach ($workload as &$resourceRow) {
     $rid = (int)($resourceRow['id'] ?? 0);
     $resourceRow['allocated_hours'] = (float)($allocatedHoursByUser[$rid] ?? 0);
+}
+unset($resourceRow);
+
+$hoursByUserProject = [];
+if (!empty($workloadUserIds)) {
+    $ph = implode(',', array_fill(0, count($workloadUserIds), '?'));
+    $hoursStmt = $db->prepare("\n        SELECT user_id, project_id, COALESCE(SUM(hours_spent), 0) AS total_hours\n        FROM project_time_logs\n        WHERE user_id IN ($ph)\n        GROUP BY user_id, project_id\n    ");
+    $hoursStmt->execute($workloadUserIds);
+    while ($hrow = $hoursStmt->fetch(PDO::FETCH_ASSOC)) {
+        $key = (int)$hrow['user_id'] . ':' . (int)$hrow['project_id'];
+        $hoursByUserProject[$key] = (float)$hrow['total_hours'];
+    }
+}
+
+$issuesByUserProject = [];
+if (!empty($workloadUserIds)) {
+    $ph = implode(',', array_fill(0, count($workloadUserIds), '?'));
+    $issuesStmt = $db->prepare("\n        SELECT reporter_id AS user_id, project_id, COUNT(*) AS total_issues\n        FROM issues\n        WHERE reporter_id IN ($ph)\n        GROUP BY reporter_id, project_id\n    ");
+    $issuesStmt->execute($workloadUserIds);
+    while ($irow = $issuesStmt->fetch(PDO::FETCH_ASSOC)) {
+        $key = (int)$irow['user_id'] . ':' . (int)$irow['project_id'];
+        $issuesByUserProject[$key] = (int)$irow['total_issues'];
+    }
+}
+
+$resourceProjectOrderBy = dashboardColumnExists($db, 'projects', 'updated_at')
+    ? 'ORDER BY p.updated_at DESC, p.id DESC'
+    : 'ORDER BY p.id DESC';
+
+$resourceProjectStmt = $db->prepare("\n    SELECT\n        p.id AS project_id,\n        p.project_code,\n        p.po_number,\n        p.title AS project_title,\n        COALESCE(NULLIF(TRIM(p.status), ''), 'not_started') AS project_status,\n        COUNT(DISTINCT pp.id) AS assigned_pages\n    FROM project_pages pp\n    INNER JOIN projects p ON p.id = pp.project_id\n    WHERE (\n        pp.at_tester_id = ?\n        OR pp.ft_tester_id = ?\n        OR pp.qa_id = ?\n        OR (pp.at_tester_ids IS NOT NULL AND JSON_VALID(pp.at_tester_ids) AND JSON_CONTAINS(pp.at_tester_ids, JSON_ARRAY(?)))\n        OR (pp.ft_tester_ids IS NOT NULL AND JSON_VALID(pp.ft_tester_ids) AND JSON_CONTAINS(pp.ft_tester_ids, JSON_ARRAY(?)))\n    )\n    GROUP BY p.id, p.project_code, p.po_number, p.title, p.status\n    " . $resourceProjectOrderBy . "\n");
+
+foreach ($workload as &$resourceRow) {
+    $rid = (int)($resourceRow['id'] ?? 0);
+    $resourceRow['project_details'] = [];
+    $resourceRow['project_count'] = 0;
+    $resourceRow['project_summary'] = 'No assigned projects';
+
+    if ($rid <= 0) {
+        continue;
+    }
+
+    $resourceProjectStmt->execute([$rid, $rid, $rid, $rid, $rid]);
+    $projects = $resourceProjectStmt->fetchAll(PDO::FETCH_ASSOC);
+    $details = [];
+
+    foreach ($projects as $projectRow) {
+        $projectId = (int)($projectRow['project_id'] ?? 0);
+        if ($projectId <= 0) {
+            continue;
+        }
+
+        $projectCode = trim((string)($projectRow['project_code'] ?? ''));
+        if ($projectCode === '') {
+            $projectCode = trim((string)($projectRow['po_number'] ?? ''));
+        }
+        if ($projectCode === '') {
+            $projectCode = 'PRJ-' . $projectId;
+        }
+
+        $statusKey = (string)($projectRow['project_status'] ?? 'not_started');
+        $metricKey = $rid . ':' . $projectId;
+
+        $details[] = [
+            'project_id' => $projectId,
+            'project_code' => $projectCode,
+            'project_title' => (string)($projectRow['project_title'] ?? ''),
+            'status_key' => $statusKey,
+            'status_label' => formatProjectStatusLabel($statusKey),
+            'status_badge' => projectStatusBadgeClass($statusKey),
+            'assigned_pages' => (int)($projectRow['assigned_pages'] ?? 0),
+            'hours_worked' => (float)($hoursByUserProject[$metricKey] ?? 0),
+            'issues_reported' => (int)($issuesByUserProject[$metricKey] ?? 0),
+        ];
+    }
+
+    $resourceRow['project_details'] = $details;
+    $resourceRow['project_count'] = count($details);
+    if (!empty($details)) {
+        $summaryRows = array_slice($details, 0, 4);
+        $summary = array_map(static function ($item) {
+            return $item['project_code'] . ' - ' . $item['status_label'];
+        }, $summaryRows);
+        if (count($details) > 4) {
+            $summary[] = '+' . (count($details) - 4) . ' more';
+        }
+        $resourceRow['project_summary'] = implode(' | ', $summary);
+    }
 }
 unset($resourceRow);
 
@@ -568,78 +677,49 @@ include __DIR__ . '/../../includes/header.php';
             line-height: 1;
         }
 
-        .resource-list {
-            display: grid;
-            gap: 10px;
-            padding: 10px;
+        .resource-workload-table {
+            margin-bottom: 0;
+            font-size: 0.86rem;
         }
 
-        .resource-item {
-            border: 1px solid #eceff3;
-            border-radius: 10px;
-            padding: 10px;
-            background: #fff;
+        .resource-workload-table th,
+        .resource-workload-table td {
+            vertical-align: middle;
         }
 
-        .resource-item .resource-top {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
+        .resource-main-row {
+            cursor: pointer;
         }
 
-        .resource-item .resource-name {
-            font-size: 0.92rem;
-            font-weight: 600;
-            line-height: 1.2;
-        }
-
-        .resource-item .resource-meta {
-            margin-top: 8px;
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 6px;
-            font-size: 0.75rem;
+        .resource-summary {
             color: #6c757d;
+            font-size: 0.78rem;
         }
 
-        .resource-item .resource-load {
-            margin-top: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
+        .resource-projects-row > td {
+            background: #fafbfc;
+            padding: 0.65rem;
         }
 
-        .resource-item .mini-progress {
-            height: 8px;
+        .resource-projects-table {
+            margin-bottom: 0;
+            font-size: 0.82rem;
+        }
+
+        .resource-projects-table thead th {
+            white-space: nowrap;
             background: #f1f3f5;
-            border-radius: 999px;
-            overflow: hidden;
-            flex: 1 1 auto;
         }
 
-        .resource-item .mini-progress-bar {
-            height: 100%;
-            border-radius: 999px;
-        }
-
-        .resource-item .resource-flag {
-            font-size: 0.72rem;
-            font-weight: 600;
-        }
-
-        @media (max-width: 575px) {
-            .resource-item .resource-meta {
-                grid-template-columns: 1fr;
-            }
+        .resource-projects-toggle {
+            min-width: 102px;
         }
     </style>
 
     
     <div class="row">
         <!-- Recent Projects -->
-        <div class="col-md-8">
+        <div class="col-md-12">
             <div class="card">
                 <div class="card-header">
                     <h5>Recent Projects</h5>
@@ -708,7 +788,7 @@ include __DIR__ . '/../../includes/header.php';
         </div>
         
         <!-- Enhanced Resource Workload -->
-        <div class="col-md-4">
+        <div class="col-12">
             <div class="card resource-workload">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5>Resource Workload</h5>
@@ -792,64 +872,112 @@ include __DIR__ . '/../../includes/header.php';
                         </div>
                     </div>
 
-                    <div class="resource-workload-scroll">
-                        <div class="resource-list">
-                            <?php foreach ($workload as $resource): ?>
-                                <?php
-                                $activeProjects = (int)$resource['active_projects'];
-                                $assignedPages = (int)$resource['assigned_pages'];
-                                $loadClass = $activeProjects > 5 ? 'danger' : ($activeProjects >= 3 ? 'warning' : 'success');
-                                $roleClass = match($resource['role']) {
-                                    'project_lead' => 'primary',
-                                    'qa' => 'success',
-                                    'at_tester' => 'info',
-                                    'ft_tester' => 'warning',
-                                    default => 'secondary'
-                                };
-                                $loadPercent = min(100, ($activeProjects / 6) * 100);
-                                ?>
-                                <div class="resource-item">
-                                    <div class="resource-top">
-                                        <div>
-                                            <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo (int)$resource['id']; ?>" class="resource-name text-decoration-none">
-                                                <?php echo htmlspecialchars($resource['full_name']); ?>
+                    <div class="resource-workload-scroll table-responsive">
+                        <table class="table table-hover resource-workload-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Resource</th>
+                                    <th>Role</th>
+                                    <th>Assigned Projects</th>
+                                    <th>Project Status Summary</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($workload as $resource): ?>
+                                    <?php
+                                    $rid = (int)($resource['id'] ?? 0);
+                                    $activeProjects = (int)($resource['active_projects'] ?? 0);
+                                    $projectCount = (int)($resource['project_count'] ?? 0);
+                                    $roleClass = match($resource['role']) {
+                                        'project_lead' => 'primary',
+                                        'qa' => 'success',
+                                        'at_tester' => 'info',
+                                        'ft_tester' => 'warning',
+                                        default => 'secondary'
+                                    };
+                                    $collapseId = 'resourceProjects_' . $rid;
+                                    $projectDetails = $resource['project_details'] ?? [];
+                                    ?>
+                                    <tr class="resource-main-row" data-bs-toggle="collapse" data-bs-target="#<?php echo $collapseId; ?>" aria-expanded="false" aria-controls="<?php echo $collapseId; ?>">
+                                        <td>
+                                            <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo $rid; ?>" class="text-decoration-none fw-semibold">
+                                                <?php echo htmlspecialchars((string)($resource['full_name'] ?? '')); ?>
                                             </a>
-                                            <?php if ((int)$resource['critical_projects'] > 0): ?>
-                                                <i class="fas fa-exclamation-triangle text-danger ms-1" title="Has critical projects"></i>
-                                            <?php endif; ?>
-                                        </div>
-                                        <span class="badge bg-<?php echo $roleClass; ?> badge-sm">
-                                            <?php echo ucfirst(str_replace('_', ' ', (string)$resource['role'])); ?>
-                                        </span>
-                                    </div>
-                                    <div class="resource-load">
-                                        <span class="badge bg-<?php echo $loadClass; ?> badge-sm"><?php echo $activeProjects; ?> projects</span>
-                                        <div class="mini-progress">
-                                            <div class="mini-progress-bar bg-<?php echo $loadClass; ?>" style="width: <?php echo $loadPercent; ?>%;"></div>
-                                        </div>
-                                        <span class="resource-flag text-muted"><?php echo $assignedPages; ?> pages</span>
-                                    </div>
-                                    <div class="resource-meta">
-                                        <span><strong><?php echo number_format((float)$resource['allocated_hours'], 1); ?>h</strong> allocated</span>
-                                        <span><strong><?php echo number_format((float)$resource['hours_last_30_days'], 1); ?>h</strong> in 30d</span>
-                                        <span><strong><?php echo number_format((float)$resource['total_hours'], 1); ?>h</strong> total</span>
-                                        <span>
-                                            <?php if ((int)$resource['recent_activity'] === 0): ?>
-                                                <span class="text-warning"><i class="fas fa-clock"></i> Inactive</span>
+                                            <div class="resource-summary">
+                                                Allocated: <?php echo number_format((float)($resource['allocated_hours'] ?? 0), 1); ?>h |
+                                                Last 30d: <?php echo number_format((float)($resource['hours_last_30_days'] ?? 0), 1); ?>h |
+                                                Total: <?php echo number_format((float)($resource['total_hours'] ?? 0), 1); ?>h
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-<?php echo $roleClass; ?>">
+                                                <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', (string)$resource['role']))); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <strong><?php echo $projectCount; ?></strong>
+                                            <div class="resource-summary">Active: <?php echo $activeProjects; ?></div>
+                                        </td>
+                                        <td>
+                                            <span class="resource-summary"><?php echo htmlspecialchars((string)($resource['project_summary'] ?? 'No assigned projects')); ?></span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary resource-projects-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#<?php echo $collapseId; ?>" aria-expanded="false" aria-controls="<?php echo $collapseId; ?>">
+                                                View Projects
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr id="<?php echo $collapseId; ?>" class="collapse resource-projects-row">
+                                        <td colspan="5">
+                                            <?php if (!empty($projectDetails)): ?>
+                                                <div class="table-responsive">
+                                                    <table class="table table-sm resource-projects-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Project</th>
+                                                                <th>Status</th>
+                                                                <th>Assigned Tasks/Pages</th>
+                                                                <th>Hours Worked</th>
+                                                                <th>Issues Reported</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <?php foreach ($projectDetails as $projectDetail): ?>
+                                                                <tr>
+                                                                    <td>
+                                                                        <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo (int)$projectDetail['project_id']; ?>" class="text-decoration-none fw-semibold">
+                                                                            <?php echo htmlspecialchars((string)$projectDetail['project_code']); ?>
+                                                                        </a>
+                                                                        <div class="resource-summary"><?php echo htmlspecialchars((string)$projectDetail['project_title']); ?></div>
+                                                                    </td>
+                                                                    <td>
+                                                                        <span class="badge bg-<?php echo htmlspecialchars((string)$projectDetail['status_badge']); ?>">
+                                                                            <?php echo htmlspecialchars((string)$projectDetail['status_label']); ?>
+                                                                        </span>
+                                                                    </td>
+                                                                    <td><?php echo (int)$projectDetail['assigned_pages']; ?></td>
+                                                                    <td><?php echo number_format((float)$projectDetail['hours_worked'], 1); ?>h</td>
+                                                                    <td><?php echo (int)$projectDetail['issues_reported']; ?></td>
+                                                                </tr>
+                                                            <?php endforeach; ?>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
                                             <?php else: ?>
-                                                <span class="text-success"><i class="fas fa-check-circle"></i> Active</span>
+                                                <div class="text-muted">No project assignments found for this resource.</div>
                                             <?php endif; ?>
-                                        </span>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
 
-                            <?php if (empty($workload)): ?>
-                                <div class="text-center text-muted py-3">
-                                    No resources found matching the selected filters.
-                                </div>
-                            <?php endif; ?>
-                        </div>
+                                <?php if (empty($workload)): ?>
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-3">No resources found matching the selected filters.</td>
+                                    </tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
                     </div>
                     
                     <!-- Workload Distribution Chart -->
