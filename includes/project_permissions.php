@@ -69,7 +69,8 @@ function getBasicPermissionsForRole($role) {
             'project_view', 'pages_view', 'pages_assign', 'status_view', 'qa_status_update', 
             'team_view', 'team_assign', 'team_remove', 'team_manage_roles',
             'assets_view', 'phases_view', 'chat_view', 'chat_send',
-            'feedback_view', 'feedback_submit', 'activity_log_view'
+            'feedback_view', 'feedback_submit', 'activity_log_view',
+            'delete_grouped_urls'
         ],
         'at_tester' => [
             'project_view', 'pages_view', 'status_update', 'status_view',
