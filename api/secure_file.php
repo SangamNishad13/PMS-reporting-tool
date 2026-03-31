@@ -170,6 +170,13 @@ function userCanAccessFilePath(PDO $db, int $userId, string $role, string $relPa
         return false;
     }
 
+    if (strpos($relPath, 'uploads/automated_findings/project_') === 0) {
+        if (preg_match('/^uploads\/automated_findings\/project_(\d+)\//', $relPath, $m)) {
+            $projectIdCheck = (int)$m[1];
+            return hasProjectAccess($db, $userId, $projectIdCheck);
+        }
+    }
+
     return false;
 }
 

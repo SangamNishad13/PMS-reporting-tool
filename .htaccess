@@ -6,6 +6,10 @@ Options -Indexes
 
 # Enable rewrite engine
 RewriteEngine On
+RewriteBase /
+
+# Auto-fix legacy XAMPP hardcoded paths - redirects /PMS/uploads to /uploads
+RewriteRule ^PMS/(.*)$ /$1 [R=301,L]
 
 # Security Headers
 <IfModule mod_headers.c>
@@ -73,9 +77,7 @@ RedirectMatch 403 ^/?(config|includes|database|tmp|\.git|\.kiro)/.*$
 <IfModule mod_headers.c>
     Header set Connection keep-alive
 </IfModule>
-<IfModule mod_reqtimeout.c>
-    RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500
-</IfModule>
+
 # Cache static assets for performance
 <IfModule mod_expires.c>
     ExpiresActive On
@@ -142,10 +144,6 @@ LimitRequestBody 52428800
 
 # Disable server signature
 ServerSignature Off
-
-# Migration password and SMTP email password
-SetEnv MIGRATION_PASSWORD "admin123"
-SetEnv SMTP_PASSWORD "Sakshi@2026"
 
 # Disable PHP error display in production (prevent information leakage)
 <IfModule mod_php.c>

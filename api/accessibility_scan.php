@@ -1,4 +1,6 @@
 <?php
+set_time_limit(300); // 5 minutes max execution time
+ini_set('memory_limit', '512M'); // Increase memory limit for large JSON results
 ob_start();
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
@@ -21,6 +23,8 @@ function ensureA11yFindingsTable(PDO $db): void {
     $db->exec("\n        CREATE TABLE IF NOT EXISTS automated_a11y_findings (\n            id INT AUTO_INCREMENT PRIMARY KEY,\n            project_id INT NOT NULL,\n            page_id INT NOT NULL,\n            rule_id VARCHAR(120) NOT NULL,\n            title VARCHAR(255) NOT NULL,\n            severity VARCHAR(20) NOT NULL DEFAULT 'Major',\n            wcag_sc VARCHAR(100) NULL,\n            wcag_name VARCHAR(255) NULL,\n            wcag_level VARCHAR(20) NULL,\n            actual_results LONGTEXT NULL,\n            incorrect_code LONGTEXT NULL,\n            screenshots_json LONGTEXT NULL,\n            recommendation LONGTEXT NULL,\n            correct_code LONGTEXT NULL,\n            help_url VARCHAR(1000) NULL,\n            occurrence_count INT NOT NULL DEFAULT 1,\n            scan_url VARCHAR(1000) NULL,\n            scan_urls_json LONGTEXT NULL,\n            raw_payload LONGTEXT NULL,\n            status VARCHAR(30) NOT NULL DEFAULT 'needs_review',\n            moved_issue_id INT NULL,\n            created_by INT NULL,\n            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,\n            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n            KEY idx_a11y_project_page_status (project_id, page_id, status),\n            KEY idx_a11y_created_at (created_at)\n        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci\n    ");
 
     $alterStatements = [
+        "ALTER TABLE automated_a11y_findings MODIFY COLUMN description LONGTEXT NULL",
+        "ALTER TABLE automated_a11y_findings ADD COLUMN description LONGTEXT NULL",
         "ALTER TABLE automated_a11y_findings ADD COLUMN actual_results LONGTEXT NULL",
         "ALTER TABLE automated_a11y_findings ADD COLUMN incorrect_code LONGTEXT NULL",
         "ALTER TABLE automated_a11y_findings ADD COLUMN screenshots_json LONGTEXT NULL",
@@ -973,5 +977,6 @@ try {
             'updated_at' => date('Y-m-d H:i:s')
         ]);
     }
-    jsonRes(['success' => false, 'message' => 'Deep accessibility scan failed. Please try again or contact support.'], 500);
+    file_put_contents(__DIR__ . '/../tmp/pms_error.txt', "Error at line " . $e->getLine() . ": " . $e->getMessage() . "\n" . $e->getTraceAsString());
+    jsonRes(['success' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
 }

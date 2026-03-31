@@ -496,16 +496,16 @@ include __DIR__ . '/../../includes/header.php';
                                 </div>
                                 <div class="d-flex gap-2">
                                     <?php if (($feed['action_kind'] ?? '') === 'device' && (int)($feed['request_id'] ?? 0) > 0): ?>
-                                        <button type="button" class="btn btn-sm btn-success" onclick="respondDeviceRequestFromDashboard(<?php echo (int)$feed['request_id']; ?>, 'approve')">Accept</button>
-                                        <button type="button" class="btn btn-sm btn-danger" onclick="respondDeviceRequestFromDashboard(<?php echo (int)$feed['request_id']; ?>, 'reject')">Reject</button>
+                                        <button type="button" class="btn btn-sm btn-success js-device-request" data-id="<?php echo (int)$feed['request_id']; ?>" data-action="approve">Accept</button>
+                                        <button type="button" class="btn btn-sm btn-danger js-device-request" data-id="<?php echo (int)$feed['request_id']; ?>" data-action="reject">Reject</button>
                                         <a href="<?php echo htmlspecialchars((string)$feed['link']); ?>" class="btn btn-sm btn-outline-secondary">Open</a>
                                     <?php elseif (($feed['action_kind'] ?? '') === 'hours' && (int)($feed['request_id'] ?? 0) > 0): ?>
                                         <button type="button"
-                                                class="btn btn-sm btn-success"
-                                                onclick="respondHoursRequestFromDashboard(<?php echo (int)$feed['request_id']; ?>, <?php echo (int)($feed['user_id'] ?? 0); ?>, '<?php echo htmlspecialchars((string)($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>', 'approved')">Accept</button>
+                                                class="btn btn-sm btn-success js-hours-request"
+                                                data-id="<?php echo (int)$feed['request_id']; ?>" data-user="<?php echo (int)($feed['user_id'] ?? 0); ?>" data-date="<?php echo htmlspecialchars((string)($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" data-action="approved">Accept</button>
                                         <button type="button"
-                                                class="btn btn-sm btn-danger"
-                                                onclick="respondHoursRequestFromDashboard(<?php echo (int)$feed['request_id']; ?>, <?php echo (int)($feed['user_id'] ?? 0); ?>, '<?php echo htmlspecialchars((string)($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>', 'rejected')">Reject</button>
+                                                class="btn btn-sm btn-danger js-hours-request"
+                                                data-id="<?php echo (int)$feed['request_id']; ?>" data-user="<?php echo (int)($feed['user_id'] ?? 0); ?>" data-date="<?php echo htmlspecialchars((string)($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" data-action="rejected">Reject</button>
                                         <a href="<?php echo htmlspecialchars((string)$feed['link']); ?>" class="btn btn-sm btn-outline-secondary">Open</a>
                                     <?php else: ?>
                                         <a href="<?php echo htmlspecialchars((string)$feed['link']); ?>" class="btn btn-sm btn-outline-secondary">Open</a>
@@ -1016,6 +1016,19 @@ window.AdminDashboardConfig = {
     editRequestsUrl: <?php echo json_encode($baseDir . '/modules/admin/edit_requests.php', JSON_HEX_TAG | JSON_HEX_AMP); ?>,
     dashboardUrl: <?php echo json_encode($baseDir . '/modules/admin/dashboard.php', JSON_HEX_TAG | JSON_HEX_AMP); ?>
 };
+
+// CSP Compliant Action Handlers
+document.addEventListener('click', function(e) {
+    var deviceBtn = e.target.closest('.js-device-request');
+    if (deviceBtn && typeof respondDeviceRequestFromDashboard === 'function') {
+        respondDeviceRequestFromDashboard(deviceBtn.getAttribute('data-id'), deviceBtn.getAttribute('data-action'));
+    }
+    
+    var hoursBtn = e.target.closest('.js-hours-request');
+    if (hoursBtn && typeof respondHoursRequestFromDashboard === 'function') {
+        respondHoursRequestFromDashboard(hoursBtn.getAttribute('data-id'), hoursBtn.getAttribute('data-user'), hoursBtn.getAttribute('data-date'), hoursBtn.getAttribute('data-action'));
+    }
+});
 </script>
 <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/admin-dashboard.js"></script>
 <?php include __DIR__ . '/../../includes/footer.php'; 

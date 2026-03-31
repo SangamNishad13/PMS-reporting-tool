@@ -784,12 +784,17 @@ set_error_handler(function($severity, $message, $file, $line) {
     return false; // Let PHP handle the error normally
 });
 
-// Add database connection error handling
 try {
     $db = Database::getInstance();
     
     $db->setAttribute(PDO::ATTR_TIMEOUT, 30);
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    
+    // Auto-patch strict database enum constraints to avoid truncation errors
+    try {
+        $db->exec("ALTER TABLE issues MODIFY COLUMN severity VARCHAR(50) NOT NULL DEFAULT 'Medium'");
+        $db->exec("ALTER TABLE issues MODIFY COLUMN priority VARCHAR(50) NOT NULL DEFAULT 'Medium'");
+    } catch (Exception $e) { }
     
 } catch (Exception $e) {
     error_log("Issues API: Database connection failed: " . $e->getMessage());

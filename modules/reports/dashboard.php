@@ -571,7 +571,7 @@ include __DIR__ . '/../../includes/header.php';
                                     $typeProjects = isset($type['projects_list']) ? $type['projects_list'] : [];
                                     $colspan = empty($filterStatus) ? 4 : 2;
                                 ?>
-                                <tr class="type-row" style="cursor:pointer" onclick="toggleTypeRow(this)">
+                                <tr class="type-row toggle-type-row js-toggle-type-row" style="cursor:pointer">
                                     <td><i class="fas fa-chevron-right expand-icon" style="transition:transform 0.2s"></i> <strong><?php echo strtoupper($type['project_type'] ?: 'N/A'); ?></strong></td>
                                     <td><?php echo $type['total']; ?></td>
                                     <?php if (empty($filterStatus)): ?>
@@ -854,6 +854,12 @@ function toggleTypeRow(row) {
     }
 }
 
+// ── Strict CSP Event Listener ──────────────────────────────────────
+document.addEventListener('click', function(e) {
+    const toggleRow = e.target.closest('.toggle-type-row');
+    if (toggleRow) toggleTypeRow(toggleRow);
+});
+
 // ── AJAX Project List ──────────────────────────────────────────────
 (function () {
     const API_BASE   = '<?php echo $baseDir; ?>/api/report_projects.php';
@@ -1100,7 +1106,7 @@ function toggleTypeRow(row) {
                         <div class="progress-bar" role="progressbar" style="width:${rate}%" aria-valuenow="${rate}" aria-valuemin="0" aria-valuemax="100">${rate}%</div>
                     </div></td>`;
                 }
-                rows += `<tr class="type-row" style="cursor:pointer" onclick="toggleTypeRow(this)">
+                rows += `<tr class="type-row toggle-type-row js-toggle-type-row" style="cursor:pointer">
                     <td><i class="fas fa-chevron-right expand-icon" style="transition:transform 0.2s"></i> <strong>${escHtml((type.project_type||'N/A').toUpperCase())}</strong></td>
                     <td>${type.total}</td>${extraCols}
                 </tr>

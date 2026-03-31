@@ -1577,9 +1577,9 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
 
     function toIssueSeverity(findingSeverity) {
         var s = String(findingSeverity || '').toLowerCase();
-        if (s === 'blocker' || s === 'critical' || s === 'high' || s === 'serious') return 'high';
-        if (s === 'minor' || s === 'low') return 'low';
-        return 'medium';
+        if (s === 'blocker' || s === 'critical' || s === 'high' || s === 'serious') return 'High';
+        if (s === 'minor' || s === 'low') return 'Low';
+        return 'Medium';
     }
 
     function toMetadataSeverity(findingSeverity) {
@@ -1599,7 +1599,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         fd.append('title', String(finding.title || 'Automated accessibility issue'));
         fd.append('description', buildDetailsHtml(finding));
         fd.append('severity', toIssueSeverity(finding.severity));
-        fd.append('priority', 'medium');
+        fd.append('priority', 'Medium');
         fd.append('issue_status', 'Open');
         fd.append('pages[]', String(pageId));
         var findingUrls = getFindingUrls(finding);
