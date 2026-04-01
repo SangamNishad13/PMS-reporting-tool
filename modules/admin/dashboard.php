@@ -567,7 +567,8 @@ include __DIR__ . '/../../includes/header.php';
                 <i class="fas fa-user-clock me-2"></i>Today's Status (<?php echo date('M d'); ?>)
             </h6>
             <div class="d-flex align-items-center gap-2">
-                <select id="statusFilter" class="form-select form-select-sm py-0 bg-white shadow-none" style="font-size: 0.75rem; width: 140px; height: 26px; border-radius: 4px;">
+                <input type="text" id="statusSearch" class="form-control form-control-sm py-0 bg-white shadow-none" placeholder="Search name..." style="font-size: 0.75rem; width: 120px; height: 26px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2);">
+                <select id="statusFilter" class="form-select form-select-sm py-0 bg-white shadow-none" style="font-size: 0.75rem; width: 120px; height: 26px; border-radius: 4px;">
                     <option value="all">All Statuses</option>
                     <option value="not_updated">Not Updated</option>
                     <?php foreach ($availableStatusOptions as $opt): ?>
@@ -1216,23 +1217,34 @@ document.addEventListener('click', function(e) {
     if (hoursBtn && typeof respondHoursRequestFromDashboard === 'function') {
         respondHoursRequestFromDashboard(hoursBtn.getAttribute('data-id'), hoursBtn.getAttribute('data-user'), hoursBtn.getAttribute('data-date'), hoursBtn.getAttribute('data-action'));
     }
-
-    // --- Availability Status Filtering ---
-    var statusFilter = document.getElementById('statusFilter');
-    if (statusFilter) {
-        statusFilter.addEventListener('change', function() {
-            var selectedStatus = this.value;
-            var rows = document.querySelectorAll('.status-row');
-            rows.forEach(function(row) {
-                if (selectedStatus === 'all' || row.getAttribute('data-status') === selectedStatus) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        });
-    }
 });
+
+// --- Availability Status Filtering & Search ---
+(function() {
+    var statusFilter = document.getElementById('statusFilter');
+    var statusSearch = document.getElementById('statusSearch');
+    
+    if (statusFilter && statusSearch) {
+        var filterTable = function() {
+            var selectedStatus = statusFilter.value;
+            var searchTerm = statusSearch.value.toLowerCase();
+            var rows = document.querySelectorAll('.status-row');
+            
+            rows.forEach(function(row) {
+                var statusValue = row.getAttribute('data-status');
+                var nameText = row.querySelector('.fw-bold').textContent.toLowerCase();
+                
+                var statusMatch = (selectedStatus === 'all' || statusValue === selectedStatus);
+                var searchMatch = nameText.includes(searchTerm);
+                
+                row.style.display = (statusMatch && searchMatch) ? '' : 'none';
+            });
+        };
+        
+        statusFilter.addEventListener('change', filterTable);
+        statusSearch.addEventListener('input', filterTable);
+    }
+})();
 </script>
 <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/admin-dashboard.js"></script>
 <?php include __DIR__ . '/../../includes/footer.php'; 
