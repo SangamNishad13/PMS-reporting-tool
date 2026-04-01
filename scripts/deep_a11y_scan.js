@@ -24,6 +24,7 @@ async function getAIEnhancedFindings(violation, snippet, feedbackPath) {
                 activeFeedback.map(f => {
                     return `Example Input Snippet: ${f.snippet}\n` +
                            `Example Output Actual Results: ${f.actual_results || ''}\n` +
+                           `Example Output Incorrect Code: ${f.incorrect_code || ''}\n` +
                            `Example Output Recommendation: ${f.improved_recommendation || f.improved || ''}\n` +
                            `Example Output Correct Code: ${f.correct_code || ''}`;
                 }).join("\n---\n");
@@ -44,6 +45,7 @@ Instructions:
 1. Provide a technical, professional, and audit-ready reporting style.
 2. Output your findings strictly as a JSON object with these keys:
    - "actual_results": A detailed explanation of why the element fails accessibility (mentioning specific attributes or lack thereof).
+   - "incorrect_code": The specific failing part of the HTML snippet.
    - "recommendation": A clear, actionable step for a developer to fix the issue.
    - "correct_code": Providing the exact corrected HTML snippet for the provided target snippet.
 3. Be concise and maintain a consistent expert tone.
@@ -1211,6 +1213,7 @@ function getRuleSpecificGuidance(violation, context) {
     const aiData = aiResultsMap.get(violation.id);
     const recommendation = (aiData && aiData.recommendation) ? aiData.recommendation : guidance.recommendation;
     const aiActualResults = (aiData && aiData.actual_results) ? aiData.actual_results : null;
+    const aiIncorrectCode = (aiData && aiData.incorrect_code) ? aiData.incorrect_code : null;
     const aiCorrectCode = (aiData && aiData.correct_code) ? aiData.correct_code : guidance.correctCode;
 
     const nodeInputs = nodes
@@ -1357,7 +1360,7 @@ function getRuleSpecificGuidance(violation, context) {
       wcag_name: wcagMeta.wcagName,
       wcag_level: wcagMeta.level,
       actual_results: actualResultsRaw,
-      incorrect_code: snippets.join('\n\n'),
+      incorrect_code: aiIncorrectCode || snippets.join('\n\n'),
       screenshots,
       recommendation,
       correct_code: String(aiCorrectCode || guidance.correctCode || '').trim(),

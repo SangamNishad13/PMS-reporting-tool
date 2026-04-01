@@ -40,6 +40,7 @@ $newEntry = [
     'original_recommendation' => $data['original_text'] ?? '',
     'improved_recommendation' => $data['improved_text'] ?? '',
     'actual_results' => $data['actual_results'] ?? '',
+    'incorrect_code' => $data['incorrect_code'] ?? '',
     'correct_code' => $data['correct_code'] ?? '',
     'user_id' => $_SESSION['user_id']
 ];
