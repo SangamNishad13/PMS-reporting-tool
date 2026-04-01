@@ -49,8 +49,8 @@ if ($projectId) {
 $projects = $db->query("SELECT id, title FROM projects ORDER BY title")->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch testers and environments for the form
-$atTesters = $db->query("SELECT id, full_name FROM users WHERE role = 'at_tester'")->fetchAll(PDO::FETCH_ASSOC);
-$ftTesters = $db->query("SELECT id, full_name FROM users WHERE role = 'ft_tester'")->fetchAll(PDO::FETCH_ASSOC);
+$atTesters = $db->query("SELECT id, full_name FROM users WHERE role IN ('at_tester', 'project_lead')")->fetchAll(PDO::FETCH_ASSOC);
+$ftTesters = $db->query("SELECT id, full_name FROM users WHERE role IN ('ft_tester', 'project_lead')")->fetchAll(PDO::FETCH_ASSOC);
 $environments = $db->query("SELECT id, name FROM testing_environments ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

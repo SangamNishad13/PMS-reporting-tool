@@ -1566,39 +1566,27 @@ $projectsSql = "
        AND (ua.is_removed IS NULL OR ua.is_removed = 0)
     WHERE p.status NOT IN ('cancelled', 'archived')
       AND (
-            ua.id IS NOT NULL
+            ? = 1 -- Admin bypass
+            OR ua.id IS NOT NULL
             OR p.project_lead_id = ?
             OR EXISTS (
-                SELECT 1
-                FROM project_pages pp
-                WHERE pp.project_id = p.id
-                  AND (
-                        pp.at_tester_id = ?
-                        OR pp.ft_tester_id = ?
-                        OR pp.qa_id = ?
-                      )
+                SELECT 1 FROM project_pages pp 
+                WHERE pp.project_id = p.id 
+                  AND (pp.at_tester_id = ? OR pp.ft_tester_id = ? OR pp.qa_id = ?)
             )
             OR EXISTS (
-                SELECT 1
-                FROM project_pages up
-                WHERE up.project_id = p.id
+                SELECT 1 FROM project_pages up 
+                WHERE up.project_id = p.id 
                   AND (
-                        up.at_tester_id = ?
-                        OR up.ft_tester_id = ?
-                        OR up.qa_id = ?
-                        {$jsonUniqueMembershipSql}
-                      )
+                    up.at_tester_id = ? OR up.ft_tester_id = ? OR up.qa_id = ?
+                    {$jsonUniqueMembershipSql}
+                  )
             )
             OR EXISTS (
-                SELECT 1
-                FROM project_pages pp2
+                SELECT 1 FROM project_pages pp2
                 JOIN page_environments pe ON pe.page_id = pp2.id
                 WHERE pp2.project_id = p.id
-                  AND (
-                        pe.at_tester_id = ?
-                        OR pe.ft_tester_id = ?
-                        OR pe.qa_id = ?
-                      )
+                  AND (pe.at_tester_id = ? OR pe.ft_tester_id = ? OR pe.qa_id = ?)
             )
             OR p.po_number = 'OFF-PROD-001'
       )
@@ -1608,6 +1596,7 @@ $projectsSql = "
 $projectsStmt = $db->prepare($projectsSql);
 $projectParams = [
     $userId,
+    $isAdmin ? 1 : 0, // Admin bypass
     $userId,
     $userId, $userId, $userId,
     $userId, $userId, $userId

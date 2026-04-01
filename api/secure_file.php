@@ -201,14 +201,15 @@ try {
 
 // Set appropriate MIME type
 $mime = 'application/octet-stream';
-if (function_exists('finfo_open')) {
-    $fi = @finfo_open(FILEINFO_MIME_TYPE);
-    if ($fi) {
-        $detected = @finfo_file($fi, $fullPath);
+if (class_exists('finfo')) {
+    try {
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $detected = @$finfo->file($fullPath);
         if (is_string($detected) && $detected !== '') {
             $mime = $detected;
         }
-        @finfo_close($fi);
+    } catch (Exception $e) {
+        // Fallback to extension-based MIME if finfo fails
     }
 }
 

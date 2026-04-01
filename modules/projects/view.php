@@ -172,7 +172,7 @@ $teamMemberStmt = $db->prepare("
     FROM user_assignments ua 
     JOIN users u ON ua.user_id = u.id 
     WHERE ua.project_id = ? 
-      AND ua.role IN ('qa','at_tester','ft_tester')
+      AND ua.role IN ('qa','at_tester','ft_tester','project_lead')
       AND u.is_active = 1
       AND (ua.is_removed IS NULL OR ua.is_removed = 0)
     ORDER BY u.full_name

@@ -1213,7 +1213,7 @@ if (!$projectId) {
         FROM users u
         JOIN user_assignments ua ON u.id = ua.user_id
         WHERE ua.project_id = ? 
-        AND u.role IN ('qa', 'at_tester', 'ft_tester') 
+        AND u.role IN ('qa', 'at_tester', 'ft_tester', 'project_lead') 
         AND u.is_active = 1 
         AND (ua.is_removed IS NULL OR ua.is_removed = 0)
         ORDER BY u.full_name
@@ -1225,7 +1225,7 @@ if (!$projectId) {
     $allAvailableUsers = $db->prepare("
         SELECT DISTINCT u.id, u.full_name, u.role 
         FROM users u
-        WHERE u.role IN ('qa', 'at_tester', 'ft_tester') 
+        WHERE u.role IN ('qa', 'at_tester', 'ft_tester', 'project_lead') 
         AND u.is_active = 1
         AND u.id NOT IN (
             SELECT user_id 
@@ -2032,7 +2032,7 @@ include __DIR__ . '/../../includes/header.php';
                                                     <option value="">-- Don't Change --</option>
                                                     <?php foreach ($teamMembers as $tm): 
                                                         $currentRole = $tm['user_role'] ?? $tm['role'];
-                                                        if ($currentRole === 'at_tester'): ?>
+                                                        if ($currentRole === 'at_tester' || $currentRole === 'project_lead'): ?>
                                                         <option value="<?php echo $tm['user_id']; ?>"><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                                     <?php endif; endforeach; ?>
                                                 </select>
@@ -2044,7 +2044,7 @@ include __DIR__ . '/../../includes/header.php';
                                                     <option value="">-- Don't Change --</option>
                                                     <?php foreach ($teamMembers as $tm): 
                                                         $currentRole = $tm['user_role'] ?? $tm['role'];
-                                                        if ($currentRole === 'ft_tester'): ?>
+                                                        if ($currentRole === 'ft_tester' || $currentRole === 'project_lead'): ?>
                                                         <option value="<?php echo $tm['user_id']; ?>"><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                                     <?php endif; endforeach; ?>
                                                 </select>
@@ -2056,7 +2056,7 @@ include __DIR__ . '/../../includes/header.php';
                                                     <option value="">-- Don't Change --</option>
                                                     <?php foreach ($teamMembers as $tm): 
                                                         $currentRole = $tm['user_role'] ?? $tm['role'];
-                                                        if ($currentRole === 'qa'): ?>
+                                                        if ($currentRole === 'qa' || $currentRole === 'project_lead'): ?>
                                                         <option value="<?php echo $tm['user_id']; ?>"><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                                     <?php endif; endforeach; ?>
                                                 </select>
@@ -2333,7 +2333,7 @@ jQuery(function ($) {
                                     <option value="">-- Keep Current --</option>
                                     <?php foreach ($teamMembers as $tm): 
                                         $currentRole = $tm['user_role'] ?? $tm['role'];
-                                        if ($currentRole === 'qa'): ?>
+                                        if ($currentRole === 'qa' || $currentRole === 'project_lead'): ?>
                                         <option value="<?php echo $tm['user_id']; ?>"><?php echo htmlspecialchars($tm['full_name']); ?></option>
                                     <?php endif; endforeach; ?>
                                 </select>
@@ -2399,7 +2399,7 @@ jQuery(function ($) {
                             <option value="">-- None --</option>
                             <?php foreach ($teamMembers as $tm): 
                                 $currentRole = $tm['user_role'] ?? $tm['role'];
-                                if ($currentRole === 'at_tester'): ?>
+                                if ($currentRole === 'at_tester' || $currentRole === 'project_lead'): ?>
                                 <option value="<?php echo $tm['user_id']; ?>" <?php echo $p['at_tester_id'] == $tm['user_id'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($tm['full_name']); ?></option>
                             <?php endif; endforeach; ?>
                         </select>
@@ -2410,7 +2410,7 @@ jQuery(function ($) {
                             <option value="">-- None --</option>
                             <?php foreach ($teamMembers as $tm): 
                                 $currentRole = $tm['user_role'] ?? $tm['role'];
-                                if ($currentRole === 'ft_tester'): ?>
+                                if ($currentRole === 'ft_tester' || $currentRole === 'project_lead'): ?>
                                 <option value="<?php echo $tm['user_id']; ?>" <?php echo $p['ft_tester_id'] == $tm['user_id'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($tm['full_name']); ?></option>
                             <?php endif; endforeach; ?>
                         </select>
@@ -2421,7 +2421,7 @@ jQuery(function ($) {
                             <option value="">-- None --</option>
                             <?php foreach ($teamMembers as $tm): 
                                 $currentRole = $tm['user_role'] ?? $tm['role'];
-                                if ($currentRole === 'qa'): ?>
+                                if ($currentRole === 'qa' || $currentRole === 'project_lead'): ?>
                                 <option value="<?php echo $tm['user_id']; ?>" <?php echo $p['qa_id'] == $tm['user_id'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($tm['full_name']); ?></option>
                             <?php endif; endforeach; ?>
                         </select>

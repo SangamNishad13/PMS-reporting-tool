@@ -383,6 +383,30 @@ $(document).ready(function() {
         });
     });
 
+    // Handle Manual Reset Button
+    $(document).on('click', '.manual-reset-password-btn', function() {
+        const uid = $(this).data('user-id');
+        const username = $(this).data('username');
+        
+        $('#manualResetUserId').val(uid);
+        $('#manualResetUsername').text(username);
+        $('#manualResetPasswordInput, #manualResetConfirmInput').val('');
+        
+        const modal = new bootstrap.Modal(document.getElementById('manualResetPasswordModal'));
+        modal.show();
+    });
+
+    // Random password generator helper
+    $('#generateRandomPass').on('click', function() {
+        const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789@#$%&*";
+        let pass = "";
+        for (let i = 0; i < 12; i++) {
+            pass += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        $('#manualResetPasswordInput, #manualResetConfirmInput').val(pass);
+        showToast('Temporary password generated. Keep it safe!', 'info');
+    });
+
     // Handle 2FA Reminder button click
     $(document).on('click', '.send-2fa-reminder-btn', function() {
         const userId = $(this).data('user-id');

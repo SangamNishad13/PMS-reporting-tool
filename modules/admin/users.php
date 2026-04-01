@@ -884,6 +884,12 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                                         data-user-id="<?php echo $user['id']; ?>"
                                         data-username="<?php echo htmlspecialchars($user['username']); ?>"
                                         title="Send Reset Password Email">
+                                    <i class="fas fa-envelope"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-secondary manual-reset-password-btn" 
+                                        data-user-id="<?php echo $user['id']; ?>"
+                                        data-username="<?php echo htmlspecialchars($user['username']); ?>"
+                                        title="Set Manual Password (Copy/Paste)">
                                     <i class="fas fa-key"></i>
                                 </button>
                                     <button type="button" class="btn btn-sm btn-secondary view-user-btn" data-user-id="<?php echo $user['id']; ?>">
@@ -1501,7 +1507,46 @@ window._adminUsersConfig = {
     baseDir: '<?php echo htmlspecialchars(rtrim(getBaseDir(), '/'), ENT_QUOTES, 'UTF-8'); ?>'
 };
 </script>
-<!-- User Details Modal -->
+<!-- Manual Reset Password Modal -->
+<div class="modal fade" id="manualResetPasswordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="manualResetPasswordForm" method="POST" data-reset-password-form="1">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+                <input type="hidden" name="user_id" id="manualResetUserId" value="">
+                <div class="modal-header">
+                    <h5 class="modal-title">Set Manual Temporary Password</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Setting a temporary password for <strong id="manualResetUsername"></strong>.</p>
+                    <div class="alert alert-warning py-2 small">
+                        <i class="fas fa-exclamation-triangle"></i> Use this if the automated email fails. You must copy and send this password to the user manually.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Temporary Password</label>
+                        <div class="input-group">
+                            <input type="text" name="new_password" id="manualResetPasswordInput" class="form-control" required>
+                            <button class="btn btn-outline-secondary" type="button" id="generateRandomPass">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Confirm Password</label>
+                        <input type="text" name="confirm_password" id="manualResetConfirmInput" class="form-control" required>
+                    </div>
+                    <p class="text-info small"><i class="fas fa-info-circle"></i> The user will be forced to change this password on their next login.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" name="reset_password" class="btn btn-primary">Set Password</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="viewUserModal" tabindex="-1">
   <div class="modal-dialog modal-xl">
     <div class="modal-content">

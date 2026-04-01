@@ -120,7 +120,7 @@ try {
                 LEFT JOIN project_time_logs ptl ON u.id = ptl.user_id AND DATE(ptl.log_date) = ?
                 LEFT JOIN daily_hours_compliance dhc ON u.id = dhc.user_id AND dhc.date = ?
                 WHERE u.is_active = TRUE AND u.role NOT IN ('admin')
-                GROUP BY u.id
+                GROUP BY u.id, u.username, u.full_name, u.email, u.role, dhc.is_compliant, dhc.reminder_sent, dhc.reminder_sent_at
                 ORDER BY total_hours ASC, u.full_name
             ");
             $stmt->execute([$date, $date]);
