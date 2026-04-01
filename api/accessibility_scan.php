@@ -133,6 +133,30 @@ function readScanProgress(string $token): ?array {
     return is_array($data) ? $data : null;
 }
 
+function stopScanProcess(string $token): bool {
+    $data = readScanProgress($token);
+    if (!$data || empty($data['pid'])) {
+        return false;
+    }
+    $pid = (int)$data['pid'];
+    if ($pid <= 0) return false;
+
+    // Check if process exists and kill it (Linux specific)
+    if (function_exists('posix_kill')) {
+        @posix_kill($pid, 9); // SIGKILL
+    } else {
+        @exec("kill -9 $pid > /dev/null 2>&1");
+    }
+
+    // Update progress to cancelled
+    writeScanProgress($token, array_merge($data, [
+        'status' => 'cancelled',
+        'error' => 'Scan was cancelled by user.',
+        'updated_at' => date('Y-m-d H:i:s')
+    ]));
+    return true;
+}
+
 function mapSeverity(string $severity): string {
     $s = strtolower(trim($severity));
     if (in_array($s, ['blocker'], true)) return 'Blocker';
@@ -535,7 +559,7 @@ function aggregateFindingsByRule(array $findings): array {
     return $out;
 }
 
-function runDeepScan(string $url, string $outputJsonPath, string $screenshotDir): array {
+function runDeepScan(string $url, string $outputJsonPath, string $screenshotDir, ?string $progressToken = null): array {
     $script = realpath(__DIR__ . '/../scripts/deep_a11y_scan.js');
     if (!$script) {
         throw new RuntimeException('Deep scan script not found');
@@ -546,15 +570,39 @@ function runDeepScan(string $url, string $outputJsonPath, string $screenshotDir)
         . ' --url ' . escapeshellarg($url)
         . ' --out ' . escapeshellarg($outputJsonPath)
         . ' --screenshot-dir ' . escapeshellarg($screenshotDir)
-        . ' --max-nodes 0'
-        . ' 2>&1';
+        . ' --max-nodes 0';
 
-    $lines = [];
-    $exitCode = 0;
-    @exec($cmd, $lines, $exitCode);
+    $descriptorspec = [
+        0 => ["pipe", "r"], // stdin
+        1 => ["pipe", "w"], // stdout
+        2 => ["pipe", "w"]  // stderr
+    ];
+
+    $process = proc_open($cmd, $descriptorspec, $pipes);
+    if (!is_resource($process)) {
+        throw new RuntimeException('Failed to start deep scan process');
+    }
+
+    $status = proc_get_status($process);
+    $pid = $status['pid'];
+
+    // Store PID in progress file if token exists
+    if ($progressToken) {
+        $pData = readScanProgress($progressToken) ?: [];
+        $pData['pid'] = $pid;
+        writeScanProgress($progressToken, $pData);
+    }
+
+    // Capture output and wait
+    $stdout = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[0]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $exitCode = proc_close($process);
 
     if (!file_exists($outputJsonPath)) {
-        $err = implode("\n", $lines);
+        $err = trim($stderr . "\n" . $stdout);
         throw new RuntimeException('Deep scan output missing. ' . ($err !== '' ? $err : ''));
     }
 
@@ -713,10 +761,18 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = trim((string)($_GET['action'] ?? $_POST['action'] ?? 'scan'));
 $projectId = (int)($_GET['project_id'] ?? $_POST['project_id'] ?? 0);
 
-if ($projectId <= 0) {
+// For 'cancel' and 'progress', we only need a valid token, project_id is optional/supplemental
+if ($action === 'cancel') {
+    $token = trim((string)($_GET['token'] ?? $_POST['token'] ?? ''));
+    if ($token === '') jsonRes(['success' => false, 'message' => 'Token required'], 400);
+    $ok = stopScanProcess($token);
+    jsonRes(['success' => $ok, 'message' => $ok ? 'Scan cancelled' : 'Failed to cancel or already stopped']);
+}
+
+if ($action !== 'progress' && $projectId <= 0) {
     jsonRes(['success' => false, 'message' => 'Project is required'], 400);
 }
-if (!hasProjectAccess($db, $userId, $projectId)) {
+if ($projectId > 0 && !hasProjectAccess($db, $userId, $projectId)) {
     jsonRes(['success' => false, 'message' => 'Forbidden'], 403);
 }
 
@@ -896,9 +952,37 @@ try {
             'completed' => 0,
             'total' => $totalUrls,
             'percent' => 0,
+            'page_id' => $pageId,
+            'project_id' => $projectId,
             'updated_at' => date('Y-m-d H:i:s')
         ]);
     }
+
+    $backgroundMode = false;
+    // Return immediate response to the user and continue in background
+    if (function_exists('fastcgi_finish_request')) {
+        $backgroundMode = true;
+        echo json_encode(['success' => true, 'status' => 'started', 'token' => $progressToken]);
+        session_write_close();
+        fastcgi_finish_request();
+    } else {
+        // Fallback for non-FPM environments
+        ignore_user_abort(true);
+        set_time_limit(0);
+        $backgroundMode = true;
+        $res = json_encode(['success' => true, 'status' => 'started', 'token' => $progressToken]);
+        header('Content-Type: application/json');
+        header('Content-Length: ' . strlen($res));
+        header('Connection: close');
+        echo $res;
+        @ob_end_flush();
+        @flush();
+        session_write_close();
+    }
+
+    // --- EVERYTHING BELOW RUNS IN BACKGROUND ---
+    ignore_user_abort(true);
+    set_time_limit(0);
 
     $combinedFindings = [];
     $summary = ['issues' => 0, 'critical' => 0, 'serious' => 0, 'moderate' => 0, 'minor' => 0];
@@ -907,7 +991,7 @@ try {
         if ($targetUrl === null) continue;
         $urlToken = substr(sha1($targetUrl), 0, 10);
         $urlOutJson = realpath(__DIR__ . '/..') . DIRECTORY_SEPARATOR . 'tmp' . DIRECTORY_SEPARATOR . 'a11y_scan_' . $scanToken . '_' . $urlToken . '.json';
-        $scanResult = runDeepScan($targetUrl, $urlOutJson, $scanAbsDir);
+        $scanResult = runDeepScan($targetUrl, $urlOutJson, $scanAbsDir, $progressToken);
         $urlFindings = is_array($scanResult['findings'] ?? null) ? $scanResult['findings'] : [];
         foreach ($urlFindings as &$finding) {
             if (!is_array($finding)) continue;
@@ -951,6 +1035,10 @@ try {
             'saved_findings' => $saved,
             'updated_at' => date('Y-m-d H:i:s')
         ]);
+    }
+
+    if ($backgroundMode) {
+        exit;
     }
 
     jsonRes([

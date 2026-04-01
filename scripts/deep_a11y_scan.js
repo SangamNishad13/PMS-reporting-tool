@@ -1,6 +1,92 @@
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
+
+// ── AI/ML Integration Helper Functions ───────────────────────────
+async function getAIEnhancedFindings(violation, snippet, feedbackPath) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 18000); // Increased 18s timeout for complex JSON
+  
+  try {
+    const ruleId = violation.id;
+    const impact = violation.impact;
+    const description = violation.description;
+    const help = violation.help;
+    
+    // Load comprehensive learning feedback for few-shot prompting across all fields
+    let feedbackPrompt = "";
+    try {
+        if (fs.existsSync(feedbackPath)) {
+            const feedback = JSON.parse(fs.readFileSync(feedbackPath, 'utf8'));
+            const activeFeedback = feedback.filter(f => f.rule_id === ruleId).slice(0, 3);
+            if (activeFeedback.length > 0) {
+                feedbackPrompt = "\nUse these past corrections as style examples for all fields:\n" + 
+                activeFeedback.map(f => {
+                    return `Example Input Snippet: ${f.snippet}\n` +
+                           `Example Output Actual Results: ${f.actual_results || ''}\n` +
+                           `Example Output Recommendation: ${f.improved_recommendation || f.improved || ''}\n` +
+                           `Example Output Correct Code: ${f.correct_code || ''}`;
+                }).join("\n---\n");
+            }
+        }
+    } catch (e) { /* silent fail on feedback load */ }
+
+    const prompt = `You are a professional WCAG 2.2 Accessibility expert. 
+Analyze this accessibility violation and provide a structured JSON response.
+
+Violation: ${ruleId} (${impact})
+Description: ${description}
+Help text: ${help}
+Target HTML Snippet: ${snippet}
+${feedbackPrompt}
+
+Instructions:
+1. Provide a technical, professional, and audit-ready reporting style.
+2. Output your findings strictly as a JSON object with these keys:
+   - "actual_results": A detailed explanation of why the element fails accessibility (mentioning specific attributes or lack thereof).
+   - "recommendation": A clear, actionable step for a developer to fix the issue.
+   - "correct_code": Providing the exact corrected HTML snippet for the provided target snippet.
+3. Be concise and maintain a consistent expert tone.
+4. Output ONLY the JSON. No preamble or markdown blocks.`;
+
+    const response = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama3:8b',
+        prompt: prompt,
+        stream: false,
+        format: 'json' // Request JSON format from model
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const result = await response.json();
+      const aiResponse = result.response.trim();
+      try {
+          // Robust JSON extraction
+          const startIdx = aiResponse.indexOf('{');
+          const endIdx = aiResponse.lastIndexOf('}');
+          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+              return JSON.parse(aiResponse.slice(startIdx, endIdx + 1));
+          }
+          return JSON.parse(aiResponse);
+      } catch (pe) {
+          // Fallback if model didn't return valid JSON
+          return null;
+      }
+    }
+  } catch (err) {
+    clearTimeout(timeoutId);
+    return null; 
+  }
+  return null;
+}
+// ──────────────────────────────────────────────────────────────────
+
 function loadLocalEngineSource() {
   const localEnginePath = path.join(__dirname, 'vendor', 'axe-core', 'axe.min.js');
   if (!fs.existsSync(localEnginePath)) {
@@ -1088,15 +1174,45 @@ function getRuleSpecificGuidance(violation, context) {
   });
 
   const findings = [];
-  let screenshotSeq = 1;
+  const violations = scanResult.violations || [];
+  const CONCURRENCY = 3; // AI processing concurrency
+  const aiResultsMap = new Map();
 
-  for (const violation of (scanResult.violations || [])) {
+  // --- PHASE 1: Parallel AI Recommendations ---
+  // We do this first because it's the bottleneck and doesn't require Puppeteer interaction.
+  for (let i = 0; i < violations.length; i += CONCURRENCY) {
+    const batch = violations.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map(async (v) => {
+        const allNodes = v.nodes || [];
+        const nodes = maxNodesArg > 0 ? allNodes.slice(0, maxNodesArg) : allNodes;
+        const snippet = nodes[0] ? String(nodes[0].html || '').trim() : '';
+        const feedbackPath = path.join(__dirname, '..', 'storage', 'ai_feedback.json');
+        
+        try {
+            const aiData = await getAIEnhancedFindings(v, snippet, feedbackPath);
+            if (aiData) {
+                aiResultsMap.set(v.id, aiData);
+            }
+        } catch (_) {}
+    }));
+  }
+
+  // --- PHASE 2: Sequential Puppeteer Processing ---
+  // We do this one-by-one to ensure screenshots are focused correctly.
+  let screenshotSeqTotal = 1;
+  for (const violation of violations) {
     const allNodes = violation.nodes || [];
     const nodes = maxNodesArg > 0 ? allNodes.slice(0, maxNodesArg) : allNodes;
     const snippets = uniq(nodes.map((n) => String(n.html || '').trim()).filter(Boolean));
     const failureSummaries = uniq(nodes.map((n) => String(n.failureSummary || "").replace(/\s+/g, " ").trim()).filter(Boolean));
     const guidance = getRuleSpecificGuidance(violation, { snippets, failureSummaries });
-    const recommendation = guidance.recommendation;
+    
+    // Use pre-fetched AI data or fallback to rule guidance
+    const aiData = aiResultsMap.get(violation.id);
+    const recommendation = (aiData && aiData.recommendation) ? aiData.recommendation : guidance.recommendation;
+    const aiActualResults = (aiData && aiData.actual_results) ? aiData.actual_results : null;
+    const aiCorrectCode = (aiData && aiData.correct_code) ? aiData.correct_code : guidance.correctCode;
+
     const nodeInputs = nodes
       .map((n) => ({
         selector: (Array.isArray(n.target) ? n.target[0] : "") || "",
@@ -1104,6 +1220,7 @@ function getRuleSpecificGuidance(violation, context) {
       }))
       .filter((x) => x.selector);
 
+    // Context extraction (must be sequential for stability)
     const instanceContext = await page.evaluate((nodeList) => {
       function getInstanceName(el) {
         if (!el) return "";
@@ -1121,14 +1238,11 @@ function getRuleSpecificGuidance(violation, context) {
         if (text) return text.slice(0, 80);
         return el.tagName ? el.tagName.toLowerCase() : "element";
       }
-
       function getSectionContext(el) {
         if (!el) return "page section";
         const directSection = el.closest("header, nav, main, footer, aside, section, article, form, [role='region'], [role='main'], [role='navigation']");
         if (directSection) {
-          if (directSection.tagName && directSection.tagName.toLowerCase() === "footer") {
-            return "Footer section";
-          }
+          if (directSection.tagName && directSection.tagName.toLowerCase() === "footer") return "Footer section";
           const heading = directSection.querySelector("h1, h2, h3, h4, h5, h6");
           if (heading) {
             const hText = (heading.innerText || heading.textContent || "").replace(/\s+/g, " ").trim();
@@ -1138,23 +1252,8 @@ function getRuleSpecificGuidance(violation, context) {
           if (directSection.getAttribute("aria-label")) return directSection.getAttribute("aria-label").trim();
           return directSection.tagName.toLowerCase();
         }
-        const headingUp = el.closest("div, li, td, th, tr");
-        if (headingUp) {
-          const h = headingUp.querySelector("h1, h2, h3, h4, h5, h6");
-          if (h) {
-            const t = (h.innerText || h.textContent || "").replace(/\s+/g, " ").trim();
-            if (t) return t.slice(0, 90);
-          }
-        }
-        const footerEl = document.querySelector("footer, [role='contentinfo']");
-        if (footerEl) {
-          const elTop = Math.max(0, (window.scrollY || 0) + (el.getBoundingClientRect().top || 0));
-          const footerTop = Math.max(0, (window.scrollY || 0) + (footerEl.getBoundingClientRect().top || 0));
-          if (elTop >= (footerTop - 4)) return "Footer section";
-        }
         return "page section";
       }
-
       const out = [];
       for (const item of nodeList || []) {
         const selector = String(item && item.selector ? item.selector : "").trim();
@@ -1224,9 +1323,7 @@ function getRuleSpecificGuidance(violation, context) {
       try {
         await page.evaluate((selectorList) => {
           document.querySelectorAll('[data-pms-a11y-focus="1"]').forEach((el) => {
-            el.style.outline = "";
-            el.style.outlineOffset = "";
-            el.style.boxShadow = "";
+            el.style.outline = ""; el.style.outlineOffset = ""; el.style.boxShadow = "";
             el.removeAttribute("data-pms-a11y-focus");
           });
           let firstEl = null;
@@ -1235,32 +1332,20 @@ function getRuleSpecificGuidance(violation, context) {
             if (!el) return;
             if (!firstEl) firstEl = el;
             el.setAttribute("data-pms-a11y-focus", "1");
-            el.style.outline = "3px solid #d90429";
-            el.style.outlineOffset = "2px";
+            el.style.outline = "3px solid #d90429"; el.style.outlineOffset = "2px";
             el.style.boxShadow = "0 0 0 3px rgba(217,4,41,0.25)";
           });
-
-          if (firstEl && firstEl.scrollIntoView) {
-            firstEl.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
-          }
+          if (firstEl && firstEl.scrollIntoView) firstEl.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
         }, chunk.selectors);
         await new Promise((r) => setTimeout(r, 150));
-        const fileName = `${String(Date.now())}_${sanitizeName(violation.id)}_${screenshotSeq++}.png`;
+        const fileName = `${String(Date.now())}_${sanitizeName(violation.id)}_${screenshotSeqTotal++}.png`;
         const absShot = path.join(screenshotDir, fileName);
         await page.screenshot({ path: absShot, fullPage: false });
         screenshots.push(fileName);
-      } catch (_) {
-        // keep going
-      }
+      } catch (_) {}
     }
 
-    const actualResults = formatActualResults(
-      url,
-      String(violation.description || "").trim(),
-      groupedFailures,
-      recommendation,
-      String(violation.id || "").trim()
-    );
+    const actualResultsRaw = aiActualResults || formatActualResults(url, String(violation.description || "").trim(), groupedFailures, recommendation, String(violation.id || "").trim());
     const wcagMeta = extractWcagMeta(violation);
 
     findings.push({
@@ -1271,14 +1356,14 @@ function getRuleSpecificGuidance(violation, context) {
       wcag_sc: wcagMeta.scList,
       wcag_name: wcagMeta.wcagName,
       wcag_level: wcagMeta.level,
-      actual_results: actualResults,
+      actual_results: actualResultsRaw,
       incorrect_code: snippets.join('\n\n'),
       screenshots,
       recommendation,
-      correct_code: String(guidance.correctCode || '').trim(),
+      correct_code: String(aiCorrectCode || guidance.correctCode || '').trim(),
       help_url: '',
       occurrence_count: Number(violation.nodes ? violation.nodes.length : 0) || 0,
-      raw_nodes: nodes
+      raw_nodes: nodeInputs
     });
   }
 

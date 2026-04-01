@@ -887,7 +887,12 @@ include __DIR__ . '/../../includes/header.php';
                     </div>
                     <div class="px-3 py-2 border-bottom bg-white d-none" id="needsReviewScanProgressWrap">
                         <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="small text-muted" id="needsReviewScanProgressText">Scanning...</span>
+                            <div>
+                                <span class="small text-muted" id="needsReviewScanProgressText">Scanning...</span>
+                                <button type="button" class="btn btn-link btn-sm p-0 ms-2 text-danger text-decoration-none" id="needsReviewCancelScanBtn" style="font-size: 11px;">
+                                    <i class="fas fa-stop-circle me-1"></i> Cancel Scan
+                                </button>
+                            </div>
                             <span class="small fw-semibold" id="needsReviewScanProgressPercent">0%</span>
                         </div>
                         <div class="progress" style="height: 8px;">
@@ -929,9 +934,14 @@ include __DIR__ . '/../../includes/header.php';
 <div class="modal fade" id="needsReviewPreviewModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Needs Review Preview</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            <div class="modal-header bg-light d-flex justify-content-between align-items-center">
+                <h5 class="modal-title">Scanner Finding Preview</h5>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-primary d-none" id="needsReviewTrainAIBtn">
+                        <i class="fas fa-robot me-1"></i> Train AI Style
+                    </button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
             </div>
             <div class="modal-body" id="needsReviewPreviewBody"></div>
         </div>
@@ -1703,18 +1713,113 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                 var finding = rows.find(function (x) { return String(x.id) === String(findingId); });
                 if (!finding) return;
                 var body = document.getElementById('needsReviewPreviewBody');
+                var trainBtn = document.getElementById('needsReviewTrainAIBtn');
                 if (!body) return;
                 var shots = getScreenshotUrls(finding);
                 var findingUrls = getFindingUrls(finding);
+                
                 body.innerHTML = ''
-                    + '<div class="mb-2"><strong>' + esc(finding.title || '-') + '</strong></div>'
-                    + '<div class="small text-muted mb-2">Rule: ' + esc(finding.rule_id || '-') + ' | Severity: ' + esc(finding.severity || '-') + '</div>'
-                    + '<div class="mb-2"><strong>URLs</strong><div class="p-2 bg-light border rounded" style="white-space: pre-wrap;">' + esc(findingUrls.join('\n') || '-') + '</div></div>'
-                    + '<div class="mb-2"><strong>Actual Results</strong><div class="p-2 bg-light border rounded needs-review-rich-text">' + renderActualResultsHtml(finding.actual_results, '-') + '</div></div>'
-                    + '<div class="mb-2"><strong>Incorrect Code</strong><div class="p-2 bg-light border rounded">' + renderIncorrectCodeBlocks(finding, 'mb-2') + '</div></div>'
-                    + '<div class="mb-2"><strong>Recommendation</strong><div class="p-2 bg-light border rounded">' + renderRecommendationHtml(finding.recommendation, '-') + '</div></div>'
-                    + '<div class="mb-2"><strong>Correct Code</strong><div class="p-2 bg-light border rounded"><code class="needs-review-inline-code mb-0">' + esc(String(finding.correct_code || '-')) + '</code></div></div>'
-                    + '<div><strong>Screenshots</strong><div class="mt-2 d-flex flex-wrap gap-2">' + (shots.length ? shots.map(function (u) { return '<img src="' + esc(u) + '" class="img-thumbnail needs-review-preview-image" style="max-height:180px;" data-src="' + esc(u) + '" onerror="this.style.display=\'none\';">'; }).join('') : '<span class="text-muted">No screenshots</span>') + '</div></div>';
+                    + '<div class="row">'
+                    + '  <div class="col-md-6">'
+                    + '    <div class="mb-3"><strong>' + esc(finding.title || '-') + '</strong></div>'
+                    + '    <div class="small text-muted mb-2">Rule: ' + esc(finding.rule_id || '-') + ' | Severity: ' + esc(finding.severity || '-') + '</div>'
+                    + '    <div class="mb-3"><strong>URLs</strong><div class="p-2 bg-light border rounded small" style="max-height:60px; overflow:auto;">' + esc(findingUrls.join('\n') || '-') + '</div></div>'
+                    + '    <div class="mb-3">'
+                    + '      <label class="fw-bold mb-1">Actual Results</label>'
+                    + '      <textarea class="form-control form-control-sm" id="aiActualResults" rows="4" style="font-size:12px;">' + esc(String(finding.actual_results || '')) + '</textarea>'
+                    + '    </div>'
+                    + '    <div class="mb-3">'
+                    + '      <label class="fw-bold mb-1">Incorrect Code</label>'
+                    + '      <textarea class="form-control form-control-sm font-monospace" id="aiIncorrectCode" rows="4" style="font-size:11px; background:#f8f9fa;">' + esc(String(finding.incorrect_code || '')) + '</textarea>'
+                    + '    </div>'
+                    + '  </div>'
+                    + '  <div class="col-md-6 border-start bg-light p-3 rounded-end">'
+                    + '    <div class="mb-3">'
+                    + '      <div class="d-flex justify-content-between align-items-center mb-1">'
+                    + '         <label class="fw-bold small text-primary"><i class="fas fa-magic me-1"></i> AI Recommendation</label>'
+                    + '         <span class="badge bg-primary text-white" style="font-size:9px;">EDITABLE FIELD</span>'
+                    + '      </div>'
+                    + '      <textarea class="form-control form-control-sm" id="aiImprovementText" rows="6" style="font-size:12px; border: 1px solid #74c0fc;">' + esc(String(finding.recommendation || '')) + '</textarea>'
+                    + '      <div class="mt-2 small text-muted fst-italic" style="font-size:11px;">Editing this text and clicking "Train AI" helps the scanner learn your preferred writing style for future reports.</div>'
+                    + '    </div>'
+                    + '    <div class="mb-3">'
+                    + '      <label class="fw-bold mb-1">Correct Code Suggestion</label>'
+                    + '      <textarea class="form-control form-control-sm font-monospace" id="aiCorrectCode" rows="3" style="font-size:11px;">' + esc(String(finding.correct_code || '')) + '</textarea>'
+                    + '    </div>'
+                    + '    <div><strong>Screenshots</strong><div class="mt-2 d-flex flex-wrap gap-2">' + (shots.length ? shots.map(function (u) { return '<img src="' + esc(u) + '" class="img-thumbnail needs-review-preview-image" style="max-height:100px; cursor:zoom-in;" data-src="' + esc(u) + '" onerror="this.style.display=\'none\';">'; }).join('') : '<span class="text-muted">No screenshots</span>') + '</div></div>'
+                    + '  </div>'
+                    + '</div>';
+
+                if (trainBtn) {
+                    trainBtn.classList.remove('d-none');
+                    trainBtn.onclick = async function() {
+                        var improved = document.getElementById('aiImprovementText').value;
+                        var improvedActual = document.getElementById('aiActualResults').value;
+                        var improvedIncorrect = document.getElementById('aiIncorrectCode').value;
+                        var improvedCorrect = document.getElementById('aiCorrectCode').value;
+                        
+                        this.disabled = true;
+                        this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Training All Fields...';
+                        try {
+                            var res = await fetch(baseDir + '/api/save_ai_feedback.php', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    finding_id: (finding.id || 0),
+                                    project_id: (projectId || 0),
+                                    rule_id: finding.rule_id,
+                                    snippet: (finding.incorrect_code || '-'),
+                                    original_text: (finding.recommendation || ''),
+                                    improved_text: improved,
+                                    actual_results: improvedActual,
+                                    incorrect_code: improvedIncorrect,
+                                    correct_code: improvedCorrect
+                                })
+                            });
+                            var json = await res.json();
+                            if (json.success) {
+                                // Update local data and UI immediately
+                                finding.recommendation = improved;
+                                finding.actual_results = improvedActual;
+                                finding.incorrect_code = improvedIncorrect;
+                                finding.correct_code = improvedCorrect;
+                                
+                                var row = document.querySelector('tr[data-finding-id="' + finding.id + '"]');
+                                if (row) {
+                                    var cells = row.querySelectorAll('td');
+                                    // Row indices: ... 8:Actual, 9:Incorrect, 11:Recommendation
+                                    if (cells && cells.length >= 12) {
+                                        // Actual Results (Col 9)
+                                        var actualDiv = cells[8].querySelector('.needs-review-rich-text') || cells[8];
+                                        if (actualDiv) actualDiv.innerHTML = (typeof renderActualResultsHtml === 'function') ? renderActualResultsHtml(improvedActual, '-') : improvedActual;
+                                        
+                                        // Incorrect Code (Col 10)
+                                        var codeDiv = cells[9].querySelector('code') || cells[9];
+                                        if (codeDiv) codeDiv.innerText = improvedIncorrect;
+
+                                        // Recommendation (Col 12)
+                                        var recDiv = cells[11].querySelector('.needs-review-truncate');
+                                        if (recDiv) recDiv.innerHTML = (typeof renderRecommendationHtml === 'function') ? renderRecommendationHtml(improved, '-') : improved;
+                                    }
+                                }
+
+                                if (typeof window.showToast === 'function') window.showToast('AI Trained! Scan results updated.', 'success');
+                                this.innerHTML = '<i class="fas fa-check me-1"></i> Trained!';
+                                setTimeout(() => {
+                                    this.disabled = false;
+                                    this.innerHTML = '<i class="fas fa-robot me-1"></i> Train AI Style';
+                                }, 2000);
+                            } else {
+                                throw new Error(json.error || 'Failed to save feedback');
+                            }
+                        } catch (err) {
+                            if (typeof window.showToast === 'function') window.showToast(err.message, 'danger');
+                            this.disabled = false;
+                            this.innerHTML = '<i class="fas fa-robot me-1"></i> Train AI Style';
+                        }
+                    };
+                }
+
                 body.querySelectorAll('.needs-review-preview-image').forEach(function (img) {
                     img.addEventListener('click', function (ev) {
                         ev.preventDefault();
@@ -1884,9 +1989,18 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         var progressText = document.getElementById('needsReviewScanProgressText');
         var progressPercent = document.getElementById('needsReviewScanProgressPercent');
         var progressBar = document.getElementById('needsReviewScanProgressBar');
+        var cancelBtnUI = document.getElementById('needsReviewCancelScanBtn');
+
         if (btn) btn.disabled = true;
         if (runSelectedBtn) runSelectedBtn.disabled = true;
+        
         var token = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        window.currentScanToken = token;
+
+        if (cancelBtnUI) {
+            cancelBtnUI.classList.remove('disabled');
+            cancelBtnUI.innerHTML = '<i class="fas fa-stop-circle me-1"></i> Cancel Scan';
+        }
         var totalUrls = (Array.isArray(scanUrls) && scanUrls.length) ? scanUrls.length : 1;
 
         function setProgress(completed, total, percent, statusText) {
@@ -1904,18 +2018,39 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             scanProgressTimer = null;
         }
         setProgress(0, totalUrls, 0, 'Starting scan');
+        
+        // Persist token in localStorage so we can resume if user navigates away/refreshes
+        localStorage.setItem('pms_a11y_scan_' + pageId, token);
+
         scanProgressTimer = setInterval(async function () {
             try {
                 var pRes = await fetch(baseDir + '/api/accessibility_scan.php?action=progress&project_id=' + encodeURIComponent(projectId) + '&token=' + encodeURIComponent(token), { credentials: 'same-origin' });
                 var pJson = await pRes.json();
                 if (!pJson || !pJson.success) return;
-                setProgress(pJson.completed || 0, pJson.total || totalUrls, pJson.percent || 0, 'Scanning');
-                if (pJson.status === 'completed' || pJson.status === 'failed') {
+                
+                if (pJson.status === 'running') {
+                    setProgress(pJson.completed || 0, pJson.total || totalUrls, pJson.percent || 0, 'Scanning');
+                } else if (pJson.status === 'completed') {
                     clearInterval(scanProgressTimer);
                     scanProgressTimer = null;
+                    localStorage.removeItem('pms_a11y_scan_' + pageId);
+                    setProgress(pJson.total, pJson.total, 100, 'Scan completed');
+                    if (typeof window.showToast === 'function') window.showToast('Automated scan completed.', 'success');
+                    await loadNeedsReviewFindings();
+                    if (btn) btn.disabled = false;
+                    if (runSelectedBtn) runSelectedBtn.disabled = false;
+                    setTimeout(() => { if (progressWrap) progressWrap.classList.add('d-none'); }, 3000);
+                } else if (pJson.status === 'failed' || pJson.status === 'cancelled') {
+                    clearInterval(scanProgressTimer);
+                    scanProgressTimer = null;
+                    localStorage.removeItem('pms_a11y_scan_' + pageId);
+                    setProgress(0, 0, 0, pJson.error || 'Scan failed or cancelled');
+                    if (btn) btn.disabled = false;
+                    if (runSelectedBtn) runSelectedBtn.disabled = false;
+                    setTimeout(() => { if (progressWrap) progressWrap.classList.add('d-none'); }, 4000);
                 }
             } catch (_) { }
-        }, 900);
+        }, 1200);
         try {
             var fd = new FormData();
             fd.append('project_id', String(projectId));
@@ -1931,28 +2066,85 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             });
             var json = await res.json();
             if (!json || !json.success) {
-                throw new Error((json && json.message) ? json.message : 'Scan failed');
+                // If the background start failed, clean up
+                localStorage.removeItem('pms_a11y_scan_' + pageId);
+                throw new Error((json && json.message) ? json.message : 'Scan failed to start');
             }
-            setProgress(totalUrls, totalUrls, 100, 'Scan completed');
-            if (typeof window.showToast === 'function') {
-                var countUrls = Array.isArray(json.scan_urls) ? json.scan_urls.length : ((Array.isArray(scanUrls) && scanUrls.length) ? scanUrls.length : 1);
-                window.showToast('Automated scan completed for ' + countUrls + ' URL(s)', 'success');
-            }
-            await loadNeedsReviewFindings();
+            // In background mode, we just wait for the poller now.
+            // No need to do anything else here.
         } catch (e) {
-            if (progressText) progressText.textContent = 'Scan failed';
-            if (typeof window.showToast === 'function') window.showToast(String(e.message || 'Scan failed'), 'danger');
-        } finally {
-            if (scanProgressTimer) {
-                clearInterval(scanProgressTimer);
-                scanProgressTimer = null;
+            if (e.name === 'AbortError' || String(e.message).includes('cancel')) {
+                if (progressText) progressText.textContent = 'Scan cancelled';
+            } else {
+                if (progressText) progressText.textContent = 'Scan failed: ' + e.message;
+                if (typeof window.showToast === 'function') window.showToast(String(e.message || 'Scan failed'), 'danger');
             }
-            if (btn) btn.disabled = false;
-            if (runSelectedBtn) runSelectedBtn.disabled = false;
-            setTimeout(function () {
-                if (progressWrap) progressWrap.classList.add('d-none');
-            }, 2500);
         }
+    }
+
+    async function checkAndResumeActiveScan() {
+        var savedToken = localStorage.getItem('pms_a11y_scan_' + pageId);
+        if (savedToken) {
+            // Attempt to resume polling
+            var progressWrap = document.getElementById('needsReviewScanProgressWrap');
+            if (progressWrap) progressWrap.classList.remove('d-none');
+            // We use a dummy scanUrls array for UI placeholders
+            await resumePollingForToken(savedToken);
+        }
+    }
+
+    async function resumePollingForToken(token) {
+        var btn = document.getElementById('needsReviewRunScanBtn');
+        var runSelectedBtn = document.getElementById('needsReviewRunSelectedScanBtn');
+        var progressWrap = document.getElementById('needsReviewScanProgressWrap');
+        var progressText = document.getElementById('needsReviewScanProgressText');
+        var progressPercent = document.getElementById('needsReviewScanProgressPercent');
+        var progressBar = document.getElementById('needsReviewScanProgressBar');
+        
+        if (btn) btn.disabled = true;
+        if (runSelectedBtn) runSelectedBtn.disabled = true;
+        window.currentScanToken = token;
+
+        function setProgress(completed, total, percent, statusText) {
+            if (progressWrap) progressWrap.classList.remove('d-none');
+            if (progressText) progressText.textContent = (statusText || 'Scanning...') + ' (' + completed + '/' + total + ' URLs)';
+            if (progressPercent) progressPercent.textContent = percent + '%';
+            if (progressBar) progressBar.style.width = percent + '%';
+        }
+
+        if (scanProgressTimer) clearInterval(scanProgressTimer);
+        
+        scanProgressTimer = setInterval(async function () {
+            try {
+                var pRes = await fetch(baseDir + '/api/accessibility_scan.php?action=progress&project_id=' + encodeURIComponent(projectId) + '&token=' + encodeURIComponent(token), { credentials: 'same-origin' });
+                var pJson = await pRes.json();
+                if (!pJson || !pJson.success) return;
+                
+                if (pJson.status === 'running') {
+                    setProgress(pJson.completed || 0, pJson.total || 0, pJson.percent || 0, 'Background Scanning');
+                } else if (pJson.status === 'completed') {
+                    clearInterval(scanProgressTimer);
+                    scanProgressTimer = null;
+                    localStorage.removeItem('pms_a11y_scan_' + pageId);
+                    setProgress(pJson.total, pJson.total, 100, 'Scan completed');
+                    if (typeof window.showToast === 'function') window.showToast('Background scan completed.', 'success');
+                    await loadNeedsReviewFindings();
+                    if (btn) btn.disabled = false;
+                    if (runSelectedBtn) runSelectedBtn.disabled = false;
+                    setTimeout(() => { if (progressWrap) progressWrap.classList.add('d-none'); }, 3000);
+                } else if (pJson.status === 'failed' || pJson.status === 'cancelled' || pJson.status === 'not_found') {
+                    clearInterval(scanProgressTimer);
+                    scanProgressTimer = null;
+                    localStorage.removeItem('pms_a11y_scan_' + pageId);
+                    if (pJson.status !== 'not_found') {
+                        setProgress(0, 0, 0, pJson.error || 'Scan stopped');
+                    }
+                    if (btn) btn.disabled = false;
+                    if (runSelectedBtn) runSelectedBtn.disabled = false;
+                    setTimeout(() => { if (progressWrap) progressWrap.classList.add('d-none'); }, 3000);
+                }
+            } catch (_) { }
+        }, 1500);
     }
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -1974,6 +2166,32 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         }
         if (refreshBtn) refreshBtn.addEventListener('click', loadNeedsReviewFindings);
         if (runBtn) runBtn.addEventListener('click', openScanUrlSelectionModal);
+        
+        var cancelBtn = document.getElementById('needsReviewCancelScanBtn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', async function() {
+                var pToken = String(window.currentScanToken || '');
+                if (!pToken) return;
+                this.classList.add('disabled');
+                this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Cancelling...';
+                try {
+                    var res = await fetch(baseDir + '/api/accessibility_scan.php?action=cancel&project_id=' + encodeURIComponent(projectId) + '&token=' + encodeURIComponent(pToken), {
+                        credentials: 'same-origin'
+                    });
+                    var json = await res.json();
+                    if (json.success) {
+                        if (typeof window.showToast === 'function') window.showToast('Scan cancelled successfully', 'info');
+                    } else {
+                        throw new Error(json.message || 'Cancel failed');
+                    }
+                } catch (e) {
+                    if (typeof window.showToast === 'function') window.showToast(String(e.message), 'danger');
+                    this.classList.remove('disabled');
+                    this.innerHTML = '<i class="fas fa-stop-circle me-1"></i> Cancel Scan';
+                }
+            });
+        }
+
         if (runSelectedBtn) {
             runSelectedBtn.addEventListener('click', async function () {
                 var selectedUrls = Array.from(document.querySelectorAll('#needsReviewScanUrlList .needs-review-scan-url:checked'))
@@ -2147,6 +2365,10 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             bootstrap.Modal.getOrCreateInstance(modalEl).hide();
         }
     };
+    // Auto-resume background scan if active
+    if (typeof checkAndResumeActiveScan === 'function') {
+        checkAndResumeActiveScan();
+    }
 })();
 </script>
 
