@@ -165,10 +165,12 @@ if (hasAdminPrivileges()) {
         LEFT JOIN users at_user ON pp.at_tester_id = at_user.id
         LEFT JOIN users ft_user ON pp.ft_tester_id = ft_user.id
         LEFT JOIN testing_results tr ON pp.id = tr.page_id AND tr.tester_role IN ('at_tester', 'ft_tester')
-        LEFT JOIN page_environments pe ON pp.id = pe.page_id
         WHERE (
             pp.qa_id = ? 
-            OR pe.qa_id = ?
+            OR EXISTS (
+                SELECT 1 FROM page_environments pe 
+                WHERE pe.page_id = pp.id AND pe.qa_id = ?
+            )
             OR EXISTS (
                 SELECT 1 FROM user_assignments ua 
                 WHERE ua.project_id = pp.project_id 
@@ -178,7 +180,6 @@ if (hasAdminPrivileges()) {
         )
         AND p.status NOT IN ('completed', 'cancelled')
         AND (pp.status IS NULL OR LOWER(pp.status) NOT IN ('on_hold', 'hold', 'completed'))
-        GROUP BY pp.id
         ORDER BY 
             CASE p.priority 
                 WHEN 'critical' THEN 1

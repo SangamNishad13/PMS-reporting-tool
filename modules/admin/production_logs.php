@@ -250,15 +250,25 @@ include __DIR__ . '/../../includes/header.php';
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-2 d-flex align-items-end">
+                <div class="col-md-3 d-flex align-items-end">
                     <div class="d-flex gap-2 w-100">
-                        <button type="submit" class="btn btn-primary w-100">Apply</button>
+                        <button type="submit" class="btn btn-primary">Apply</button>
+                        <button type="button" class="btn btn-success" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> Export</button>
                         <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-secondary">Clear</a>
                     </div>
                 </div>
             </form>
         </div>
     </div>
+
+    <script>
+    function exportToExcel() {
+        const form = document.querySelector('form');
+        const formData = new FormData(form);
+        const params = new URLSearchParams(formData).toString();
+        window.open('<?php echo $baseDir; ?>/api/export_production_hours.php?' + params, '_blank');
+    }
+    </script>
 
     <!-- Summary Stats -->
     <div class="row mb-4">

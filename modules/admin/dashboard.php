@@ -172,6 +172,10 @@ $myDevicesStmt = $db->prepare("
 $myDevicesStmt->execute([$userId]);
 $myDevices = $myDevicesStmt->fetchAll(PDO::FETCH_ASSOC);
 
+// --- FETCH DATA FOR REPORTS SECTION ---
+$repoUsers = $db->query("SELECT id, full_name, role FROM users WHERE is_active = 1 AND role IN ('project_lead', 'qa', 'at_tester', 'ft_tester') ORDER BY full_name")->fetchAll(PDO::FETCH_ASSOC);
+$repoProjects = $db->query("SELECT id, title, po_number FROM projects WHERE status NOT IN ('completed', 'cancelled') ORDER BY title")->fetchAll(PDO::FETCH_ASSOC);
+
 // Get project statuses from status master (same source used in project create/edit flows)
 $projectStatusOptions = getStatusOptions('project');
 if (empty($projectStatusOptions)) {
@@ -588,6 +592,68 @@ include __DIR__ . '/../../includes/header.php';
 
     <!-- Admin dashboard content starts here (no navigation links) -->
     
+    <div class="row mb-4">
+        <div class="col-12">
+            <!-- Reports & Exports Section -->
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 border-bottom-0">
+                    <h5 class="mb-0 text-primary"><i class="fas fa-file-export me-2"></i>Reports & Exports</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-4">
+                        <div class="col-lg-9">
+                            <div class="p-3 border rounded-3 bg-light">
+                                <h6 class="mb-3 font-weight-bold">Production Hours Export</h6>
+                                <form action="<?php echo $baseDir; ?>/api/export_production_hours.php" method="GET" target="_blank">
+                                    <div class="row g-3">
+                                        <div class="col-md-3">
+                                            <label class="form-label small text-uppercase text-muted fw-bold">Resource / User</label>
+                                            <select name="user_filter" class="form-select border-0 shadow-sm">
+                                                <option value="all">All Active Resources</option>
+                                                <?php foreach ($repoUsers as $u): ?>
+                                                    <option value="<?php echo $u['id']; ?>"><?php echo htmlspecialchars($u['full_name']); ?> (<?php echo ucfirst(str_replace('_', ' ', $u['role'])); ?>)</option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small text-uppercase text-muted fw-bold">Project</label>
+                                            <select name="project_filter" class="form-select border-0 shadow-sm">
+                                                <option value="all">All Projects</option>
+                                                <?php foreach ($repoProjects as $p): ?>
+                                                    <option value="<?php echo $p['id']; ?>"><?php echo htmlspecialchars($p['title']); ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label small text-uppercase text-muted fw-bold">From Date</label>
+                                            <input type="date" name="start_date" class="form-control border-0 shadow-sm" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label small text-uppercase text-muted fw-bold">To Date</label>
+                                            <input type="date" name="end_date" class="form-control border-0 shadow-sm" value="<?php echo date('Y-m-d'); ?>">
+                                        </div>
+                                        <div class="col-md-2 d-flex align-items-end">
+                                            <button type="submit" class="btn btn-primary w-100 shadow-sm">
+                                                <i class="fas fa-file-excel me-1"></i> Export
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="col-lg-3">
+                            <div class="h-100 p-3 border rounded-3 d-flex flex-column justify-content-center align-items-center text-center bg-gradient-light">
+                                <i class="fas fa-info-circle text-info mb-2 fa-2x"></i>
+                                <p class="small text-muted mb-0">Generates an <strong>Excel (.xls)</strong> report with comprehensive logs & hours.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rest of dashboard styles / charts -->
     <style>
         .clickable-widget {
             transition: transform 0.2s, box-shadow 0.2s;
