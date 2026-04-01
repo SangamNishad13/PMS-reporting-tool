@@ -433,6 +433,43 @@ $available = count(array_filter($workload, fn($r) => (int)$r['active_projects'] 
 $inactive = count(array_filter($workload, fn($r) => (int)$r['recent_activity'] === 0));
 $total = $workloadCount;
 
+// --- FETCH AVAILABILITY STATUS DATA ---
+$todayDate = date('Y-m-d');
+$userStatusQuery = "
+    SELECT 
+        u.id, 
+        u.full_name, 
+        u.role, 
+        uds.status AS status_key, 
+        uds.notes,
+        asm.status_label,
+        asm.badge_color,
+        asm.display_order
+    FROM users u
+    LEFT JOIN user_daily_status uds ON u.id = uds.user_id AND uds.status_date = ?
+    LEFT JOIN availability_status_master asm ON (uds.status COLLATE utf8mb4_unicode_ci) = asm.status_key
+    WHERE u.is_active = 1 AND u.role NOT IN ('client')
+    ORDER BY CASE WHEN uds.status IS NULL OR uds.status = 'not_updated' THEN 1 ELSE 0 END, asm.display_order ASC, u.full_name ASC
+";
+$availUserStatusList = [];
+try {
+    $stmt = $db->prepare($userStatusQuery);
+    $stmt->execute([$todayDate]);
+    $availUserStatusList = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log('dashboard user status query failed: ' . $e->getMessage());
+}
+
+// Fetch all available status options for the filter
+$availableStatusOptions = [];
+try {
+    $stmt = $db->query("SELECT status_key, status_label FROM availability_status_master WHERE is_active = 1 ORDER BY display_order ASC");
+    $availableStatusOptions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $availableStatusOptions = [];
+}
+
+
 include __DIR__ . '/../../includes/header.php';
 ?>
 <style>
@@ -522,6 +559,91 @@ include __DIR__ . '/../../includes/header.php';
             <?php endif; ?>
         </div>
     </div>
+
+    <!-- Today's Availability Status (Recovered & Enhanced) -->
+    <div class="card mb-3 border-info shadow-sm rounded-3">
+        <div class="card-header bg-info text-white d-flex flex-column flex-sm-row justify-content-between align-items-sm-center py-2 px-3 gap-2">
+            <h6 class="mb-0 fw-bold" style="font-size: 0.95rem;">
+                <i class="fas fa-user-clock me-2"></i>Today's Status (<?php echo date('M d'); ?>)
+            </h6>
+            <div class="d-flex align-items-center gap-2">
+                <select id="statusFilter" class="form-select form-select-sm py-0 bg-white shadow-none" style="font-size: 0.75rem; width: 140px; height: 26px; border-radius: 4px;">
+                    <option value="all">All Statuses</option>
+                    <option value="not_updated">Not Updated</option>
+                    <?php foreach ($availableStatusOptions as $opt): ?>
+                        <option value="<?php echo htmlspecialchars($opt['status_key']); ?>"><?php echo htmlspecialchars($opt['status_label']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <a href="<?php echo $baseDir; ?>/modules/admin/calendar.php" class="btn btn-sm btn-light py-0 px-2 fw-medium" style="font-size: 0.75rem; height: 26px; display: flex; align-items: center; border-radius: 4px;">Calendar</a>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                <table class="table table-sm table-hover mb-0" id="availStatusTable" style="font-size: 0.88rem;">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th class="ps-3 py-2 border-0">Resource Name</th>
+                            <th class="py-2 border-0">Status</th>
+                            <th class="py-2 border-0">Notes / Activity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($availUserStatusList)): ?>
+                            <tr><td colspan="3" class="text-center text-muted py-4 fst-italic">No active users found.</td></tr>
+                        <?php else: ?>
+                            <?php foreach ($availUserStatusList as $us): ?>
+                                <?php 
+                                    $statusKey = $us['status_key'] ?? 'not_updated';
+                                    $statusLabel = $us['status_label'] ?? 'Not Updated';
+                                    $badgeColor = $us['badge_color'] ?? 'secondary';
+                                    if (empty($statusKey) || $statusKey === 'not_updated') {
+                                        $statusKey = 'not_updated';
+                                        $statusLabel = 'Not Updated';
+                                        $badgeColor = 'secondary';
+                                    }
+                                ?>
+                                <tr class="align-middle status-row" data-status="<?php echo htmlspecialchars($statusKey); ?>">
+                                    <td class="ps-3 py-2">
+                                        <div class="fw-bold text-dark"><?php echo htmlspecialchars($us['full_name']); ?></div>
+                                        <div class="text-muted" style="font-size: 0.72rem;"><?php echo ucfirst(str_replace('_', ' ', $us['role'])); ?></div>
+                                    </td>
+                                    <td class="py-2">
+                                        <span class="badge bg-<?php echo htmlspecialchars($badgeColor); ?> shadow-none" style="font-weight: 500; min-width: 85px; text-align: center; font-size: 0.75rem;">
+                                            <?php echo htmlspecialchars($statusLabel); ?>
+                                        </span>
+                                    </td>
+                                    <td class="py-2">
+                                        <?php if (!empty($us['notes'])): ?>
+                                            <div class="text-secondary text-wrap" style="max-width: 450px; line-height: 1.3; font-size: 0.82rem;"><?php echo nl2br(htmlspecialchars($us['notes'])); ?></div>
+                                        <?php else: ?>
+                                            <span class="text-muted fst-italic small">No notes</span>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer bg-light py-1 px-3 border-top-0">
+            <div class="d-flex justify-content-between align-items-center" style="font-size: 0.72rem;">
+                <span class="text-muted">Total Resources: <strong class="text-dark"><?php echo count($availUserStatusList); ?></strong></span>
+                <?php 
+                    $updatedCount = count(array_filter($availUserStatusList, fn($u) => !empty($u['status_key']) && $u['status_key'] !== 'not_updated'));
+                    $pendingCount = count($availUserStatusList) - $updatedCount;
+                ?>
+                <span class="text-muted">
+                    Updated: <span class="badge bg-success px-2 py-1"><?php echo $updatedCount; ?></span>
+                    <?php if ($pendingCount > 0): ?>
+                        <span class="mx-1">|</span>
+                        Pending: <span class="badge bg-warning text-dark px-2 py-1"><?php echo $pendingCount; ?></span>
+                    <?php endif; ?>
+                </span>
+            </div>
+        </div>
+    </div>
+
 
     <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">
@@ -1093,6 +1215,22 @@ document.addEventListener('click', function(e) {
     var hoursBtn = e.target.closest('.js-hours-request');
     if (hoursBtn && typeof respondHoursRequestFromDashboard === 'function') {
         respondHoursRequestFromDashboard(hoursBtn.getAttribute('data-id'), hoursBtn.getAttribute('data-user'), hoursBtn.getAttribute('data-date'), hoursBtn.getAttribute('data-action'));
+    }
+
+    // --- Availability Status Filtering ---
+    var statusFilter = document.getElementById('statusFilter');
+    if (statusFilter) {
+        statusFilter.addEventListener('change', function() {
+            var selectedStatus = this.value;
+            var rows = document.querySelectorAll('.status-row');
+            rows.forEach(function(row) {
+                if (selectedStatus === 'all' || row.getAttribute('data-status') === selectedStatus) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
     }
 });
 </script>
