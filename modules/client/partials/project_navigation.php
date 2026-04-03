@@ -12,7 +12,7 @@
             <!-- Breadcrumb Navigation -->
             <ol class="breadcrumb">
                 <li class="breadcrumb-item">
-                    <a href="<?php echo $baseDir; ?>/modules/client/dashboard.php">
+                    <a href="<?php echo $baseDir; ?>/client/dashboard">
                         <i class="fas fa-tachometer-alt"></i> Dashboard
                     </a>
                 </li>
@@ -38,6 +38,15 @@
                         </option>
                     <?php endforeach; ?>
                 </select>
+<script>
+document.getElementById('projectNavSelect').addEventListener('change', function() {
+    var id = this.value;
+    if (id) {
+        var base = '<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>';
+        window.location.href = base + '/client/project/' + id;
+    }
+});
+</script>
             </div>
         </nav>
     </div>

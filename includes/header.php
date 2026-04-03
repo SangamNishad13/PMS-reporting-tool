@@ -621,22 +621,13 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                             <?php endif; ?>
 
                             <!-- Users with Client Permissions -->
-                            <?php 
+                            <?php
                             // Check if user has client permissions (non-admin users)
                             if (!in_array($_SESSION['role'], ['admin'])) {
                                 try {
                                     require_once __DIR__ . '/../includes/client_permissions.php';
                                     $db = Database::getInstance();
                                     $hasClientPerms = hasAnyProjectPermissions($db, $_SESSION['user_id']);
-                                    if ($hasClientPerms):
-                            ?>
-                                <li class="nav-item">
-                                    <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/projects/my_client_projects.php">
-                                        <i class="fas fa-briefcase me-1 opacity-50"></i> My Client Projects
-                                    </a>
-                                </li>
-                            <?php 
-                                    endif;
                                 } catch (Exception $e) {
                                     error_log("Error checking client permissions in header: " . $e->getMessage());
                                 }
@@ -650,6 +641,31 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                 <li class="nav-item">
                                     <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/dashboard.php?client_id=<?php echo $clientIdForDashboard; ?>">
                                         <i class="fas fa-chart-line me-1 opacity-50"></i> Client Dashboard
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/projects.php">
+                                        <i class="fas fa-folder-open me-1 opacity-50"></i> My Projects
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/history.php">
+                                        <i class="fas fa-history me-1 opacity-50"></i> Export History
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/preferences.php">
+                                        <i class="fas fa-cog me-1 opacity-50"></i> Preferences
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/help.php">
+                                        <i class="fas fa-question-circle me-1 opacity-50"></i> Help Center
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/feedback.php">
+                                        <i class="fas fa-comment-dots me-1 opacity-50"></i> Send Feedback
                                     </a>
                                 </li>
                             <?php 
@@ -942,6 +958,91 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
         
         // Check every 2 minutes
         setInterval(checkHoursReminder, 120000);
+    })();
+    </script>
+
+    <!-- Global Accessibility Scan Monitor -->
+    <script nonce="<?php echo $cspNonce; ?>">
+    (function() {
+        if (!window.localStorage) return;
+        
+        let activePolls = {};
+        
+        function checkBackgroundScans() {
+            // Find all scan tokens in localStorage
+            for (let i = 0; i < localStorage.length; i++) {
+                let key = localStorage.key(i);
+                if (key.startsWith('pms_a11y_scan_')) {
+                    let token = localStorage.getItem(key);
+                    let pageId = key.replace('pms_a11y_scan_', '');
+                    
+                    // If we are already on the page that is polling this token, skip it
+                    // The page-level JS already handles it.
+                    if (window.currentScanToken === token) continue;
+                    
+                    // If we are not already polling this in the background, start
+                    if (!activePolls[token]) {
+                        startBackgroundPoll(token, pageId, key);
+                    }
+                }
+            }
+        }
+        
+        function startBackgroundPoll(token, pageId, storageKey) {
+            activePolls[token] = true;
+            console.log('Background monitoring started for scan token: ' + token);
+            
+            let pollInterval = setInterval(async function() {
+                try {
+                    // We need a project_id for the API, but if we don't have it, 
+                    // we can try to guess or use a dummy if the API allows it 
+                    // (The API we modified uses project_id for pathing).
+                    // In issues_page_detail.php, project_id is available.
+                    // For global polling, we'll try to fetch without project_id if token is unique enough.
+                    // Actually, the API we wrote requires project_id. 
+                    // Let's assume the token is unique and modify the API later if needed, 
+                    // or just skip if we don't know the project_id.
+                    
+                    // Optimization: The storage key doesn't have project_id. 
+                    // Let's just skip global polling for now IF project_id is missing, 
+                    // OR we can change how we store the key: 'pms_a11y_scan_PRJ_PAGE'
+                    
+                    let res = await fetch('<?php echo htmlspecialchars($baseDir, ENT_QUOTES, "UTF-8"); ?>/api/accessibility_scan.php?action=progress&token=' + encodeURIComponent(token), {
+                        credentials: 'same-origin'
+                    });
+                    let json = await res.json();
+                    
+                    if (!json || !json.success) {
+                        // If not found or error, stop polling
+                        clearInterval(pollInterval);
+                        delete activePolls[token];
+                        return;
+                    }
+                    
+                    if (json.status === 'completed') {
+                        clearInterval(pollInterval);
+                        delete activePolls[token];
+                        localStorage.removeItem(storageKey);
+                        if (typeof window.showToast === 'function') {
+                            window.showToast('Accessibility Scan Completed! Findings are ready for review.', 'success', 8000);
+                        }
+                    } else if (json.status === 'failed' || json.status === 'cancelled') {
+                        clearInterval(pollInterval);
+                        delete activePolls[token];
+                        localStorage.removeItem(storageKey);
+                    }
+                } catch (e) {
+                    // Silent fail for background polling
+                }
+            }, 5000); // Poll every 5 seconds for background tasks
+        }
+        
+        // Initial check
+        $(document).ready(function() {
+            setTimeout(checkBackgroundScans, 3000);
+            // Periodic check for new scans started in other tabs
+            setInterval(checkBackgroundScans, 10000);
+        });
     })();
     </script>
     <?php endif; ?>

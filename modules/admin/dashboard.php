@@ -11,7 +11,8 @@ $projectManager = new ProjectManager();
 $baseDir = getBaseDir();
 $devicesApiUrl = $baseDir . '/api/devices.php';
 
-function dashboardColumnExists(PDO $db, string $table, string $column): bool {
+function dashboardColumnExists(PDO $db, string $table, string $column): bool
+{
     static $cache = [];
     $key = strtolower($table . '.' . $column);
     if (array_key_exists($key, $cache)) {
@@ -20,20 +21,21 @@ function dashboardColumnExists(PDO $db, string $table, string $column): bool {
     try {
         $stmt = $db->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
         $stmt->execute([$column]);
-        $cache[$key] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+        $cache[$key] = (bool) $stmt->fetch(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
         $cache[$key] = false;
     }
     return $cache[$key];
 }
 
-function loadPendingDashboardData(PDO $db, $baseDir) {
+function loadPendingDashboardData(PDO $db, $baseDir)
+{
     $pendingBuckets = [];
     $pendingFeed = [];
     $pendingTotalCount = 0;
 
     try {
-        $devicePendingCount = (int)$db->query("SELECT COUNT(*) FROM device_switch_requests WHERE status = 'Pending'")->fetchColumn();
+        $devicePendingCount = (int) $db->query("SELECT COUNT(*) FROM device_switch_requests WHERE status = 'Pending'")->fetchColumn();
         $devicePendingRows = $db->query("
             SELECT dsr.id, dsr.requested_at, d.device_name, d.device_type, u.full_name AS requester_name
             FROM device_switch_requests dsr
@@ -54,12 +56,12 @@ function loadPendingDashboardData(PDO $db, $baseDir) {
         foreach ($devicePendingRows as $row) {
             $pendingFeed[] = [
                 'type' => 'Device',
-                'title' => trim((string)$row['device_name']) . ' (' . trim((string)$row['device_type']) . ')',
-                'user' => (string)($row['requester_name'] ?? 'Unknown'),
-                'requested_at' => (string)($row['requested_at'] ?? ''),
+                'title' => trim((string) $row['device_name']) . ' (' . trim((string) $row['device_type']) . ')',
+                'user' => (string) ($row['requester_name'] ?? 'Unknown'),
+                'requested_at' => (string) ($row['requested_at'] ?? ''),
                 'link' => $baseDir . '/modules/admin/devices.php',
                 'action_kind' => 'device',
-                'request_id' => (int)($row['id'] ?? 0)
+                'request_id' => (int) ($row['id'] ?? 0)
             ];
         }
         $pendingTotalCount += $devicePendingCount;
@@ -68,7 +70,7 @@ function loadPendingDashboardData(PDO $db, $baseDir) {
     }
 
     try {
-        $hoursPendingCount = (int)$db->query("SELECT COUNT(*) FROM user_edit_requests WHERE status = 'pending'")->fetchColumn();
+        $hoursPendingCount = (int) $db->query("SELECT COUNT(*) FROM user_edit_requests WHERE status = 'pending'")->fetchColumn();
         $hoursPendingRows = $db->query("
             SELECT uer.id, uer.user_id, uer.req_date, uer.request_type, uer.created_at, u.full_name AS requester_name
             FROM user_edit_requests uer
@@ -86,17 +88,17 @@ function loadPendingDashboardData(PDO $db, $baseDir) {
             'items' => $hoursPendingRows
         ];
         foreach ($hoursPendingRows as $row) {
-            $requestType = strtolower(trim((string)($row['request_type'] ?? 'edit'))) === 'delete' ? 'Delete' : 'Edit';
+            $requestType = strtolower(trim((string) ($row['request_type'] ?? 'edit'))) === 'delete' ? 'Delete' : 'Edit';
             $pendingFeed[] = [
                 'type' => 'Hours',
-                'title' => $requestType . ' request for ' . (string)($row['req_date'] ?? '-'),
-                'user' => (string)($row['requester_name'] ?? 'Unknown'),
-                'requested_at' => (string)($row['created_at'] ?? ''),
+                'title' => $requestType . ' request for ' . (string) ($row['req_date'] ?? '-'),
+                'user' => (string) ($row['requester_name'] ?? 'Unknown'),
+                'requested_at' => (string) ($row['created_at'] ?? ''),
                 'link' => $baseDir . '/modules/admin/edit_requests.php',
                 'action_kind' => 'hours',
-                'request_id' => (int)($row['id'] ?? 0),
-                'user_id' => (int)($row['user_id'] ?? 0),
-                'req_date' => (string)($row['req_date'] ?? '')
+                'request_id' => (int) ($row['id'] ?? 0),
+                'user_id' => (int) ($row['user_id'] ?? 0),
+                'req_date' => (string) ($row['req_date'] ?? '')
             ];
         }
         $pendingTotalCount += $hoursPendingCount;
@@ -105,7 +107,7 @@ function loadPendingDashboardData(PDO $db, $baseDir) {
     }
 
     try {
-        $pendingEditsCount = (int)$db->query("SELECT COUNT(*) FROM user_pending_log_edits WHERE status = 'pending'")->fetchColumn();
+        $pendingEditsCount = (int) $db->query("SELECT COUNT(*) FROM user_pending_log_edits WHERE status = 'pending'")->fetchColumn();
         $pendingBuckets[] = [
             'key' => 'log_edits',
             'label' => 'Pending Log Edit Items',
@@ -119,7 +121,7 @@ function loadPendingDashboardData(PDO $db, $baseDir) {
     }
 
     try {
-        $pendingDeletesCount = (int)$db->query("SELECT COUNT(*) FROM user_pending_log_deletions WHERE status = 'pending'")->fetchColumn();
+        $pendingDeletesCount = (int) $db->query("SELECT COUNT(*) FROM user_pending_log_deletions WHERE status = 'pending'")->fetchColumn();
         $pendingBuckets[] = [
             'key' => 'log_deletes',
             'label' => 'Pending Log Delete Items',
@@ -133,7 +135,7 @@ function loadPendingDashboardData(PDO $db, $baseDir) {
     }
 
     usort($pendingFeed, static function (array $a, array $b): int {
-        return strtotime((string)($b['requested_at'] ?? '')) <=> strtotime((string)($a['requested_at'] ?? ''));
+        return strtotime((string) ($b['requested_at'] ?? '')) <=> strtotime((string) ($a['requested_at'] ?? ''));
     });
     $pendingFeed = array_slice($pendingFeed, 0, 8);
 
@@ -147,7 +149,7 @@ function loadPendingDashboardData(PDO $db, $baseDir) {
 $pendingData = loadPendingDashboardData($db, $baseDir);
 $pendingBuckets = $pendingData['pendingBuckets'];
 $pendingFeed = $pendingData['pendingFeed'];
-$pendingTotalCount = (int)$pendingData['pendingTotalCount'];
+$pendingTotalCount = (int) $pendingData['pendingTotalCount'];
 
 if (isset($_GET['action']) && $_GET['action'] === 'pending_requests_summary') {
     header('Content-Type: application/json');
@@ -197,12 +199,12 @@ $statusRows = $db->query("
 
 $statusCounts = [];
 foreach ($statusRows as $row) {
-    $statusCounts[(string)$row['status_key']] = (int)$row['total'];
+    $statusCounts[(string) $row['status_key']] = (int) $row['total'];
 }
 
 // Keep stats shape for existing references
 $stats = [
-    'total_projects' => (int)$db->query("SELECT COUNT(*) FROM projects")->fetchColumn()
+    'total_projects' => (int) $db->query("SELECT COUNT(*) FROM projects")->fetchColumn()
 ];
 
 // Get recent projects (include current phase if available)
@@ -235,7 +237,7 @@ if ($roleFilter && $roleFilter !== 'all') {
 $whereClause = implode(' AND ', $whereConditions);
 
 // Build ORDER BY clause
-$orderBy = match($sortBy) {
+$orderBy = match ($sortBy) {
     'role' => 'u.role, u.full_name',
     'projects' => 'active_projects DESC, u.full_name',
     'hours' => 'total_hours DESC, u.full_name',
@@ -300,8 +302,8 @@ try {
 
 // Apply workload filter after query
 if ($workloadFilter && $workloadFilter !== 'all') {
-    $workload = array_filter($workload, function($resource) use ($workloadFilter) {
-        return match($workloadFilter) {
+    $workload = array_filter($workload, function ($resource) use ($workloadFilter) {
+        return match ($workloadFilter) {
             'overloaded' => $resource['active_projects'] > 5,
             'busy' => $resource['active_projects'] >= 3 && $resource['active_projects'] <= 5,
             'available' => $resource['active_projects'] < 3,
@@ -313,7 +315,7 @@ if ($workloadFilter && $workloadFilter !== 'all') {
 
 $workload = array_values($workload);
 $workloadUserIds = array_values(array_filter(array_map(static function ($row) {
-    return (int)($row['id'] ?? 0);
+    return (int) ($row['id'] ?? 0);
 }, $workload)));
 $allocatedHoursByUser = [];
 if (!empty($workloadUserIds)) {
@@ -328,13 +330,13 @@ if (!empty($workloadUserIds)) {
     ");
     $allocStmt->execute($workloadUserIds);
     while ($allocRow = $allocStmt->fetch(PDO::FETCH_ASSOC)) {
-        $allocatedHoursByUser[(int)$allocRow['user_id']] = (float)$allocRow['allocated'];
+        $allocatedHoursByUser[(int) $allocRow['user_id']] = (float) $allocRow['allocated'];
     }
 }
 
 foreach ($workload as &$resourceRow) {
-    $rid = (int)($resourceRow['id'] ?? 0);
-    $resourceRow['allocated_hours'] = (float)($allocatedHoursByUser[$rid] ?? 0);
+    $rid = (int) ($resourceRow['id'] ?? 0);
+    $resourceRow['allocated_hours'] = (float) ($allocatedHoursByUser[$rid] ?? 0);
 }
 unset($resourceRow);
 
@@ -344,8 +346,8 @@ if (!empty($workloadUserIds)) {
     $hoursStmt = $db->prepare("\n        SELECT user_id, project_id, COALESCE(SUM(hours_spent), 0) AS total_hours\n        FROM project_time_logs\n        WHERE user_id IN ($ph)\n        GROUP BY user_id, project_id\n    ");
     $hoursStmt->execute($workloadUserIds);
     while ($hrow = $hoursStmt->fetch(PDO::FETCH_ASSOC)) {
-        $key = (int)$hrow['user_id'] . ':' . (int)$hrow['project_id'];
-        $hoursByUserProject[$key] = (float)$hrow['total_hours'];
+        $key = (int) $hrow['user_id'] . ':' . (int) $hrow['project_id'];
+        $hoursByUserProject[$key] = (float) $hrow['total_hours'];
     }
 }
 
@@ -355,8 +357,8 @@ if (!empty($workloadUserIds)) {
     $issuesStmt = $db->prepare("\n        SELECT reporter_id AS user_id, project_id, COUNT(*) AS total_issues\n        FROM issues\n        WHERE reporter_id IN ($ph)\n        GROUP BY reporter_id, project_id\n    ");
     $issuesStmt->execute($workloadUserIds);
     while ($irow = $issuesStmt->fetch(PDO::FETCH_ASSOC)) {
-        $key = (int)$irow['user_id'] . ':' . (int)$irow['project_id'];
-        $issuesByUserProject[$key] = (int)$irow['total_issues'];
+        $key = (int) $irow['user_id'] . ':' . (int) $irow['project_id'];
+        $issuesByUserProject[$key] = (int) $irow['total_issues'];
     }
 }
 
@@ -364,52 +366,61 @@ $resourceProjectOrderBy = dashboardColumnExists($db, 'projects', 'updated_at')
     ? 'ORDER BY p.updated_at DESC, p.id DESC'
     : 'ORDER BY p.id DESC';
 
-$resourceProjectStmt = $db->prepare("\n    SELECT\n        p.id AS project_id,\n        p.project_code,\n        p.po_number,\n        p.title AS project_title,\n        COALESCE(NULLIF(TRIM(p.status), ''), 'not_started') AS project_status,\n        COUNT(DISTINCT pp.id) AS assigned_pages\n    FROM project_pages pp\n    INNER JOIN projects p ON p.id = pp.project_id\n    WHERE (\n        pp.at_tester_id = ?\n        OR pp.ft_tester_id = ?\n        OR pp.qa_id = ?\n        OR (pp.at_tester_ids IS NOT NULL AND JSON_VALID(pp.at_tester_ids) AND JSON_CONTAINS(pp.at_tester_ids, JSON_ARRAY(?)))\n        OR (pp.ft_tester_ids IS NOT NULL AND JSON_VALID(pp.ft_tester_ids) AND JSON_CONTAINS(pp.ft_tester_ids, JSON_ARRAY(?)))\n    )\n    GROUP BY p.id, p.project_code, p.po_number, p.title, p.status\n    " . $resourceProjectOrderBy . "\n");
+// BATCH FETCH ALL PROJECT ASSIGNMENTS for the found users
+$workloadProjectDetails = [];
+if (!empty($workloadUserIds)) {
+    $ph = implode(',', array_fill(0, count($workloadUserIds), '?'));
+    $batchProjectSql = "
+        SELECT
+            p.id AS project_id,
+            p.project_code,
+            p.po_number,
+            p.title AS project_title,
+            COALESCE(NULLIF(TRIM(p.status), ''), 'not_started') AS project_status,
+            COUNT(DISTINCT pp.id) AS assigned_pages,
+            u.id as user_id
+        FROM project_pages pp
+        INNER JOIN projects p ON p.id = pp.project_id
+        INNER JOIN users u ON (pp.at_tester_id = u.id OR pp.ft_tester_id = u.id OR pp.qa_id = u.id 
+            OR (pp.at_tester_ids IS NOT NULL AND JSON_VALID(pp.at_tester_ids) AND JSON_CONTAINS(pp.at_tester_ids, JSON_ARRAY(u.id)))
+            OR (pp.ft_tester_ids IS NOT NULL AND JSON_VALID(pp.ft_tester_ids) AND JSON_CONTAINS(pp.ft_tester_ids, JSON_ARRAY(u.id))))
+        WHERE u.id IN ($ph)
+        GROUP BY u.id, p.id, p.project_code, p.po_number, p.title, p.status
+    ";
+    
+    // Using a simpler order for the batch query
+    $batchProjectSql .= " ORDER BY u.id, p.id DESC";
+    
+    $batchStmt = $db->prepare($batchProjectSql);
+    $batchStmt->execute($workloadUserIds);
+    
+    while ($pRow = $batchStmt->fetch(PDO::FETCH_ASSOC)) {
+        $uId = (int)$pRow['user_id'];
+        $projectId = (int)$pRow['project_id'];
+        $statusKey = (string)$pRow['project_status'];
+        $metricKey = $uId . ':' . $projectId;
 
-foreach ($workload as &$resourceRow) {
-    $rid = (int)($resourceRow['id'] ?? 0);
-    $resourceRow['project_details'] = [];
-    $resourceRow['project_count'] = 0;
-    $resourceRow['project_summary'] = 'No assigned projects';
+        $projectCode = trim((string)($pRow['project_code'] ?: ($pRow['po_number'] ?: 'PRJ-' . $projectId)));
 
-    if ($rid <= 0) {
-        continue;
-    }
-
-    $resourceProjectStmt->execute([$rid, $rid, $rid, $rid, $rid]);
-    $projects = $resourceProjectStmt->fetchAll(PDO::FETCH_ASSOC);
-    $details = [];
-
-    foreach ($projects as $projectRow) {
-        $projectId = (int)($projectRow['project_id'] ?? 0);
-        if ($projectId <= 0) {
-            continue;
-        }
-
-        $projectCode = trim((string)($projectRow['project_code'] ?? ''));
-        if ($projectCode === '') {
-            $projectCode = trim((string)($projectRow['po_number'] ?? ''));
-        }
-        if ($projectCode === '') {
-            $projectCode = 'PRJ-' . $projectId;
-        }
-
-        $statusKey = (string)($projectRow['project_status'] ?? 'not_started');
-        $metricKey = $rid . ':' . $projectId;
-
-        $details[] = [
+        $workloadProjectDetails[$uId][] = [
             'project_id' => $projectId,
             'project_code' => $projectCode,
-            'project_title' => (string)($projectRow['project_title'] ?? ''),
+            'project_title' => (string)$pRow['project_title'],
             'status_key' => $statusKey,
             'status_label' => formatProjectStatusLabel($statusKey),
             'status_badge' => projectStatusBadgeClass($statusKey),
-            'assigned_pages' => (int)($projectRow['assigned_pages'] ?? 0),
+            'assigned_pages' => (int)$pRow['assigned_pages'],
             'hours_worked' => (float)($hoursByUserProject[$metricKey] ?? 0),
             'issues_reported' => (int)($issuesByUserProject[$metricKey] ?? 0),
         ];
     }
+}
 
+// Update workload rows from our map
+foreach ($workload as &$resourceRow) {
+    $rid = (int) ($resourceRow['id'] ?? 0);
+    $details = $workloadProjectDetails[$rid] ?? [];
+    
     $resourceRow['project_details'] = $details;
     $resourceRow['project_count'] = count($details);
     if (!empty($details)) {
@@ -421,16 +432,18 @@ foreach ($workload as &$resourceRow) {
             $summary[] = '+' . (count($details) - 4) . ' more';
         }
         $resourceRow['project_summary'] = implode(' | ', $summary);
+    } else {
+        $resourceRow['project_summary'] = 'No assigned projects';
     }
 }
 unset($resourceRow);
 
 $workloadCount = count($workload);
 $avgProjects = $workloadCount > 0 ? round(array_sum(array_column($workload, 'active_projects')) / $workloadCount, 1) : 0;
-$overloaded = count(array_filter($workload, fn($r) => (int)$r['active_projects'] > 5));
-$busy = count(array_filter($workload, fn($r) => (int)$r['active_projects'] >= 3 && (int)$r['active_projects'] <= 5));
-$available = count(array_filter($workload, fn($r) => (int)$r['active_projects'] < 3));
-$inactive = count(array_filter($workload, fn($r) => (int)$r['recent_activity'] === 0));
+$overloaded = count(array_filter($workload, fn($r) => (int) $r['active_projects'] > 5));
+$busy = count(array_filter($workload, fn($r) => (int) $r['active_projects'] >= 3 && (int) $r['active_projects'] <= 5));
+$available = count(array_filter($workload, fn($r) => (int) $r['active_projects'] < 3));
+$inactive = count(array_filter($workload, fn($r) => (int) $r['recent_activity'] === 0));
 $total = $workloadCount;
 
 // --- FETCH AVAILABILITY STATUS DATA ---
@@ -473,46 +486,54 @@ try {
 include __DIR__ . '/../../includes/header.php';
 ?>
 <style>
-.dashboard-no-page-overflow {
-    overflow-x: clip;
-}
-.dashboard-no-page-overflow .table-responsive {
-    max-width: 100%;
-    max-height: 420px;
-    overflow-x: auto;
-    overflow-y: auto;
-}
-.dashboard-no-page-overflow .list-group {
-    max-height: 420px;
-    overflow-y: auto;
-}
+    .dashboard-no-page-overflow {
+        overflow-x: clip;
+    }
+
+    .dashboard-no-page-overflow .table-responsive {
+        max-width: 100%;
+        max-height: 420px;
+        overflow-x: auto;
+        overflow-y: auto;
+    }
+
+    .dashboard-no-page-overflow .list-group {
+        max-height: 420px;
+        overflow-y: auto;
+    }
 </style>
 <div class="container-fluid dashboard-no-page-overflow">
     <div class="d-flex justify-content-between align-items-center mb-2">
     </div>
     <div class="d-flex flex-wrap gap-2 mb-3">
-        <a href="<?php echo $baseDir; ?>/modules/admin/bulk_hours_management.php" class="btn btn-outline-primary btn-sm">Bulk Hours Management</a>
-        <a href="<?php echo $baseDir; ?>/modules/admin/resource_workload.php" class="btn btn-outline-secondary btn-sm">Resource Workload</a>
-        <a href="<?php echo $baseDir; ?>/modules/admin/calendar.php" class="btn btn-outline-secondary btn-sm">Users Calendar</a>
+        <a href="<?php echo $baseDir; ?>/modules/admin/bulk_hours_management.php"
+            class="btn btn-outline-primary btn-sm">Bulk Hours Management</a>
+        <a href="<?php echo $baseDir; ?>/modules/admin/resource_workload.php"
+            class="btn btn-outline-secondary btn-sm">Resource Workload</a>
+        <a href="<?php echo $baseDir; ?>/modules/admin/calendar.php" class="btn btn-outline-secondary btn-sm">Users
+            Calendar</a>
     </div>
 
     <div class="card mb-3 border-warning">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h6 class="mb-0"><i class="fas fa-inbox"></i> Pending Requests (All Modules)</h6>
-            <span class="badge bg-warning text-dark" id="pendingTotalBadge"><?php echo (int)$pendingTotalCount; ?> pending</span>
+            <span class="badge bg-warning text-dark" id="pendingTotalBadge"><?php echo (int) $pendingTotalCount; ?>
+                pending</span>
         </div>
         <div class="card-body" id="pendingRequestsContent">
-            <?php if ((int)$pendingTotalCount === 0): ?>
+            <?php if ((int) $pendingTotalCount === 0): ?>
                 <span class="text-muted">No pending requests right now.</span>
             <?php else: ?>
                 <div class="row g-2 mb-3">
                     <?php foreach ($pendingBuckets as $bucket): ?>
-                        <?php if ((int)($bucket['count'] ?? 0) <= 0) continue; ?>
+                        <?php if ((int) ($bucket['count'] ?? 0) <= 0)
+                            continue; ?>
                         <div class="col-sm-6 col-xl-3">
-                            <a href="<?php echo htmlspecialchars((string)$bucket['link']); ?>" class="text-decoration-none">
+                            <a href="<?php echo htmlspecialchars((string) $bucket['link']); ?>" class="text-decoration-none">
                                 <div class="border rounded p-2 h-100">
-                                    <div class="small text-muted"><?php echo htmlspecialchars((string)$bucket['label']); ?></div>
-                                    <div class="h5 mb-0 text-dark"><?php echo (int)$bucket['count']; ?></div>
+                                    <div class="small text-muted"><?php echo htmlspecialchars((string) $bucket['label']); ?>
+                                    </div>
+                                    <div class="h5 mb-0 text-dark"><?php echo (int) $bucket['count']; ?></div>
                                 </div>
                             </a>
                         </div>
@@ -523,33 +544,44 @@ include __DIR__ . '/../../includes/header.php';
                     <h6 class="mb-2">Latest Pending Requests</h6>
                     <div class="list-group">
                         <?php foreach ($pendingFeed as $feed): ?>
-                            <div class="list-group-item"
-                                 data-pending-item="1"
-                                 data-action-kind="<?php echo htmlspecialchars((string)($feed['action_kind'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
-                                 data-request-id="<?php echo (int)($feed['request_id'] ?? 0); ?>">
+                            <div class="list-group-item" data-pending-item="1"
+                                data-action-kind="<?php echo htmlspecialchars((string) ($feed['action_kind'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
+                                data-request-id="<?php echo (int) ($feed['request_id'] ?? 0); ?>">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <div>
-                                        <span class="badge bg-secondary me-2"><?php echo htmlspecialchars((string)$feed['type']); ?></span>
-                                        <strong><?php echo htmlspecialchars((string)$feed['title']); ?></strong>
-                                        <div class="small text-muted">Requested by <?php echo htmlspecialchars((string)$feed['user']); ?></div>
+                                        <span
+                                            class="badge bg-secondary me-2"><?php echo htmlspecialchars((string) $feed['type']); ?></span>
+                                        <strong><?php echo htmlspecialchars((string) $feed['title']); ?></strong>
+                                        <div class="small text-muted">Requested by
+                                            <?php echo htmlspecialchars((string) $feed['user']); ?></div>
                                     </div>
-                                    <small class="text-muted"><?php echo !empty($feed['requested_at']) ? date('M d, H:i', strtotime((string)$feed['requested_at'])) : '-'; ?></small>
+                                    <small
+                                        class="text-muted"><?php echo !empty($feed['requested_at']) ? date('M d, H:i', strtotime((string) $feed['requested_at'])) : '-'; ?></small>
                                 </div>
                                 <div class="d-flex gap-2">
-                                    <?php if (($feed['action_kind'] ?? '') === 'device' && (int)($feed['request_id'] ?? 0) > 0): ?>
-                                        <button type="button" class="btn btn-sm btn-success js-device-request" data-id="<?php echo (int)$feed['request_id']; ?>" data-action="approve">Accept</button>
-                                        <button type="button" class="btn btn-sm btn-danger js-device-request" data-id="<?php echo (int)$feed['request_id']; ?>" data-action="reject">Reject</button>
-                                        <a href="<?php echo htmlspecialchars((string)$feed['link']); ?>" class="btn btn-sm btn-outline-secondary">Open</a>
-                                    <?php elseif (($feed['action_kind'] ?? '') === 'hours' && (int)($feed['request_id'] ?? 0) > 0): ?>
-                                        <button type="button"
-                                                class="btn btn-sm btn-success js-hours-request"
-                                                data-id="<?php echo (int)$feed['request_id']; ?>" data-user="<?php echo (int)($feed['user_id'] ?? 0); ?>" data-date="<?php echo htmlspecialchars((string)($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" data-action="approved">Accept</button>
-                                        <button type="button"
-                                                class="btn btn-sm btn-danger js-hours-request"
-                                                data-id="<?php echo (int)$feed['request_id']; ?>" data-user="<?php echo (int)($feed['user_id'] ?? 0); ?>" data-date="<?php echo htmlspecialchars((string)($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" data-action="rejected">Reject</button>
-                                        <a href="<?php echo htmlspecialchars((string)$feed['link']); ?>" class="btn btn-sm btn-outline-secondary">Open</a>
+                                    <?php if (($feed['action_kind'] ?? '') === 'device' && (int) ($feed['request_id'] ?? 0) > 0): ?>
+                                        <button type="button" class="btn btn-sm btn-success js-device-request"
+                                            data-id="<?php echo (int) $feed['request_id']; ?>" data-action="approve">Accept</button>
+                                        <button type="button" class="btn btn-sm btn-danger js-device-request"
+                                            data-id="<?php echo (int) $feed['request_id']; ?>" data-action="reject">Reject</button>
+                                        <a href="<?php echo htmlspecialchars((string) $feed['link']); ?>"
+                                            class="btn btn-sm btn-outline-secondary">Open</a>
+                                    <?php elseif (($feed['action_kind'] ?? '') === 'hours' && (int) ($feed['request_id'] ?? 0) > 0): ?>
+                                        <button type="button" class="btn btn-sm btn-success js-hours-request"
+                                            data-id="<?php echo (int) $feed['request_id']; ?>"
+                                            data-user="<?php echo (int) ($feed['user_id'] ?? 0); ?>"
+                                            data-date="<?php echo htmlspecialchars((string) ($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
+                                            data-action="approved">Accept</button>
+                                        <button type="button" class="btn btn-sm btn-danger js-hours-request"
+                                            data-id="<?php echo (int) $feed['request_id']; ?>"
+                                            data-user="<?php echo (int) ($feed['user_id'] ?? 0); ?>"
+                                            data-date="<?php echo htmlspecialchars((string) ($feed['req_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
+                                            data-action="rejected">Reject</button>
+                                        <a href="<?php echo htmlspecialchars((string) $feed['link']); ?>"
+                                            class="btn btn-sm btn-outline-secondary">Open</a>
                                     <?php else: ?>
-                                        <a href="<?php echo htmlspecialchars((string)$feed['link']); ?>" class="btn btn-sm btn-outline-secondary">Open</a>
+                                        <a href="<?php echo htmlspecialchars((string) $feed['link']); ?>"
+                                            class="btn btn-sm btn-outline-secondary">Open</a>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -562,20 +594,27 @@ include __DIR__ . '/../../includes/header.php';
 
     <!-- Today's Availability Status (Recovered & Enhanced) -->
     <div class="card mb-3 border-info shadow-sm rounded-3">
-        <div class="card-header bg-info text-white d-flex flex-column flex-sm-row justify-content-between align-items-sm-center py-2 px-3 gap-2">
+        <div
+            class="card-header bg-info text-white d-flex flex-column flex-sm-row justify-content-between align-items-sm-center py-2 px-3 gap-2">
             <h6 class="mb-0 fw-bold" style="font-size: 0.95rem;">
                 <i class="fas fa-user-clock me-2"></i>Today's Status (<?php echo date('M d'); ?>)
             </h6>
             <div class="d-flex align-items-center gap-2">
-                <input type="text" id="statusSearch" class="form-control form-control-sm py-0 bg-white shadow-none" placeholder="Search name..." style="font-size: 0.75rem; width: 120px; height: 26px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2);">
-                <select id="statusFilter" class="form-select form-select-sm py-0 bg-white shadow-none" style="font-size: 0.75rem; width: 120px; height: 26px; border-radius: 4px;">
+                <input type="text" id="statusSearch" class="form-control form-control-sm py-0 bg-white shadow-none"
+                    placeholder="Search name..."
+                    style="font-size: 0.75rem; width: 120px; height: 26px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2);">
+                <select id="statusFilter" class="form-select form-select-sm py-0 bg-white shadow-none"
+                    style="font-size: 0.75rem; width: 120px; height: 26px; border-radius: 4px;">
                     <option value="all">All Statuses</option>
                     <option value="not_updated">Not Updated</option>
                     <?php foreach ($availableStatusOptions as $opt): ?>
-                        <option value="<?php echo htmlspecialchars($opt['status_key']); ?>"><?php echo htmlspecialchars($opt['status_label']); ?></option>
+                        <option value="<?php echo htmlspecialchars($opt['status_key']); ?>">
+                            <?php echo htmlspecialchars($opt['status_label']); ?></option>
                     <?php endforeach; ?>
                 </select>
-                <a href="<?php echo $baseDir; ?>/modules/admin/calendar.php" class="btn btn-sm btn-light py-0 px-2 fw-medium" style="font-size: 0.75rem; height: 26px; display: flex; align-items: center; border-radius: 4px;">Calendar</a>
+                <a href="<?php echo $baseDir; ?>/modules/admin/calendar.php"
+                    class="btn btn-sm btn-light py-0 px-2 fw-medium"
+                    style="font-size: 0.75rem; height: 26px; display: flex; align-items: center; border-radius: 4px;">Calendar</a>
             </div>
         </div>
         <div class="card-body p-0">
@@ -590,32 +629,39 @@ include __DIR__ . '/../../includes/header.php';
                     </thead>
                     <tbody>
                         <?php if (empty($availUserStatusList)): ?>
-                            <tr><td colspan="3" class="text-center text-muted py-4 fst-italic">No active users found.</td></tr>
+                            <tr>
+                                <td colspan="3" class="text-center text-muted py-4 fst-italic">No active users found.</td>
+                            </tr>
                         <?php else: ?>
                             <?php foreach ($availUserStatusList as $us): ?>
-                                <?php 
-                                    $statusKey = $us['status_key'] ?? 'not_updated';
-                                    $statusLabel = $us['status_label'] ?? 'Not Updated';
-                                    $badgeColor = $us['badge_color'] ?? 'secondary';
-                                    if (empty($statusKey) || $statusKey === 'not_updated') {
-                                        $statusKey = 'not_updated';
-                                        $statusLabel = 'Not Updated';
-                                        $badgeColor = 'secondary';
-                                    }
+                                <?php
+                                $statusKey = $us['status_key'] ?? 'not_updated';
+                                $statusLabel = $us['status_label'] ?? 'Not Updated';
+                                $badgeColor = $us['badge_color'] ?? 'secondary';
+                                if (empty($statusKey) || $statusKey === 'not_updated') {
+                                    $statusKey = 'not_updated';
+                                    $statusLabel = 'Not Updated';
+                                    $badgeColor = 'secondary';
+                                }
                                 ?>
-                                <tr class="align-middle status-row" data-status="<?php echo htmlspecialchars($statusKey); ?>">
+                                <tr class="align-middle status-row" data-status="<?php echo htmlspecialchars($statusKey); ?>"
+                                    data-user-id="<?php echo (int) $us['id']; ?>">
                                     <td class="ps-3 py-2">
                                         <div class="fw-bold text-dark"><?php echo htmlspecialchars($us['full_name']); ?></div>
-                                        <div class="text-muted" style="font-size: 0.72rem;"><?php echo ucfirst(str_replace('_', ' ', $us['role'])); ?></div>
+                                        <div class="text-muted" style="font-size: 0.72rem;">
+                                            <?php echo ucfirst(str_replace('_', ' ', $us['role'])); ?></div>
                                     </td>
                                     <td class="py-2">
-                                        <span class="badge bg-<?php echo htmlspecialchars($badgeColor); ?> shadow-none" style="font-weight: 500; min-width: 85px; text-align: center; font-size: 0.75rem;">
+                                        <span class="badge bg-<?php echo htmlspecialchars($badgeColor); ?> shadow-none"
+                                            style="font-weight: 500; min-width: 85px; text-align: center; font-size: 0.75rem;">
                                             <?php echo htmlspecialchars($statusLabel); ?>
                                         </span>
                                     </td>
                                     <td class="py-2">
                                         <?php if (!empty($us['notes'])): ?>
-                                            <div class="text-secondary text-wrap" style="max-width: 450px; line-height: 1.3; font-size: 0.82rem;"><?php echo nl2br(htmlspecialchars($us['notes'])); ?></div>
+                                            <div class="text-secondary text-wrap"
+                                                style="max-width: 450px; line-height: 1.3; font-size: 0.82rem;">
+                                                <?php echo nl2br(htmlspecialchars($us['notes'])); ?></div>
                                         <?php else: ?>
                                             <span class="text-muted fst-italic small">No notes</span>
                                         <?php endif; ?>
@@ -629,10 +675,11 @@ include __DIR__ . '/../../includes/header.php';
         </div>
         <div class="card-footer bg-light py-1 px-3 border-top-0">
             <div class="d-flex justify-content-between align-items-center" style="font-size: 0.72rem;">
-                <span class="text-muted">Total Resources: <strong class="text-dark"><?php echo count($availUserStatusList); ?></strong></span>
-                <?php 
-                    $updatedCount = count(array_filter($availUserStatusList, fn($u) => !empty($u['status_key']) && $u['status_key'] !== 'not_updated'));
-                    $pendingCount = count($availUserStatusList) - $updatedCount;
+                <span class="text-muted">Total Resources: <strong
+                        class="text-dark"><?php echo count($availUserStatusList); ?></strong></span>
+                <?php
+                $updatedCount = count(array_filter($availUserStatusList, fn($u) => !empty($u['status_key']) && $u['status_key'] !== 'not_updated'));
+                $pendingCount = count($availUserStatusList) - $updatedCount;
                 ?>
                 <span class="text-muted">
                     Updated: <span class="badge bg-success px-2 py-1"><?php echo $updatedCount; ?></span>
@@ -645,11 +692,59 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
 
+    <!-- AI Resource Performance Insights Section (New) -->
+    <div class="card mb-3 border-primary shadow-sm rounded-3">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2 px-3">
+            <h6 class="mb-0 fw-bold" style="font-size: 0.95rem;">
+                <i class="fas fa-chart-line me-2"></i>Resource Performance Insights (AI Powered)
+            </h6>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="d-flex align-items-center gap-1">
+                    <span class="small text-white-50">Project:</span>
+                    <select id="insightProjectFilter" class="form-select form-select-sm py-0 bg-white" style="font-size: 0.75rem; width: 130px; height: 26px;">
+                        <option value="">Overall</option>
+                        <?php foreach ($repoProjects as $p): ?>
+                            <option value="<?php echo $p['id']; ?>"><?php echo htmlspecialchars($p['title']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <input type="date" id="insightStartDate" class="form-control form-control-sm py-0 bg-white" style="font-size: 0.75rem; width: 110px; height: 26px;" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>">
+                    <span class="small text-white-50">to</span>
+                    <input type="date" id="insightEndDate" class="form-control form-control-sm py-0 bg-white" style="font-size: 0.75rem; width: 110px; height: 26px;" value="<?php echo date('Y-m-d'); ?>">
+                </div>
+                <input type="text" id="insightSearch" class="form-control form-control-sm py-0 bg-white" placeholder="Search..." style="font-size: 0.75rem; width: 100px; height: 26px;">
+                <button id="btnExportInsights" class="btn btn-sm btn-light py-0 fw-bold shadow-sm" style="font-size: 0.7rem; height: 26px;">
+                    <i class="fas fa-download me-1"></i>Export
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                <table class="table table-sm table-hover mb-0" style="font-size: 0.88rem;">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th class="ps-3 py-2">Resource</th>
+                            <th class="py-2">Accuracy</th>
+                            <th class="py-2">Activity</th>
+                            <th class="py-2 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="insightTableBody">
+                        <!-- Dynamically Populated by JS -->
+                        <tr><td colspan="4" class="text-center py-4 text-muted">Loading metrics...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
 
     <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h6 class="mb-0"><i class="fas fa-laptop"></i> My Assigned Devices</h6>
-            <a href="<?php echo $baseDir; ?>/modules/devices.php" class="btn btn-sm btn-outline-primary">View Devices</a>
+            <a href="<?php echo $baseDir; ?>/modules/devices.php" class="btn btn-sm btn-outline-primary">View
+                Devices</a>
         </div>
         <div class="card-body py-2">
             <?php if (empty($myDevices)): ?>
@@ -658,8 +753,8 @@ include __DIR__ . '/../../includes/header.php';
                 <div class="d-flex flex-wrap gap-2">
                     <?php foreach ($myDevices as $dev): ?>
                         <span class="badge bg-light text-dark border">
-                            <?php echo htmlspecialchars((string)$dev['device_name']); ?>
-                            (<?php echo htmlspecialchars((string)$dev['device_type']); ?>)
+                            <?php echo htmlspecialchars((string) $dev['device_name']); ?>
+                            (<?php echo htmlspecialchars((string) $dev['device_type']); ?>)
                         </span>
                     <?php endforeach; ?>
                 </div>
@@ -685,18 +780,20 @@ include __DIR__ . '/../../includes/header.php';
         </div>
         <?php foreach ($projectStatusOptions as $opt): ?>
             <?php
-                $statusKey = (string)($opt['status_key'] ?? '');
-                if ($statusKey === '') continue;
-                $count = (int)($statusCounts[$statusKey] ?? 0);
-                $badgeClass = projectStatusBadgeClass($statusKey);
-                $widgetClass = $badgeClass === 'warning' ? 'widget-warning'
-                    : ($badgeClass === 'success' ? 'widget-success'
+            $statusKey = (string) ($opt['status_key'] ?? '');
+            if ($statusKey === '')
+                continue;
+            $count = (int) ($statusCounts[$statusKey] ?? 0);
+            $badgeClass = projectStatusBadgeClass($statusKey);
+            $widgetClass = $badgeClass === 'warning' ? 'widget-warning'
+                : ($badgeClass === 'success' ? 'widget-success'
                     : ($badgeClass === 'info' ? 'widget-info'
-                    : ($badgeClass === 'danger' ? 'widget-danger' : 'widget-secondary')));
-                $label = (string)($opt['status_label'] ?? formatProjectStatusLabel($statusKey));
+                        : ($badgeClass === 'danger' ? 'widget-danger' : 'widget-secondary')));
+            $label = (string) ($opt['status_label'] ?? formatProjectStatusLabel($statusKey));
             ?>
             <div class="col-md-6 col-xl-3">
-                <a href="<?php echo $baseDir; ?>/modules/reports/dashboard.php?status=<?php echo urlencode($statusKey); ?>" class="text-decoration-none">
+                <a href="<?php echo $baseDir; ?>/modules/reports/dashboard.php?status=<?php echo urlencode($statusKey); ?>"
+                    class="text-decoration-none">
                     <div class="widget <?php echo $widgetClass; ?> clickable-widget h-100">
                         <div class="d-flex align-items-center justify-content-between">
                             <div>
@@ -714,7 +811,7 @@ include __DIR__ . '/../../includes/header.php';
 
 
     <!-- Admin dashboard content starts here (no navigation links) -->
-    
+
     <div class="row mb-4">
         <div class="col-12">
             <!-- Reports & Exports Section -->
@@ -727,33 +824,43 @@ include __DIR__ . '/../../includes/header.php';
                         <div class="col-lg-9">
                             <div class="p-3 border rounded-3 bg-light">
                                 <h6 class="mb-3 font-weight-bold">Production Hours Export</h6>
-                                <form action="<?php echo $baseDir; ?>/api/export_production_hours.php" method="GET" target="_blank">
+                                <form action="<?php echo $baseDir; ?>/api/export_production_hours.php" method="GET"
+                                    target="_blank">
                                     <div class="row g-3">
                                         <div class="col-md-3">
-                                            <label class="form-label small text-uppercase text-muted fw-bold">Resource / User</label>
+                                            <label class="form-label small text-uppercase text-muted fw-bold">Resource /
+                                                User</label>
                                             <select name="user_filter" class="form-select border-0 shadow-sm">
                                                 <option value="all">All Active Resources</option>
                                                 <?php foreach ($repoUsers as $u): ?>
-                                                    <option value="<?php echo $u['id']; ?>"><?php echo htmlspecialchars($u['full_name']); ?> (<?php echo ucfirst(str_replace('_', ' ', $u['role'])); ?>)</option>
+                                                    <option value="<?php echo $u['id']; ?>">
+                                                        <?php echo htmlspecialchars($u['full_name']); ?>
+                                                        (<?php echo ucfirst(str_replace('_', ' ', $u['role'])); ?>)</option>
                                                 <?php endforeach; ?>
                                             </select>
                                         </div>
                                         <div class="col-md-3">
-                                            <label class="form-label small text-uppercase text-muted fw-bold">Project</label>
+                                            <label
+                                                class="form-label small text-uppercase text-muted fw-bold">Project</label>
                                             <select name="project_filter" class="form-select border-0 shadow-sm">
                                                 <option value="all">All Projects</option>
                                                 <?php foreach ($repoProjects as $p): ?>
-                                                    <option value="<?php echo $p['id']; ?>"><?php echo htmlspecialchars($p['title']); ?></option>
+                                                    <option value="<?php echo $p['id']; ?>">
+                                                        <?php echo htmlspecialchars($p['title']); ?></option>
                                                 <?php endforeach; ?>
                                             </select>
                                         </div>
                                         <div class="col-md-2">
-                                            <label class="form-label small text-uppercase text-muted fw-bold">From Date</label>
-                                            <input type="date" name="start_date" class="form-control border-0 shadow-sm" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>">
+                                            <label class="form-label small text-uppercase text-muted fw-bold">From
+                                                Date</label>
+                                            <input type="date" name="start_date" class="form-control border-0 shadow-sm"
+                                                value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>">
                                         </div>
                                         <div class="col-md-2">
-                                            <label class="form-label small text-uppercase text-muted fw-bold">To Date</label>
-                                            <input type="date" name="end_date" class="form-control border-0 shadow-sm" value="<?php echo date('Y-m-d'); ?>">
+                                            <label class="form-label small text-uppercase text-muted fw-bold">To
+                                                Date</label>
+                                            <input type="date" name="end_date" class="form-control border-0 shadow-sm"
+                                                value="<?php echo date('Y-m-d'); ?>">
                                         </div>
                                         <div class="col-md-2 d-flex align-items-end">
                                             <button type="submit" class="btn btn-primary w-100 shadow-sm">
@@ -765,9 +872,11 @@ include __DIR__ . '/../../includes/header.php';
                             </div>
                         </div>
                         <div class="col-lg-3">
-                            <div class="h-100 p-3 border rounded-3 d-flex flex-column justify-content-center align-items-center text-center bg-gradient-light">
+                            <div
+                                class="h-100 p-3 border rounded-3 d-flex flex-column justify-content-center align-items-center text-center bg-gradient-light">
                                 <i class="fas fa-info-circle text-info mb-2 fa-2x"></i>
-                                <p class="small text-muted mb-0">Generates an <strong>Excel (.xls)</strong> report with comprehensive logs & hours.</p>
+                                <p class="small text-muted mb-0">Generates an <strong>Excel (.xls)</strong> report with
+                                    comprehensive logs & hours.</p>
                             </div>
                         </div>
                     </div>
@@ -782,9 +891,11 @@ include __DIR__ . '/../../includes/header.php';
             transition: transform 0.2s, box-shadow 0.2s;
             cursor: pointer;
         }
-        .clickable-widget:hover, .hover-shadow:hover {
+
+        .clickable-widget:hover,
+        .hover-shadow:hover {
             transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1) !important;
         }
 
         .widget-pill {
@@ -794,16 +905,16 @@ include __DIR__ . '/../../includes/header.php';
             text-transform: uppercase;
             padding: 4px 10px;
             border-radius: 999px;
-            border: 1px solid rgba(255,255,255,0.5);
-            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.15);
             color: #fff;
             white-space: nowrap;
         }
-        
+
         .badge-sm {
             font-size: 0.7em;
         }
-        
+
         .resource-workload {
             display: flex;
             flex-direction: column;
@@ -815,7 +926,7 @@ include __DIR__ . '/../../includes/header.php';
         }
 
         .resource-workload .resource-workload-body,
-        .resource-workload > .card-body {
+        .resource-workload>.card-body {
             flex: 1 1 auto;
             display: flex;
             flex-direction: column;
@@ -844,11 +955,12 @@ include __DIR__ . '/../../includes/header.php';
             .resource-workload {
                 height: min(70vh, 740px);
             }
+
             .resource-workload .resource-workload-scroll {
                 max-height: none;
             }
         }
-        
+
         .progress {
             border-radius: 10px;
         }
@@ -885,7 +997,7 @@ include __DIR__ . '/../../includes/header.php';
             font-size: 0.78rem;
         }
 
-        .resource-projects-row > td {
+        .resource-projects-row>td {
             background: #fafbfc;
             padding: 0.65rem;
         }
@@ -905,7 +1017,7 @@ include __DIR__ . '/../../includes/header.php';
         }
     </style>
 
-    
+
     <div class="row">
         <!-- Recent Projects -->
         <div class="col-md-12">
@@ -929,45 +1041,49 @@ include __DIR__ . '/../../includes/header.php';
                             </thead>
                             <tbody>
                                 <?php foreach ($recentProjects as $project): ?>
-                                <tr>
-                                    <td>
-                                        <?php echo htmlspecialchars(!empty($project['project_code']) ? $project['project_code'] : ($project['po_number'] ?? '')); ?>
-                                    </td>
-                                    <td>
-                                        <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $project['id']; ?>">
-                                            <?php echo htmlspecialchars($project['title']); ?>
-                                        </a>
-                                    </td>
-                                    <td><?php echo htmlspecialchars($project['client_name'] ?? '—'); ?></td>
-                                    <td>
-                                        <?php if (!empty($project['project_lead_id'])): ?>
-                                            <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo $project['project_lead_id']; ?>">
-                                                <?php echo htmlspecialchars($project['lead_name'] ?? 'Not assigned'); ?>
+                                    <tr>
+                                        <td>
+                                            <?php echo htmlspecialchars(!empty($project['project_code']) ? $project['project_code'] : ($project['po_number'] ?? '')); ?>
+                                        </td>
+                                        <td>
+                                            <a
+                                                href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $project['id']; ?>">
+                                                <?php echo htmlspecialchars($project['title']); ?>
                                             </a>
-                                        <?php else: ?>
-                                            Not assigned
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <?php $pClass = projectStatusBadgeClass($project['status']); $pLabel = formatProjectStatusLabel($project['status']); ?>
-                                        <span class="badge bg-<?php echo $pClass; ?>"><?php echo $pLabel; ?></span>
-                                    </td>
-                                    <td>
-                                        <?php if (!empty($project['current_phase'])): ?>
-                                            <span class="badge bg-secondary"><?php echo htmlspecialchars($project['current_phase']); ?></span>
-                                        <?php else: ?>
-                                            <span class="text-muted">—</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-<?php 
-                                            echo $project['priority'] === 'critical' ? 'danger' : 
-                                                 ($project['priority'] === 'high' ? 'warning' : 'secondary');
-                                        ?>">
-                                            <?php echo ucfirst($project['priority']); ?>
-                                        </span>
-                                    </td>
-                                </tr>
+                                        </td>
+                                        <td><?php echo htmlspecialchars($project['client_name'] ?? '—'); ?></td>
+                                        <td>
+                                            <?php if (!empty($project['project_lead_id'])): ?>
+                                                <a
+                                                    href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo $project['project_lead_id']; ?>">
+                                                    <?php echo htmlspecialchars($project['lead_name'] ?? 'Not assigned'); ?>
+                                                </a>
+                                            <?php else: ?>
+                                                Not assigned
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php $pClass = projectStatusBadgeClass($project['status']);
+                                            $pLabel = formatProjectStatusLabel($project['status']); ?>
+                                            <span class="badge bg-<?php echo $pClass; ?>"><?php echo $pLabel; ?></span>
+                                        </td>
+                                        <td>
+                                            <?php if (!empty($project['current_phase'])): ?>
+                                                <span
+                                                    class="badge bg-secondary"><?php echo htmlspecialchars($project['current_phase']); ?></span>
+                                            <?php else: ?>
+                                                <span class="text-muted">—</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-<?php
+                                            echo $project['priority'] === 'critical' ? 'danger' :
+                                                ($project['priority'] === 'high' ? 'warning' : 'secondary');
+                                            ?>">
+                                                <?php echo ucfirst($project['priority']); ?>
+                                            </span>
+                                        </td>
+                                    </tr>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
@@ -975,22 +1091,24 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
             </div>
         </div>
-        
+
         <!-- Enhanced Resource Workload -->
         <div class="col-12">
             <div class="card resource-workload">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5>Resource Workload</h5>
                     <div>
-                        <a href="<?php echo $baseDir; ?>/modules/admin/resource_workload.php?v=<?php echo time(); ?>" class="btn btn-sm btn-outline-info me-2" title="Detailed View">
+                        <a href="<?php echo $baseDir; ?>/modules/admin/resource_workload.php?v=<?php echo time(); ?>"
+                            class="btn btn-sm btn-outline-info me-2" title="Detailed View">
                             <i class="fas fa-external-link-alt"></i>
                         </a>
-                        <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#workloadFilters">
+                        <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#workloadFilters">
                             <i class="fas fa-filter"></i> Filters
                         </button>
                     </div>
                 </div>
-                
+
                 <!-- Filters Section -->
                 <div class="collapse" id="workloadFilters">
                     <div class="card-body border-bottom">
@@ -998,7 +1116,8 @@ include __DIR__ . '/../../includes/header.php';
                             <div class="col-12">
                                 <label class="form-label">Role</label>
                                 <select name="role_filter" class="form-select form-select-sm">
-                                    <option value="all" <?php echo $roleFilter === 'all' ? 'selected' : ''; ?>>All Roles</option>
+                                    <option value="all" <?php echo $roleFilter === 'all' ? 'selected' : ''; ?>>All Roles
+                                    </option>
                                     <option value="project_lead" <?php echo $roleFilter === 'project_lead' ? 'selected' : ''; ?>>Project Lead</option>
                                     <option value="qa" <?php echo $roleFilter === 'qa' ? 'selected' : ''; ?>>QA</option>
                                     <option value="at_tester" <?php echo $roleFilter === 'at_tester' ? 'selected' : ''; ?>>AT Tester</option>
@@ -1008,9 +1127,11 @@ include __DIR__ . '/../../includes/header.php';
                             <div class="col-12">
                                 <label class="form-label">Workload</label>
                                 <select name="workload_filter" class="form-select form-select-sm">
-                                    <option value="all" <?php echo $workloadFilter === 'all' ? 'selected' : ''; ?>>All</option>
+                                    <option value="all" <?php echo $workloadFilter === 'all' ? 'selected' : ''; ?>>All
+                                    </option>
                                     <option value="overloaded" <?php echo $workloadFilter === 'overloaded' ? 'selected' : ''; ?>>Overloaded (5+ projects)</option>
-                                    <option value="busy" <?php echo $workloadFilter === 'busy' ? 'selected' : ''; ?>>Busy (3-5 projects)</option>
+                                    <option value="busy" <?php echo $workloadFilter === 'busy' ? 'selected' : ''; ?>>Busy
+                                        (3-5 projects)</option>
                                     <option value="available" <?php echo $workloadFilter === 'available' ? 'selected' : ''; ?>>Available (&lt;3 projects)</option>
                                     <option value="inactive" <?php echo $workloadFilter === 'inactive' ? 'selected' : ''; ?>>Inactive (No recent activity)</option>
                                 </select>
@@ -1020,19 +1141,23 @@ include __DIR__ . '/../../includes/header.php';
                                 <select name="sort_by" class="form-select form-select-sm">
                                     <option value="name" <?php echo $sortBy === 'name' ? 'selected' : ''; ?>>Name</option>
                                     <option value="role" <?php echo $sortBy === 'role' ? 'selected' : ''; ?>>Role</option>
-                                    <option value="projects" <?php echo $sortBy === 'projects' ? 'selected' : ''; ?>>Active Projects</option>
-                                    <option value="hours" <?php echo $sortBy === 'hours' ? 'selected' : ''; ?>>Total Hours</option>
-                                    <option value="pages" <?php echo $sortBy === 'pages' ? 'selected' : ''; ?>>Assigned Pages</option>
+                                    <option value="projects" <?php echo $sortBy === 'projects' ? 'selected' : ''; ?>>
+                                        Active Projects</option>
+                                    <option value="hours" <?php echo $sortBy === 'hours' ? 'selected' : ''; ?>>Total Hours
+                                    </option>
+                                    <option value="pages" <?php echo $sortBy === 'pages' ? 'selected' : ''; ?>>Assigned
+                                        Pages</option>
                                 </select>
                             </div>
                             <div class="col-12">
                                 <button type="submit" class="btn btn-primary btn-sm w-100">Apply Filters</button>
-                                <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-secondary btn-sm w-100 mt-1">Clear Filters</a>
+                                <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    class="btn btn-outline-secondary btn-sm w-100 mt-1">Clear Filters</a>
                             </div>
                         </form>
                     </div>
                 </div>
-                
+
                 <div class="card-body resource-workload-body">
                     <div class="resource-workload-stats row g-2 mb-3">
                         <div class="col-6">
@@ -1075,10 +1200,10 @@ include __DIR__ . '/../../includes/header.php';
                             <tbody>
                                 <?php foreach ($workload as $resource): ?>
                                     <?php
-                                    $rid = (int)($resource['id'] ?? 0);
-                                    $activeProjects = (int)($resource['active_projects'] ?? 0);
-                                    $projectCount = (int)($resource['project_count'] ?? 0);
-                                    $roleClass = match($resource['role']) {
+                                    $rid = (int) ($resource['id'] ?? 0);
+                                    $activeProjects = (int) ($resource['active_projects'] ?? 0);
+                                    $projectCount = (int) ($resource['project_count'] ?? 0);
+                                    $roleClass = match ($resource['role']) {
                                         'project_lead' => 'primary',
                                         'qa' => 'success',
                                         'at_tester' => 'info',
@@ -1088,20 +1213,28 @@ include __DIR__ . '/../../includes/header.php';
                                     $collapseId = 'resourceProjects_' . $rid;
                                     $projectDetails = $resource['project_details'] ?? [];
                                     ?>
-                                    <tr class="resource-main-row" data-bs-toggle="collapse" data-bs-target="#<?php echo $collapseId; ?>" aria-expanded="false" aria-controls="<?php echo $collapseId; ?>">
+                                    <tr class="resource-main-row" data-bs-toggle="collapse"
+                                        data-bs-target="#<?php echo $collapseId; ?>" aria-expanded="false"
+                                        aria-controls="<?php echo $collapseId; ?>">
                                         <td>
-                                            <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo $rid; ?>" class="text-decoration-none fw-semibold">
-                                                <?php echo htmlspecialchars((string)($resource['full_name'] ?? '')); ?>
+                                            <a href="<?php echo $baseDir; ?>/modules/profile.php?id=<?php echo $rid; ?>"
+                                                class="text-decoration-none fw-semibold">
+                                                <?php echo htmlspecialchars((string) ($resource['full_name'] ?? '')); ?>
                                             </a>
                                             <div class="resource-summary">
-                                                Allocated: <?php echo number_format((float)($resource['allocated_hours'] ?? 0), 1); ?>h |
-                                                Last 30d: <?php echo number_format((float)($resource['hours_last_30_days'] ?? 0), 1); ?>h |
-                                                Total: <?php echo number_format((float)($resource['total_hours'] ?? 0), 1); ?>h
+                                                Allocated:
+                                                <?php echo number_format((float) ($resource['allocated_hours'] ?? 0), 1); ?>h
+                                                |
+                                                Last 30d:
+                                                <?php echo number_format((float) ($resource['hours_last_30_days'] ?? 0), 1); ?>h
+                                                |
+                                                Total:
+                                                <?php echo number_format((float) ($resource['total_hours'] ?? 0), 1); ?>h
                                             </div>
                                         </td>
                                         <td>
                                             <span class="badge bg-<?php echo $roleClass; ?>">
-                                                <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', (string)$resource['role']))); ?>
+                                                <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', (string) $resource['role']))); ?>
                                             </span>
                                         </td>
                                         <td>
@@ -1109,10 +1242,14 @@ include __DIR__ . '/../../includes/header.php';
                                             <div class="resource-summary">Active: <?php echo $activeProjects; ?></div>
                                         </td>
                                         <td>
-                                            <span class="resource-summary"><?php echo htmlspecialchars((string)($resource['project_summary'] ?? 'No assigned projects')); ?></span>
+                                            <span
+                                                class="resource-summary"><?php echo htmlspecialchars((string) ($resource['project_summary'] ?? 'No assigned projects')); ?></span>
                                         </td>
                                         <td>
-                                            <button class="btn btn-sm btn-outline-primary resource-projects-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#<?php echo $collapseId; ?>" aria-expanded="false" aria-controls="<?php echo $collapseId; ?>">
+                                            <button class="btn btn-sm btn-outline-primary resource-projects-toggle"
+                                                type="button" data-bs-toggle="collapse"
+                                                data-bs-target="#<?php echo $collapseId; ?>" aria-expanded="false"
+                                                aria-controls="<?php echo $collapseId; ?>">
                                                 View Projects
                                             </button>
                                         </td>
@@ -1135,19 +1272,24 @@ include __DIR__ . '/../../includes/header.php';
                                                             <?php foreach ($projectDetails as $projectDetail): ?>
                                                                 <tr>
                                                                     <td>
-                                                                        <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo (int)$projectDetail['project_id']; ?>" class="text-decoration-none fw-semibold">
-                                                                            <?php echo htmlspecialchars((string)$projectDetail['project_code']); ?>
+                                                                        <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo (int) $projectDetail['project_id']; ?>"
+                                                                            class="text-decoration-none fw-semibold">
+                                                                            <?php echo htmlspecialchars((string) $projectDetail['project_code']); ?>
                                                                         </a>
-                                                                        <div class="resource-summary"><?php echo htmlspecialchars((string)$projectDetail['project_title']); ?></div>
+                                                                        <div class="resource-summary">
+                                                                            <?php echo htmlspecialchars((string) $projectDetail['project_title']); ?>
+                                                                        </div>
                                                                     </td>
                                                                     <td>
-                                                                        <span class="badge bg-<?php echo htmlspecialchars((string)$projectDetail['status_badge']); ?>">
-                                                                            <?php echo htmlspecialchars((string)$projectDetail['status_label']); ?>
+                                                                        <span
+                                                                            class="badge bg-<?php echo htmlspecialchars((string) $projectDetail['status_badge']); ?>">
+                                                                            <?php echo htmlspecialchars((string) $projectDetail['status_label']); ?>
                                                                         </span>
                                                                     </td>
-                                                                    <td><?php echo (int)$projectDetail['assigned_pages']; ?></td>
-                                                                    <td><?php echo number_format((float)$projectDetail['hours_worked'], 1); ?>h</td>
-                                                                    <td><?php echo (int)$projectDetail['issues_reported']; ?></td>
+                                                                    <td><?php echo (int) $projectDetail['assigned_pages']; ?></td>
+                                                                    <td><?php echo number_format((float) $projectDetail['hours_worked'], 1); ?>h
+                                                                    </td>
+                                                                    <td><?php echo (int) $projectDetail['issues_reported']; ?></td>
                                                                 </tr>
                                                             <?php endforeach; ?>
                                                         </tbody>
@@ -1162,25 +1304,26 @@ include __DIR__ . '/../../includes/header.php';
 
                                 <?php if (empty($workload)): ?>
                                     <tr>
-                                        <td colspan="5" class="text-center text-muted py-3">No resources found matching the selected filters.</td>
+                                        <td colspan="5" class="text-center text-muted py-3">No resources found matching the
+                                            selected filters.</td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
                     </div>
-                    
+
                     <!-- Workload Distribution Chart -->
                     <div class="resource-workload-footer">
                         <h6 class="text-muted mb-2">Workload Distribution</h6>
                         <div class="progress mb-2" style="height: 20px;">
                             <?php if ($total > 0): ?>
-                                <div class="progress-bar bg-danger" style="width: <?php echo ($overloaded/$total)*100; ?>%">
+                                <div class="progress-bar bg-danger" style="width: <?php echo ($overloaded / $total) * 100; ?>%">
                                     <?php echo $overloaded; ?>
                                 </div>
-                                <div class="progress-bar bg-warning" style="width: <?php echo ($busy/$total)*100; ?>%">
+                                <div class="progress-bar bg-warning" style="width: <?php echo ($busy / $total) * 100; ?>%">
                                     <?php echo $busy; ?>
                                 </div>
-                                <div class="progress-bar bg-success" style="width: <?php echo ($available/$total)*100; ?>%">
+                                <div class="progress-bar bg-success" style="width: <?php echo ($available / $total) * 100; ?>%">
                                     <?php echo $available; ?>
                                 </div>
                             <?php endif; ?>
@@ -1193,58 +1336,340 @@ include __DIR__ . '/../../includes/header.php';
                     </div>
                 </div>
             </div>
-            
+        </div>
+    </div>
+</div>
 
+<!-- AI Performance Insight Modal -->
+<div class="modal fade" id="aiInsightModal" tabindex="-1" aria-labelledby="aiInsightModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="aiInsightModalLabel"><i class="fas fa-brain me-2"></i>Resource Performance
+                    Insights</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="aiInsightLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2 text-muted">AI is analyzing performance data, please wait...</p>
+                </div>
+                <div id="aiInsightContent" style="display: none;">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="card bg-light border-0">
+                                <div class="card-body p-3">
+                                    <div class="text-muted small">Accessibility Accuracy</div>
+                                    <div class="h4 mb-0" id="aiStatAccuracy">--</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-light border-0">
+                                <div class="card-body p-3">
+                                    <div class="text-muted small">Total Actions</div>
+                                    <div class="h4 mb-0" id="aiStatActivity">--</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h6>Overall Summary</h6>
+                    <p id="aiSummaryText" class="text-dark bg-light p-3 rounded border-start border-4 border-primary">
+                    </p>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-success"><i class="fas fa-plus-circle me-2"></i>Positive Feedback</h6>
+                            <ul id="aiPositiveList" class="list-group list-group-flush mb-3"></ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-danger"><i class="fas fa-exclamation-circle me-2"></i>Areas for Improvement
+                            </h6>
+                            <ul id="aiNegativeList" class="list-group list-group-flush mb-3"></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-top-0 d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-secondary" id="btnRefreshAI">
+                    <i class="fas fa-sync-alt me-1"></i> Re-analyze Now
+                </button>
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+            </div>
         </div>
     </div>
 </div>
 <script nonce="<?php echo $cspNonce ?? ''; ?>">
-window.AdminDashboardConfig = {
-    pendingSummaryUrl: <?php echo json_encode($baseDir . '/modules/admin/dashboard.php?action=pending_requests_summary', JSON_HEX_TAG | JSON_HEX_AMP); ?>,
-    devicesApiUrl: <?php echo json_encode($devicesApiUrl, JSON_HEX_TAG | JSON_HEX_AMP); ?>,
-    editRequestsUrl: <?php echo json_encode($baseDir . '/modules/admin/edit_requests.php', JSON_HEX_TAG | JSON_HEX_AMP); ?>,
-    dashboardUrl: <?php echo json_encode($baseDir . '/modules/admin/dashboard.php', JSON_HEX_TAG | JSON_HEX_AMP); ?>
-};
+    window.AdminDashboardConfig = {
+        pendingSummaryUrl: <?php echo json_encode($baseDir . '/modules/admin/dashboard.php?action=pending_requests_summary', JSON_HEX_TAG | JSON_HEX_AMP); ?>,
+        devicesApiUrl: <?php echo json_encode($devicesApiUrl, JSON_HEX_TAG | JSON_HEX_AMP); ?>,
+        editRequestsUrl: <?php echo json_encode($baseDir . '/modules/admin/edit_requests.php', JSON_HEX_TAG | JSON_HEX_AMP); ?>,
+        dashboardUrl: <?php echo json_encode($baseDir . '/modules/admin/dashboard.php', JSON_HEX_TAG | JSON_HEX_AMP); ?>,
+        performanceApiUrl: <?php echo json_encode($baseDir . '/api/resource_performance.php', JSON_HEX_TAG | JSON_HEX_AMP); ?>,
+        baseDir: <?php echo json_encode($baseDir, JSON_HEX_TAG | JSON_HEX_AMP); ?>
+    };
 
-// CSP Compliant Action Handlers
-document.addEventListener('click', function(e) {
-    var deviceBtn = e.target.closest('.js-device-request');
-    if (deviceBtn && typeof respondDeviceRequestFromDashboard === 'function') {
-        respondDeviceRequestFromDashboard(deviceBtn.getAttribute('data-id'), deviceBtn.getAttribute('data-action'));
-    }
-    
-    var hoursBtn = e.target.closest('.js-hours-request');
-    if (hoursBtn && typeof respondHoursRequestFromDashboard === 'function') {
-        respondHoursRequestFromDashboard(hoursBtn.getAttribute('data-id'), hoursBtn.getAttribute('data-user'), hoursBtn.getAttribute('data-date'), hoursBtn.getAttribute('data-action'));
-    }
-});
+    // --- Availability Status Filtering & Search (Restored) ---
+    (function () {
+        var statusFilter = document.getElementById('statusFilter');
+        var statusSearch = document.getElementById('statusSearch');
 
-// --- Availability Status Filtering & Search ---
-(function() {
-    var statusFilter = document.getElementById('statusFilter');
-    var statusSearch = document.getElementById('statusSearch');
-    
-    if (statusFilter && statusSearch) {
-        var filterTable = function() {
-            var selectedStatus = statusFilter.value;
-            var searchTerm = statusSearch.value.toLowerCase();
-            var rows = document.querySelectorAll('.status-row');
-            
-            rows.forEach(function(row) {
-                var statusValue = row.getAttribute('data-status');
-                var nameText = row.querySelector('.fw-bold').textContent.toLowerCase();
-                
-                var statusMatch = (selectedStatus === 'all' || statusValue === selectedStatus);
-                var searchMatch = nameText.includes(searchTerm);
-                
-                row.style.display = (statusMatch && searchMatch) ? '' : 'none';
+        if (statusFilter && statusSearch) {
+            var filterTable = function () {
+                var selectedStatus = statusFilter.value;
+                var searchTerm = statusSearch.value.toLowerCase();
+                var rows = document.querySelectorAll('.status-row');
+
+                rows.forEach(function (row) {
+                    var statusValue = row.getAttribute('data-status');
+                    var nameText = row.querySelector('.fw-bold').textContent.toLowerCase();
+
+                    var statusMatch = (selectedStatus === 'all' || statusValue === selectedStatus);
+                    var searchMatch = nameText.includes(searchTerm);
+
+                    row.style.display = (statusMatch && searchMatch) ? '' : 'none';
+                });
+            };
+
+            statusFilter.addEventListener('change', filterTable);
+            statusSearch.addEventListener('input', filterTable);
+        }
+    })();
+
+    // --- Insight Section Search ---
+    (function () {
+        var insightSearch = document.getElementById('insightSearch');
+        if (insightSearch) {
+            insightSearch.addEventListener('input', function () {
+                var term = this.value.toLowerCase();
+                var rows = document.querySelectorAll('.insight-row');
+                rows.forEach(row => {
+                    var name = row.querySelector('.fw-bold').textContent.toLowerCase();
+                    row.style.display = name.includes(term) ? '' : 'none';
+                });
             });
-        };
+        }
+    })();
+
+    // CSP Compliant Action Handlers
+
+    // --- AI Performance Insights ---
+    (function () {
+        var modal = new bootstrap.Modal(document.getElementById('aiInsightModal'));
+        var loading = document.getElementById('aiInsightLoading');
+        var content = document.getElementById('aiInsightContent');
+        var tableBody = document.getElementById('insightTableBody');
         
-        statusFilter.addEventListener('change', filterTable);
-        statusSearch.addEventListener('input', filterTable);
-    }
-})();
+        var projectFilter = document.getElementById('insightProjectFilter');
+        var startDateInput = document.getElementById('insightStartDate');
+        var endDateInput = document.getElementById('insightEndDate');
+        var insightSearch = document.getElementById('insightSearch');
+        var btnExport = document.getElementById('btnExportInsights');
+        
+        var currentUserId = null;
+
+        // Fetch metrics and re-render table
+        function refreshMetrics() {
+            if (tableBody) tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Loading metrics...</td></tr>';
+            
+            var pId = projectFilter ? projectFilter.value : '';
+            var sd = startDateInput ? startDateInput.value : '';
+            var ed = endDateInput ? endDateInput.value : '';
+            
+            var url = window.AdminDashboardConfig.performanceApiUrl + '?project_id=' + pId + '&start_date=' + sd + '&end_date=' + ed;
+            
+            // Client-side timeout (100s) for slow VPS inference
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 100000);
+
+            fetch(url, { signal: controller.signal })
+                .then(response => response.json())
+                .then(data => {
+                    clearTimeout(timeoutId);
+                    if (data.success && tableBody) {
+                        tableBody.innerHTML = '';
+                        if (data.data.length === 0) {
+                            tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">No resources found for this selection.</td></tr>';
+                            return;
+                        }
+
+                        data.data.forEach(item => {
+                            var pct = item.stats.accuracy.accuracy_percentage;
+                            var color = pct > 80 ? 'bg-success' : (pct > 50 ? 'bg-info' : 'bg-warning');
+                            var tr = document.createElement('tr');
+                            tr.className = 'align-middle insight-row';
+                            tr.innerHTML = `
+                                <td class="ps-3 py-2">
+                                    <div class="fw-bold">${item.name}</div>
+                                    <div class="text-muted" style="font-size: 0.7rem;">${(item.role || 'user').replace('_', ' ')}</div>
+                                </td>
+                                <td class="py-2">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="progress" style="height: 6px; width: 60px;">
+                                            <div class="progress-bar ${color}" style="width: ${pct}%"></div>
+                                        </div>
+                                        <span class="fw-bold" style="font-size: 0.75rem;">${pct}%</span>
+                                    </div>
+                                </td>
+                                <td class="py-2 text-muted small">${item.stats.activity.total_actions}</td>
+                                <td class="py-2 text-center">
+                                    <button class="btn btn-sm btn-primary py-0 btn-ai-insight" 
+                                            style="font-size: 0.75rem; height: 24px;"
+                                            data-user-id="${item.user_id}" 
+                                            data-user-name="${item.name}">
+                                        <i class="fas fa-brain me-1"></i> Analyze
+                                    </button>
+                                </td>
+                            `;
+                            tableBody.appendChild(tr);
+                        });
+                        // trigger search filter in case user has text in search box
+                        if (insightSearch && insightSearch.value) insightSearch.dispatchEvent(new Event('input'));
+                    }
+                })
+                .catch(err => {
+                    clearTimeout(timeoutId);
+                    console.error('Metric load failed:', err);
+                    if (tableBody) tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-danger">Server timed out or returned an error.</td></tr>';
+                });
+        }
+
+        // Initial load
+        refreshMetrics();
+
+        // Listen for filter changes
+        [projectFilter, startDateInput, endDateInput].forEach(el => {
+            if (el) el.addEventListener('change', refreshMetrics);
+        });
+
+        // Search Filter
+        if (insightSearch) {
+            insightSearch.addEventListener('input', function () {
+                var term = this.value.toLowerCase();
+                document.querySelectorAll('.insight-row').forEach(row => {
+                    var name = row.querySelector('.fw-bold').textContent.toLowerCase();
+                    row.style.display = name.includes(term) ? '' : 'none';
+                });
+            });
+        }
+
+        // Export Logic
+        if (btnExport) {
+            btnExport.addEventListener('click', function() {
+                var pId = projectFilter ? projectFilter.value : '';
+                var sd = startDateInput ? startDateInput.value : '';
+                var ed = endDateInput ? endDateInput.value : '';
+                var url = window.AdminDashboardConfig.baseDir + '/api/export_performance.php?project_id=' + pId + '&start_date=' + sd + '&end_date=' + ed;
+                window.location.href = url;
+            });
+        }
+
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('.btn-ai-insight');
+            if (btn) {
+                var userId = btn.getAttribute('data-user-id');
+                var userName = btn.getAttribute('data-user-name');
+                currentUserId = userId;
+                document.getElementById('aiInsightModalLabel').innerHTML = '<i class="fas fa-brain me-2"></i>Insights: ' + userName;
+                fetchInsight(userId);
+                modal.show();
+            }
+        });
+
+        document.getElementById('btnRefreshAI').addEventListener('click', function () {
+            if (currentUserId) fetchInsight(currentUserId, true);
+        });
+
+        function fetchInsight(userId, refresh = false) {
+            loading.style.display = 'block';
+            content.style.display = 'none';
+
+            var pId = projectFilter ? projectFilter.value : '';
+            var sd = startDateInput ? startDateInput.value : '';
+            var ed = endDateInput ? endDateInput.value : '';
+            
+            var url = window.AdminDashboardConfig.performanceApiUrl + '?user_id=' + userId + '&project_id=' + pId + '&start_date=' + sd + '&end_date=' + ed;
+            if (refresh) url += '&refresh=true';
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.data.length > 0) {
+                        var insight = data.data[0];
+                        displayInsight(insight);
+                        refreshMetrics(); 
+                    } else {
+                        alert('Failed to fetch AI insights.');
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert('An error occurred while calling the AI API.');
+                })
+                .finally(() => {
+                    loading.style.display = 'none';
+                    content.style.display = 'block';
+                });
+        }
+
+        function displayInsight(item) {
+            document.getElementById('aiStatAccuracy').textContent = item.stats.accuracy.accuracy_percentage + '%';
+            document.getElementById('aiStatActivity').textContent = item.stats.activity.total_actions;
+            document.getElementById('aiSummaryText').textContent = item.summary.overall_summary;
+
+            var posList = document.getElementById('aiPositiveList');
+            posList.innerHTML = '';
+            item.summary.positive.forEach(txt => {
+                var li = document.createElement('li');
+                li.className = 'list-group-item bg-transparent px-0 border-0';
+                li.innerHTML = '<i class="fas fa-check text-success me-2"></i>' + txt;
+                posList.appendChild(li);
+            });
+
+            var negList = document.getElementById('aiNegativeList');
+            negList.innerHTML = '';
+            item.summary.negative.forEach(txt => {
+                var li = document.createElement('li');
+                li.className = 'list-group-item bg-transparent px-0 border-0';
+                li.innerHTML = '<i class="fas fa-arrow-right text-muted me-2"></i>' + txt;
+                negList.appendChild(li);
+            });
+        }
+    })();
+
+    // --- Resource Workload Search (New) ---
+    (function () {
+        var workloadSearch = document.createElement('input');
+        workloadSearch.type = 'text';
+        workloadSearch.className = 'form-control form-control-sm mb-2';
+        workloadSearch.placeholder = 'Search resource name...';
+        workloadSearch.style.borderRadius = '20px';
+
+        var container = document.querySelector('.resource-workload-stats');
+        if (container) {
+            var col = document.createElement('div');
+            col.className = 'col-12 mt-2';
+            col.appendChild(workloadSearch);
+            container.appendChild(col);
+        }
+
+        workloadSearch.addEventListener('input', function () {
+            var term = this.value.toLowerCase();
+            var rows = document.querySelectorAll('.resource-main-row');
+            rows.forEach(row => {
+                var name = row.querySelector('td:first-child .fw-semibold').textContent.toLowerCase();
+                row.style.display = name.includes(term) ? '' : 'none';
+                // Also hide details row if it exists
+                var detailsId = row.getAttribute('data-bs-target');
+                if (detailsId) {
+                    var detailsRow = document.querySelector(detailsId);
+                    if (detailsRow) detailsRow.classList.remove('show');
+                }
+            });
+        });
+    })();
 </script>
 <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/admin-dashboard.js"></script>
-<?php include __DIR__ . '/../../includes/footer.php'; 
+<?php include __DIR__ . '/../../includes/footer.php';

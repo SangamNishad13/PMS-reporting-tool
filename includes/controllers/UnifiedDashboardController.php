@@ -203,7 +203,7 @@ class UnifiedDashboardController {
             'title' => 'User Impact Analysis',
             'icon' => 'fas fa-users',
             'reportType' => 'user_affected',
-            'drillDownUrl' => '/PMS/modules/client/dashboard_unified.php?type=user_affected&projects=' . implode(',', $projectIds),
+            'drillDownUrl' => '/PMS/modules/client/projects.php',
             'summary' => [
                 [
                     'label' => 'Total Issues',
@@ -244,7 +244,7 @@ class UnifiedDashboardController {
             'title' => 'WCAG Compliance',
             'icon' => 'fas fa-shield-alt',
             'reportType' => 'wcag_compliance',
-            'drillDownUrl' => '/PMS/modules/client/dashboard_unified.php?type=wcag_compliance&projects=' . implode(',', $projectIds),
+            'drillDownUrl' => '/PMS/modules/client/projects.php',
             'summary' => [
                 [
                     'label' => 'Overall Score',
@@ -284,7 +284,7 @@ class UnifiedDashboardController {
             'title' => 'Issue Severity',
             'icon' => 'fas fa-exclamation-triangle',
             'reportType' => 'severity_analysis',
-            'drillDownUrl' => '/PMS/modules/client/dashboard_unified.php?type=severity_analysis&projects=' . implode(',', $projectIds),
+            'drillDownUrl' => '/PMS/modules/client/projects.php',
             'summary' => [
                 [
                     'label' => 'Critical Severity',
@@ -330,7 +330,7 @@ class UnifiedDashboardController {
             'title' => 'Common Issues',
             'icon' => 'fas fa-list-ul',
             'reportType' => 'common_issues',
-            'drillDownUrl' => '/PMS/modules/client/dashboard_unified.php?type=common_issues&projects=' . implode(',', $projectIds),
+            'drillDownUrl' => '/PMS/modules/client/projects.php',
             'summary' => array_map(function($issue, $index) {
                 return [
                     'label' => '#' . ($index + 1) . ' Issue',
@@ -352,7 +352,7 @@ class UnifiedDashboardController {
             'title' => 'Blocker Issues',
             'icon' => 'fas fa-ban',
             'reportType' => 'blocker_issues',
-            'drillDownUrl' => '/PMS/modules/client/dashboard_unified.php?type=blocker_issues&projects=' . implode(',', $projectIds),
+            'drillDownUrl' => '/PMS/modules/client/projects.php',
             'summary' => [
                 [
                     'label' => 'Active Blockers',
@@ -382,7 +382,7 @@ class UnifiedDashboardController {
             'title' => 'Page Analysis',
             'icon' => 'fas fa-file-alt',
             'reportType' => 'page_issues',
-            'drillDownUrl' => '/PMS/modules/client/dashboard_unified.php?type=page_issues&projects=' . implode(',', $projectIds),
+            'drillDownUrl' => '/PMS/modules/client/projects.php',
             'summary' => [
                 [
                     'label' => 'Pages Analyzed',
@@ -412,7 +412,7 @@ class UnifiedDashboardController {
             'title' => 'Discussion Activity',
             'icon' => 'fas fa-comments',
             'reportType' => 'commented_issues',
-            'drillDownUrl' => '/PMS/modules/client/dashboard_unified.php?type=commented_issues&projects=' . implode(',', $projectIds),
+            'drillDownUrl' => '/PMS/modules/client/projects.php',
             'summary' => [
                 [
                     'label' => 'Issues with Comments',
@@ -668,26 +668,20 @@ class UnifiedDashboardController {
         
         $projectIdsList = implode(',', array_column($data['assigned_projects'], 'id'));
         
-        $html .= '<div class="col-md-3 mb-3">';
-        $html .= '<a href="/PMS/modules/client/dashboard_unified.php?type=all&projects=' . $projectIdsList . '" class="btn btn-primary btn-lg btn-block">';
-        $html .= '<i class="fas fa-chart-line"></i><br>View All Analytics';
+        $html .= '<div class="col-md-4 mb-3">';
+        $html .= '<a href="/PMS/client/dashboard" class="btn btn-primary btn-lg btn-block">';
+        $html .= '<i class="fas fa-tachometer-alt"></i><br>Analytics Dashboard';
         $html .= '</a>';
         $html .= '</div>';
         
-        $html .= '<div class="col-md-3 mb-3">';
-        $html .= '<a href="/modules/client/export.php?type=dashboard&projects=' . $projectIdsList . '" class="btn btn-success btn-lg btn-block">';
-        $html .= '<i class="fas fa-file-pdf"></i><br>Export PDF Report';
+        $html .= '<div class="col-md-4 mb-3">';
+        $html .= '<a href="/PMS/client/exports" class="btn btn-success btn-lg btn-block">';
+        $html .= '<i class="fas fa-file-pdf"></i><br>Export Reports';
         $html .= '</a>';
         $html .= '</div>';
         
-        $html .= '<div class="col-md-3 mb-3">';
-        $html .= '<a href="/modules/client/export.php?type=dashboard&format=excel&projects=' . $projectIdsList . '" class="btn btn-info btn-lg btn-block">';
-        $html .= '<i class="fas fa-file-excel"></i><br>Export Excel';
-        $html .= '</a>';
-        $html .= '</div>';
-        
-        $html .= '<div class="col-md-3 mb-3">';
-        $html .= '<a href="/modules/client/projects.php" class="btn btn-secondary btn-lg btn-block">';
+        $html .= '<div class="col-md-4 mb-3">';
+        $html .= '<a href="/PMS/modules/client/projects.php" class="btn btn-secondary btn-lg btn-block">';
         $html .= '<i class="fas fa-folder-open"></i><br>View Projects';
         $html .= '</a>';
         $html .= '</div>';
@@ -897,7 +891,7 @@ class UnifiedDashboardController {
         $widgetConfig = [
             'type' => 'analytics',
             'reportType' => $type,
-            'drillDownUrl' => "/PMS/modules/client/dashboard_unified.php?type={$type}&project_id={$projectId}",
+            'drillDownUrl' => "/PMS/client/project/{$projectId}",
             'summary' => []
         ];
         

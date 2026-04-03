@@ -559,7 +559,7 @@ function aggregateFindingsByRule(array $findings): array {
     return $out;
 }
 
-function runDeepScan(string $url, string $outputJsonPath, string $screenshotDir, ?string $progressToken = null): array {
+function runDeepScan(string $url, string $outputJsonPath, string $screenshotDir, ?string $progressToken = null, string $mode = 'default'): array {
     $script = realpath(__DIR__ . '/../scripts/deep_a11y_scan.js');
     if (!$script) {
         throw new RuntimeException('Deep scan script not found');
@@ -570,7 +570,9 @@ function runDeepScan(string $url, string $outputJsonPath, string $screenshotDir,
         . ' --url ' . escapeshellarg($url)
         . ' --out ' . escapeshellarg($outputJsonPath)
         . ' --screenshot-dir ' . escapeshellarg($screenshotDir)
-        . ' --max-nodes 0';
+        . ' --max-nodes 0'
+        . ' --mode ' . escapeshellarg($mode)
+        . ($progressToken ? ' --token ' . escapeshellarg($progressToken) : '');
 
     $descriptorspec = [
         0 => ["pipe", "r"], // stdin
@@ -968,7 +970,7 @@ try {
     } else {
         // Fallback for non-FPM environments
         ignore_user_abort(true);
-        set_time_limit(0);
+        set_time_limit(1800);
         $backgroundMode = true;
         $res = json_encode(['success' => true, 'status' => 'started', 'token' => $progressToken]);
         header('Content-Type: application/json');
@@ -986,12 +988,13 @@ try {
 
     $combinedFindings = [];
     $summary = ['issues' => 0, 'critical' => 0, 'serious' => 0, 'moderate' => 0, 'minor' => 0];
+    $scanMode = trim((string)($_POST['scan_mode'] ?? 'default'));
     foreach ($scanUrls as $targetUrlRaw) {
         $targetUrl = normalizeScanUrl($targetUrlRaw);
         if ($targetUrl === null) continue;
         $urlToken = substr(sha1($targetUrl), 0, 10);
         $urlOutJson = realpath(__DIR__ . '/..') . DIRECTORY_SEPARATOR . 'tmp' . DIRECTORY_SEPARATOR . 'a11y_scan_' . $scanToken . '_' . $urlToken . '.json';
-        $scanResult = runDeepScan($targetUrl, $urlOutJson, $scanAbsDir, $progressToken);
+        $scanResult = runDeepScan($targetUrl, $urlOutJson, $scanAbsDir, $progressToken, $scanMode);
         $urlFindings = is_array($scanResult['findings'] ?? null) ? $scanResult['findings'] : [];
         foreach ($urlFindings as &$finding) {
             if (!is_array($finding)) continue;

@@ -122,13 +122,9 @@ if (!isset($baseDir)) {
                 </div>
                 
                 <div class="project-actions">
-                    <a href="<?php echo $baseDir; ?>/modules/client/project_dashboard.php?id=<?php echo $project['id']; ?>" 
+                    <a href="<?php echo $baseDir; ?>/client/project/<?php echo $project['id']; ?>" 
                        class="btn btn-primary btn-sm">
                         <i class="fas fa-chart-line"></i> View Analytics
-                    </a>
-                    <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $project['id']; ?>" 
-                       class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-eye"></i> Project Details
                     </a>
                 </div>
             </div>

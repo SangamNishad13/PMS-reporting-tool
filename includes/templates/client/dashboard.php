@@ -40,6 +40,12 @@ require_once __DIR__ . '/../../header.php';
             } catch (Exception $e) {
                 echo '<div class="alert alert-warning">Dashboard widgets could not be loaded.</div>';
             }
+            
+            try {
+                include __DIR__ . '/../../../modules/client/partials/dashboard_actions.php'; 
+            } catch (Exception $e) {
+                echo '<div class="alert alert-warning">Dashboard actions could not be loaded.</div>';
+            }
             ?>
         </div>
     </div>
@@ -49,7 +55,7 @@ require_once __DIR__ . '/../../header.php';
 
 <?php 
 try {
-    if (isset($dashboardController->visualization) && method_exists($dashboardController->visualization, 'getVisualizationJS')) {
+    if (isset($dashboardController) && isset($dashboardController->visualization) && method_exists($dashboardController->visualization, 'getVisualizationJS')) {
         echo $dashboardController->visualization->getVisualizationJS(); 
     }
 } catch (Exception $e) {

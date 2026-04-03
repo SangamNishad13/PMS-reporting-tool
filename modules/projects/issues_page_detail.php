@@ -880,8 +880,11 @@ include __DIR__ . '/../../includes/header.php';
                             <button class="btn btn-sm btn-outline-secondary" id="needsReviewRefreshBtn" type="button">
                                 <i class="fas fa-rotate me-1"></i> Refresh
                             </button>
-                            <button class="btn btn-sm btn-outline-primary" id="needsReviewRunScanBtn" type="button">
+                            <button class="btn btn-sm btn-outline-primary" id="needsReviewRunScanBtn" title="Run standard rule-based accessibility scan" type="button">
                                 <i class="fas fa-universal-access me-1"></i> Run Scan
+                            </button>
+                            <button class="btn btn-sm btn-outline-info" id="needsReviewRunAiDeepAuditBtn" title="Run holistic AI-driven accessibility audit (slower but deeper)" type="button">
+                                <i class="fas fa-robot me-1"></i> AI Deep Audit
                             </button>
                         </div>
                     </div>
@@ -1122,89 +1125,64 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
     function renderRecommendationHtml(text, emptyFallback) {
         var raw = String(text || '').trim();
         if (!raw) return esc(String(emptyFallback || '-'));
-        var lines = raw.split(/\r?\n/).map(function (l) { return String(l || '').trim(); }).filter(Boolean);
+        
+        function simpleCodeHighlight(txt) {
+            var s = esc(txt);
+            // Highlight text in backticks: `code`
+            s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+            // Highlight things that look like HTML tags: <tag>, </tag>, <tag />
+            s = s.replace(/(&lt;\/?[a-z1-6]+(?:\s+[a-z-]+(?:=&quot;[^&]*&quot;|='[^']*')?)*\s*\/?&gt;)/gi, function(m) {
+                return '<code class="text-danger">' + m + '</code>';
+            });
+            return s;
+        }
+
+        var lines = raw.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l !== ''; });
         if (!lines.length) return esc(String(emptyFallback || '-'));
 
-        function renderTextWithCodeTags(inputText) {
-            var txt = String(inputText || '');
-            var chunks = txt.split(/(<code>[\s\S]*?<\/code>)/i);
-            return chunks.map(function (chunk) {
-                if (/^<code>([\s\S]*)<\/code>$/i.test(chunk)) {
-                    var inner = chunk.replace(/^<code>/i, '').replace(/<\/code>$/i, '');
-                    return '<code>' + esc(inner) + '</code>';
-                }
-                var tokens = chunk.split(/(<\/?[a-z][^>]*>)/gi);
-                return tokens.map(function (t) {
-                    if (/^<\/?[a-z][^>]*>$/i.test(t)) {
-                        return '<code>' + esc(t) + '</code>';
-                    }
-                    var s = esc(t);
-                    // Wrap complete attribute assignments first, then standalone aria/role tokens.
-                    s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&quot;[^&]+&quot;/g, function (m) { return '<code>' + m + '</code>'; });
-                    s = s.replace(/\b[a-zA-Z_:-]+\s*=\s*&#39;[^&]+&#39;/g, function (m) { return '<code>' + m + '</code>'; });
-                    var parts = s.split(/(<code>[\s\S]*?<\/code>)/i);
-                    s = parts.map(function (part) {
-                        if (/^<code>[\s\S]*<\/code>$/i.test(part)) return part;
-                        var out = part;
-                        out = out.replace(/\baria-[a-z-]+\b/gi, function (m) { return '<code>' + m + '</code>'; });
-                        out = out.replace(/\brole\b/gi, function (m) { return '<code>' + m + '</code>'; });
-                        return out;
-                    }).join('');
-                    return s;
-                }).join('');
-            }).join('');
+        var html = '';
+        var inList = false;
+        var listType = ''; // 'ul' or 'ol'
+
+        function closeList() {
+            if (inList) {
+                html += '</div>';
+                inList = false;
+            }
         }
 
-        var heading = '';
-        var subHeading = '';
-        var paragraphs = [];
-        var bullets = [];
-        var seenRecLine = {};
-        function pushUnique(target, line) {
-            var t = String(line || '').trim();
-            if (!t) return;
-            var key = t.toLowerCase();
-            if (seenRecLine[key]) return;
-            seenRecLine[key] = true;
-            target.push(t);
-        }
-        lines.forEach(function (line) {
-            var cleaned = String(line || '').trim();
-            var isBullet = /^\-\s+/.test(cleaned);
-            if (isBullet) cleaned = cleaned.replace(/^\-\s+/, '').trim();
-            if (/^apply the following changes:?$/i.test(cleaned)) {
-                subHeading = line;
-            } else if (!heading) {
-                heading = cleaned;
-            } else if (isBullet) {
-                pushUnique(bullets, cleaned);
+        lines.forEach(function(line, idx) {
+            var isBullet = /^[\-\*•]\s+/.test(line);
+            var isNumbered = /^\d+[\.\)]\s+/.test(line);
+            
+            if (isBullet || isNumbered) {
+                if (!inList) {
+                    closeList();
+                    html += '<div class="needs-review-steps mt-2">';
+                    inList = true;
+                }
+                var content = line.replace(/^[\-\*•]\s+/, '').replace(/^\d+[\.\)]\s+/, '').trim();
+                html += '<div class="d-flex gap-2 mb-2">' +
+                       '<div class="flex-shrink-0">' + 
+                       (isNumbered ? 
+                         '<span class="badge rounded-circle bg-primary-subtle text-primary border border-primary-subtle" style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:0.75rem;">' + (html.match(/d-flex/g) || []).length + '</span>' :
+                         '<i class="fas fa-circle text-primary-emphasis mt-1" style="font-size: 0.4rem;"></i>'
+                       ) + 
+                       '</div>' +
+                       '<div class="flex-grow-1">' + simpleCodeHighlight(content) + '</div>' +
+                       '</div>';
             } else {
-                pushUnique(paragraphs, cleaned);
+                closeList();
+                var isHeader = (idx === 0) || (line.length < 100 && /:$/.test(line)) || (line === line.toUpperCase() && line.length < 50);
+                if (isHeader) {
+                    html += '<div class="mb-2 fw-semibold text-primary" style="font-size:0.95rem;">' + simpleCodeHighlight(line) + '</div>';
+                } else {
+                    html += '<div class="mb-2 text-muted-foreground" style="font-size:0.9rem;">' + simpleCodeHighlight(line) + '</div>';
+                }
             }
         });
+        closeList();
 
-        if (!bullets.length && !paragraphs.length && !subHeading) {
-            return renderTextWithCodeTags(raw).replace(/\n/g, '<br>');
-        }
-
-        var html = '';
-        if (heading) {
-            html += '<div class="mb-1">' + renderTextWithCodeTags(heading) + '</div>';
-        }
-        if (subHeading) {
-            html += '<div class="mt-2 mb-1"><strong>' + renderTextWithCodeTags(subHeading.replace(/^\-\s+/, '').trim()) + '</strong></div>';
-        }
-        if (paragraphs.length) {
-            html += paragraphs.map(function (p) {
-                return '<div class="mb-2">' + renderTextWithCodeTags(p) + '</div>';
-            }).join('');
-        }
-        if (bullets.length) {
-            // Keep recommendation readable as paragraph blocks instead of dense bullets.
-            html += bullets.map(function (b) {
-                return '<div class="mb-2">' + renderTextWithCodeTags(b) + '</div>';
-            }).join('');
-        }
         return html;
     }
 
@@ -1329,6 +1307,37 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         });
     }
 
+    function renderCorrectCodeBlocks(finding) {
+        var code = String(finding.correct_code || '').trim();
+        if (!code || code === '-') return '<span class="text-muted">-</span>';
+        
+        var id = 'copy_' + Math.random().toString(36).slice(2, 10);
+        return '<div class="needs-review-correct-code-container position-relative">' +
+               '<pre class="needs-review-inline-code mb-0 p-2 rounded bg-dark-subtle border" id="' + id + '" style="max-height: 200px; overflow: auto; white-space: pre-wrap;"><code>' + esc(code) + '</code></pre>' +
+               '<button type="button" class="btn btn-xs btn-outline-primary position-absolute top-0 end-0 m-1" onclick="copyFindingCode(\'' + id + '\', this)" title="Copy Code" aria-label="Copy Code">' +
+               '<i class="far fa-copy"></i>' +
+               '</button>' +
+               '</div>';
+    }
+
+    window.copyFindingCode = function(elementId, btn) {
+        var el = document.getElementById(elementId);
+        if (!el) return;
+        var text = el.textContent || el.innerText;
+        navigator.clipboard.writeText(text).then(function() {
+            var icon = btn.querySelector('i');
+            if (icon) {
+                icon.className = 'fas fa-check text-success';
+                setTimeout(function() {
+                    icon.className = 'far fa-copy';
+                }, 2000);
+            }
+            if (typeof window.showToast === 'function') window.showToast('Code copied to clipboard', 'success');
+        }).catch(function() {
+            if (typeof window.showToast === 'function') window.showToast('Failed to copy code', 'danger');
+        });
+    };
+
     function extractIncorrectCode(finding) {
         return '<div class="needs-review-code-wrap">' + renderIncorrectCodeBlocks(finding, 'mb-1') + '</div>';
     }
@@ -1408,13 +1417,22 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
 
     function getAutoScanUrlOptions() {
         var urls = [];
-        var currentPageUrl = String((window.ProjectConfig && window.ProjectConfig.currentPageUrl) || '').trim();
+        var cfg = window.ProjectConfig || {};
+        var currentPageUrl = String(cfg.currentPageUrl || '').trim();
         if (currentPageUrl) urls.push(currentPageUrl);
-        var grouped = (window.ProjectConfig && Array.isArray(window.ProjectConfig.groupedUrls)) ? window.ProjectConfig.groupedUrls : [];
+        
+        var grouped = Array.isArray(cfg.groupedUrls) ? cfg.groupedUrls : [];
         grouped.forEach(function (g) {
             var u = String((g && (g.url || g.normalized_url)) || '').trim();
             if (u) urls.push(u);
         });
+
+        var pPages = Array.isArray(cfg.projectPages) ? cfg.projectPages : [];
+        pPages.forEach(function (p) {
+            var u = String((p && p.url) || '').trim();
+            if (u) urls.push(u);
+        });
+
         var seen = {};
         return urls.filter(function (u) {
             var key = u.toLowerCase();
@@ -1483,15 +1501,33 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         });
     }
 
-    function openScanUrlSelectionModal(keepOpen) {
+    function openScanUrlSelectionModal(keepOpenOrMode) {
         var modalEl = document.getElementById('needsReviewScanUrlModal');
         var listEl = document.getElementById('needsReviewScanUrlList');
+        if (!modalEl || !listEl) {
+            console.error('Scan URL list modal element not found');
+            return;
+        }
+
         var selectAllEl = document.getElementById('needsReviewScanSelectAll');
         var customInput = document.getElementById('needsReviewCustomScanUrlInput');
         var customOpenBtn = document.getElementById('needsReviewOpenCustomUrlBtn');
         var customAddBtn = document.getElementById('needsReviewAddCustomUrlBtn');
+        var runBtn = document.getElementById('needsReviewRunSelectedScanBtn');
+        
+        var scanMode = 'default';
+        var keepOpen = false;
+
+        if (typeof keepOpenOrMode === 'string') {
+            scanMode = keepOpenOrMode;
+        } else if (typeof keepOpenOrMode === 'boolean') {
+            keepOpen = keepOpenOrMode;
+            scanMode = modalEl.getAttribute('data-current-mode') || 'default';
+        }
+        modalEl.setAttribute('data-current-mode', scanMode);
+
         if (!(modalEl && listEl)) {
-            runAutomatedScanForCurrentPage([]);
+            runAutomatedScanForCurrentPage([], scanMode);
             return;
         }
 
@@ -1548,6 +1584,22 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                 }
                 if (customInput) customInput.value = u;
                 openScanUrlSelectionModal(true);
+            };
+        }
+
+        if (runBtn) {
+            runBtn.onclick = async function() {
+                var selectedUrls = Array.from(document.querySelectorAll('#needsReviewScanUrlList .needs-review-scan-url:checked'))
+                    .map(function (cb) { return String(cb.value || '').trim(); })
+                    .filter(Boolean);
+                if (!selectedUrls.length) {
+                    if (typeof window.showToast === 'function') window.showToast('Select at least one URL', 'warning');
+                    return;
+                }
+                if (modalEl && window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                }
+                await runAutomatedScanForCurrentPage(selectedUrls, scanMode);
             };
         }
 
@@ -1851,10 +1903,14 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                 var urlsCellHtml = findingUrls.length
                     ? (esc(urlsPreview.join('\n')) + (urlsExtra > 0 ? ('\n+' + urlsExtra + ' more') : ''))
                     : esc((f.scan_url || '-'));
+                var discoveryBadge = '';
+                if (f.discovery_type === 'ai_discovery' || (f.raw_payload && f.raw_payload.indexOf('ai_discovery') !== -1)) {
+                    discoveryBadge = '<span class="badge bg-info-subtle text-info border-info ms-1" style="font-size: 10px;"><i class="fas fa-sparkles me-1"></i> Deep AI Discovery</span>';
+                }
                 return '<tr class="needs-review-row" data-finding-id="' + esc(f.id) + '">' +
                     '<td class="text-center"><input type="checkbox" class="form-check-input needs-review-select" value="' + esc(f.id) + '"></td>' +
                     '<td>' + (idx + 1) + '</td>' +
-                    '<td><div class="fw-semibold needs-review-issue-title">' + esc(f.title || '-') + '</div><div class="small text-muted needs-review-issue-meta">' + esc(f.rule_id || '-') + ' | ' + esc(f.severity || '-') + ' | ' + esc(f.occurrence_count || 0) + ' hit(s)</div></td>' +
+                    '<td><div class="fw-semibold needs-review-issue-title">' + esc(f.title || '-') + discoveryBadge + '</div><div class="small text-muted needs-review-issue-meta">' + esc(f.rule_id || '-') + ' | ' + esc(f.severity || '-') + ' | ' + esc(f.occurrence_count || 0) + ' hit(s)</div></td>' +
                     '<td class="small needs-review-cell-scroll"><div class="needs-review-truncate" title="' + esc(findingUrls.join('\n')) + '">' + urlsCellHtml + '</div></td>' +
                     '<td><span class="badge bg-light text-dark border">' + esc(f.severity || '-') + '</span></td>' +
                     '<td class="small">' + esc(f.wcag_sc || '-') + '</td>' +
@@ -1864,7 +1920,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                     '<td class="small needs-review-cell-scroll">' + extractIncorrectCode(f) + '</td>' +
                     '<td class="small">' + shotHtml + '</td>' +
                     '<td class="small needs-review-cell-scroll"><div class="needs-review-truncate">' + renderRecommendationHtml(String(f.recommendation || recommendation || '-'), '-') + '</div></td>' +
-                    '<td class="small needs-review-cell-scroll"><div class="needs-review-code-wrap"><code class="needs-review-inline-code mb-0">' + esc(String(f.correct_code || '-')) + '</code></div></td>' +
+                    '<td class="small needs-review-cell-scroll">' + renderCorrectCodeBlocks(f) + '</td>' +
                     '<td class="needs-review-actions"><button type="button" class="btn btn-sm btn-outline-secondary needs-review-preview" data-finding-id="' + esc(f.id) + '"><i class="fas fa-eye"></i></button> <button type="button" class="btn btn-sm btn-success needs-review-move" data-finding-id="' + esc(f.id) + '"><i class="fas fa-arrow-right"></i></button> <button type="button" class="btn btn-sm btn-outline-danger needs-review-delete" data-finding-id="' + esc(f.id) + '"><i class="fas fa-trash"></i></button></td>' +
                 '</tr>';
             }).join('');
@@ -1982,8 +2038,10 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         }
     }
 
-    async function runAutomatedScanForCurrentPage(scanUrls) {
+    async function runAutomatedScanForCurrentPage(scanUrls, mode) {
+        var scanMode = String(mode || 'default').toLowerCase();
         var btn = document.getElementById('needsReviewRunScanBtn');
+        var aiBtn = document.getElementById('needsReviewRunAiDeepAuditBtn');
         var runSelectedBtn = document.getElementById('needsReviewRunSelectedScanBtn');
         var progressWrap = document.getElementById('needsReviewScanProgressWrap');
         var progressText = document.getElementById('needsReviewScanProgressText');
@@ -1992,6 +2050,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         var cancelBtnUI = document.getElementById('needsReviewCancelScanBtn');
 
         if (btn) btn.disabled = true;
+        if (aiBtn) aiBtn.disabled = true;
         if (runSelectedBtn) runSelectedBtn.disabled = true;
         
         var token = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -2008,7 +2067,11 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             var t = Math.max(1, parseInt(total || 1, 10));
             var p = Math.max(0, Math.min(100, parseInt(percent || 0, 10)));
             if (progressWrap) progressWrap.classList.remove('d-none');
-            if (progressText) progressText.textContent = (statusText || 'Scanning...') + ' (' + c + '/' + t + ' URLs)';
+            
+            // Use the granular message if available, otherwise fallback to generic status
+            var displayMsg = (statusText || 'Scanning...');
+            if (progressText) progressText.innerText = displayMsg + ' (' + c + '/' + t + ' URLs)';
+            
             if (progressPercent) progressPercent.textContent = p + '%';
             if (progressBar) progressBar.style.width = p + '%';
         }
@@ -2017,7 +2080,8 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             clearInterval(scanProgressTimer);
             scanProgressTimer = null;
         }
-        setProgress(0, totalUrls, 0, 'Starting scan');
+        var startMsg = (scanMode === 'discovery' ? 'Starting AI Deep Audit' : 'Starting scan');
+        setProgress(0, totalUrls, 0, startMsg);
         
         // Persist token in localStorage so we can resume if user navigates away/refreshes
         localStorage.setItem('pms_a11y_scan_' + pageId, token);
@@ -2029,15 +2093,17 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                 if (!pJson || !pJson.success) return;
                 
                 if (pJson.status === 'running') {
-                    setProgress(pJson.completed || 0, pJson.total || totalUrls, pJson.percent || 0, 'Scanning');
+                    var statusMsg = pJson.message || (scanMode === 'discovery' ? 'AI Auditing' : 'Scanning');
+                    setProgress(pJson.completed || 0, pJson.total || totalUrls, pJson.percent || 0, statusMsg);
                 } else if (pJson.status === 'completed') {
                     clearInterval(scanProgressTimer);
                     scanProgressTimer = null;
                     localStorage.removeItem('pms_a11y_scan_' + pageId);
                     setProgress(pJson.total, pJson.total, 100, 'Scan completed');
-                    if (typeof window.showToast === 'function') window.showToast('Automated scan completed.', 'success');
+                    if (typeof window.showToast === 'function') window.showToast((scanMode === 'discovery' ? 'AI Deep Audit' : 'Automated scan') + ' completed.', 'success');
                     await loadNeedsReviewFindings();
                     if (btn) btn.disabled = false;
+                    if (aiBtn) aiBtn.disabled = false;
                     if (runSelectedBtn) runSelectedBtn.disabled = false;
                     setTimeout(() => { if (progressWrap) progressWrap.classList.add('d-none'); }, 3000);
                 } else if (pJson.status === 'failed' || pJson.status === 'cancelled') {
@@ -2046,6 +2112,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                     localStorage.removeItem('pms_a11y_scan_' + pageId);
                     setProgress(0, 0, 0, pJson.error || 'Scan failed or cancelled');
                     if (btn) btn.disabled = false;
+                    if (aiBtn) aiBtn.disabled = false;
                     if (runSelectedBtn) runSelectedBtn.disabled = false;
                     setTimeout(() => { if (progressWrap) progressWrap.classList.add('d-none'); }, 4000);
                 }
@@ -2056,6 +2123,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             fd.append('project_id', String(projectId));
             fd.append('page_id', String(pageId));
             fd.append('progress_token', token);
+            fd.append('scan_mode', scanMode);
             if (Array.isArray(scanUrls) && scanUrls.length) {
                 fd.append('scan_urls', JSON.stringify(scanUrls));
             }
@@ -2121,7 +2189,8 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                 if (!pJson || !pJson.success) return;
                 
                 if (pJson.status === 'running') {
-                    setProgress(pJson.completed || 0, pJson.total || 0, pJson.percent || 0, 'Background Scanning');
+                    var statusMsg = pJson.message || 'Background Scanning';
+                    setProgress(pJson.completed || 0, pJson.total || 0, pJson.percent || 0, statusMsg);
                 } else if (pJson.status === 'completed') {
                     clearInterval(scanProgressTimer);
                     scanProgressTimer = null;
@@ -2139,7 +2208,11 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                     if (pJson.status !== 'not_found') {
                         setProgress(0, 0, 0, pJson.error || 'Scan stopped');
                     }
+                    var btn = document.getElementById('needsReviewRunScanBtn');
+                    var aiBtn = document.getElementById('needsReviewRunAiDeepAuditBtn');
+                    var runSelectedBtn = document.getElementById('needsReviewRunSelectedScanBtn');
                     if (btn) btn.disabled = false;
+                    if (aiBtn) aiBtn.disabled = false;
                     if (runSelectedBtn) runSelectedBtn.disabled = false;
                     setTimeout(() => { if (progressWrap) progressWrap.classList.add('d-none'); }, 3000);
                 }
@@ -2147,11 +2220,13 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         }, 1500);
     }
 
+
+
     document.addEventListener('DOMContentLoaded', function () {
         var refreshBtn = document.getElementById('needsReviewRefreshBtn');
         var runBtn = document.getElementById('needsReviewRunScanBtn');
+        var aiAuditBtn = document.getElementById('needsReviewRunAiDeepAuditBtn');
         var deleteSelectedBtn = document.getElementById('needsReviewDeleteSelectedBtn');
-        var runSelectedBtn = document.getElementById('needsReviewRunSelectedScanBtn');
         var scanModalEl = document.getElementById('needsReviewScanUrlModal');
         var issueImageModalEl = document.getElementById('issueImageModal');
         if (issueImageModalEl) {
@@ -2165,7 +2240,8 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             });
         }
         if (refreshBtn) refreshBtn.addEventListener('click', loadNeedsReviewFindings);
-        if (runBtn) runBtn.addEventListener('click', openScanUrlSelectionModal);
+        if (runBtn) runBtn.addEventListener('click', function() { openScanUrlSelectionModal('default'); });
+        if (aiAuditBtn) aiAuditBtn.addEventListener('click', function() { openScanUrlSelectionModal('discovery'); });
         
         var cancelBtn = document.getElementById('needsReviewCancelScanBtn');
         if (cancelBtn) {
@@ -2192,21 +2268,6 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             });
         }
 
-        if (runSelectedBtn) {
-            runSelectedBtn.addEventListener('click', async function () {
-                var selectedUrls = Array.from(document.querySelectorAll('#needsReviewScanUrlList .needs-review-scan-url:checked'))
-                    .map(function (cb) { return String(cb.value || '').trim(); })
-                    .filter(Boolean);
-                if (!selectedUrls.length) {
-                    if (typeof window.showToast === 'function') window.showToast('Select at least one URL', 'warning');
-                    return;
-                }
-                if (scanModalEl && window.bootstrap && bootstrap.Modal) {
-                    bootstrap.Modal.getOrCreateInstance(scanModalEl).hide();
-                }
-                await runAutomatedScanForCurrentPage(selectedUrls);
-            });
-        }
         if (deleteSelectedBtn) {
             deleteSelectedBtn.addEventListener('click', async function () {
                 var selected = Array.from(document.querySelectorAll('#needsReviewBody .needs-review-select:checked'))
@@ -2232,6 +2293,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             });
         }
         initNeedsReviewTableResizable();
+        checkAndResumeActiveScan();
         loadNeedsReviewFindings();
     });
 

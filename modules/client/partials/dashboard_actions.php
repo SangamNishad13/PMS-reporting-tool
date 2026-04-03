@@ -22,17 +22,17 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
     <div class="col-12">
         <div class="quick-actions-grid">
             
-            <!-- View All Analytics -->
+            <!-- View All Projects -->
             <div class="action-card">
                 <div class="action-icon">
-                    <i class="fas fa-chart-line"></i>
+                    <i class="fas fa-folder-open"></i>
                 </div>
                 <div class="action-content">
-                    <h4 class="action-title">View All Analytics</h4>
-                    <p class="action-description">Access detailed analytics reports for all assigned projects</p>
-                    <a href="<?php echo $baseDir; ?>/modules/client/dashboard_unified.php?view=analytics&projects=<?php echo $projectIdsList; ?>" 
+                    <h4 class="action-title">View All Projects</h4>
+                    <p class="action-description">Browse individual project pages and detailed per-project analytics</p>
+                    <a href="<?php echo $baseDir; ?>/modules/client/projects.php" 
                        class="btn btn-primary action-button">
-                        <i class="fas fa-arrow-right"></i> View Reports
+                        <i class="fas fa-arrow-right"></i> Browse Projects
                     </a>
                 </div>
             </div>
@@ -65,20 +65,7 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
                 </div>
             </div>
 
-            <!-- View Projects -->
-            <div class="action-card">
-                <div class="action-icon text-secondary">
-                    <i class="fas fa-folder-open"></i>
-                </div>
-                <div class="action-content">
-                    <h4 class="action-title">View Projects</h4>
-                    <p class="action-description">Browse individual project pages and detailed analytics</p>
-                    <a href="<?php echo $baseDir; ?>/modules/client/projects.php" 
-                       class="btn btn-secondary action-button">
-                        <i class="fas fa-arrow-right"></i> Browse Projects
-                    </a>
-                </div>
-            </div>
+
 
         </div>
     </div>
@@ -93,7 +80,7 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
                 <a href="<?php echo $baseDir; ?>/modules/client/help.php" class="nav-link">
                     <i class="fas fa-question-circle"></i> Help & Documentation
                 </a>
-                <a href="<?php echo $baseDir; ?>/modules/client/settings.php" class="nav-link">
+                <a href="<?php echo $baseDir; ?>/modules/client/preferences.php" class="nav-link">
                     <i class="fas fa-cog"></i> Dashboard Settings
                 </a>
                 <a href="<?php echo $baseDir; ?>/modules/feedback.php" class="nav-link">

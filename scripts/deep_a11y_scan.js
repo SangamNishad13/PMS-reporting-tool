@@ -3,9 +3,27 @@ const path = require('path');
 const puppeteer = require('puppeteer-core');
 
 // ── AI/ML Integration Helper Functions ───────────────────────────
-async function getAIEnhancedFindings(violation, snippet, feedbackPath) {
+function toNeedsReviewSeverity(impact) {
+  const v = String(impact || "").toLowerCase().trim();
+  if (v === "critical" || v === "blocker") return "Blocker";
+  if (v === "serious" || v === "high") return "Critical";
+  if (v === "moderate" || v === "medium" || v === "major") return "Major";
+  if (v === "minor" || v === "low") return "Minor";
+  return "Major";
+}
+
+function toLabelText(id, fallback) {
+  if (!id) return fallback || "Field";
+  const label = id
+    .replace(/[_-]/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim();
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+async function getAIEnhancedFindings(violation, snippet, feedbackPath, token = null) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 18000); // Increased 18s timeout for complex JSON
+  const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes for slow Llama3 inference on VPS
   
   try {
     const ruleId = violation.id;
@@ -44,21 +62,24 @@ ${feedbackPrompt}
 Instructions:
 1. Provide a technical, professional, and audit-ready reporting style.
 2. Output your findings strictly as a JSON object with these keys:
-   - "actual_results": A detailed explanation of why the element fails accessibility (mentioning specific attributes or lack thereof).
-   - "incorrect_code": The specific failing part of the HTML snippet.
-   - "recommendation": A clear, actionable step for a developer to fix the issue.
-   - "correct_code": Providing the exact corrected HTML snippet for the provided target snippet.
-3. Be concise and maintain a consistent expert tone.
+   - "actual_results": A detailed explanation of why the element fails accessibility. Include the specific WCAG Success Criterion (e.g., SC 1.1.1) and the practical impact on users with disabilities (e.g., "Screen reader users cannot identify the purpose of this control").
+   - "incorrect_code": The specific failing part of the HTML snippet that MUST be changed (exact snippet).
+   - "recommendation": A detailed, step-by-step recommendation for a developer to fix the issue. Use a numbered list (1., 2., 3.) for the steps if multiple actions are required.
+   - "correct_code": Providing the exact corrected code snippet for the provided target snippet. This should include:
+     a) The corrected HTML.
+     b) Any necessary CSS within <style> tags if it's required for the fix (e.g., focus indicators, hiding content).
+     c) Any necessary Javascript within <script> tags if the fix requires logic (e.g., ARIA state management, keyboard event handling, focus management).
+3. Be concise but thorough in the steps. Maintain a consistent expert tone.
 4. Output ONLY the JSON. No preamble or markdown blocks.`;
 
     const response = await fetch('http://localhost:11434/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama3:8b',
+        model: 'llama3:latest', // Corrected to user's installed model
         prompt: prompt,
         stream: false,
-        format: 'json' // Request JSON format from model
+        format: 'json'
       }),
       signal: controller.signal
     });
@@ -87,6 +108,123 @@ Instructions:
   }
   return null;
 }
+
+async function runAIDiscoveryAudit(page, feedbackPath) {
+  const simplifiedDOM = await page.evaluate(() => {
+    function getCleanAttributes(el) {
+      const attrs = {};
+      const important = ['id', 'role', 'aria-label', 'aria-labelledby', 'aria-describedby', 'alt', 'title', 'type', 'name', 'placeholder'];
+      for (const attr of el.attributes) {
+        if (important.includes(attr.name.toLowerCase()) || attr.name.toLowerCase().startsWith('aria-')) {
+          attrs[attr.name] = attr.value;
+        }
+      }
+      return attrs;
+    }
+
+    function simplify(node, depth = 0) {
+      if (depth > 12) return null; // Cap depth to prevent context blowup
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent.trim();
+        return text ? { type: 'text', val: text.slice(0, 50) } : null; // Truncate text
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return null;
+
+      const tag = node.tagName.toLowerCase();
+      // Expanded exclusion list
+      if (['script', 'style', 'noscript', 'iframe', 'svg', 'path', 'meta', 'link'].includes(tag)) return null;
+
+      const attrs = getCleanAttributes(node);
+      const isMeaningful = (Object.keys(attrs).length > 0) || 
+                          (['button', 'input', 'select', 'textarea', 'a', 'form', 'h1', 'h2', 'h3', 'nav', 'main', 'footer', 'header'].includes(tag));
+
+      const children = [];
+      for (const child of node.childNodes) {
+        const s = simplify(child, depth + 1);
+        if (s) children.push(s);
+      }
+
+      // If it's a generic div/span with no attributes and no meaningful children, prune it
+      if (['div', 'span'].includes(tag) && !isMeaningful && children.length === 0) return null;
+      
+      // If it's a generic div/span with no attributes, but has 1 child, flatten it
+      if (['div', 'span'].includes(tag) && !isMeaningful && children.length === 1) return children[0];
+
+      return { tag, attrs, children };
+    }
+    return simplify(document.body);
+  });
+
+  const prompt = `Analyze this simplified DOM and identify accessibility issues (WCAG 2.2). 
+Output ONLY a JSON array of up to 10 issues with these keys: 
+"rule_id", "title", "severity", "actual_results", "incorrect_code", "recommendation", "correct_code", "wcag_sc".
+
+DOM:
+${JSON.stringify(simplifiedDOM).slice(0, 4000)}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+  console.log('Analyzing page with AI (Ultra-light mode for low memory)...');
+
+  try {
+    const response = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama3:latest',
+        prompt: prompt,
+        stream: false,
+        format: 'json'
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const result = await response.json();
+      const aiResponse = result.response.trim();
+      const startIdx = aiResponse.indexOf('[');
+      const endIdx = aiResponse.lastIndexOf(']');
+      if (startIdx !== -1 && endIdx !== -1) {
+        const jsonStr = aiResponse.slice(startIdx, endIdx + 1);
+        const rawFindings = JSON.parse(jsonStr);
+        if (!Array.isArray(rawFindings)) {
+             throw new Error('AI response is not a JSON array');
+        }
+        return (rawFindings || []).map(f => {
+          const sev = String(f.severity || 'moderate').toLowerCase();
+          return {
+            ...f,
+            rule_id: String(f.rule_id || 'ai-discovery-' + Math.random().toString(36).slice(2, 7)).trim(),
+            title: String(f.title || 'AI Discovery finding').trim(),
+            severity: sev,
+            needs_review_severity: toNeedsReviewSeverity(sev),
+            wcag_sc: String(f.wcag_sc || '').trim(),
+            wcag_name: String(f.wcag_name || '').trim(),
+            wcag_level: String(f.wcag_level || '').trim(),
+            actual_results: String(f.actual_results || '').trim(),
+            incorrect_code: String(f.incorrect_code || '').trim(),
+            recommendation: String(f.recommendation || '').trim(),
+            correct_code: String(f.correct_code || '').trim(),
+            screenshots: [],
+            occurrence_count: 1,
+            discovery_type: 'ai_discovery'
+          };
+        });
+      } else {
+        throw new Error('AI response did not contain a valid JSON array of findings');
+      }
+    } else {
+      const errTxt = await response.text();
+      throw new Error(`Ollama API error: ${response.status} ${errTxt}`);
+    }
+  } catch (err) {
+    clearTimeout(timeoutId);
+    console.error('AI Discovery Audit failed:', err.message);
+    throw err; // Re-throw to signal scan failure
+  }
+}
 // ──────────────────────────────────────────────────────────────────
 
 function loadLocalEngineSource() {
@@ -108,6 +246,25 @@ function parseArgs(argv) {
     out[key] = val;
   }
   return out;
+}
+
+function reportStatus(token, payload) {
+  if (!token) return;
+  try {
+    const tmpDir = path.join(__dirname, '..', 'tmp');
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+    const progressPath = path.join(tmpDir, `a11y_progress_${token}.json`);
+    
+    let existing = {};
+    if (fs.existsSync(progressPath)) {
+      existing = JSON.parse(fs.readFileSync(progressPath, 'utf8'));
+    }
+    
+    const updated = { ...existing, ...payload, updated_at: new Date().toISOString() };
+    fs.writeFileSync(progressPath, JSON.stringify(updated, null, 2));
+  } catch (e) {
+    console.error('Failed to report status:', e.message);
+  }
 }
 
 function findBrowserExecutable() {
@@ -294,14 +451,7 @@ function formatActualResults(url, description, groupedFailures, recommendation, 
   return lines.join("\n");
 }
 
-function toNeedsReviewSeverity(impact) {
-  const v = String(impact || "").toLowerCase().trim();
-  if (v === "critical") return "Blocker";
-  if (v === "serious") return "Critical";
-  if (v === "moderate") return "Major";
-  if (v === "minor") return "Minor";
-  return "Major";
-}
+// Severity mapping is now defined at the top of the file
 
 function extractWcagMeta(violation) {
   const tags = Array.isArray(violation.tags) ? violation.tags.map((t) => String(t || "").toLowerCase()) : [];
@@ -763,7 +913,7 @@ function getRuleSpecificGuidance(violation, context) {
 
   const guidanceMap = {
     "color-contrast": {
-      recommendation: "Adjust foreground/background colors so text and interactive controls meet WCAG 2 AA contrast thresholds (minimum 4.5:1 for normal text, 3:1 for large text).",
+      recommendation: "1. Identify all text elements with low contrast against their background.\n2. Adjust the foreground or background color to achieve a minimum contrast ratio of 4.5:1 for normal text and 3:1 for large text (18pt+ or 14pt+ bold).\n3. Use a contrast checker tool to verify compliance across all states (hover, focus, active).",
       correctCode: `<style>
 .btn-primary {
   color: #ffffff;
@@ -772,17 +922,17 @@ function getRuleSpecificGuidance(violation, context) {
 </style>`
     },
     "label": {
-      recommendation: "Ensure each form control has a clear, programmatically associated accessible name.",
+      recommendation: "1. Every form control must have a programmatically associated label.\n2. Use the <label for=\"...\"> attribute to link to the corresponding input id.\n3. Ensure the label text is visible and accurately describes the field's purpose.",
       correctCode: `<!-- Add visible label associated via for/id -->
 <label for="email">Email address</label>
 <input id="email" name="email" type="email" required>`
     },
     "select-name": {
-      recommendation: "Each <select> must have an accessible name using a visible associated <label>.",
+      recommendation: "1. Locate the <select> element and check if it has an associated <label>.\n2. Add a visible <label> with a 'for' attribute matching the select's 'id'.\n3. If a visible label is not possible, use 'aria-label' or 'aria-labelledby' to provide an accessible name.",
       correctCode: ""
     },
     "image-alt": {
-      recommendation: "Provide meaningful alt text for informative images and use empty alt (alt=\"\") for decorative images.",
+      recommendation: "1. Audit all <img> tags for the presence of an 'alt' attribute.\n2. For informative images, provide a concise description of the image's content or function.\n3. For purely decorative images, use empty alt text (alt=\"\") to hide them from assistive technologies.",
       correctCode: `<img src="/images/support.png" alt="Contact investor support">
 <!-- decorative image -->
 <img src="/images/divider.svg" alt="">`
@@ -796,11 +946,11 @@ function getRuleSpecificGuidance(violation, context) {
 </a>`
     },
     "link-name": {
-      recommendation: "Give every link an accessible name that clearly describes its destination or action.",
+      recommendation: "1. Review link text to ensure it makes sense out of context (avoid \"click here\" or \"more\").\n2. If the link contains only an icon, add a'visually-hidden' span or 'aria-label' to the <a> tag.\n3. Ensure the accessible name clearly describes the link's destination.",
       correctCode: `<a href="/investor-login">Investor Login</a>`
     },
     "button-name": {
-      recommendation: "Ensure each <button> exposes a clear accessible name for assistive technologies.",
+      recommendation: "1. Ensure every <button> has discernible text content.\n2. For icon-based buttons, provide an accessible name using 'aria-label' or a 'visually-hidden' span.\n3. Verify that the button's purpose is clear to screen reader users.",
       correctCode: `<!-- Use visible button text -->
 <button type="button">Close dialog</button>
 
@@ -1137,6 +1287,8 @@ function getRuleSpecificGuidance(violation, context) {
   const outPath = String(args.out || '').trim();
   const screenshotDir = String(args['screenshot-dir'] || '').trim();
   const maxNodesArg = parseInt(args['max-nodes'] || '0', 10) || 0;
+  const mode = String(args.mode || 'default').toLowerCase();
+  const token = String(args.token || '').trim();
 
   if (!url || !outPath || !screenshotDir) {
     throw new Error('Missing required args: --url --out --screenshot-dir');
@@ -1158,216 +1310,226 @@ function getRuleSpecificGuidance(violation, context) {
 
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 900 });
-  await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
+  
+  reportStatus(token, { status: 'running', message: `Initializing scan for ${url}...` });
+  
+  await page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 });
 
   // Wait a bit for async UI widgets.
   await new Promise((r) => setTimeout(r, 1200));
 
-  await page.evaluate((source) => {
-    // eslint-disable-next-line no-eval
-    eval(source);
-  }, axeSource);
+  let findings = [];
+  const feedbackPath = path.join(__dirname, '..', 'storage', 'ai_feedback.json');
 
-  const scanResult = await page.evaluate(async () => {
-    return await axe.run(document, {
-      runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa', 'best-practice'] },
-      resultTypes: ['violations']
+  if (mode === 'discovery') {
+    // --- MODE: AI Discovery Audit ---
+    reportStatus(token, { message: 'Running AI Discovery on page...' });
+    findings = await runAIDiscoveryAudit(page, feedbackPath);
+  } else {
+    // --- MODE: Default (axe-core + AI Enhancement) ---
+    await page.evaluate((source) => {
+      // eslint-disable-next-line no-eval
+      eval(source);
+    }, axeSource);
+
+    const scanResult = await page.evaluate(async () => {
+      return await axe.run(document, {
+        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa', 'best-practice'] },
+        resultTypes: ['violations']
+      });
     });
-  });
 
-  const findings = [];
-  const violations = scanResult.violations || [];
-  const CONCURRENCY = 3; // AI processing concurrency
-  const aiResultsMap = new Map();
+    reportStatus(token, { message: `Engine found ${(scanResult.violations || []).length} violation types. Enhancing with AI...` });
 
-  // --- PHASE 1: Parallel AI Recommendations ---
-  // We do this first because it's the bottleneck and doesn't require Puppeteer interaction.
-  for (let i = 0; i < violations.length; i += CONCURRENCY) {
-    const batch = violations.slice(i, i + CONCURRENCY);
-    await Promise.all(batch.map(async (v) => {
-        const allNodes = v.nodes || [];
-        const nodes = maxNodesArg > 0 ? allNodes.slice(0, maxNodesArg) : allNodes;
-        const snippet = nodes[0] ? String(nodes[0].html || '').trim() : '';
-        const feedbackPath = path.join(__dirname, '..', 'storage', 'ai_feedback.json');
-        
-        try {
-            const aiData = await getAIEnhancedFindings(v, snippet, feedbackPath);
-            if (aiData) {
-                aiResultsMap.set(v.id, aiData);
-            }
-        } catch (_) {}
-    }));
-  }
+    const violations = scanResult.violations || [];
+    const CONCURRENCY = 3; // AI processing concurrency
+    const aiResultsMap = new Map();
 
-  // --- PHASE 2: Sequential Puppeteer Processing ---
-  // We do this one-by-one to ensure screenshots are focused correctly.
-  let screenshotSeqTotal = 1;
-  for (const violation of violations) {
-    const allNodes = violation.nodes || [];
-    const nodes = maxNodesArg > 0 ? allNodes.slice(0, maxNodesArg) : allNodes;
-    const snippets = uniq(nodes.map((n) => String(n.html || '').trim()).filter(Boolean));
-    const failureSummaries = uniq(nodes.map((n) => String(n.failureSummary || "").replace(/\s+/g, " ").trim()).filter(Boolean));
-    const guidance = getRuleSpecificGuidance(violation, { snippets, failureSummaries });
-    
-    // Use pre-fetched AI data or fallback to rule guidance
-    const aiData = aiResultsMap.get(violation.id);
-    const recommendation = (aiData && aiData.recommendation) ? aiData.recommendation : guidance.recommendation;
-    const aiActualResults = (aiData && aiData.actual_results) ? aiData.actual_results : null;
-    const aiIncorrectCode = (aiData && aiData.incorrect_code) ? aiData.incorrect_code : null;
-    const aiCorrectCode = (aiData && aiData.correct_code) ? aiData.correct_code : guidance.correctCode;
+    // --- PHASE 1: Parallel AI Recommendations ---
+    for (let i = 0; i < violations.length; i += CONCURRENCY) {
+      const batch = violations.slice(i, i + CONCURRENCY);
+      await Promise.all(batch.map(async (v) => {
+          const allNodes = v.nodes || [];
+          const nodes = maxNodesArg > 0 ? allNodes.slice(0, maxNodesArg) : allNodes;
+          const snippet = nodes[0] ? String(nodes[0].html || '').trim() : '';
+          
+          try {
+              reportStatus(token, { message: `AI Analyzing: ${v.id}...` });
+              const aiData = await getAIEnhancedFindings(v, snippet, feedbackPath, token);
+              if (aiData) {
+                  aiResultsMap.set(v.id, aiData);
+              }
+          } catch (_) {}
+      }));
+    }
 
-    const nodeInputs = nodes
-      .map((n) => ({
-        selector: (Array.isArray(n.target) ? n.target[0] : "") || "",
-        failure_summary: String(n.failureSummary || "").replace(/\s+/g, " ").trim()
-      }))
-      .filter((x) => x.selector);
+    // --- PHASE 2: Sequential Puppeteer Processing ---
+    let screenshotSeqTotal = 1;
+    for (const violation of violations) {
+      const allNodes = violation.nodes || [];
+      const nodes = maxNodesArg > 0 ? allNodes.slice(0, maxNodesArg) : allNodes;
+      const snippets = uniq(nodes.map((n) => String(n.html || '').trim()).filter(Boolean));
+      const failureSummaries = uniq(nodes.map((n) => String(n.failureSummary || "").replace(/\s+/g, " ").trim()).filter(Boolean));
+      const guidance = getRuleSpecificGuidance(violation, { snippets, failureSummaries });
+      
+      const aiData = aiResultsMap.get(violation.id);
+      const recommendation = (aiData && aiData.recommendation) ? aiData.recommendation : guidance.recommendation;
+      const aiActualResults = (aiData && aiData.actual_results) ? aiData.actual_results : null;
+      const aiIncorrectCode = (aiData && aiData.incorrect_code) ? aiData.incorrect_code : null;
+      const aiCorrectCode = (aiData && aiData.correct_code) ? aiData.correct_code : guidance.correctCode;
 
-    // Context extraction (must be sequential for stability)
-    const instanceContext = await page.evaluate((nodeList) => {
-      function getInstanceName(el) {
-        if (!el) return "";
-        const aria = (el.getAttribute("aria-label") || "").trim();
-        if (aria) return aria;
-        const alt = (el.getAttribute("alt") || "").trim();
-        if (alt) return alt;
-        const title = (el.getAttribute("title") || "").trim();
-        if (title) return title;
-        const nameAttr = (el.getAttribute("name") || "").trim();
-        if (nameAttr) return nameAttr;
-        const id = (el.id || "").trim();
-        if (id) return `#${id}`;
-        const text = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
-        if (text) return text.slice(0, 80);
-        return el.tagName ? el.tagName.toLowerCase() : "element";
-      }
-      function getSectionContext(el) {
-        if (!el) return "page section";
-        const directSection = el.closest("header, nav, main, footer, aside, section, article, form, [role='region'], [role='main'], [role='navigation']");
-        if (directSection) {
-          if (directSection.tagName && directSection.tagName.toLowerCase() === "footer") return "Footer section";
-          const heading = directSection.querySelector("h1, h2, h3, h4, h5, h6");
-          if (heading) {
-            const hText = (heading.innerText || heading.textContent || "").replace(/\s+/g, " ").trim();
-            if (hText) return hText.slice(0, 90);
-          }
-          if (directSection.id) return `section#${directSection.id}`;
-          if (directSection.getAttribute("aria-label")) return directSection.getAttribute("aria-label").trim();
-          return directSection.tagName.toLowerCase();
+      const nodeInputs = nodes
+        .map((n) => ({
+          selector: (Array.isArray(n.target) ? n.target[0] : "") || "",
+          failure_summary: String(n.failureSummary || "").replace(/\s+/g, " ").trim()
+        }))
+        .filter((x) => x.selector);
+
+      const instanceContext = await page.evaluate((nodeList) => {
+        function getInstanceName(el) {
+          if (!el) return "";
+          const aria = (el.getAttribute("aria-label") || "").trim();
+          if (aria) return aria;
+          const alt = (el.getAttribute("alt") || "").trim();
+          if (alt) return alt;
+          const title = (el.getAttribute("title") || "").trim();
+          if (title) return title;
+          const nameAttr = (el.getAttribute("name") || "").trim();
+          if (nameAttr) return nameAttr;
+          const id = (el.id || "").trim();
+          if (id) return `#${id}`;
+          const text = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+          if (text) return text.slice(0, 80);
+          return el.tagName ? el.tagName.toLowerCase() : "element";
         }
-        return "page section";
-      }
-      const out = [];
-      for (const item of nodeList || []) {
-        const selector = String(item && item.selector ? item.selector : "").trim();
-        if (!selector) continue;
-        const el = document.querySelector(selector);
-        if (!el) continue;
-        out.push({
-          selector,
-          failure_summary: String(item && item.failure_summary ? item.failure_summary : "").trim(),
-          instance_name: getInstanceName(el),
-          section_context: getSectionContext(el),
-          abs_top: Math.max(0, (window.scrollY || 0) + (el.getBoundingClientRect().top || 0))
-        });
-      }
-      return out;
-    }, nodeInputs);
-
-    const groupedFailureMap = new Map();
-    for (const item of (instanceContext || [])) {
-      const summary = simplifyFailureSummary(item && item.failure_summary ? item.failure_summary : "", violation.id);
-      const key = summary || "__default__";
-      if (!groupedFailureMap.has(key)) groupedFailureMap.set(key, { summary, instances: [] });
-      groupedFailureMap.get(key).instances.push(item);
-    }
-    const groupedFailures = Array.from(groupedFailureMap.values()).map((g) => {
-      const seenInst = new Set();
-      const outInst = [];
-      for (const inst of (g.instances || [])) {
-        const name = String(inst.instance_name || "Unnamed element").trim();
-        const section = String(inst.section_context || "page section").trim();
-        const dedupKey = `${name.toLowerCase()}||${section.toLowerCase()}`;
-        if (seenInst.has(dedupKey)) continue;
-        seenInst.add(dedupKey);
-        outInst.push({
-          selector: inst.selector,
-          instance_name: name,
-          section_context: section,
-          abs_top: inst.abs_top
-        });
-      }
-      return { summary: g.summary, instances: outInst };
-    });
-
-    const viewportHeight = 900;
-    const screenshotInstances = [];
-    const seenScreenshotSelectors = new Set();
-    for (const inst of (instanceContext || [])) {
-      const sel = String(inst && inst.selector ? inst.selector : "").trim();
-      if (!sel || seenScreenshotSelectors.has(sel)) continue;
-      seenScreenshotSelectors.add(sel);
-      screenshotInstances.push(inst);
-    }
-    const sortedInstances = screenshotInstances.slice().sort((a, b) => Number(a.abs_top || 0) - Number(b.abs_top || 0));
-    const chunks = [];
-    for (const inst of sortedInstances) {
-      const top = Number(inst.abs_top || 0);
-      const last = chunks[chunks.length - 1];
-      if (!last || Math.abs(top - last.anchorTop) > Math.floor(viewportHeight * 0.75)) {
-        chunks.push({ anchorTop: top, selectors: [inst.selector] });
-      } else {
-        last.selectors.push(inst.selector);
-      }
-    }
-
-    const screenshots = [];
-    for (const chunk of chunks) {
-      try {
-        await page.evaluate((selectorList) => {
-          document.querySelectorAll('[data-pms-a11y-focus="1"]').forEach((el) => {
-            el.style.outline = ""; el.style.outlineOffset = ""; el.style.boxShadow = "";
-            el.removeAttribute("data-pms-a11y-focus");
+        function getSectionContext(el) {
+          if (!el) return "page section";
+          const directSection = el.closest("header, nav, main, footer, aside, section, article, form, [role='region'], [role='main'], [role='navigation']");
+          if (directSection) {
+            if (directSection.tagName && directSection.tagName.toLowerCase() === "footer") return "Footer section";
+            const heading = directSection.querySelector("h1, h2, h3, h4, h5, h6");
+            if (heading) {
+              const hText = (heading.innerText || heading.textContent || "").replace(/\s+/g, " ").trim();
+              if (hText) return hText.slice(0, 90);
+            }
+            if (directSection.id) return `section#${directSection.id}`;
+            if (directSection.getAttribute("aria-label")) return directSection.getAttribute("aria-label").trim();
+            return directSection.tagName.toLowerCase();
+          }
+          return "page section";
+        }
+        const out = [];
+        for (const item of nodeList || []) {
+          const selector = String(item && item.selector ? item.selector : "").trim();
+          if (!selector) continue;
+          const el = document.querySelector(selector);
+          if (!el) continue;
+          out.push({
+            selector,
+            failure_summary: String(item && item.failure_summary ? item.failure_summary : "").trim(),
+            instance_name: getInstanceName(el),
+            section_context: getSectionContext(el),
+            abs_top: Math.max(0, (window.scrollY || 0) + (el.getBoundingClientRect().top || 0))
           });
-          let firstEl = null;
-          (selectorList || []).forEach((selector) => {
-            const el = document.querySelector(selector);
-            if (!el) return;
-            if (!firstEl) firstEl = el;
-            el.setAttribute("data-pms-a11y-focus", "1");
-            el.style.outline = "3px solid #d90429"; el.style.outlineOffset = "2px";
-            el.style.boxShadow = "0 0 0 3px rgba(217,4,41,0.25)";
+        }
+        return out;
+      }, nodeInputs);
+
+      const groupedFailureMap = new Map();
+      for (const item of (instanceContext || [])) {
+        const summary = simplifyFailureSummary(item && item.failure_summary ? item.failure_summary : "", violation.id);
+        const key = summary || "__default__";
+        if (!groupedFailureMap.has(key)) groupedFailureMap.set(key, { summary, instances: [] });
+        groupedFailureMap.get(key).instances.push(item);
+      }
+      const groupedFailures = Array.from(groupedFailureMap.values()).map((g) => {
+        const seenInst = new Set();
+        const outInst = [];
+        for (const inst of (g.instances || [])) {
+          const name = String(inst.instance_name || "Unnamed element").trim();
+          const section = String(inst.section_context || "page section").trim();
+          const dedupKey = `${name.toLowerCase()}||${section.toLowerCase()}`;
+          if (seenInst.has(dedupKey)) continue;
+          seenInst.add(dedupKey);
+          outInst.push({
+            selector: inst.selector,
+            instance_name: name,
+            section_context: section,
+            abs_top: inst.abs_top
           });
-          if (firstEl && firstEl.scrollIntoView) firstEl.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
-        }, chunk.selectors);
-        await new Promise((r) => setTimeout(r, 150));
-        const fileName = `${String(Date.now())}_${sanitizeName(violation.id)}_${screenshotSeqTotal++}.png`;
-        const absShot = path.join(screenshotDir, fileName);
-        await page.screenshot({ path: absShot, fullPage: false });
-        screenshots.push(fileName);
-      } catch (_) {}
+        }
+        return { summary: g.summary, instances: outInst };
+      });
+
+      const viewportHeight = 900;
+      const screenshotInstances = [];
+      const seenScreenshotSelectors = new Set();
+      for (const inst of (instanceContext || [])) {
+        const sel = String(inst && inst.selector ? inst.selector : "").trim();
+        if (!sel || seenScreenshotSelectors.has(sel)) continue;
+        seenScreenshotSelectors.add(sel);
+        screenshotInstances.push(inst);
+      }
+      const sortedInstances = screenshotInstances.slice().sort((a, b) => Number(a.abs_top || 0) - Number(b.abs_top || 0));
+      const chunks = [];
+      for (const inst of sortedInstances) {
+        const top = Number(inst.abs_top || 0);
+        const last = chunks[chunks.length - 1];
+        if (!last || Math.abs(top - last.anchorTop) > Math.floor(viewportHeight * 0.75)) {
+          chunks.push({ anchorTop: top, selectors: [inst.selector] });
+        } else {
+          last.selectors.push(inst.selector);
+        }
+      }
+
+      const screenshots = [];
+      for (const chunk of chunks) {
+        try {
+          await page.evaluate((selectorList) => {
+            document.querySelectorAll('[data-pms-a11y-focus="1"]').forEach((el) => {
+              el.style.outline = ""; el.style.outlineOffset = ""; el.style.boxShadow = "";
+              el.removeAttribute("data-pms-a11y-focus");
+            });
+            let firstEl = null;
+            (selectorList || []).forEach((selector) => {
+              const el = document.querySelector(selector);
+              if (!el) return;
+              if (!firstEl) firstEl = el;
+              el.setAttribute("data-pms-a11y-focus", "1");
+              el.style.outline = "3px solid #d90429"; el.style.outlineOffset = "2px";
+              el.style.boxShadow = "0 0 0 3px rgba(217,4,41,0.25)";
+            });
+            if (firstEl && firstEl.scrollIntoView) firstEl.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
+          }, chunk.selectors);
+          await new Promise((r) => setTimeout(r, 150));
+          const fileName = `${String(Date.now())}_${sanitizeName(violation.id)}_${screenshotSeqTotal++}.png`;
+          const absShot = path.join(screenshotDir, fileName);
+          await page.screenshot({ path: absShot, fullPage: false });
+          screenshots.push(fileName);
+        } catch (_) {}
+      }
+
+      const actualResultsRaw = aiActualResults || formatActualResults(url, String(violation.description || "").trim(), groupedFailures, recommendation, String(violation.id || "").trim());
+      const wcagMeta = extractWcagMeta(violation);
+
+      findings.push({
+        rule_id: String(violation.id || '').trim(),
+        title: String(violation.help || violation.id || 'Accessibility issue').trim(),
+        severity: String(violation.impact || 'moderate').trim(),
+        needs_review_severity: toNeedsReviewSeverity(String(violation.impact || '')),
+        wcag_sc: wcagMeta.scList,
+        wcag_name: wcagMeta.wcagName,
+        wcag_level: wcagMeta.level,
+        actual_results: actualResultsRaw,
+        incorrect_code: aiIncorrectCode || snippets.join('\n\n'),
+        screenshots,
+        recommendation,
+        correct_code: String(aiCorrectCode || guidance.correctCode || '').trim(),
+        help_url: '',
+        occurrence_count: Number(violation.nodes ? violation.nodes.length : 0) || 0,
+        raw_nodes: nodeInputs
+      });
     }
-
-    const actualResultsRaw = aiActualResults || formatActualResults(url, String(violation.description || "").trim(), groupedFailures, recommendation, String(violation.id || "").trim());
-    const wcagMeta = extractWcagMeta(violation);
-
-    findings.push({
-      rule_id: String(violation.id || '').trim(),
-      title: String(violation.help || violation.id || 'Accessibility issue').trim(),
-      severity: String(violation.impact || 'moderate').trim(),
-      needs_review_severity: toNeedsReviewSeverity(String(violation.impact || '')),
-      wcag_sc: wcagMeta.scList,
-      wcag_name: wcagMeta.wcagName,
-      wcag_level: wcagMeta.level,
-      actual_results: actualResultsRaw,
-      incorrect_code: aiIncorrectCode || snippets.join('\n\n'),
-      screenshots,
-      recommendation,
-      correct_code: String(aiCorrectCode || guidance.correctCode || '').trim(),
-      help_url: '',
-      occurrence_count: Number(violation.nodes ? violation.nodes.length : 0) || 0,
-      raw_nodes: nodeInputs
-    });
   }
 
   await page.close();
@@ -1375,10 +1537,10 @@ function getRuleSpecificGuidance(violation, context) {
 
   const summary = {
     issues: findings.length,
-    critical: findings.filter((f) => f.severity === 'critical').length,
-    serious: findings.filter((f) => f.severity === 'serious').length,
-    moderate: findings.filter((f) => f.severity === 'moderate').length,
-    minor: findings.filter((f) => f.severity === 'minor').length
+    critical: findings.filter((f) => (f.severity || '').toLowerCase() === 'critical').length,
+    serious: findings.filter((f) => (f.severity || '').toLowerCase() === 'serious').length,
+    moderate: findings.filter((f) => (f.severity || '').toLowerCase() === 'moderate').length,
+    minor: findings.filter((f) => (f.severity || '').toLowerCase() === 'minor').length
   };
 
   fs.writeFileSync(outPath, JSON.stringify({ success: true, url, summary, findings }, null, 2), 'utf8');
