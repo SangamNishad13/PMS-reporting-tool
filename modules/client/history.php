@@ -35,7 +35,7 @@ include __DIR__ . '/../../includes/header.php';
     <div class="card shadow-sm">
         <div class="card-header bg-white d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Recent Exports</h5>
-            <a href="<?php echo $baseDir; ?>/modules/client/dashboard.php" class="btn btn-sm btn-outline-primary">
+            <a href="<?php echo $baseDir; ?>/client/dashboard" class="btn btn-sm btn-outline-primary">
                 Return to Dashboard
             </a>
         </div>

@@ -553,14 +553,13 @@ class VisualizationRenderer implements VisualizationInterface {
         $drillDownUrl = htmlspecialchars($data['drillDownUrl'] ?? '');
         $icon = htmlspecialchars($data['icon'] ?? 'fas fa-analytics');
         
-        $html = '<div class="dashboard-widget analytics-widget" id="' . $widgetId . '">';
+        $html = '<div class="dashboard-widget analytics-widget" id="' . $widgetId . '"';
+        if ($reportType !== '') {
+            $html .= ' data-report-type="' . $reportType . '"';
+        }
+        $html .= '>';
         $html .= '<div class="widget-header">';
         $html .= '<h3 class="widget-title"><i class="' . $icon . '"></i> ' . $title . '</h3>';
-        if ($drillDownUrl) {
-            $html .= '<a href="' . $drillDownUrl . '" class="widget-action" title="View detailed report">';
-            $html .= '<i class="fas fa-external-link-alt"></i>';
-            $html .= '</a>';
-        }
         $html .= '</div>';
         $html .= '<div class="widget-content">';
         
@@ -595,14 +594,6 @@ class VisualizationRenderer implements VisualizationInterface {
         }
         
         // Action buttons
-        if ($drillDownUrl) {
-            $html .= '<div class="widget-actions">';
-            $html .= '<a href="' . $drillDownUrl . '" class="btn btn-primary btn-sm">';
-            $html .= '<i class="fas fa-chart-line"></i> View Details';
-            $html .= '</a>';
-            $html .= '</div>';
-        }
-        
         $html .= '</div>';
         $html .= '</div>';
         
@@ -617,8 +608,13 @@ class VisualizationRenderer implements VisualizationInterface {
         $trendData = $data['trendData'] ?? [];
         $period = htmlspecialchars($data['period'] ?? 'Last 30 days');
         $icon = htmlspecialchars($data['icon'] ?? 'fas fa-chart-line');
+        $reportType = htmlspecialchars($data['reportType'] ?? '');
         
-        $html = '<div class="dashboard-widget trend-widget" id="' . $widgetId . '">';
+        $html = '<div class="dashboard-widget trend-widget" id="' . $widgetId . '"';
+        if ($reportType !== '') {
+            $html .= ' data-report-type="' . $reportType . '"';
+        }
+        $html .= '>';
         $html .= '<div class="widget-header">';
         $html .= '<h3 class="widget-title"><i class="' . $icon . '"></i> ' . $title . '</h3>';
         $html .= '<span class="widget-period">' . $period . '</span>';
@@ -638,7 +634,7 @@ class VisualizationRenderer implements VisualizationInterface {
             ]);
             $html .= '</div>';
         }
-        
+
         $html .= '</div>';
         $html .= '</div>';
         
@@ -933,19 +929,6 @@ class VisualizationRenderer implements VisualizationInterface {
             color: #495057;
         }
         
-        .widget-action {
-            color: #6c757d;
-            text-decoration: none;
-            padding: 5px;
-            border-radius: 4px;
-            transition: color 0.2s ease;
-        }
-        
-        .widget-action:hover {
-            color: #2563eb;
-            background: rgba(37, 99, 235, 0.1);
-        }
-        
         .widget-period {
             font-size: 0.85rem;
             color: #6c757d;
@@ -1026,11 +1009,6 @@ class VisualizationRenderer implements VisualizationInterface {
         
         .quick-chart {
             margin: 15px 0;
-        }
-        
-        .widget-actions {
-            margin-top: 20px;
-            text-align: center;
         }
         
         /* Comparison Widget */

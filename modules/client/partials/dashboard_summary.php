@@ -11,6 +11,11 @@ $clientReadyIssues = $projectStats['client_ready_issues'] ?? 0;
 // For client view, client-ready issues ARE the total issues
 $totalIssues = $clientReadyIssues; // Hide internal total count from client
 $compliancePercentage = $dashboardData['compliance_percentage'] ?? 0;
+$cardLinks = [
+    'assets' => $baseDir . '/modules/client/projects.php',
+    'issues' => $baseDir . '/modules/client/issues_overview.php',
+    'compliance' => $baseDir . '/modules/client/compliance_overview.php'
+];
 ?>
 
 <div class="row mb-4">
@@ -25,6 +30,7 @@ $compliancePercentage = $dashboardData['compliance_percentage'] ?? 0;
 <div class="row mb-4">
     <!-- Total Digital Assets Card -->
     <div class="col-lg-4 col-md-6 mb-3">
+        <a href="<?php echo htmlspecialchars($cardLinks['assets'], ENT_QUOTES, 'UTF-8'); ?>" class="summary-card-link">
         <div class="summary-card card h-100 border-0 shadow-sm">
             <div class="card-body text-center">
                 <div class="summary-icon mb-3">
@@ -32,13 +38,15 @@ $compliancePercentage = $dashboardData['compliance_percentage'] ?? 0;
                 </div>
                 <h3 class="summary-value text-primary"><?php echo number_format($totalProjects); ?></h3>
                 <p class="summary-label mb-2">Assigned Digital Assets</p>
-                <small class="text-muted">Digital assets you have access to</small>
+                <small class="text-muted">Open your digital asset library</small>
             </div>
         </div>
+        </a>
     </div>
 
     <!-- Total Issues Card -->
     <div class="col-lg-4 col-md-6 mb-3">
+        <a href="<?php echo htmlspecialchars($cardLinks['issues'], ENT_QUOTES, 'UTF-8'); ?>" class="summary-card-link">
         <div class="summary-card card h-100 border-0 shadow-sm">
             <div class="card-body text-center">
                 <div class="summary-icon mb-3">
@@ -46,13 +54,15 @@ $compliancePercentage = $dashboardData['compliance_percentage'] ?? 0;
                 </div>
                 <h3 class="summary-value text-warning"><?php echo number_format($totalIssues); ?></h3>
                 <p class="summary-label mb-2">Total Issues</p>
-                <small class="text-muted">Accessibility issues in your digital assets</small>
+                <small class="text-muted">Review issue totals by digital asset</small>
             </div>
         </div>
+        </a>
     </div>
 
     <!-- Processing Status Card -->
     <div class="col-lg-4 col-md-6 mb-3">
+        <a href="<?php echo htmlspecialchars($cardLinks['compliance'], ENT_QUOTES, 'UTF-8'); ?>" class="summary-card-link">
         <div class="summary-card card h-100 border-0 shadow-sm">
             <div class="card-body text-center">
                 <div class="summary-icon mb-3">
@@ -60,7 +70,7 @@ $compliancePercentage = $dashboardData['compliance_percentage'] ?? 0;
                 </div>
                 <h3 class="summary-value text-info"><?php echo $compliancePercentage; ?>%</h3>
                 <p class="summary-label mb-2">Compliance Percentage</p>
-                <small class="text-muted">Total issues resolved vs open</small>
+                <small class="text-muted">Open compliance breakdown and trends</small>
                 
                 <!-- Progress Bar -->
                 <div class="progress mt-2" style="height: 6px;">
@@ -74,6 +84,7 @@ $compliancePercentage = $dashboardData['compliance_percentage'] ?? 0;
                 </div>
             </div>
         </div>
+        </a>
     </div>
 </div>
 
@@ -91,6 +102,23 @@ $compliancePercentage = $dashboardData['compliance_percentage'] ?? 0;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     border-radius: 12px;
     overflow: hidden;
+}
+
+.summary-card-link {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+}
+
+.summary-card-link:hover,
+.summary-card-link:focus {
+    color: inherit;
+    text-decoration: none;
+}
+
+.summary-card-link:focus-visible .summary-card {
+    outline: 3px solid rgba(37, 99, 235, 0.35);
+    outline-offset: 2px;
 }
 
 .summary-card:hover {

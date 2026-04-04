@@ -99,7 +99,6 @@ if (!isset($baseDir)) {
                     <td>
                         <div class="project-name-cell">
                             <div class="project-name"><?php echo htmlspecialchars($project['title']); ?></div>
-                            <div class="project-meta text-muted small">Asset ID: <?php echo (int) $project['id']; ?></div>
                         </div>
                     </td>
                     <td>
@@ -132,7 +131,7 @@ if (!isset($baseDir)) {
     
     <?php else: ?>
     
-    <!-- No Projects State -->
+    <!-- No Digital Assets State -->
     <div class="row">
         <div class="col-12">
             <div class="no-projects-state">

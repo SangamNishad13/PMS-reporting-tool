@@ -49,6 +49,12 @@ if (!isset($baseDir)) {
                     </li>
 
                     <li class="nav-item">
+                        <a class="nav-link" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/dashboard" style="color: rgba(255, 255, 255, 0.9) !important; padding: 8px 12px !important; border-radius: 4px !important; transition: all 0.2s ease !important;">
+                            <i class="fas fa-chart-line me-1 opacity-50" style="color: white !important;"></i> <span style="color: white !important;">Analytics</span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
                         <a class="nav-link" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/preferences.php" style="color: rgba(255, 255, 255, 0.9) !important; padding: 8px 12px !important; border-radius: 4px !important; transition: all 0.2s ease !important;">
                             <i class="fas fa-sliders-h me-1 opacity-50" style="color: white !important;"></i> <span style="color: white !important;">Preferences</span>
                         </a>

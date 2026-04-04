@@ -40,6 +40,42 @@ class UnifiedDashboardController {
     private function getClientProjectUrl(int $projectId): string {
         return $this->getClientBasePath() . '/client/project/' . $projectId;
     }
+
+    private function getSelectedProjectId(array $assignedProjects): ?int {
+        $selectedProjectId = (int) ($_GET['project_id'] ?? 0);
+
+        if ($selectedProjectId <= 0) {
+            return null;
+        }
+
+        $assignedProjectIds = array_map('intval', array_column($assignedProjects, 'id'));
+        return in_array($selectedProjectId, $assignedProjectIds, true) ? $selectedProjectId : null;
+    }
+
+    private function getProjectReportUrl(int $projectId, string $reportType): string {
+        return $this->getClientProjectUrl($projectId)
+            . '?report=' . rawurlencode($reportType)
+            . '#analytics-report-' . rawurlencode($reportType);
+    }
+
+    private function getDashboardReportUrl(string $reportType, array $projectIds): string {
+        if (count($projectIds) === 1) {
+            $selectedProjectId = (int) reset($projectIds);
+
+            switch ($reportType) {
+                case 'page_issues':
+                    return $this->getClientBasePath() . '/modules/projects/issues_pages.php?project_id=' . $selectedProjectId;
+                case 'common_issues':
+                    return $this->getClientBasePath() . '/modules/projects/issues_common.php?project_id=' . $selectedProjectId;
+                default:
+                    return $this->getProjectReportUrl($selectedProjectId, $reportType);
+            }
+        }
+
+        return $this->getClientDashboardUrl()
+            . '?report=' . rawurlencode($reportType)
+            . '#analytics-report-' . rawurlencode($reportType);
+    }
     
     public function __construct() {
         $this->accessControl = new ClientAccessControlManager();
@@ -72,7 +108,17 @@ class UnifiedDashboardController {
             return $this->generateOnboardingDashboard();
         }
         
-        $projectIds = array_column($assignedProjects, 'id');
+        $selectedProjectId = $this->getSelectedProjectId($assignedProjects);
+        $selectedProject = null;
+
+        if ($selectedProjectId !== null) {
+            $assignedProjects = array_values(array_filter($assignedProjects, function($project) use ($selectedProjectId) {
+                return (int) ($project['id'] ?? 0) === $selectedProjectId;
+            }));
+            $selectedProject = $assignedProjects[0] ?? null;
+        }
+
+        $projectIds = array_map('intval', array_column($assignedProjects, 'id'));
         
         // Generate all analytics reports
         $analyticsReports = $this->generateAllAnalytics($projectIds, $clientUserId);
@@ -81,7 +127,7 @@ class UnifiedDashboardController {
         $widgets = $this->createSummaryWidgets($analyticsReports, $projectIds);
         
         // Get project statistics
-        $projectStats = $this->accessControl->getProjectStatistics($clientUserId);
+        $projectStats = $this->accessControl->getProjectStatistics($clientUserId, $selectedProjectId);
         
         // Calculate overall compliance percentage from WCAG compliance score
         $compliancePct = 0;
@@ -99,6 +145,8 @@ class UnifiedDashboardController {
             'success' => true,
             'client_user_id' => $clientUserId,
             'assigned_projects' => $assignedProjects,
+            'selected_project_id' => $selectedProjectId,
+            'selected_project' => $selectedProject,
             'project_statistics' => $projectStats,
             'compliance_percentage' => $compliancePct,
             'analytics_widgets' => $widgets,
@@ -115,11 +163,11 @@ class UnifiedDashboardController {
      */
     private function generateAllAnalytics($projectIds, $clientUserId) {
         $reports = [];
+        $projectId = count($projectIds) === 1 ? (int) reset($projectIds) : null;
         
         foreach ($this->analyticsEngines as $type => $engine) {
             try {
-                // Generate report for all projects combined
-                $report = $engine->generateReport(null, $clientUserId);
+                $report = $engine->generateReport($projectId, $clientUserId);
                 $reports[$type] = $report;
             } catch (Exception $e) {
                 error_log("Error generating {$type} analytics: " . $e->getMessage());
@@ -219,7 +267,7 @@ class UnifiedDashboardController {
             'title' => 'User Impact Analysis',
             'icon' => 'fas fa-users',
             'reportType' => 'user_affected',
-            'drillDownUrl' => $this->getClientDashboardUrl(),
+            'drillDownUrl' => $this->getDashboardReportUrl('user_affected', $projectIds),
             'summary' => [
                 [
                     'label' => 'Total Issues',
@@ -260,7 +308,7 @@ class UnifiedDashboardController {
             'title' => 'WCAG Compliance',
             'icon' => 'fas fa-shield-alt',
             'reportType' => 'wcag_compliance',
-            'drillDownUrl' => $this->getClientDashboardUrl(),
+            'drillDownUrl' => $this->getDashboardReportUrl('wcag_compliance', $projectIds),
             'summary' => [
                 [
                     'label' => 'Overall Score',
@@ -300,7 +348,7 @@ class UnifiedDashboardController {
             'title' => 'Issue Severity',
             'icon' => 'fas fa-exclamation-triangle',
             'reportType' => 'severity_analysis',
-            'drillDownUrl' => $this->getClientDashboardUrl(),
+            'drillDownUrl' => $this->getDashboardReportUrl('severity_analysis', $projectIds),
             'summary' => [
                 [
                     'label' => 'Critical Severity',
@@ -346,7 +394,7 @@ class UnifiedDashboardController {
             'title' => 'Common Issues',
             'icon' => 'fas fa-list-ul',
             'reportType' => 'common_issues',
-            'drillDownUrl' => $this->getClientDashboardUrl(),
+            'drillDownUrl' => $this->getDashboardReportUrl('common_issues', $projectIds),
             'summary' => array_map(function($issue, $index) {
                 return [
                     'label' => '#' . ($index + 1) . ' Issue',
@@ -368,7 +416,7 @@ class UnifiedDashboardController {
             'title' => 'Blocker Issues',
             'icon' => 'fas fa-ban',
             'reportType' => 'blocker_issues',
-            'drillDownUrl' => $this->getClientDashboardUrl(),
+            'drillDownUrl' => $this->getDashboardReportUrl('blocker_issues', $projectIds),
             'summary' => [
                 [
                     'label' => 'Active Blockers',
@@ -398,7 +446,7 @@ class UnifiedDashboardController {
             'title' => 'Page Analysis',
             'icon' => 'fas fa-file-alt',
             'reportType' => 'page_issues',
-            'drillDownUrl' => $this->getClientDashboardUrl(),
+            'drillDownUrl' => $this->getDashboardReportUrl('page_issues', $projectIds),
             'summary' => [
                 [
                     'label' => 'Pages Analyzed',
@@ -428,7 +476,7 @@ class UnifiedDashboardController {
             'title' => 'Discussion Activity',
             'icon' => 'fas fa-comments',
             'reportType' => 'commented_issues',
-            'drillDownUrl' => $this->getClientDashboardUrl(),
+            'drillDownUrl' => $this->getDashboardReportUrl('commented_issues', $projectIds),
             'summary' => [
                 [
                     'label' => 'Issues with Comments',
@@ -458,6 +506,7 @@ class UnifiedDashboardController {
             'title' => 'Compliance Trends',
             'icon' => 'fas fa-chart-line',
             'reportType' => 'compliance_trend',
+            'drillDownUrl' => $this->getDashboardReportUrl('compliance_trend', $projectIds),
             'period' => 'Last 30 days',
             'trendData' => [
                 'labels' => array_column($trendData, 'date'),

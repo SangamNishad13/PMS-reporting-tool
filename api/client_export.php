@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/models/ClientAccessControlManager.php';
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) {
@@ -13,14 +14,29 @@ $projectId = isset($_GET['project_id']) ? intval($_GET['project_id']) : null;
 $format = isset($_GET['format']) ? $_GET['format'] : 'pdf';
 
 if (!$clientId) {
-    // If no client_id, try to get from user session if they are a client
     if ($_SESSION['role'] === 'client') {
-        // We'll need to look up their assigned project's client_id
-        // but for now, let's just die if not provided to avoid ambiguity
-        die('Client ID required');
+        $accessControl = new ClientAccessControlManager();
+        $assignedProjects = $accessControl->getAssignedProjects((int) ($_SESSION['user_id'] ?? 0));
+
+        if ($projectId) {
+            foreach ($assignedProjects as $assignedProject) {
+                if ((int) ($assignedProject['id'] ?? 0) === (int) $projectId) {
+                    $clientId = (int) ($assignedProject['client_id'] ?? 0);
+                    break;
+                }
+            }
+        }
+
+        if (!$clientId && !empty($assignedProjects)) {
+            $clientId = (int) ($assignedProjects[0]['client_id'] ?? 0);
+        }
     } else {
         die('Client ID required');
     }
+}
+
+if (!$clientId) {
+    die('Client ID required');
 }
 
 // Get client info

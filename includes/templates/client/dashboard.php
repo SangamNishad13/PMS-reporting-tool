@@ -63,6 +63,12 @@ try {
 }
 ?>
 
+<script nonce="<?php echo htmlspecialchars($cspNonce ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+window.actualClientId = <?php echo json_encode((int) (($assignedProjects[0]['client_id'] ?? 0))); ?>;
+window.selectedProjectId = <?php echo json_encode((int) ($dashboardData['selected_project_id'] ?? 0)); ?>;
+window.baseUrl = <?php echo json_encode($baseDir, JSON_HEX_TAG | JSON_HEX_AMP); ?>;
+</script>
+
 <?php 
 require_once __DIR__ . '/../../footer.php';
 ?>

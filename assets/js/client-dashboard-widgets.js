@@ -1,15 +1,23 @@
 /* Client Dashboard Widgets JS - extracted from modules/client/partials/dashboard_widgets.php */
 document.addEventListener('DOMContentLoaded', function() {
-    var widgets = document.querySelectorAll('.widget-container .dashboard-widget');
-    widgets.forEach(function(widget) {
-        var drillDownLink = widget.querySelector('.widget-actions a');
-        if (drillDownLink) {
-            widget.addEventListener('click', function(e) {
-                if (!e.target.closest('.widget-actions')) {
-                    window.location.href = drillDownLink.href;
-                }
-            });
-            widget.style.cursor = 'pointer';
-        }
-    });
+    var params = new URLSearchParams(window.location.search);
+    var activeReport = params.get('report');
+    if (!activeReport) {
+        return;
+    }
+
+    var focusedWidget = document.querySelector('.dashboard-widget[data-report-type="' + activeReport + '"]');
+    if (!focusedWidget) {
+        return;
+    }
+
+    focusedWidget.classList.add('is-active');
+    var container = focusedWidget.closest('.widget-container, .project-analytics-widget');
+    if (container) {
+        container.classList.add('is-active');
+    }
+
+    setTimeout(function() {
+        focusedWidget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
 });

@@ -679,13 +679,13 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                 if ($clientIdForDashboard):
                             ?>
                                 <li class="nav-item">
-                                    <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/dashboard.php?client_id=<?php echo $clientIdForDashboard; ?>">
+                                    <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/dashboard">
                                         <i class="fas fa-chart-line me-1 opacity-50"></i> Analytics Dashboard
                                     </a>
                                 </li>
                                 <li class="nav-item">
                                     <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/projects.php">
-                                        <i class="fas fa-folder-open me-1 opacity-50"></i> My Projects
+                                        <i class="fas fa-folder-open me-1 opacity-50"></i> My Digital Assets
                                     </a>
                                 </li>
                                 <li class="nav-item">

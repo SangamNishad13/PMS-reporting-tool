@@ -38,7 +38,7 @@ require_once __DIR__ . '/../../header.php';
             </div>
             <div class="col-md-4 text-md-end">
                 <div class="btn-group" role="group" aria-label="Digital asset actions">
-                    <button type="button" class="btn btn-outline-primary" data-action="refresh" title="Refresh Data">
+                    <button type="button" class="btn btn-outline-primary" data-project-refresh="1" title="Refresh Data">
                         <i class="fas fa-sync-alt"></i> Refresh
                     </button>
                     <div class="btn-group" role="group">
@@ -46,12 +46,12 @@ require_once __DIR__ . '/../../header.php';
                             <i class="fas fa-download"></i> Export
                         </button>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#" data-action="export" data-format="pdf" data-project="<?php echo $projectId; ?>">
+                            <li><button type="button" class="dropdown-item" data-project-export="pdf">
                                 <i class="fas fa-file-pdf text-danger me-2"></i>Export as PDF
-                            </a></li>
-                            <li><a class="dropdown-item" href="#" data-action="export" data-format="xlsx" data-project="<?php echo $projectId; ?>">
+                            </button></li>
+                            <li><button type="button" class="dropdown-item" data-project-export="excel">
                                 <i class="fas fa-file-excel text-success me-2"></i>Export as Excel
-                            </a></li>
+                            </button></li>
                         </ul>
                     </div>
                 </div>
@@ -125,6 +125,15 @@ if ($dashboardController && isset($dashboardController->visualization)) {
     echo $dashboardController->visualization->getVisualizationJS(); 
 }
 ?>
+
+<script nonce="<?php echo htmlspecialchars($cspNonce ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+window._projectHeaderConfig = {
+    projectId: <?php echo json_encode((int) $projectId); ?>,
+    clientId: <?php echo json_encode((int) ($projectAnalytics['project_metadata']['client_id'] ?? $projectAnalytics['client_id'] ?? 0)); ?>,
+    baseDir: <?php echo json_encode($baseDir, JSON_HEX_TAG | JSON_HEX_AMP); ?>
+};
+</script>
+<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/client-project-header.js"></script>
 
 <?php 
 require_once __DIR__ . '/../../footer.php';

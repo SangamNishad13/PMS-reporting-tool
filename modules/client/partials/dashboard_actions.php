@@ -21,21 +21,6 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
 <div class="row mb-4">
     <div class="col-12">
         <div class="quick-actions-grid">
-            
-            <!-- View All Projects -->
-            <div class="action-card">
-                <div class="action-icon">
-                    <i class="fas fa-folder-open"></i>
-                </div>
-                <div class="action-content">
-                    <h4 class="action-title">View All Analytics</h4>
-                    <p class="action-description">Access detailed analytics reports for all assigned digital assets</p>
-                    <a href="<?php echo $baseDir; ?>/client/dashboard" 
-                       class="btn btn-primary action-button">
-                        <i class="fas fa-arrow-right"></i> Browse Analytics
-                    </a>
-                </div>
-            </div>
 
             <!-- Export PDF Report -->
             <div class="action-card">
@@ -72,7 +57,7 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
                 </div>
                 <div class="action-content">
                     <h4 class="action-title">View Digital Assets</h4>
-                    <p class="action-description">Browse individual digital asset pages and detailed analytics</p>
+                    <p class="action-description">Browse all assigned digital assets from one place</p>
                     <a href="<?php echo $baseDir; ?>/modules/client/projects.php" 
                        class="btn btn-secondary action-button">
                         <i class="fas fa-arrow-right"></i> Browse Digital Assets
@@ -80,29 +65,6 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
                 </div>
             </div>
 
-        </div>
-    </div>
-</div>
-
-<!-- Additional Navigation -->
-<div class="row">
-    <div class="col-12">
-        <div class="additional-navigation">
-            <h3 class="nav-title">Additional Resources</h3>
-            <div class="nav-links">
-                <a href="<?php echo $baseDir; ?>/modules/client/help.php" class="nav-link">
-                    <i class="fas fa-question-circle"></i> Help & Documentation
-                </a>
-                <a href="<?php echo $baseDir; ?>/modules/client/preferences.php" class="nav-link">
-                    <i class="fas fa-cog"></i> Dashboard Settings
-                </a>
-                <a href="<?php echo $baseDir; ?>/modules/feedback.php" class="nav-link">
-                    <i class="fas fa-comment-dots"></i> Send Feedback
-                </a>
-                <a href="<?php echo $baseDir; ?>/modules/client/history.php" class="nav-link">
-                    <i class="fas fa-history"></i> Export History
-                </a>
-            </div>
         </div>
     </div>
 </div>
@@ -170,54 +132,6 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
-.additional-navigation {
-    background: #f8f9fa;
-    border-radius: 12px;
-    padding: 24px;
-    border: 1px solid #e9ecef;
-}
-
-.nav-title {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #2c3e50;
-    margin-bottom: 16px;
-    text-align: center;
-}
-
-.nav-links {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 16px;
-}
-
-.additional-navigation .nav-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    background: #fff;
-    color: #6c757d;
-    text-decoration: none;
-    border-radius: 8px;
-    border: 1px solid #dee2e6;
-    font-size: 0.9rem;
-    font-weight: 500;
-    transition: all 0.2s ease;
-}
-
-.additional-navigation .nav-link:hover {
-    color: #2563eb;
-    border-color: #2563eb;
-    background: rgba(37, 99, 235, 0.05);
-    text-decoration: none;
-}
-
-.additional-navigation .nav-link i {
-    font-size: 0.9rem;
-    opacity: 0.8;
-}
 
 /* Responsive Design */
 @media (max-width: 768px) {
@@ -239,19 +153,6 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
         font-size: 1.1rem;
     }
     
-    .additional-navigation {
-        padding: 20px;
-    }
-    
-    .nav-links {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .nav-link {
-        justify-content: center;
-        padding: 12px 16px;
-    }
 }
 
 @media (max-width: 576px) {

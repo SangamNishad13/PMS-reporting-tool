@@ -1,14 +1,14 @@
 <?php
 /**
- * Project Navigation Partial
+ * Digital Asset Navigation Partial
  * 
- * Navigation breadcrumbs and project switcher
+ * Navigation breadcrumbs and digital asset switcher
  */
 ?>
 
 <div class="row mb-3">
     <div class="col-12">
-        <nav aria-label="Project navigation" class="project-nav">
+        <nav aria-label="Digital asset navigation" class="project-nav">
             <!-- Breadcrumb Navigation -->
             <ol class="breadcrumb">
                 <li class="breadcrumb-item">
@@ -26,11 +26,11 @@
                 </li>
             </ol>
             
-            <!-- Project Switcher -->
+            <!-- Digital Asset Switcher -->
             <div class="project-switcher">
-                <label for="projectNavSelect" class="form-label small text-muted mb-1">Switch Project</label>
+                <label for="projectNavSelect" class="form-label small text-muted mb-1">Switch Digital Asset</label>
                 <select id="projectNavSelect" class="form-select form-select-sm">
-                    <option value="">Select a project...</option>
+                    <option value="">Select a digital asset...</option>
                     <?php foreach ($assignedProjects as $proj): ?>
                         <option value="<?php echo $proj['id']; ?>" 
                                 <?php echo ($proj['id'] == $projectId) ? 'selected' : ''; ?>>
@@ -38,7 +38,7 @@
                         </option>
                     <?php endforeach; ?>
                 </select>
-<script>
+<script nonce="<?php echo htmlspecialchars($cspNonce ?? '', ENT_QUOTES, 'UTF-8'); ?>">
 document.getElementById('projectNavSelect').addEventListener('change', function() {
     var id = this.value;
     if (id) {

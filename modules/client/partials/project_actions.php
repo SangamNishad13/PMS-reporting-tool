@@ -91,12 +91,12 @@ if ($currentIndex !== false) {
                     Navigation
                 </h4>
                 <div class="action-buttons">
-                    <a href="<?php echo $baseDir; ?>/modules/client/dashboard.php" 
+                          <a href="<?php echo $baseDir; ?>/client/dashboard" 
                        class="btn btn-secondary action-btn">
                         <i class="fas fa-tachometer-alt"></i>
                         <span class="btn-text">
                             <strong>Dashboard</strong>
-                            <small>Return to main dashboard</small>
+                            <small>Return to analytics dashboard</small>
                         </span>
                     </a>
                     <a href="<?php echo $baseDir; ?>/modules/client/projects.php" 

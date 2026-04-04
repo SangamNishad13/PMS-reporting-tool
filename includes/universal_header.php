@@ -291,6 +291,14 @@ if (($_SESSION['role'] ?? '') === 'client') {
                     </li>
 
                     <li class="nav-item">
+                        <a class="nav-link pms-nav-link <?php echo (strpos($currentPath, 'analytics') !== false || strpos($currentPath, 'view=analytics') !== false) ? 'active' : ''; ?>" 
+                           href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/dashboard">
+                            <i class="fas fa-chart-line"></i>
+                            <span>Analytics</span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
                         <a class="nav-link pms-nav-link <?php echo (strpos($currentPath, 'preferences') !== false) ? 'active' : ''; ?>" 
                            href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/preferences.php">
                             <i class="fas fa-sliders-h"></i>

@@ -8,6 +8,7 @@
 $analyticsWidgets = $dashboardData['analytics_widgets'] ?? [];
 $assignedProjects = $dashboardData['assigned_projects'] ?? [];
 $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
+$activeReport = (string) ($_GET['report'] ?? '');
 ?>
 
 <div class="row mb-4">
@@ -16,7 +17,7 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
             <i class="fas fa-chart-line text-primary"></i>
             Analytics Reports
         </h2>
-        <p class="text-muted">Click on any widget to view detailed analytics</p>
+        <p class="text-muted">These charts are visual overviews only. Use the overview cards above for detailed drill-down pages.</p>
     </div>
 </div>
 
@@ -26,56 +27,56 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
         
         <!-- User Impact Analysis Widget -->
         <?php if (isset($analyticsWidgets['user_affected'])): ?>
-        <div class="widget-container">
+        <div class="widget-container<?php echo $activeReport === 'user_affected' ? ' is-active' : ''; ?>" id="analytics-report-user_affected">
             <?php echo $dashboardController->visualization->renderDashboardWidget('analytics', $analyticsWidgets['user_affected']); ?>
         </div>
         <?php endif; ?>
 
         <!-- WCAG Compliance Widget -->
         <?php if (isset($analyticsWidgets['wcag_compliance'])): ?>
-        <div class="widget-container">
+        <div class="widget-container<?php echo $activeReport === 'wcag_compliance' ? ' is-active' : ''; ?>" id="analytics-report-wcag_compliance">
             <?php echo $dashboardController->visualization->renderDashboardWidget('analytics', $analyticsWidgets['wcag_compliance']); ?>
         </div>
         <?php endif; ?>
 
         <!-- Severity Analysis Widget -->
         <?php if (isset($analyticsWidgets['severity_analysis'])): ?>
-        <div class="widget-container">
+        <div class="widget-container<?php echo $activeReport === 'severity_analysis' ? ' is-active' : ''; ?>" id="analytics-report-severity_analysis">
             <?php echo $dashboardController->visualization->renderDashboardWidget('analytics', $analyticsWidgets['severity_analysis']); ?>
         </div>
         <?php endif; ?>
 
         <!-- Common Issues Widget -->
         <?php if (isset($analyticsWidgets['common_issues'])): ?>
-        <div class="widget-container">
+        <div class="widget-container<?php echo $activeReport === 'common_issues' ? ' is-active' : ''; ?>" id="analytics-report-common_issues">
             <?php echo $dashboardController->visualization->renderDashboardWidget('analytics', $analyticsWidgets['common_issues']); ?>
         </div>
         <?php endif; ?>
 
         <!-- Blocker Issues Widget -->
         <?php if (isset($analyticsWidgets['blocker_issues'])): ?>
-        <div class="widget-container">
+        <div class="widget-container<?php echo $activeReport === 'blocker_issues' ? ' is-active' : ''; ?>" id="analytics-report-blocker_issues">
             <?php echo $dashboardController->visualization->renderDashboardWidget('analytics', $analyticsWidgets['blocker_issues']); ?>
         </div>
         <?php endif; ?>
 
         <!-- Page Analysis Widget -->
         <?php if (isset($analyticsWidgets['page_issues'])): ?>
-        <div class="widget-container">
+        <div class="widget-container<?php echo $activeReport === 'page_issues' ? ' is-active' : ''; ?>" id="analytics-report-page_issues">
             <?php echo $dashboardController->visualization->renderDashboardWidget('analytics', $analyticsWidgets['page_issues']); ?>
         </div>
         <?php endif; ?>
 
         <!-- Discussion Activity Widget -->
         <?php if (isset($analyticsWidgets['commented_issues'])): ?>
-        <div class="widget-container">
+        <div class="widget-container<?php echo $activeReport === 'commented_issues' ? ' is-active' : ''; ?>" id="analytics-report-commented_issues">
             <?php echo $dashboardController->visualization->renderDashboardWidget('analytics', $analyticsWidgets['commented_issues']); ?>
         </div>
         <?php endif; ?>
 
         <!-- Compliance Trends Widget (Full Width) -->
         <?php if (isset($analyticsWidgets['compliance_trend'])): ?>
-        <div class="widget-container widget-full-width">
+        <div class="widget-container widget-full-width<?php echo $activeReport === 'compliance_trend' ? ' is-active' : ''; ?>" id="analytics-report-compliance_trend">
             <?php echo $dashboardController->visualization->renderDashboardWidget('trend', $analyticsWidgets['compliance_trend']); ?>
         </div>
         <?php endif; ?>
@@ -129,6 +130,12 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
     transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(0,0,0,0.15);
     border-color: #2563eb;
+}
+
+.widget-container.is-active .dashboard-widget,
+.widget-container .dashboard-widget.is-active {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15), 0 12px 30px rgba(37, 99, 235, 0.12);
 }
 
 .widget-container .widget-header {
