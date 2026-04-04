@@ -341,7 +341,13 @@ class UnifiedDashboardController {
      */
     private function createSeverityAnalysisWidget($report, $projectIds) {
         $data = $report->getData();
-        $summary = $data['summary'] ?? [];
+        $issueSeverityDistribution = $data['issue_severity_distribution'] ?? [];
+        $issueSeverityColors = [
+            'Blocker' => '#7f1d1d',
+            'Critical' => '#dc2626',
+            'Major' => '#ea580c',
+            'Minor' => '#2563eb'
+        ];
         
         return [
             'type' => 'analytics',
@@ -351,32 +357,30 @@ class UnifiedDashboardController {
             'drillDownUrl' => $this->getDashboardReportUrl('severity_analysis', $projectIds),
             'summary' => [
                 [
-                    'label' => 'Critical Severity',
-                    'value' => $summary['critical_count'] ?? 0
+                    'label' => 'Blocker',
+                    'value' => $this->getIssueSeverityCount($issueSeverityDistribution, 'Blocker')
                 ],
                 [
-                    'label' => 'High Severity',
-                    'value' => $summary['high_count'] ?? 0
+                    'label' => 'Critical',
+                    'value' => $this->getIssueSeverityCount($issueSeverityDistribution, 'Critical')
                 ],
                 [
-                    'label' => 'Medium Severity',
-                    'value' => $summary['medium_count'] ?? 0
+                    'label' => 'Major',
+                    'value' => $this->getIssueSeverityCount($issueSeverityDistribution, 'Major')
                 ],
                 [
-                    'label' => 'Low Severity',
-                    'value' => $summary['low_count'] ?? 0
+                    'label' => 'Minor',
+                    'value' => $this->getIssueSeverityCount($issueSeverityDistribution, 'Minor')
                 ]
             ],
             'quickChart' => [
-                'labels' => ['Critical', 'High', 'Medium', 'Low'],
+                'labels' => array_column($issueSeverityDistribution, 'severity'),
                 'datasets' => [[
-                    'data' => [
-                        $summary['critical_count'] ?? 0,
-                        $summary['high_count'] ?? 0,
-                        $summary['medium_count'] ?? 0,
-                        $summary['low_count'] ?? 0
-                    ],
-                    'backgroundColor' => ['#f44336', '#ff9800', '#2196f3', '#4caf50']
+                    'data' => array_column($issueSeverityDistribution, 'count'),
+                    'backgroundColor' => array_map(function ($item) use ($issueSeverityColors) {
+                        $severity = $item['severity'] ?? '';
+                        return $issueSeverityColors[$severity] ?? '#6c757d';
+                    }, $issueSeverityDistribution)
                 ]]
             ]
         ];
@@ -984,17 +988,30 @@ class UnifiedDashboardController {
                 $widgetConfig['title'] = 'WCAG Compliance';
                 $widgetConfig['icon'] = 'fas fa-shield-alt';
                 $summary = $data['summary'] ?? [];
+                $levelDistribution = array_values(array_filter(
+                    $data['level_distribution'] ?? [],
+                    function ($item) {
+                        return ($item['level'] ?? '') !== 'Level AAA';
+                    }
+                ));
+                $levelColors = [
+                    'Level A' => '#dc3545',
+                    'Level AA' => '#fd7e14',
+                    'Unknown' => '#6c757d'
+                ];
                 $widgetConfig['summary'] = [
                     ['label' => 'Overall Score', 'value' => round($summary['overall_compliance_score'] ?? 0, 1) . '%'],
                     ['label' => 'Level A', 'value' => round($summary['level_a_compliance'] ?? 0, 1) . '%'],
-                    ['label' => 'Level AA', 'value' => round($summary['level_aa_compliance'] ?? 0, 1) . '%'],
-                    ['label' => 'Level AAA', 'value' => round($summary['level_aaa_compliance'] ?? 0, 1) . '%']
+                    ['label' => 'Level AA', 'value' => round($summary['level_aa_compliance'] ?? 0, 1) . '%']
                 ];
                 $widgetConfig['quickChart'] = [
-                    'labels' => array_column($data['level_distribution'] ?? [], 'level'),
+                    'labels' => array_column($levelDistribution, 'level'),
                     'datasets' => [[
-                        'data' => array_column($data['level_distribution'] ?? [], 'count'),
-                        'backgroundColor' => ['#dc3545', '#fd7e14', '#ffc107', '#6c757d']
+                        'data' => array_column($levelDistribution, 'count'),
+                        'backgroundColor' => array_map(function ($item) use ($levelColors) {
+                            $level = $item['level'] ?? '';
+                            return $levelColors[$level] ?? '#6c757d';
+                        }, $levelDistribution)
                     ]]
                 ];
                 break;
@@ -1003,22 +1020,27 @@ class UnifiedDashboardController {
                 $widgetConfig['title'] = 'Issue Severity';
                 $widgetConfig['icon'] = 'fas fa-exclamation-triangle';
                 $summary = $data['summary'] ?? [];
+                $issueSeverityDistribution = $data['issue_severity_distribution'] ?? [];
+                $issueSeverityColors = [
+                    'Blocker' => '#7f1d1d',
+                    'Critical' => '#dc2626',
+                    'Major' => '#ea580c',
+                    'Minor' => '#2563eb'
+                ];
                 $widgetConfig['summary'] = [
-                    ['label' => 'Critical', 'value' => $summary['critical_count'] ?? 0],
-                    ['label' => 'High', 'value' => $summary['high_count'] ?? 0],
-                    ['label' => 'Medium', 'value' => $summary['medium_count'] ?? 0],
-                    ['label' => 'Low', 'value' => $summary['low_count'] ?? 0]
+                    ['label' => 'Blocker', 'value' => $this->getIssueSeverityCount($issueSeverityDistribution, 'Blocker')],
+                    ['label' => 'Critical', 'value' => $this->getIssueSeverityCount($issueSeverityDistribution, 'Critical')],
+                    ['label' => 'Major', 'value' => $this->getIssueSeverityCount($issueSeverityDistribution, 'Major')],
+                    ['label' => 'Minor', 'value' => $this->getIssueSeverityCount($issueSeverityDistribution, 'Minor')]
                 ];
                 $widgetConfig['quickChart'] = [
-                    'labels' => ['Critical', 'High', 'Medium', 'Low'],
+                    'labels' => array_column($issueSeverityDistribution, 'severity'),
                     'datasets' => [[
-                        'data' => [
-                            $summary['critical_count'] ?? 0,
-                            $summary['high_count'] ?? 0,
-                            $summary['medium_count'] ?? 0,
-                            $summary['low_count'] ?? 0
-                        ],
-                        'backgroundColor' => ['#f44336', '#ff9800', '#2196f3', '#4caf50']
+                        'data' => array_column($issueSeverityDistribution, 'count'),
+                        'backgroundColor' => array_map(function ($item) use ($issueSeverityColors) {
+                            $severity = $item['severity'] ?? '';
+                            return $issueSeverityColors[$severity] ?? '#6c757d';
+                        }, $issueSeverityDistribution)
                     ]]
                 ];
                 break;
@@ -1087,5 +1109,15 @@ class UnifiedDashboardController {
         }
         
         return $widgetConfig;
+    }
+
+    private function getIssueSeverityCount(array $distribution, string $label): int {
+        foreach ($distribution as $item) {
+            if (($item['severity'] ?? '') === $label) {
+                return (int) ($item['count'] ?? 0);
+            }
+        }
+
+        return 0;
     }
 }

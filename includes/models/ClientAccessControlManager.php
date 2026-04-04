@@ -7,6 +7,8 @@
 
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../config/redis.php';
+require_once __DIR__ . '/WCAGComplianceAnalytics.php';
+require_once __DIR__ . '/ComplianceTrendAnalytics.php';
 
 class ClientAccessControlManager {
     private $db;
@@ -522,6 +524,9 @@ class ClientAccessControlManager {
                 'total_projects' => 0,
                 'total_issues' => 0,
                 'client_ready_issues' => 0,
+                'open_issues' => 0,
+                'resolved_issues' => 0,
+                'compliance_score' => 0,
                 'projects_by_status' => [],
                 'issues_by_severity' => []
             ];
@@ -556,11 +561,54 @@ class ClientAccessControlManager {
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $issuesBySeverity[$row['severity']] = (int)$row['count'];
             }
+
+            $statusStmt = $this->db->prepare("
+                SELECT 
+                    COUNT(*) as client_ready_issues,
+                    COUNT(CASE WHEN LOWER(COALESCE(ist.name, '')) IN ('open', 'in progress', 'reopened', 'in_progress') THEN 1 END) as open_issues,
+                    COUNT(CASE WHEN LOWER(COALESCE(ist.name, '')) IN ('resolved', 'closed', 'fixed') THEN 1 END) as resolved_issues
+                FROM issues i
+                LEFT JOIN issue_statuses ist ON i.status_id = ist.id
+                WHERE i.project_id IN ($placeholders)
+                AND i.client_ready = 1
+            ");
+            $statusStmt->execute($projectIds);
+            $statusCounts = $statusStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+            $clientReadyIssues = (int) ($statusCounts['client_ready_issues'] ?? 0);
+            $openIssues = (int) ($statusCounts['open_issues'] ?? 0);
+            $resolvedIssues = (int) ($statusCounts['resolved_issues'] ?? 0);
+
+            $analyticsProjectId = count($projectIds) === 1 ? (int) reset($projectIds) : null;
+            $complianceScore = 0;
+
+            try {
+                $wcagAnalytics = new WCAGComplianceAnalytics();
+                $wcagReport = $wcagAnalytics->generateReport($analyticsProjectId, $clientUserId);
+                $wcagData = $wcagReport ? $wcagReport->getData() : [];
+                $complianceScore = round((float) ($wcagData['summary']['overall_compliance_score'] ?? 0), 1);
+            } catch (Exception $analyticsException) {
+                error_log('ClientAccessControlManager WCAG compliance stats error: ' . $analyticsException->getMessage());
+            }
+
+            if ($complianceScore == 0) {
+                try {
+                    $trendAnalytics = new ComplianceTrendAnalytics();
+                    $trendReport = $trendAnalytics->generateReport($analyticsProjectId, $clientUserId);
+                    $trendData = $trendReport ? $trendReport->getData() : [];
+                    $complianceScore = round((float) ($trendData['summary']['overall_resolution_rate'] ?? 0), 1);
+                } catch (Exception $trendException) {
+                    error_log('ClientAccessControlManager compliance trend stats error: ' . $trendException->getMessage());
+                }
+            }
             
             return [
                 'total_projects' => count($assignedProjects),
                 'total_issues' => array_sum(array_column($assignedProjects, 'total_issues_count')),
-                'client_ready_issues' => array_sum(array_column($assignedProjects, 'client_ready_issues_count')),
+                'client_ready_issues' => $clientReadyIssues,
+                'open_issues' => $openIssues,
+                'resolved_issues' => $resolvedIssues,
+                'compliance_score' => $complianceScore,
                 'projects_by_status' => $projectsByStatus,
                 'issues_by_severity' => $issuesBySeverity
             ];
@@ -571,6 +619,9 @@ class ClientAccessControlManager {
                 'total_projects' => count($assignedProjects),
                 'total_issues' => 0,
                 'client_ready_issues' => 0,
+                'open_issues' => 0,
+                'resolved_issues' => 0,
+                'compliance_score' => 0,
                 'projects_by_status' => [],
                 'issues_by_severity' => []
             ];

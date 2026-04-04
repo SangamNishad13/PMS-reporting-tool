@@ -494,6 +494,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                 </a>
                             </li>
                             <?php if ($role === 'client'): ?>
+                            <?php $isClientDetailPage = (strpos($currentRequestPath, '/modules/projects/view.php') !== false); ?>
                             <li class="nav-item">
                                 <a class="nav-link text-white <?php echo (strpos($currentRequestPath, '/modules/client/projects.php') !== false) ? 'active' : ''; ?>" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/projects.php">
                                     <i class="fas fa-folder-open me-1 opacity-50"></i> My Digital Assets
@@ -513,6 +514,20 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                     <?php foreach ($clientAssignedProjects as $clientNavProject): ?>
                                     <li>
                                         <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/project/<?php echo (int) $clientNavProject['id']; ?>">
+                                            <?php echo htmlspecialchars($clientNavProject['title'] ?? ('Asset #' . (int) $clientNavProject['id']), ENT_QUOTES, 'UTF-8'); ?>
+                                        </a>
+                                    </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle text-white <?php echo $isClientDetailPage ? 'active' : ''; ?>" href="#" id="clientProjectDetailsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-eye me-1 opacity-50"></i> Asset Details
+                                </a>
+                                <ul class="dropdown-menu shadow-sm" aria-labelledby="clientProjectDetailsDropdown">
+                                    <?php foreach ($clientAssignedProjects as $clientNavProject): ?>
+                                    <li>
+                                        <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/projects/view.php?id=<?php echo (int) $clientNavProject['id']; ?>">
                                             <?php echo htmlspecialchars($clientNavProject['title'] ?? ('Asset #' . (int) $clientNavProject['id']), ENT_QUOTES, 'UTF-8'); ?>
                                         </a>
                                     </li>

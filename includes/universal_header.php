@@ -25,6 +25,8 @@ if (($_SESSION['role'] ?? '') === 'client') {
         $clientHeaderProjects = [];
     }
 }
+
+$isClientProjectDetailPage = strpos($currentPath, '/modules/projects/view.php') !== false;
 ?>
 
 <!-- Universal Header Styles -->
@@ -316,6 +318,21 @@ if (($_SESSION['role'] ?? '') === 'client') {
                             <?php foreach ($clientHeaderProjects as $clientHeaderProject): ?>
                             <li>
                                 <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/project/<?php echo (int) $clientHeaderProject['id']; ?>">
+                                    <?php echo htmlspecialchars($clientHeaderProject['title'] ?? ('Asset #' . (int) $clientHeaderProject['id']), ENT_QUOTES, 'UTF-8'); ?>
+                                </a>
+                            </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle pms-nav-link <?php echo $isClientProjectDetailPage ? 'active' : ''; ?>" href="#" id="clientAssetDetailsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-eye"></i>
+                            <span>Asset Details</span>
+                        </a>
+                        <ul class="dropdown-menu shadow-sm" aria-labelledby="clientAssetDetailsDropdown">
+                            <?php foreach ($clientHeaderProjects as $clientHeaderProject): ?>
+                            <li>
+                                <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/projects/view.php?id=<?php echo (int) $clientHeaderProject['id']; ?>">
                                     <?php echo htmlspecialchars($clientHeaderProject['title'] ?? ('Asset #' . (int) $clientHeaderProject['id']), ENT_QUOTES, 'UTF-8'); ?>
                                 </a>
                             </li>

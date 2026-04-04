@@ -12,6 +12,7 @@ $db = Database::getInstance();
 $clientId = isset($_GET['client_id']) ? intval($_GET['client_id']) : 0;
 $projectId = isset($_GET['project_id']) ? intval($_GET['project_id']) : null;
 $format = isset($_GET['format']) ? $_GET['format'] : 'pdf';
+$allowedProjectIds = null;
 
 if (!$clientId) {
     if ($_SESSION['role'] === 'client') {
@@ -39,6 +40,24 @@ if (!$clientId) {
     die('Client ID required');
 }
 
+if (($_SESSION['role'] ?? '') === 'client') {
+    $accessControl = $accessControl ?? new ClientAccessControlManager();
+    $assignedProjects = $assignedProjects ?? $accessControl->getAssignedProjects((int) ($_SESSION['user_id'] ?? 0));
+    $allowedProjectIds = array_values(array_unique(array_map('intval', array_column($assignedProjects, 'id'))));
+
+    if ($projectId !== null) {
+        if (!in_array((int) $projectId, $allowedProjectIds, true)) {
+            die('Unauthorized project access');
+        }
+
+        $allowedProjectIds = [(int) $projectId];
+    }
+
+    if (empty($allowedProjectIds)) {
+        die('No assigned projects found');
+    }
+}
+
 // Get client info
 $stmt = $db->prepare("SELECT name FROM clients WHERE id = ?");
 $stmt->execute([$clientId]);
@@ -52,7 +71,7 @@ $projectFilter = $projectId ? "AND i.project_id = ?" : "";
 $params = $projectId ? [$clientId, $projectId] : [$clientId];
 
 // Fetch all data
-$data = fetchDashboardData($db, $clientId, $projectId);
+$data = fetchDashboardData($db, $clientId, $projectId, $allowedProjectIds);
 
 if ($format === 'excel') {
     $displayClientName = ($_SESSION['role'] ?? '') === 'client' ? '' : $client['name'];
@@ -62,9 +81,11 @@ if ($format === 'excel') {
     exportToPDF($data, $displayClientName);
 }
 
-function fetchDashboardData($db, $clientId, $projectId) {
-    $projectFilter = $projectId ? "AND i.project_id = ?" : "";
-    $params = $projectId ? [$clientId, $projectId] : [$clientId];
+function fetchDashboardData($db, $clientId, $projectId, $allowedProjectIds = null) {
+    $issueScope = buildProjectScopeSql($projectId, $allowedProjectIds, 'p.id', 'i.project_id');
+    $pageScope = buildProjectScopeSql($projectId, $allowedProjectIds, 'p.id', 'p.id');
+    $projectFilter = $issueScope['sql'];
+    $params = array_merge([$clientId], $issueScope['params']);
     
     // Summary
     $summaryQuery = "
@@ -131,15 +152,15 @@ function fetchDashboardData($db, $clientId, $projectId) {
         SELECT pp.page_name, p.title as project_title, COUNT(i.id) as issue_count
         FROM project_pages pp
         JOIN projects p ON pp.project_id = p.id
-        LEFT JOIN issues i ON pp.id = i.page_id
-        WHERE p.client_id = ? $projectFilter
+        LEFT JOIN issues i ON pp.id = i.page_id AND i.client_ready = 1
+        WHERE p.client_id = ? {$pageScope['sql']}
         GROUP BY pp.id
         HAVING issue_count > 0
         ORDER BY issue_count DESC
         LIMIT 5
     ";
     $stmt = $db->prepare($pagesQuery);
-    $stmt->execute($params);
+    $stmt->execute(array_merge([$clientId], $pageScope['params']));
     $topPages = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Top Comments
@@ -167,6 +188,30 @@ function fetchDashboardData($db, $clientId, $projectId) {
         'topPages' => $topPages,
         'topComments' => $topComments
     ];
+}
+
+function buildProjectScopeSql($projectId, $allowedProjectIds, $projectColumn = 'p.id', $issueProjectColumn = 'i.project_id') {
+    $sql = '';
+    $params = [];
+
+    if ($allowedProjectIds !== null) {
+        $allowedProjectIds = array_values(array_unique(array_map('intval', $allowedProjectIds)));
+
+        if (empty($allowedProjectIds)) {
+            return ['sql' => ' AND 1 = 0', 'params' => []];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($allowedProjectIds), '?'));
+        $scopeColumn = $issueProjectColumn ?: $projectColumn;
+        $sql .= " AND {$scopeColumn} IN ($placeholders)";
+        $params = array_merge($params, $allowedProjectIds);
+    } elseif ($projectId) {
+        $scopeColumn = $issueProjectColumn ?: $projectColumn;
+        $sql .= " AND {$scopeColumn} = ?";
+        $params[] = (int) $projectId;
+    }
+
+    return ['sql' => $sql, 'params' => $params];
 }
 
 function exportToExcel($data, $clientName) {

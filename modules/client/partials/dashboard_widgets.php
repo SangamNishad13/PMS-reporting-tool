@@ -17,7 +17,6 @@ $activeReport = (string) ($_GET['report'] ?? '');
             <i class="fas fa-chart-line text-primary"></i>
             Analytics Reports
         </h2>
-        <p class="text-muted">These charts are visual overviews only. Use the overview cards above for detailed drill-down pages.</p>
     </div>
 </div>
 
