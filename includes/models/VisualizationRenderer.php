@@ -21,6 +21,22 @@ class VisualizationRenderer implements VisualizationInterface {
             'screenReaderSupport' => true
         ];
     }
+
+    private function getScriptNonceAttribute(): string {
+        $nonce = '';
+
+        if (function_exists('generateCspNonce')) {
+            $nonce = (string) generateCspNonce();
+        } elseif (!empty($_SERVER['_CSP_NONCE'])) {
+            $nonce = (string) $_SERVER['_CSP_NONCE'];
+        }
+
+        if ($nonce !== '') {
+            return ' nonce="' . htmlspecialchars($nonce, ENT_QUOTES, 'UTF-8') . '"';
+        }
+
+        return '';
+    }
     
     /**
      * Render interactive pie chart using Chart.js
@@ -328,6 +344,7 @@ class VisualizationRenderer implements VisualizationInterface {
     private function generateChartHTML(string $chartId, array $config, string $type): string {
         $title = $config['options']['plugins']['title']['text'] ?? '';
         $description = $config['options']['accessibility']['description'] ?? '';
+        $scriptNonce = $this->getScriptNonceAttribute();
         
         $html = '<div class="chart-container" style="position: relative; height: 400px; margin: 20px 0;">';
         $html .= '<canvas id="' . $chartId . '" role="img" aria-label="' . htmlspecialchars($description) . '"';
@@ -349,7 +366,7 @@ class VisualizationRenderer implements VisualizationInterface {
         // Generate chart config JSON (safe - no raw JS functions)
         $configJson = json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         
-        $html .= '<script>';
+        $html .= '<script' . $scriptNonce . '>';
         $html .= 'document.addEventListener("DOMContentLoaded", function() {';
         $html .= '  if (typeof Chart !== "undefined") {';
         $html .= '    var ctx = document.getElementById("' . $chartId . '").getContext("2d");';
@@ -369,6 +386,7 @@ class VisualizationRenderer implements VisualizationInterface {
      * Generate responsive HTML table
      */
     private function generateTableHTML(string $tableId, array $data, array $columns): string {
+        $scriptNonce = $this->getScriptNonceAttribute();
         $html = '<div class="table-responsive">';
         $html .= '<table id="' . $tableId . '" class="table table-striped table-hover" role="table">';
         
@@ -406,7 +424,7 @@ class VisualizationRenderer implements VisualizationInterface {
         $html .= '</div>';
         
         // Add table enhancement script
-        $html .= '<script>';
+        $html .= '<script' . $scriptNonce . '>';
         $html .= 'document.addEventListener("DOMContentLoaded", function() {';
         $html .= '  // Add basic sorting functionality';
         $html .= '  var table = document.getElementById("' . $tableId . '");';
@@ -1391,8 +1409,10 @@ class VisualizationRenderer implements VisualizationInterface {
      * Get JavaScript utilities for table sorting and interactions
      */
     public function getVisualizationJS(): string {
+        $scriptNonce = $this->getScriptNonceAttribute();
+
         return '
-        <script>
+        <script' . $scriptNonce . '>
         function sortTable(table, columnIndex) {
             var tbody = table.querySelector("tbody");
             var rows = Array.from(tbody.querySelectorAll("tr"));

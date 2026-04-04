@@ -89,10 +89,10 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
                 </div>
                 <h3 class="text-muted">No Analytics Data Available</h3>
                 <p class="text-muted mb-4">
-                    Analytics widgets will appear here once you have accessibility issues in your assigned projects.
+                    Analytics widgets will appear here once you have accessibility issues in your assigned digital assets.
                 </p>
                 <a href="<?php echo $baseDir; ?>/modules/client/projects.php" class="btn btn-primary">
-                    <i class="fas fa-folder-open"></i> View Projects
+                    <i class="fas fa-folder-open"></i> View Digital Assets
                 </a>
             </div>
         </div>

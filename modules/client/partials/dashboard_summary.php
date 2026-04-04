@@ -23,7 +23,7 @@ $compliancePercentage = $dashboardData['compliance_percentage'] ?? 0;
 </div>
 
 <div class="row mb-4">
-    <!-- Total Projects Card -->
+    <!-- Total Digital Assets Card -->
     <div class="col-lg-4 col-md-6 mb-3">
         <div class="summary-card card h-100 border-0 shadow-sm">
             <div class="card-body text-center">
@@ -31,8 +31,8 @@ $compliancePercentage = $dashboardData['compliance_percentage'] ?? 0;
                     <i class="fas fa-folder-open fa-2x text-primary"></i>
                 </div>
                 <h3 class="summary-value text-primary"><?php echo number_format($totalProjects); ?></h3>
-                <p class="summary-label mb-2">Assigned Projects</p>
-                <small class="text-muted">Projects you have access to</small>
+                <p class="summary-label mb-2">Assigned Digital Assets</p>
+                <small class="text-muted">Digital assets you have access to</small>
             </div>
         </div>
     </div>
@@ -46,7 +46,7 @@ $compliancePercentage = $dashboardData['compliance_percentage'] ?? 0;
                 </div>
                 <h3 class="summary-value text-warning"><?php echo number_format($totalIssues); ?></h3>
                 <p class="summary-label mb-2">Total Issues</p>
-                <small class="text-muted">Accessibility issues in your projects</small>
+                <small class="text-muted">Accessibility issues in your digital assets</small>
             </div>
         </div>
     </div>

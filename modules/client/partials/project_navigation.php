@@ -18,7 +18,7 @@
                 </li>
                 <li class="breadcrumb-item">
                     <a href="<?php echo $baseDir; ?>/modules/client/projects.php">
-                        <i class="fas fa-folder-open"></i> Projects
+                        <i class="fas fa-folder-open"></i> Digital Assets
                     </a>
                 </li>
                 <li class="breadcrumb-item active" aria-current="page">

@@ -13,6 +13,18 @@ if (!isset($baseDir)) {
 // Get current page for active navigation
 $currentPage = basename($_SERVER['PHP_SELF']);
 $currentPath = $_SERVER['REQUEST_URI'];
+$clientHeaderProjects = [];
+
+if (($_SESSION['role'] ?? '') === 'client') {
+    try {
+        require_once __DIR__ . '/models/ClientAccessControlManager.php';
+        $clientHeaderAccessControl = new ClientAccessControlManager();
+        $clientHeaderProjects = $clientHeaderAccessControl->getAssignedProjects((int)($_SESSION['user_id'] ?? 0));
+    } catch (Exception $e) {
+        error_log('Universal header client projects load failed: ' . $e->getMessage());
+        $clientHeaderProjects = [];
+    }
+}
 ?>
 
 <!-- Universal Header Styles -->
@@ -263,29 +275,46 @@ $currentPath = $_SERVER['REQUEST_URI'];
                     <!-- Dashboard -->
                     <li class="nav-item">
                         <a class="nav-link pms-nav-link <?php echo (strpos($currentPath, 'dashboard') !== false) ? 'active' : ''; ?>" 
-                           href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/dashboard_unified.php">
+                           href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/dashboard">
                             <i class="fas fa-home"></i>
                             <span>Dashboard</span>
                         </a>
                     </li>
 
-                    <!-- Projects -->
+                    <!-- Digital Assets -->
                     <li class="nav-item">
                         <a class="nav-link pms-nav-link <?php echo (strpos($currentPath, 'projects') !== false) ? 'active' : ''; ?>" 
                            href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/projects.php">
                             <i class="fas fa-folder-open"></i>
-                            <span>Projects</span>
+                            <span>My Digital Assets</span>
                         </a>
                     </li>
 
-                    <!-- Analytics -->
                     <li class="nav-item">
-                        <a class="nav-link pms-nav-link <?php echo (strpos($currentPath, 'analytics') !== false || strpos($currentPath, 'view=analytics') !== false) ? 'active' : ''; ?>" 
-                           href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/dashboard_unified.php?view=analytics">
-                            <i class="fas fa-chart-line"></i>
-                            <span>Analytics</span>
+                        <a class="nav-link pms-nav-link <?php echo (strpos($currentPath, 'preferences') !== false) ? 'active' : ''; ?>" 
+                           href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/preferences.php">
+                            <i class="fas fa-sliders-h"></i>
+                            <span>Preferences</span>
                         </a>
                     </li>
+
+                    <?php if (!empty($clientHeaderProjects)): ?>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle pms-nav-link <?php echo (strpos($currentPath, '/client/project/') !== false) ? 'active' : ''; ?>" href="#" id="clientProjectPagesDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-chart-line"></i>
+                            <span>Digital Assets</span>
+                        </a>
+                        <ul class="dropdown-menu shadow-sm" aria-labelledby="clientProjectPagesDropdown">
+                            <?php foreach ($clientHeaderProjects as $clientHeaderProject): ?>
+                            <li>
+                                <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/project/<?php echo (int) $clientHeaderProject['id']; ?>">
+                                    <?php echo htmlspecialchars($clientHeaderProject['title'] ?? ('Asset #' . (int) $clientHeaderProject['id']), ENT_QUOTES, 'UTF-8'); ?>
+                                </a>
+                            </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </li>
+                    <?php endif; ?>
                 </ul>
 
                 <!-- Right Side Items -->

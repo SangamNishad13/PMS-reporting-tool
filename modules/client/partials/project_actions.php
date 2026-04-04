@@ -1,6 +1,6 @@
 <?php
 /**
- * Project Actions Partial
+ * Digital Asset Actions Partial
  * 
  * Action buttons and navigation for individual project
  */
@@ -24,7 +24,7 @@ if ($currentIndex !== false) {
     <div class="col-12">
         <h2 class="section-title">
             <i class="fas fa-tools text-primary"></i>
-            Project Actions
+            Digital Asset Actions
         </h2>
     </div>
 </div>
@@ -41,14 +41,14 @@ if ($currentIndex !== false) {
                     Export Reports
                 </h4>
                 <div class="action-buttons">
-                    <button onclick="exportProject('pdf')" class="btn btn-success action-btn">
+                    <button type="button" data-project-export="pdf" class="btn btn-success action-btn">
                         <i class="fas fa-file-pdf"></i>
                         <span class="btn-text">
                             <strong>PDF Report</strong>
-                            <small>Comprehensive project analytics</small>
+                            <small>Comprehensive digital asset analytics</small>
                         </span>
                     </button>
-                    <button onclick="exportProject('excel')" class="btn btn-primary action-btn">
+                    <button type="button" data-project-export="excel" class="btn btn-primary action-btn">
                         <i class="fas fa-file-excel"></i>
                         <span class="btn-text">
                             <strong>Excel Data</strong>
@@ -69,8 +69,8 @@ if ($currentIndex !== false) {
                        class="btn btn-info action-btn">
                         <i class="fas fa-project-diagram"></i>
                         <span class="btn-text">
-                            <strong>Project Details</strong>
-                            <small>Full project information</small>
+                            <strong>Digital Asset Details</strong>
+                            <small>Full digital asset information</small>
                         </span>
                     </a>
                     <a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>" 
@@ -103,8 +103,8 @@ if ($currentIndex !== false) {
                        class="btn btn-outline-secondary action-btn">
                         <i class="fas fa-folder-open"></i>
                         <span class="btn-text">
-                            <strong>All Projects</strong>
-                            <small>Browse project list</small>
+                            <strong>All Digital Assets</strong>
+                            <small>Browse digital asset list</small>
                         </span>
                     </a>
                 </div>
@@ -121,12 +121,12 @@ if ($currentIndex !== false) {
         <div class="project-navigation-card">
             <h4 class="nav-title">
                 <i class="fas fa-arrows-alt-h text-primary"></i>
-                Navigate Between Projects
+                Navigate Between Digital Assets
             </h4>
             
             <div class="project-nav-buttons">
                 <?php if ($prevProject): ?>
-                <a href="<?php echo $baseDir; ?>/modules/client/project_dashboard.php?id=<?php echo $prevProject['id']; ?>" 
+                     <a href="<?php echo $baseDir; ?>/client/project/<?php echo (int) $prevProject['id']; ?>" 
                    class="nav-project-btn prev-project">
                     <div class="nav-direction">
                         <i class="fas fa-chevron-left"></i>
@@ -151,7 +151,7 @@ if ($currentIndex !== false) {
                         <span>Previous</span>
                     </div>
                     <div class="nav-project-info">
-                        <div class="nav-project-title text-muted">No previous project</div>
+                        <div class="nav-project-title text-muted">No previous digital asset</div>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -163,7 +163,7 @@ if ($currentIndex !== false) {
                 </div>
 
                 <?php if ($nextProject): ?>
-                <a href="<?php echo $baseDir; ?>/modules/client/project_dashboard.php?id=<?php echo $nextProject['id']; ?>" 
+                     <a href="<?php echo $baseDir; ?>/client/project/<?php echo (int) $nextProject['id']; ?>" 
                    class="nav-project-btn next-project">
                     <div class="nav-project-info text-end">
                         <div class="nav-project-title"><?php echo htmlspecialchars($nextProject['title']); ?></div>
@@ -184,7 +184,7 @@ if ($currentIndex !== false) {
                 <?php else: ?>
                 <div class="nav-project-btn disabled">
                     <div class="nav-project-info text-end">
-                        <div class="nav-project-title text-muted">No next project</div>
+                        <div class="nav-project-title text-muted">No next digital asset</div>
                     </div>
                     <div class="nav-direction">
                         <span>Next</span>

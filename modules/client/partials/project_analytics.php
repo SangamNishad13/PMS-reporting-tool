@@ -215,7 +215,7 @@ $analyticsWidgets = $projectAnalytics['analytics_widgets'] ?? [];
                 This project doesn't have any accessibility issues available yet. Analytics will appear once issues are available for review.
             </p>
             <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $projectId; ?>" class="btn btn-primary">
-                <i class="fas fa-eye"></i> View Project Details
+                <i class="fas fa-eye"></i> View Digital Asset Details
             </a>
         </div>
     </div>

@@ -162,7 +162,7 @@ class ProjectAnalyticsController {
                     'reportType' => $type,
                     'enhanced' => true,
                     'project_id' => $projectId,
-                    'drillDownUrl' => "/PMS/modules/client/dashboard_unified.php?type={$type}&project_id={$projectId}",
+                    'drillDownUrl' => ((function_exists('getBaseDir') ? rtrim((string) getBaseDir(), '/') : '/PMS') . '/client/project/' . (int) $projectId),
                     'summary' => $this->getWidgetSummary($report->getData(), $type),
                     'insights' => $this->generateInsights($report->getData(), $type)
                 ];

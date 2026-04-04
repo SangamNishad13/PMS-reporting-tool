@@ -28,11 +28,11 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
                     <i class="fas fa-folder-open"></i>
                 </div>
                 <div class="action-content">
-                    <h4 class="action-title">View All Projects</h4>
-                    <p class="action-description">Browse individual project pages and detailed per-project analytics</p>
-                    <a href="<?php echo $baseDir; ?>/modules/client/projects.php" 
+                    <h4 class="action-title">View All Analytics</h4>
+                    <p class="action-description">Access detailed analytics reports for all assigned digital assets</p>
+                    <a href="<?php echo $baseDir; ?>/client/dashboard" 
                        class="btn btn-primary action-button">
-                        <i class="fas fa-arrow-right"></i> Browse Projects
+                        <i class="fas fa-arrow-right"></i> Browse Analytics
                     </a>
                 </div>
             </div>
@@ -45,7 +45,7 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
                 <div class="action-content">
                     <h4 class="action-title">Export PDF Report</h4>
                     <p class="action-description">Download comprehensive analytics as a PDF document</p>
-                    <button onclick="exportDashboard('pdf')" class="btn btn-success action-button">
+                    <button type="button" data-dashboard-export="pdf" class="btn btn-success action-button">
                         <i class="fas fa-download"></i> Download PDF
                     </button>
                 </div>
@@ -59,13 +59,26 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
                 <div class="action-content">
                     <h4 class="action-title">Export Excel Data</h4>
                     <p class="action-description">Download raw analytics data in Excel format for analysis</p>
-                    <button onclick="exportDashboard('excel')" class="btn btn-info action-button">
+                    <button type="button" data-dashboard-export="excel" class="btn btn-info action-button">
                         <i class="fas fa-download"></i> Download Excel
                     </button>
                 </div>
             </div>
 
-
+            <!-- View Digital Assets -->
+            <div class="action-card">
+                <div class="action-icon text-secondary">
+                    <i class="fas fa-folder-open"></i>
+                </div>
+                <div class="action-content">
+                    <h4 class="action-title">View Digital Assets</h4>
+                    <p class="action-description">Browse individual digital asset pages and detailed analytics</p>
+                    <a href="<?php echo $baseDir; ?>/modules/client/projects.php" 
+                       class="btn btn-secondary action-button">
+                        <i class="fas fa-arrow-right"></i> Browse Digital Assets
+                    </a>
+                </div>
+            </div>
 
         </div>
     </div>

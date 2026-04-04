@@ -470,6 +470,18 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                             }
                             $role = $_SESSION['role'] ?? 'auth';
                             $moduleDir = getModuleDirectory($role);
+                            $currentRequestPath = (string)($_SERVER['REQUEST_URI'] ?? '');
+                            $clientAssignedProjects = [];
+                            if ($role === 'client') {
+                                try {
+                                    require_once __DIR__ . '/models/ClientAccessControlManager.php';
+                                    $clientNavAccessControl = new ClientAccessControlManager();
+                                    $clientAssignedProjects = $clientNavAccessControl->getAssignedProjects((int)($_SESSION['user_id'] ?? 0));
+                                } catch (Exception $e) {
+                                    error_log('Client nav projects load failed: ' . $e->getMessage());
+                                    $clientAssignedProjects = [];
+                                }
+                            }
                             ?>
 
                             <!-- Dashboard -->
@@ -481,6 +493,34 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                     <i class="fas fa-home me-1 opacity-50"></i> Dashboard
                                 </a>
                             </li>
+                            <?php if ($role === 'client'): ?>
+                            <li class="nav-item">
+                                <a class="nav-link text-white <?php echo (strpos($currentRequestPath, '/modules/client/projects.php') !== false) ? 'active' : ''; ?>" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/projects.php">
+                                    <i class="fas fa-folder-open me-1 opacity-50"></i> My Digital Assets
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-white <?php echo (strpos($currentRequestPath, '/modules/client/preferences.php') !== false) ? 'active' : ''; ?>" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/preferences.php">
+                                    <i class="fas fa-sliders-h me-1 opacity-50"></i> Preferences
+                                </a>
+                            </li>
+                            <?php if (!empty($clientAssignedProjects)): ?>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle text-white <?php echo (strpos($currentRequestPath, '/client/project/') !== false) ? 'active' : ''; ?>" href="#" id="clientProjectsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-chart-line me-1 opacity-50"></i> Digital Assets
+                                </a>
+                                <ul class="dropdown-menu shadow-sm" aria-labelledby="clientProjectsDropdown">
+                                    <?php foreach ($clientAssignedProjects as $clientNavProject): ?>
+                                    <li>
+                                        <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/project/<?php echo (int) $clientNavProject['id']; ?>">
+                                            <?php echo htmlspecialchars($clientNavProject['title'] ?? ('Asset #' . (int) $clientNavProject['id']), ENT_QUOTES, 'UTF-8'); ?>
+                                        </a>
+                                    </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </li>
+                            <?php endif; ?>
+                            <?php endif; ?>
                             <!-- Common Workspace Menus (All Users except Client) -->
                             <?php if ($_SESSION['role'] !== 'client'): ?>
                             <li class="nav-item dropdown">
@@ -634,13 +674,13 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                             }
                             
                             // Client Dashboard Link (for client role or users with client_id)
-                            if (isset($_SESSION['role']) && ($_SESSION['role'] === 'client' || (isset($_SESSION['client_id']) && $_SESSION['client_id']))) {
+                            if (isset($_SESSION['role']) && $_SESSION['role'] !== 'client' && (isset($_SESSION['client_id']) && $_SESSION['client_id'])) {
                                 $clientIdForDashboard = $_SESSION['client_id'] ?? null;
                                 if ($clientIdForDashboard):
                             ?>
                                 <li class="nav-item">
                                     <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/dashboard.php?client_id=<?php echo $clientIdForDashboard; ?>">
-                                        <i class="fas fa-chart-line me-1 opacity-50"></i> Client Dashboard
+                                        <i class="fas fa-chart-line me-1 opacity-50"></i> Analytics Dashboard
                                     </a>
                                 </li>
                                 <li class="nav-item">

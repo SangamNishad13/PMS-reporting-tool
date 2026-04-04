@@ -1,7 +1,7 @@
 <?php
 /**
- * Client Project View Template
- * Displays detailed analytics for a single project
+ * Dashboard Detail View Template
+ * Displays detailed analytics for a single digital asset
  */
 
 // Ensure we have the required data
@@ -11,7 +11,7 @@ $clientUser = $clientUser ?? [];
 $csrfToken = $csrfToken ?? '';
 $baseDir = $baseDir ?? '';
 
-$projectName = $projectAnalytics['project_name'] ?? 'Project';
+$projectName = $projectAnalytics['project_name'] ?? 'Digital Asset';
 $projectDescription = $projectAnalytics['project_description'] ?? '';
 
 $pageTitle = $projectName;
@@ -26,7 +26,7 @@ require_once __DIR__ . '/../../header.php';
                 <nav aria-label="breadcrumb">
                     <ol class="breadcrumb mb-2">
                         <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/client/dashboard">Dashboard</a></li>
-                        <li class="breadcrumb-item active" aria-current="page">Project Details</li>
+                        <li class="breadcrumb-item active" aria-current="page">Digital Asset Details</li>
                     </ol>
                 </nav>
                 <h1 class="h3 mb-2"><?php echo htmlspecialchars($projectName, ENT_QUOTES, 'UTF-8'); ?></h1>
@@ -37,7 +37,7 @@ require_once __DIR__ . '/../../header.php';
                 <?php endif; ?>
             </div>
             <div class="col-md-4 text-md-end">
-                <div class="btn-group" role="group" aria-label="Project actions">
+                <div class="btn-group" role="group" aria-label="Digital asset actions">
                     <button type="button" class="btn btn-outline-primary" data-action="refresh" title="Refresh Data">
                         <i class="fas fa-sync-alt"></i> Refresh
                     </button>
@@ -58,7 +58,7 @@ require_once __DIR__ . '/../../header.php';
             </div>
         </div>
 
-        <!-- Project Summary Cards -->
+        <!-- Digital Asset Summary Cards -->
         <div class="row mb-4">
             <div class="col-md-3">
                 <div class="card border-0 shadow-sm text-center">

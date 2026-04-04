@@ -1,6 +1,6 @@
 <?php
 /**
- * Client Dashboard Template
+ * Dashboard Template
  * Displays unified analytics dashboard with interactive charts
  */
 

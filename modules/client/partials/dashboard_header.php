@@ -22,7 +22,7 @@ $selectedProjectId = $_GET['project_id'] ?? null;
                     </h1>
                     <p class="dashboard-subtitle mb-0" style="color: #495057 !important;">
                         Comprehensive accessibility analytics across 
-                        <strong><?php echo count($assignedProjects); ?></strong> assigned projects
+                        <strong><?php echo count($assignedProjects); ?></strong> assigned digital assets
                     </p>
                     <div class="dashboard-meta mt-2">
                         <small style="color: #6c757d !important;">
@@ -36,9 +36,9 @@ $selectedProjectId = $_GET['project_id'] ?? null;
                 <div class="dashboard-controls d-flex flex-wrap gap-2">
                     <!-- Project Filter -->
                     <div class="control-group">
-                        <label for="projectFilter" class="form-label small mb-1" style="color: #495057 !important;">Filter by Project</label>
+                        <label for="projectFilter" class="form-label small mb-1" style="color: #495057 !important;">Filter by Digital Asset</label>
                         <select id="projectFilter" class="form-select form-select-sm" style="min-width: 250px;">
-                            <option value="">All Projects</option>
+                            <option value="">All Digital Assets</option>
                             <?php foreach ($assignedProjects as $project): ?>
                                 <option value="<?php echo $project['id']; ?>" 
                                         <?php echo ($selectedProjectId == $project['id']) ? 'selected' : ''; ?>>
@@ -52,10 +52,10 @@ $selectedProjectId = $_GET['project_id'] ?? null;
                     <div class="control-group">
                         <label class="form-label small mb-1" style="color: #495057 !important;">Export Reports</label>
                         <div class="btn-group" role="group">
-                            <button type="button" class="btn btn-success btn-sm" onclick="exportDashboard('pdf')">
+                            <button type="button" class="btn btn-success btn-sm" data-dashboard-export="pdf">
                                 <i class="fas fa-file-pdf"></i> PDF
                             </button>
-                            <button type="button" class="btn btn-primary btn-sm" onclick="exportDashboard('excel')">
+                            <button type="button" class="btn btn-primary btn-sm" data-dashboard-export="excel">
                                 <i class="fas fa-file-excel"></i> Excel
                             </button>
                         </div>
@@ -64,7 +64,7 @@ $selectedProjectId = $_GET['project_id'] ?? null;
                     <!-- Refresh Button -->
                     <div class="control-group">
                         <label class="form-label small mb-1" style="color: #495057 !important;">&nbsp;</label>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="refreshDashboard()">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" data-dashboard-refresh="1">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>

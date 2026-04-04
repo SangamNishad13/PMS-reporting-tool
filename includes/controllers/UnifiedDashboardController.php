@@ -24,6 +24,22 @@ class UnifiedDashboardController {
     private $accessControl;
     public $visualization;
     private $analyticsEngines;
+
+    private function getClientBasePath(): string {
+        if (function_exists('getBaseDir')) {
+            return rtrim((string) getBaseDir(), '/');
+        }
+
+        return '/PMS';
+    }
+
+    private function getClientDashboardUrl(): string {
+        return $this->getClientBasePath() . '/client/dashboard';
+    }
+
+    private function getClientProjectUrl(int $projectId): string {
+        return $this->getClientBasePath() . '/client/project/' . $projectId;
+    }
     
     public function __construct() {
         $this->accessControl = new ClientAccessControlManager();
@@ -203,7 +219,7 @@ class UnifiedDashboardController {
             'title' => 'User Impact Analysis',
             'icon' => 'fas fa-users',
             'reportType' => 'user_affected',
-            'drillDownUrl' => '/PMS/modules/client/projects.php',
+            'drillDownUrl' => $this->getClientDashboardUrl(),
             'summary' => [
                 [
                     'label' => 'Total Issues',
@@ -244,7 +260,7 @@ class UnifiedDashboardController {
             'title' => 'WCAG Compliance',
             'icon' => 'fas fa-shield-alt',
             'reportType' => 'wcag_compliance',
-            'drillDownUrl' => '/PMS/modules/client/projects.php',
+            'drillDownUrl' => $this->getClientDashboardUrl(),
             'summary' => [
                 [
                     'label' => 'Overall Score',
@@ -284,7 +300,7 @@ class UnifiedDashboardController {
             'title' => 'Issue Severity',
             'icon' => 'fas fa-exclamation-triangle',
             'reportType' => 'severity_analysis',
-            'drillDownUrl' => '/PMS/modules/client/projects.php',
+            'drillDownUrl' => $this->getClientDashboardUrl(),
             'summary' => [
                 [
                     'label' => 'Critical Severity',
@@ -330,7 +346,7 @@ class UnifiedDashboardController {
             'title' => 'Common Issues',
             'icon' => 'fas fa-list-ul',
             'reportType' => 'common_issues',
-            'drillDownUrl' => '/PMS/modules/client/projects.php',
+            'drillDownUrl' => $this->getClientDashboardUrl(),
             'summary' => array_map(function($issue, $index) {
                 return [
                     'label' => '#' . ($index + 1) . ' Issue',
@@ -352,7 +368,7 @@ class UnifiedDashboardController {
             'title' => 'Blocker Issues',
             'icon' => 'fas fa-ban',
             'reportType' => 'blocker_issues',
-            'drillDownUrl' => '/PMS/modules/client/projects.php',
+            'drillDownUrl' => $this->getClientDashboardUrl(),
             'summary' => [
                 [
                     'label' => 'Active Blockers',
@@ -382,7 +398,7 @@ class UnifiedDashboardController {
             'title' => 'Page Analysis',
             'icon' => 'fas fa-file-alt',
             'reportType' => 'page_issues',
-            'drillDownUrl' => '/PMS/modules/client/projects.php',
+            'drillDownUrl' => $this->getClientDashboardUrl(),
             'summary' => [
                 [
                     'label' => 'Pages Analyzed',
@@ -412,7 +428,7 @@ class UnifiedDashboardController {
             'title' => 'Discussion Activity',
             'icon' => 'fas fa-comments',
             'reportType' => 'commented_issues',
-            'drillDownUrl' => '/PMS/modules/client/projects.php',
+            'drillDownUrl' => $this->getClientDashboardUrl(),
             'summary' => [
                 [
                     'label' => 'Issues with Comments',
@@ -435,7 +451,7 @@ class UnifiedDashboardController {
      */
     private function createComplianceTrendWidget($report, $projectIds) {
         $data = $report->getData();
-        $trendData = $data['trend_data'] ?? [];
+        $trendData = $data['daily_trends'] ?? ($data['trend_data'] ?? []);
         
         return [
             'type' => 'trend',
@@ -668,9 +684,9 @@ class UnifiedDashboardController {
         
         $projectIdsList = implode(',', array_column($data['assigned_projects'], 'id'));
         
-        $html .= '<div class="col-md-4 mb-3">';
-        $html .= '<a href="/PMS/client/dashboard" class="btn btn-primary btn-lg btn-block">';
-        $html .= '<i class="fas fa-tachometer-alt"></i><br>Analytics Dashboard';
+        $html .= '<div class="col-md-3 mb-3">';
+        $html .= '<a href="' . htmlspecialchars($this->getClientDashboardUrl(), ENT_QUOTES, 'UTF-8') . '" class="btn btn-primary btn-lg btn-block">';
+        $html .= '<i class="fas fa-chart-line"></i><br>View All Analytics';
         $html .= '</a>';
         $html .= '</div>';
         
@@ -891,7 +907,7 @@ class UnifiedDashboardController {
         $widgetConfig = [
             'type' => 'analytics',
             'reportType' => $type,
-            'drillDownUrl' => "/PMS/client/project/{$projectId}",
+            'drillDownUrl' => $this->getClientProjectUrl((int) $projectId),
             'summary' => []
         ];
         
