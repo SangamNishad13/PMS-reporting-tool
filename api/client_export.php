@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/models/ClientAccessControlManager.php';
+require_once __DIR__ . '/../includes/models/ClientComplianceScoreResolver.php';
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) {
@@ -102,6 +103,12 @@ function fetchDashboardData($db, $clientId, $projectId, $allowedProjectIds = nul
     $stmt = $db->prepare($summaryQuery);
     $stmt->execute($params);
     $summary = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    $complianceResolver = new ClientComplianceScoreResolver();
+    $summary['compliance_score'] = $complianceResolver->resolveForScope(
+        $allowedProjectIds !== null ? $allowedProjectIds : ($projectId ? [(int) $projectId] : fetchClientProjectIds($db, $clientId)),
+        1
+    );
     
     // Severity
     $severityQuery = "
@@ -214,6 +221,12 @@ function buildProjectScopeSql($projectId, $allowedProjectIds, $projectColumn = '
     return ['sql' => $sql, 'params' => $params];
 }
 
+function fetchClientProjectIds($db, $clientId) {
+    $stmt = $db->prepare('SELECT id FROM projects WHERE client_id = ?');
+    $stmt->execute([(int) $clientId]);
+    return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+}
+
 function exportToExcel($data, $clientName) {
     ob_clean();
     header('Content-Type: text/csv; charset=utf-8');
@@ -232,9 +245,7 @@ function exportToExcel($data, $clientName) {
     fputcsv($output, ['Blocker Issues', $data['summary']['blocker_issues']]);
     fputcsv($output, ['Open Issues', $data['summary']['open_issues']]);
     fputcsv($output, ['Resolved Issues', $data['summary']['resolved_issues']]);
-    $compliance = $data['summary']['total_issues'] > 0 ? 
-        round(($data['summary']['resolved_issues'] / $data['summary']['total_issues']) * 100, 1) : 100;
-    fputcsv($output, ['Compliance Score', $compliance . '%']);
+    fputcsv($output, ['Compliance Score', round((float) ($data['summary']['compliance_score'] ?? 0), 1) . '%']);
     fputcsv($output, []);
     
     // Severity
@@ -343,9 +354,7 @@ function exportToPDF($data, $clientName) {
                 <div class="stat-card">
                     <div class="stat-value">
                         <?php 
-                        $compliance = $data['summary']['total_issues'] > 0 ? 
-                            round(($data['summary']['resolved_issues'] / $data['summary']['total_issues']) * 100, 1) : 100;
-                        echo $compliance . '%';
+                        echo round((float) ($data['summary']['compliance_score'] ?? 0), 1) . '%';
                         ?>
                     </div>
                     <div class="stat-label">Compliance Score</div>

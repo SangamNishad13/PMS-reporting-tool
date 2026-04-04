@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/AnalyticsEngine.php';
 require_once __DIR__ . '/AnalyticsReport.php';
+require_once __DIR__ . '/ClientComplianceScoreResolver.php';
 
 /**
  * Compliance Trend Analytics Engine
@@ -12,6 +13,12 @@ require_once __DIR__ . '/AnalyticsReport.php';
  * Requirements: 11.1, 11.2, 11.4
  */
 class ComplianceTrendAnalytics extends AnalyticsEngine {
+    private $complianceResolver;
+
+    public function __construct() {
+        parent::__construct();
+        $this->complianceResolver = new ClientComplianceScoreResolver();
+    }
     
     /**
      * Generate compliance trend analytics report
@@ -118,6 +125,7 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
      */
     private function analyzeDailyTrends($issues) {
         $dailyData = [];
+        $issuesByDate = [];
         
         // Group issues by creation date
         foreach ($issues as $issue) {
@@ -135,6 +143,7 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
             }
             
             $dailyData[$date]['new_issues']++;
+            $issuesByDate[$date][] = $issue;
             $severity = $issue['severity'] ?? 'Medium';
             $dailyData[$date]['severity_breakdown'][$severity] = ($dailyData[$date]['severity_breakdown'][$severity] ?? 0) + 1;
             
@@ -150,15 +159,17 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
         // Calculate compliance scores and running totals
         $runningTotal = 0;
         $runningResolved = 0;
+        $runningIssues = [];
         
         ksort($dailyData);
         foreach ($dailyData as $date => &$data) {
             $runningTotal += $data['new_issues'];
             $runningResolved += $data['resolved_issues'];
+            $runningIssues = array_merge($runningIssues, $issuesByDate[$date] ?? []);
             
             $data['total_issues'] = $runningTotal;
             $data['cumulative_resolved'] = $runningResolved;
-            $data['compliance_score'] = $this->calculateComplianceScore($runningTotal, $runningResolved);
+            $data['compliance_score'] = $this->complianceResolver->calculateWcagComplianceFromIssues($runningIssues);
         }
         
         return array_values($dailyData);
@@ -172,6 +183,7 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
      */
     private function analyzeWeeklyTrends($issues) {
         $weeklyData = [];
+        $issuesByWeek = [];
         
         foreach ($issues as $issue) {
             $week = date('Y-W', strtotime($issue['created_at'] ?? date('Y-m-d')));
@@ -189,6 +201,7 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
             }
             
             $weeklyData[$week]['new_issues']++;
+            $issuesByWeek[$week][] = $issue;
             
             if (in_array($issue['status'] ?? 'Open', ['Resolved', 'Closed']) && !empty($issue['resolved_at'])) {
                 $resolvedWeek = date('Y-W', strtotime($issue['resolved_at']));
@@ -204,8 +217,10 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
         
         // Calculate metrics for each week
         ksort($weeklyData);
+        $runningIssues = [];
         foreach ($weeklyData as $week => &$data) {
-            $data['compliance_score'] = $this->calculateWeeklyComplianceScore($data);
+            $runningIssues = array_merge($runningIssues, $issuesByWeek[$week] ?? []);
+            $data['compliance_score'] = $this->complianceResolver->calculateWcagComplianceFromIssues($runningIssues);
             $data['avg_resolution_time'] = !empty($data['resolution_times']) ? 
                 round(array_sum($data['resolution_times']) / count($data['resolution_times']), 1) : 0;
             unset($data['resolution_times']); // Remove raw data to save space
@@ -222,6 +237,7 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
      */
     private function analyzeMonthlyTrends($issues) {
         $monthlyData = [];
+        $issuesByMonth = [];
         
         foreach ($issues as $issue) {
             $month = date('Y-m', strtotime($issue['created_at'] ?? date('Y-m-d')));
@@ -240,6 +256,7 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
             }
             
             $monthlyData[$month]['new_issues']++;
+            $issuesByMonth[$month][] = $issue;
             
             $severity = $issue['severity'] ?? 'Medium';
             $monthlyData[$month]['severity_distribution'][$severity] = ($monthlyData[$month]['severity_distribution'][$severity] ?? 0) + 1;
@@ -257,9 +274,11 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
         
         // Calculate monthly metrics
         ksort($monthlyData);
+        $runningIssues = [];
         foreach ($monthlyData as $month => &$data) {
             $data['resolution_rate'] = $this->calculatePercentage($data['resolved_issues'], $data['new_issues']);
-            $data['compliance_score'] = $this->calculateMonthlyComplianceScore($data);
+            $runningIssues = array_merge($runningIssues, $issuesByMonth[$month] ?? []);
+            $data['compliance_score'] = $this->complianceResolver->calculateWcagComplianceFromIssues($runningIssues);
         }
         
         return array_values($monthlyData);
@@ -273,6 +292,7 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
      */
     private function analyzeYearlyTrends($issues) {
         $yearlyData = [];
+        $issuesByYear = [];
         
         foreach ($issues as $issue) {
             $year = date('Y', strtotime($issue['created_at'] ?? date('Y-m-d')));
@@ -290,6 +310,7 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
             }
             
             $yearlyData[$year]['new_issues']++;
+            $issuesByYear[$year][] = $issue;
             
             if (in_array($issue['status'] ?? 'Open', ['Resolved', 'Closed']) && !empty($issue['resolved_at'])) {
                 $resolvedYear = date('Y', strtotime($issue['resolved_at']));
@@ -304,9 +325,11 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
         
         // Calculate yearly metrics
         ksort($yearlyData);
+        $runningIssues = [];
         foreach ($yearlyData as $year => &$data) {
             $data['resolution_rate'] = $this->calculatePercentage($data['resolved_issues'], $data['new_issues']);
-            $data['compliance_score'] = $this->calculateYearlyComplianceScore($data);
+            $runningIssues = array_merge($runningIssues, $issuesByYear[$year] ?? []);
+            $data['compliance_score'] = $this->complianceResolver->calculateWcagComplianceFromIssues($runningIssues);
             $data['avg_resolution_time'] = !empty($data['resolution_times']) ? 
                 round(array_sum($data['resolution_times']) / count($data['resolution_times']), 1) : 0;
             unset($data['resolution_times']);
@@ -457,7 +480,7 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
         }));
         
         $resolutionRate = $this->calculatePercentage($resolvedIssues, $totalIssues);
-        $complianceScore = $this->calculateComplianceScore($totalIssues, $resolvedIssues);
+        $complianceScore = $this->complianceResolver->calculateWcagComplianceFromIssues($issues);
         
         return [
             'total_issues' => $totalIssues,

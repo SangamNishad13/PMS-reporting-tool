@@ -18,12 +18,14 @@ require_once __DIR__ . '/../models/BlockerIssuesAnalytics.php';
 require_once __DIR__ . '/../models/PageIssuesAnalytics.php';
 require_once __DIR__ . '/../models/CommentedIssuesAnalytics.php';
 require_once __DIR__ . '/../models/ComplianceTrendAnalytics.php';
+require_once __DIR__ . '/../models/ClientComplianceScoreResolver.php';
 require_once __DIR__ . '/../models/VisualizationRenderer.php';
 
 class UnifiedDashboardController {
     private $accessControl;
     public $visualization;
     private $analyticsEngines;
+    private $complianceResolver;
 
     private function getClientBasePath(): string {
         if (function_exists('getBaseDir')) {
@@ -80,6 +82,7 @@ class UnifiedDashboardController {
     public function __construct() {
         $this->accessControl = new ClientAccessControlManager();
         $this->visualization = new VisualizationRenderer();
+        $this->complianceResolver = new ClientComplianceScoreResolver($this->accessControl);
         
         // Initialize all 9 analytics engines
         $this->analyticsEngines = [
@@ -130,16 +133,7 @@ class UnifiedDashboardController {
         $projectStats = $this->accessControl->getProjectStatistics($clientUserId, $selectedProjectId);
         
         // Calculate overall compliance percentage from WCAG compliance score
-        $compliancePct = 0;
-        if (isset($analyticsReports['wcag_compliance']) && $analyticsReports['wcag_compliance']) {
-            $wcagData = $analyticsReports['wcag_compliance']->getData();
-            $compliancePct = round($wcagData['summary']['overall_compliance_score'] ?? 0, 1);
-        }
-        // Fallback to resolution rate if WCAG data not available
-        if ($compliancePct == 0 && isset($analyticsReports['compliance_trend']) && $analyticsReports['compliance_trend']) {
-            $trendData = $analyticsReports['compliance_trend']->getData();
-            $compliancePct = round($trendData['summary']['overall_resolution_rate'] ?? 0, 1);
-        }
+        $compliancePct = $this->complianceResolver->resolveForClientUser((int) $clientUserId, $projectIds);
 
         return [
             'success' => true,
@@ -852,7 +846,7 @@ class UnifiedDashboardController {
         }
 
         $pendingCount = max(0, $totalClientIssues - $resolvedCount);
-        $compliancePct = $totalClientIssues > 0 ? round(($resolvedCount / $totalClientIssues) * 100, 1) : 100;
+        $compliancePct = round((float) ($projectStats['compliance_score'] ?? $this->complianceResolver->resolveForClientUser((int) $clientUserId, [(int) $projectId])), 1);
 
         return [
             'success' => true,

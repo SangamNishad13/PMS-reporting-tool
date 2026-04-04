@@ -2,6 +2,8 @@
 ob_start();
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/models/ClientAccessControlManager.php';
+require_once __DIR__ . '/../includes/models/ClientComplianceScoreResolver.php';
 ob_end_clean();
 
 header('Content-Type: application/json');
@@ -34,6 +36,8 @@ if (!in_array($sessionRole, ['admin'])) {
 }
 
 try {
+    $complianceResolver = new ClientComplianceScoreResolver();
+    $complianceProjectScope = getComplianceProjectScope($db, $clientId, $projectId);
     $projectFilter = $projectId ? "AND i.project_id = ?" : "";
     $params = $projectId ? [$clientId, $projectId] : [$clientId];
     
@@ -55,78 +59,7 @@ try {
     
     $totalIssues = $summary['total_issues'];
     $resolvedIssues = $summary['resolved_issues'];
-    
-    // Calculate compliance score using WCAG criteria-based formula
-    // Total WCAG 2.1 Success Criteria = 57 (Level A + AA + AAA)
-    $totalWCAGCriteria = 57;
-    
-    if ($totalIssues == 0) {
-        // No issues means 100% compliance
-        $complianceScore = 100;
-    } else {
-        // Get all WCAG SC with their issues grouped by severity
-        // For each SC, we take the highest severity weight
-        $criteriaQuery = "
-            SELECT 
-                im.meta_value as wcag_sc,
-                MAX(CASE 
-                    WHEN i.severity = 'blocker' THEN 4
-                    WHEN i.severity = 'critical' THEN 3
-                    WHEN i.severity = 'major' THEN 2
-                    WHEN i.severity = 'minor' THEN 1
-                    ELSE 1
-                END) as max_severity_weight,
-                COUNT(DISTINCT i.id) as total_issues_in_sc,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(ist.name) IN ('resolved', 'closed', 'fixed') THEN i.id 
-                END) as resolved_issues_in_sc
-            FROM issues i
-            JOIN projects p ON i.project_id = p.id
-            LEFT JOIN issue_statuses ist ON i.status_id = ist.id
-            LEFT JOIN issue_metadata im ON i.id = im.issue_id AND im.meta_key = 'wcagsuccesscriteria'
-            WHERE p.client_id = ? $projectFilter AND i.client_ready = 1
-            AND im.meta_value IS NOT NULL AND im.meta_value != ''
-            GROUP BY im.meta_value
-        ";
-        $stmt = $db->prepare($criteriaQuery);
-        $stmt->execute($params);
-        $criteriaData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Calculate weights based on WCAG criteria
-        $totalWeight = 0;
-        $earnedPoints = 0;
-        $failedCriteriaCount = 0;
-        
-        foreach ($criteriaData as $criteria) {
-            $weight = intval($criteria['max_severity_weight']);
-            $totalIssuesInSC = intval($criteria['total_issues_in_sc']);
-            $resolvedIssuesInSC = intval($criteria['resolved_issues_in_sc']);
-            
-            $totalWeight += $weight;
-            
-            // If ALL issues in this SC are resolved, earn full points
-            if ($totalIssuesInSC > 0 && $resolvedIssuesInSC == $totalIssuesInSC) {
-                $earnedPoints += $weight;
-            } else {
-                // SC has open issues, so it's failed
-                $failedCriteriaCount++;
-            }
-        }
-        
-        // Add weight for all passing criteria (criteria with no issues at all)
-        $passingCriteriaCount = $totalWCAGCriteria - count($criteriaData);
-        $passingCriteriaWeight = $passingCriteriaCount * 1; // Weight of 1 for passing criteria
-        $totalWeight += $passingCriteriaWeight;
-        $earnedPoints += $passingCriteriaWeight; // All passing criteria earn full points
-        
-        // Excel Formula: Compliance % = (Points + Total Weight) / (2 × Total Weight) × 100
-        if ($totalWeight > 0) {
-            $complianceScore = (($earnedPoints + $totalWeight) / (2 * $totalWeight)) * 100;
-            $complianceScore = round(max(0, min(100, $complianceScore)), 1);
-        } else {
-            $complianceScore = 100;
-        }
-    }
+    $complianceScore = $complianceResolver->resolveForScope($complianceProjectScope, 1);
     
     $summary['compliance'] = $complianceScore;
     $summary['total'] = $totalIssues;
@@ -290,11 +223,12 @@ try {
     $topComments = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Compliance Trend Analysis
+    $trendIssues = fetchTrendIssues($db, $clientId, $projectId);
     $trend = [
-        'daily' => getTrendData($db, $clientId, $projectId, 'daily', 30),
-        'weekly' => getTrendData($db, $clientId, $projectId, 'weekly', 12),
-        'monthly' => getTrendData($db, $clientId, $projectId, 'monthly', 12),
-        'yearly' => getTrendData($db, $clientId, $projectId, 'yearly', 5)
+        'daily' => getTrendData($trendIssues, $complianceResolver, 'daily', 30),
+        'weekly' => getTrendData($trendIssues, $complianceResolver, 'weekly', 12),
+        'monthly' => getTrendData($trendIssues, $complianceResolver, 'monthly', 12),
+        'yearly' => getTrendData($trendIssues, $complianceResolver, 'yearly', 5)
     ];
     
     echo json_encode([
@@ -314,137 +248,84 @@ try {
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
 
-function getTrendData($db, $clientId, $projectId, $period, $limit) {
-    $projectFilter = $projectId ? "AND i.project_id = ?" : "";
+function getComplianceProjectScope($db, $clientId, $projectId) {
+    if ($projectId) {
+        return [(int) $projectId];
+    }
+
+    if (($_SESSION['role'] ?? '') === 'client') {
+        $accessControl = new ClientAccessControlManager();
+        $assignedProjects = $accessControl->getAssignedProjects((int) ($_SESSION['user_id'] ?? 0));
+        return array_values(array_unique(array_map('intval', array_column($assignedProjects, 'id'))));
+    }
+
+    $stmt = $db->prepare('SELECT id FROM projects WHERE client_id = ?');
+    $stmt->execute([(int) $clientId]);
+    return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+}
+
+function fetchTrendIssues($db, $clientId, $projectId) {
+    $projectFilter = $projectId ? 'AND i.project_id = ?' : '';
     $params = $projectId ? [$clientId, $projectId] : [$clientId];
-    $totalWCAGCriteria = 57;
-    
-    // Determine date format based on period
-    switch($period) {
-        case 'daily':
-            $dateFormat = '%Y-%m-%d';
-            break;
-        case 'weekly':
-            $dateFormat = '%Y-W%u';
-            break;
-        case 'monthly':
-            $dateFormat = '%Y-%m';
-            break;
-        case 'yearly':
-            $dateFormat = '%Y';
-            break;
-        default:
-            $dateFormat = '%Y-%m-%d';
-    }
-    
-    // Determine date interval based on period
-    switch($period) {
-        case 'daily':
-            $dateInterval = 'DAY';
-            break;
-        case 'weekly':
-            $dateInterval = 'WEEK';
-            break;
-        case 'monthly':
-            $dateInterval = 'MONTH';
-            break;
-        case 'yearly':
-            $dateInterval = 'YEAR';
-            break;
-        default:
-            $dateInterval = 'DAY';
-    }
-    
-    // Get all periods with issues
+
     $query = "
-        SELECT DISTINCT DATE_FORMAT(i.created_at, '$dateFormat') as period
+        SELECT i.id, i.title, i.description, i.created_at
         FROM issues i
         JOIN projects p ON i.project_id = p.id
         WHERE p.client_id = ? $projectFilter AND i.client_ready = 1
-        AND i.created_at >= DATE_SUB(NOW(), INTERVAL $limit $dateInterval)
-        ORDER BY period ASC
+        ORDER BY i.created_at ASC
     ";
-    
+
     $stmt = $db->prepare($query);
     $stmt->execute($params);
-    $periods = $stmt->fetchAll(PDO::FETCH_COLUMN);
-    
-    $labels = [];
-    $values = [];
-    
-    foreach ($periods as $currentPeriod) {
-        $labels[] = $currentPeriod;
-        
-        // Get WCAG criteria data for this period (cumulative up to this period)
-        $criteriaQuery = "
-            SELECT 
-                im.meta_value as wcag_sc,
-                MAX(CASE 
-                    WHEN i.severity = 'blocker' THEN 4
-                    WHEN i.severity = 'critical' THEN 3
-                    WHEN i.severity = 'major' THEN 2
-                    WHEN i.severity = 'minor' THEN 1
-                    ELSE 1
-                END) as max_severity_weight,
-                COUNT(DISTINCT i.id) as total_issues_in_sc,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(ist.name) IN ('resolved', 'closed', 'fixed') 
-                    AND DATE_FORMAT(i.updated_at, '$dateFormat') <= ? 
-                    THEN i.id 
-                END) as resolved_issues_in_sc
-            FROM issues i
-            JOIN projects p ON i.project_id = p.id
-            LEFT JOIN issue_statuses ist ON i.status_id = ist.id
-            LEFT JOIN issue_metadata im ON i.id = im.issue_id AND im.meta_key = 'wcagsuccesscriteria'
-            WHERE p.client_id = ? $projectFilter 
-            AND i.client_ready = 1
-            AND DATE_FORMAT(i.created_at, '$dateFormat') <= ?
-            AND im.meta_value IS NOT NULL AND im.meta_value != ''
-            GROUP BY im.meta_value
-        ";
-        
-        $criteriaParams = $projectId ? [$currentPeriod, $clientId, $projectId, $currentPeriod] : [$currentPeriod, $clientId, $currentPeriod];
-        $stmt = $db->prepare($criteriaQuery);
-        $stmt->execute($criteriaParams);
-        $criteriaData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        if (count($criteriaData) == 0) {
-            $values[] = 100;
-            continue;
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function getTrendData($issues, $complianceResolver, $period, $limit) {
+    $issuesByPeriod = [];
+
+    foreach ($issues as $issue) {
+        $createdAt = strtotime((string) ($issue['created_at'] ?? 'now'));
+        switch ($period) {
+            case 'weekly':
+                $periodKey = date('Y-W', $createdAt);
+                break;
+            case 'monthly':
+                $periodKey = date('Y-m', $createdAt);
+                break;
+            case 'yearly':
+                $periodKey = date('Y', $createdAt);
+                break;
+            case 'daily':
+            default:
+                $periodKey = date('Y-m-d', $createdAt);
+                break;
         }
-        
-        $totalWeight = 0;
-        $earnedPoints = 0;
-        
-        foreach ($criteriaData as $criteria) {
-            $weight = intval($criteria['max_severity_weight']);
-            $totalIssuesInSC = intval($criteria['total_issues_in_sc']);
-            $resolvedIssuesInSC = intval($criteria['resolved_issues_in_sc']);
-            
-            $totalWeight += $weight;
-            
-            if ($totalIssuesInSC > 0 && $resolvedIssuesInSC == $totalIssuesInSC) {
-                $earnedPoints += $weight;
-            }
-        }
-        
-        $passingCriteriaCount = $totalWCAGCriteria - count($criteriaData);
-        $passingCriteriaWeight = $passingCriteriaCount * 1;
-        $totalWeight += $passingCriteriaWeight;
-        $earnedPoints += $passingCriteriaWeight;
-        
-        if ($totalWeight > 0) {
-            $compliance = (($earnedPoints + $totalWeight) / (2 * $totalWeight)) * 100;
-            $compliance = round(max(0, min(100, $compliance)), 1);
-        } else {
-            $compliance = 100;
-        }
-        
-        $values[] = $compliance;
+
+        $issuesByPeriod[$periodKey][] = $issue;
     }
-    
+
+    if (empty($issuesByPeriod)) {
+        return ['labels' => [], 'values' => []];
+    }
+
+    ksort($issuesByPeriod);
+
+    $series = [];
+    $runningIssues = [];
+
+    foreach ($issuesByPeriod as $periodKey => $periodIssues) {
+        $runningIssues = array_merge($runningIssues, $periodIssues);
+        $series[] = [
+            'label' => $periodKey,
+            'value' => $complianceResolver->calculateWcagComplianceFromIssues($runningIssues)
+        ];
+    }
+
+    $series = array_slice($series, -$limit);
+
     return [
-        'labels' => $labels,
-        'values' => $values
+        'labels' => array_column($series, 'label'),
+        'values' => array_column($series, 'value')
     ];
 }

@@ -7,8 +7,7 @@
 
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../config/redis.php';
-require_once __DIR__ . '/WCAGComplianceAnalytics.php';
-require_once __DIR__ . '/ComplianceTrendAnalytics.php';
+require_once __DIR__ . '/ClientComplianceScoreResolver.php';
 
 class ClientAccessControlManager {
     private $db;
@@ -579,28 +578,8 @@ class ClientAccessControlManager {
             $openIssues = (int) ($statusCounts['open_issues'] ?? 0);
             $resolvedIssues = (int) ($statusCounts['resolved_issues'] ?? 0);
 
-            $analyticsProjectId = count($projectIds) === 1 ? (int) reset($projectIds) : null;
-            $complianceScore = 0;
-
-            try {
-                $wcagAnalytics = new WCAGComplianceAnalytics();
-                $wcagReport = $wcagAnalytics->generateReport($analyticsProjectId, $clientUserId);
-                $wcagData = $wcagReport ? $wcagReport->getData() : [];
-                $complianceScore = round((float) ($wcagData['summary']['overall_compliance_score'] ?? 0), 1);
-            } catch (Exception $analyticsException) {
-                error_log('ClientAccessControlManager WCAG compliance stats error: ' . $analyticsException->getMessage());
-            }
-
-            if ($complianceScore == 0) {
-                try {
-                    $trendAnalytics = new ComplianceTrendAnalytics();
-                    $trendReport = $trendAnalytics->generateReport($analyticsProjectId, $clientUserId);
-                    $trendData = $trendReport ? $trendReport->getData() : [];
-                    $complianceScore = round((float) ($trendData['summary']['overall_resolution_rate'] ?? 0), 1);
-                } catch (Exception $trendException) {
-                    error_log('ClientAccessControlManager compliance trend stats error: ' . $trendException->getMessage());
-                }
-            }
+            $complianceResolver = new ClientComplianceScoreResolver($this);
+            $complianceScore = $complianceResolver->resolveForClientUser((int) $clientUserId, $projectIds);
             
             return [
                 'total_projects' => count($assignedProjects),
