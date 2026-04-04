@@ -286,6 +286,9 @@ include __DIR__ . '/../../includes/header.php';
                 <div>
                     <span class="text-muted">Total Issues: <strong id="totalCount">0</strong></span>
                     <span class="text-muted ms-3">Showing: <strong id="filteredCount">0</strong></span>
+                    <?php if ($_SESSION['role'] === 'client'): ?>
+                    <div class="small mt-1 text-muted">Use the Update button to change status or add a regression comment.</div>
+                    <?php endif; ?>
                 </div>
                 <div>
                     <button class="btn btn-sm btn-outline-primary" id="refreshBtn">
@@ -305,13 +308,13 @@ include __DIR__ . '/../../includes/header.php';
                             <?php if ($_SESSION['role'] !== 'client'): ?>
                             <th style="width: 150px;">QA Status</th>
                             <th style="width: 120px;">Reporter</th>
-                            <th style="width: 100px;">Actions</th>
                             <?php endif; ?>
+                            <th style="width: 100px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="issuesTableBody">
                         <tr>
-                            <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '4' : '7'; ?>" class="text-center py-5">
+                            <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '5' : '7'; ?>" class="text-center py-5">
                                 <div class="spinner-border text-primary" role="status">
                                     <span class="visually-hidden">Loading...</span>
                                 </div>

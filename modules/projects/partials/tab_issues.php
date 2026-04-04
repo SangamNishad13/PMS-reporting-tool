@@ -155,9 +155,11 @@
                                         <div class="small text-muted" id="issueSelectedPageMeta">Tester: - | Env: - | Issues: -</div>
                                     </div>
                                     <div class="d-flex gap-2 issues-actions">
+                                        <?php if ($_SESSION['role'] !== 'client'): ?>
                                         <button class="btn btn-sm btn-outline-primary" id="issueAddFinalBtn" disabled>
                                             <i class="fas fa-plus"></i> Add Issue
                                         </button>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                                 
@@ -188,30 +190,41 @@
             <div class="tab-content">
                                         <div class="tab-pane fade show active" id="final_issues_tab" role="tabpanel">
                                             <div class="d-flex justify-content-between align-items-center mb-2">
-                                                <div class="small text-muted">Issues added by users for the final report.</div>
+                                                <div class="small text-muted">
+                                                    Issues added by users for the final report.
+                                                    <?php if ($_SESSION['role'] === 'client'): ?>
+                                                    Use the Update button to change status or add a regression comment.
+                                                    <?php endif; ?>
+                                                </div>
+                                                <?php if ($_SESSION['role'] !== 'client'): ?>
                                                 <div class="d-flex gap-2 issue-expand-actions">
                                                     <button class="btn btn-sm btn-outline-secondary" id="finalDeleteSelected" disabled>Delete Selected</button>
                                                 </div>
+                                                <?php endif; ?>
                                             </div>
                                             <div class="table-responsive">
                                                 <table class="table table-sm table-hover align-middle">
                                                     <thead class="table-light">
                                                         <tr>
+                                                            <?php if ($_SESSION['role'] !== 'client'): ?>
                                                             <th style="width:30px;"><input type="checkbox" id="finalSelectAll"></th>
+                                                            <?php endif; ?>
                                                             <th style="width:80px;">Issue Key</th>
                                                             <th>Issue Title</th>
                                                             <th style="width:100px;">Severity</th>
                                                             <th style="width:100px;">Priority</th>
                                                             <th style="width:120px;">Status</th>
+                                                            <?php if ($_SESSION['role'] !== 'client'): ?>
                                                             <th style="width:120px;">QA Status</th>
                                                             <th style="width:120px;">Reporter</th>
                                                             <th style="width:120px;">QA Name</th>
+                                                            <?php endif; ?>
                                                             <th style="width:150px;">Pages</th>
                                                             <th style="width:120px;">Actions</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody id="finalIssuesBody">
-                                                        <tr><td colspan="11" class="text-muted text-center">Select a page to view issues.</td></tr>
+                                                        <tr><td colspan="<?php echo ($_SESSION['role'] === 'client') ? '7' : '11'; ?>" class="text-muted text-center">Select a page to view issues.</td></tr>
                                                     </tbody>
                                                 </table>
                                             </div>
@@ -231,21 +244,27 @@
                             <h6 class="mb-0">Common Issues</h6>
                             <div class="small text-muted">Manage issues that apply to multiple pages.</div>
                         </div>
+                        <?php if ($_SESSION['role'] !== 'client'): ?>
                         <button class="btn btn-sm btn-outline-primary" id="commonAddBtn"><i class="fas fa-plus"></i> Add Common Issue</button>
+                        <?php endif; ?>
                     </div>
 
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead>
                                 <tr>
+                                    <?php if ($_SESSION['role'] !== 'client'): ?>
                                     <th style="width:30px;"><input type="checkbox" id="commonSelectAll"></th>
+                                    <?php endif; ?>
                                     <th>Common Issue Title</th>
                                     <th>Pages</th>
+                                    <?php if ($_SESSION['role'] !== 'client'): ?>
                                     <th style="width:110px;">Actions</th>
+                                    <?php endif; ?>
                                 </tr>
                             </thead>
                             <tbody id="commonIssuesBody">
-                                <tr><td colspan="4" class="text-muted text-center">No common issues added yet.</td></tr>
+                                <tr><td colspan="<?php echo ($_SESSION['role'] === 'client') ? '2' : '4'; ?>" class="text-muted text-center">No common issues added yet.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -306,21 +325,40 @@
                                             <li class="nav-item">
                                                 <button class="nav-link active py-2 fw-bold" id="btnShowChat" data-bs-toggle="tab" data-bs-target="#tabChat">Chat / Comments</button>
                                             </li>
+                                    <?php if ($_SESSION['role'] !== 'client'): ?>
                                     <li class="nav-item">
                                         <button class="nav-link py-2 fw-bold" id="btnShowHistory" data-bs-toggle="tab" data-bs-target="#tabHistory">Edit History</button>
                                     </li>
                                     <li class="nav-item">
                                         <button class="nav-link py-2 fw-bold" id="btnShowVisitHistory" data-bs-toggle="tab" data-bs-target="#tabVisitHistory">Visit History</button>
                                     </li>
+                                    <?php endif; ?>
                                 </ul>
                                 <div class="tab-content mt-3">
                                     <div class="tab-pane fade show active" id="tabChat">
                                                 <div class="issue-chat-container">
                                                     <div class="mb-3">
+                                                        <label class="form-label small fw-bold">Comment Type</label>
+                                                        <select id="finalIssueCommentType" class="form-select form-select-sm mb-2" style="max-width: 200px;">
+                                                            <?php if ($_SESSION['role'] === 'client'): ?>
+                                                            <option value="regression">Regression Comment</option>
+                                                            <?php else: ?>
+                                                            <option value="normal">Normal Comment</option>
+                                                            <option value="regression">Regression Comment</option>
+                                                            <?php endif; ?>
+                                                        </select>
+                                                        <?php if ($_SESSION['role'] === 'client'): ?>
+                                                        <div class="small text-muted mb-2">You can add regression comments and update the issue status only.</div>
+                                                        <?php endif; ?>
                                                         <textarea id="finalIssueCommentEditor" class="issue-summernote"></textarea>
                                                         <div class="small text-muted mt-1">
+                                                            <?php if ($_SESSION['role'] === 'client'): ?>
+                                                            <i class="fas fa-info-circle me-1"></i>
+                                                            Regression comments are visible on the client side.
+                                                            <?php else: ?>
                                                             <i class="fas fa-info-circle me-1"></i>
                                                             Type @ to mention users
+                                                            <?php endif; ?>
                                                         </div>
                                                     </div>
                                                     <div class="text-end mb-3">
@@ -336,6 +374,7 @@
                                                     </div>
                                                 </div>
                                             </div>
+                                    <?php if ($_SESSION['role'] !== 'client'): ?>
                                     <div class="tab-pane fade" id="tabHistory">
                                         <div id="historyEntries" class="small border rounded p-3 bg-light" style="max-height: 400px; overflow-y: auto;">
                                             <div class="text-center py-5 text-muted">Loading history...</div>
@@ -346,6 +385,7 @@
                                             <div class="text-center py-5 text-muted">Loading visit history...</div>
                                         </div>
                                     </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>

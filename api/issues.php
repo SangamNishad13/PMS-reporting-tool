@@ -47,6 +47,37 @@ if (!$projectId) {
 $userId = $_SESSION['user_id'] ?? 0;
 $userRole = $_SESSION['role'] ?? '';
 $isTesterRole = in_array($userRole, ['at_tester', 'ft_tester'], true);
+
+function getIssueStatusNameById($db, $statusId) {
+    static $cache = [];
+    $statusId = (int)$statusId;
+    if ($statusId <= 0) return '';
+    if (array_key_exists($statusId, $cache)) return $cache[$statusId];
+
+    $stmt = $db->prepare("SELECT name FROM issue_statuses WHERE id = ? LIMIT 1");
+    $stmt->execute([$statusId]);
+    $cache[$statusId] = (string)($stmt->fetchColumn() ?: '');
+    return $cache[$statusId];
+}
+
+function isClientEditableIssueStatusValue($value) {
+    static $allowed = ['open', 'in_progress', 'resolved', 'reopened', 'fixed'];
+    return in_array(normalizeIssueStatusValue($value), $allowed, true);
+}
+
+function parseMetaIntValues($values) {
+    $out = [];
+    foreach ((array)$values as $value) {
+        foreach (parseArrayInput($value) as $item) {
+            $intValue = (int)$item;
+            if ($intValue > 0) {
+                $out[] = $intValue;
+            }
+        }
+    }
+    return array_values(array_unique($out));
+}
+
 if (!hasProjectAccess($db, $userId, $projectId)) {
     jsonError('Permission denied', 403);
 }
@@ -640,6 +671,9 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         error_log("Issue API: Starting $action action. Project ID: $projectId, User ID: $userId");
         
         $id = (int)($_POST['id'] ?? 0);
+    if ($userRole === 'client' && $action === 'create') {
+        jsonError('Clients cannot create new issues.', 403);
+    }
         $expectedUpdatedAt = trim((string)($_POST['expected_updated_at'] ?? ''));
         $expectedHistoryId = isset($_POST['expected_history_id']) ? (int)$_POST['expected_history_id'] : null;
         $title = trim($_POST['title'] ?? '');
@@ -732,6 +766,11 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                     jsonError('Issue not found or unauthorized access to this project.', 404);
                 }
 
+                if ($userRole === 'client' && (int)($oldIssue['client_ready'] ?? 0) !== 1) {
+                    if ($db->inTransaction()) $db->rollBack();
+                    jsonError('Permission denied', 403);
+                }
+
                 if ($expectedUpdatedAt !== '' && !empty($oldIssue['updated_at']) && $expectedUpdatedAt !== (string)$oldIssue['updated_at']) {
                     if ($db->inTransaction()) $db->rollBack();
                     jsonResponse([
@@ -762,6 +801,42 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                     $k = (string)$m['meta_key'];
                     if (!isset($oldMeta[$k])) $oldMeta[$k] = [];
                     $oldMeta[$k][] = (string)$m['meta_value'];
+                }
+
+                if ($userRole === 'client') {
+                    $currentStatusValue = normalizeIssueStatusValue(getIssueStatusNameById($db, (int)($oldIssue['status_id'] ?? 0)));
+                    $requestedStatusValue = normalizeIssueStatusValue(is_numeric($statusInput)
+                        ? getIssueStatusNameById($db, $statusInput)
+                        : $statusInput);
+                    if ($requestedStatusValue === '') {
+                        $requestedStatusValue = $currentStatusValue;
+                    }
+                    if (!isClientEditableIssueStatusValue($requestedStatusValue) && $requestedStatusValue !== $currentStatusValue) {
+                        if ($db->inTransaction()) $db->rollBack();
+                        jsonError('Clients can only update allowed issue statuses.', 403);
+                    }
+
+                    $title = (string)$oldIssue['title'];
+                    $description = (string)$oldIssue['description'];
+                    $priorityId = (int)$oldIssue['priority_id'];
+                    $reporterId = (int)$oldIssue['reporter_id'];
+                    $severity = (string)$oldIssue['severity'];
+                    $commonTitle = $oldIssue['common_issue_title'];
+                    $clientReady = (int)($oldIssue['client_ready'] ?? 0);
+                    $assigneeId = !empty($oldIssue['assignee_id']) ? (int)$oldIssue['assignee_id'] : null;
+                    $pageId = !empty($oldIssue['page_id']) ? (int)$oldIssue['page_id'] : 0;
+                    $reporters = parseMetaIntValues($oldMeta['reporter_ids'] ?? []);
+                    if (empty($reporters) && $reporterId > 0) {
+                        $reporters = [$reporterId];
+                    }
+                    $assigneeIds = parseMetaIntValues($oldMeta['assignee_ids'] ?? []);
+                    if (empty($assigneeIds) && $assigneeId) {
+                        $assigneeIds = [$assigneeId];
+                    }
+                    $pageIds = parseMetaIntValues($oldMeta['page_ids'] ?? []);
+                    if (empty($pageIds) && $pageId > 0) {
+                        $pageIds = [$pageId];
+                    }
                 }
 
                 // DETECT CHANGES
@@ -864,8 +939,10 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                 handleMetaHistory($db, $id, $userId, 'qa_status', $qaStatusInput, $oldMeta);
                 handleMetaHistory($db, $id, $userId, 'reporter_qa_status_map', $reporterQaStatusMap, $oldMeta);
             }
-            handleMetaHistory($db, $id, $userId, 'page_ids', $pageIds, $oldMeta);
-            handleMetaHistory($db, $id, $userId, 'reporter_ids', $reporters, $oldMeta);
+            if ($userRole !== 'client') {
+                handleMetaHistory($db, $id, $userId, 'page_ids', $pageIds, $oldMeta);
+                handleMetaHistory($db, $id, $userId, 'reporter_ids', $reporters, $oldMeta);
+            }
             // Add other meta fields as needed
         }
 
@@ -883,54 +960,56 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         }
         
         replaceMeta($db, $id, 'issue_status', [$_POST['issue_status'] ?? '']);
-        
-        replaceMeta($db, $id, 'page_ids', $pageIds);
-        replaceMeta($db, $id, 'grouped_urls', parseArrayInput($_POST['grouped_urls'] ?? []));
-        replaceMeta($db, $id, 'reporter_ids', $reporters);
-        replaceMeta($db, $id, 'assignee_ids', $assigneeIds);
-        replaceMeta($db, $id, 'common_title', [trim($_POST['common_title'] ?? '')]);
 
-        // Handle dynamic metadata (admin-created custom fields) — all go through same replaceMeta batch
-        if (isset($_POST['metadata'])) {
-            $metadata = json_decode($_POST['metadata'], true);
-            if (is_array($metadata)) {
-                foreach ($metadata as $key => $value) {
-                    if ($action === 'update') {
-                        handleMetaHistory($db, $id, $userId, $key, $value, $oldMeta);
+        if ($userRole !== 'client') {
+            replaceMeta($db, $id, 'page_ids', $pageIds);
+            replaceMeta($db, $id, 'grouped_urls', parseArrayInput($_POST['grouped_urls'] ?? []));
+            replaceMeta($db, $id, 'reporter_ids', $reporters);
+            replaceMeta($db, $id, 'assignee_ids', $assigneeIds);
+            replaceMeta($db, $id, 'common_title', [trim($_POST['common_title'] ?? '')]);
+
+            // Handle dynamic metadata (admin-created custom fields) — all go through same replaceMeta batch
+            if (isset($_POST['metadata'])) {
+                $metadata = json_decode($_POST['metadata'], true);
+                if (is_array($metadata)) {
+                    foreach ($metadata as $key => $value) {
+                        if ($action === 'update') {
+                            handleMetaHistory($db, $id, $userId, $key, $value, $oldMeta);
+                        }
+                        $valueArray = is_array($value) ? $value : [$value];
+                        replaceMeta($db, $id, $key, $valueArray);
                     }
-                    $valueArray = is_array($value) ? $value : [$value];
-                    replaceMeta($db, $id, $key, $valueArray);
                 }
             }
-        }
 
-        // Batch insert issue_pages (single query instead of N individual inserts)
-        $db->prepare("DELETE FROM issue_pages WHERE issue_id = ?")->execute([$id]);
-        if (!empty($pageIds)) {
-            $pageRows = implode(',', array_fill(0, count($pageIds), '(?, ?)'));
-            $pageParams = [];
-            foreach ($pageIds as $pid) { $pageParams[] = $id; $pageParams[] = (int)$pid; }
-            $db->prepare("INSERT INTO issue_pages (issue_id, page_id) VALUES $pageRows")->execute($pageParams);
-        }
+            // Batch insert issue_pages (single query instead of N individual inserts)
+            $db->prepare("DELETE FROM issue_pages WHERE issue_id = ?")->execute([$id]);
+            if (!empty($pageIds)) {
+                $pageRows = implode(',', array_fill(0, count($pageIds), '(?, ?)'));
+                $pageParams = [];
+                foreach ($pageIds as $pid) { $pageParams[] = $id; $pageParams[] = (int)$pid; }
+                $db->prepare("INSERT INTO issue_pages (issue_id, page_id) VALUES $pageRows")->execute($pageParams);
+            }
 
-        if ($commonTitle && count($pageIds) > 1) {
-            $stmt = $db->prepare("SELECT id FROM common_issues WHERE issue_id = ? LIMIT 1");
-            $stmt->execute([$id]);
-            $cid = $stmt->fetchColumn();
-            if ($cid) {
-                $up = $db->prepare("UPDATE common_issues SET title = ?, updated_at = NOW() WHERE id = ?");
-                $up->execute([$commonTitle, $cid]);
-            } else {
-                if (columnExists($db, 'common_issues', 'created_by')) {
-                    $ins = $db->prepare("INSERT INTO common_issues (project_id, issue_id, title, created_by) VALUES (?, ?, ?, ?)");
-                    $ins->execute([$projectId, $id, $commonTitle, $userId]);
+            if ($commonTitle && count($pageIds) > 1) {
+                $stmt = $db->prepare("SELECT id FROM common_issues WHERE issue_id = ? LIMIT 1");
+                $stmt->execute([$id]);
+                $cid = $stmt->fetchColumn();
+                if ($cid) {
+                    $up = $db->prepare("UPDATE common_issues SET title = ?, updated_at = NOW() WHERE id = ?");
+                    $up->execute([$commonTitle, $cid]);
                 } else {
-                    $ins = $db->prepare("INSERT INTO common_issues (project_id, issue_id, title) VALUES (?, ?, ?)");
-                    $ins->execute([$projectId, $id, $commonTitle]);
+                    if (columnExists($db, 'common_issues', 'created_by')) {
+                        $ins = $db->prepare("INSERT INTO common_issues (project_id, issue_id, title, created_by) VALUES (?, ?, ?, ?)");
+                        $ins->execute([$projectId, $id, $commonTitle, $userId]);
+                    } else {
+                        $ins = $db->prepare("INSERT INTO common_issues (project_id, issue_id, title) VALUES (?, ?, ?)");
+                        $ins->execute([$projectId, $id, $commonTitle]);
+                    }
                 }
+            } else {
+                $db->prepare("DELETE FROM common_issues WHERE issue_id = ?")->execute([$id]);
             }
-        } else {
-            $db->prepare("DELETE FROM common_issues WHERE issue_id = ?")->execute([$id]);
         }
 
         $db->commit();

@@ -39,6 +39,7 @@
     var isAdminUser = userRole === 'admin' || userRole === 'admin' || userRole === 'superadmin';
     var isTesterRole = userRole === 'at_tester' || userRole === 'ft_tester';
     var canUpdateIssueQaStatus = !!ProjectConfig.canUpdateIssueQaStatus;
+    var clientEditableIssueStatuses = ['open', 'in_progress', 'resolved', 'reopened', 'fixed'];
     if (isTesterRole) {
         canUpdateIssueQaStatus = false;
     }
@@ -100,6 +101,85 @@
 
     // Utility functions hoisted to top so they're available everywhere in this scope
     function escapeHtml(str) { if (str === null || str === undefined) return ''; return String(str).replace(/[&<>"']/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[m]); }); }
+
+    function normalizeIssueStatusSlug(value) {
+        var raw = String(value || '').trim().toLowerCase();
+        if (!raw) return '';
+        return raw.replace(/-/g, '_').replace(/\s+/g, '_');
+    }
+
+    function isClientIssueStatusAllowed(value) {
+        return clientEditableIssueStatuses.indexOf(normalizeIssueStatusSlug(value)) !== -1;
+    }
+
+    function syncClientIssueStatusOptions() {
+        if (userRole !== 'client') return;
+
+        var statusEl = document.getElementById('finalIssueStatus');
+        if (!statusEl) return;
+
+        var selectedValue = String(statusEl.value || '');
+        Array.prototype.forEach.call(statusEl.options || [], function (option) {
+            var normalized = normalizeIssueStatusSlug(option.text || option.label || option.value);
+            var isCurrent = String(option.value) === selectedValue;
+            var isAllowed = isClientIssueStatusAllowed(normalized);
+            option.hidden = !(isAllowed || isCurrent);
+            option.disabled = !(isAllowed || isCurrent);
+            option.dataset.clientAllowed = isAllowed ? '1' : '0';
+        });
+    }
+
+    function applyClientIssueEditingState(enable) {
+        if (userRole !== 'client') return;
+
+        var modal = document.getElementById('finalIssueModal');
+        if (!modal) return;
+
+        var allowedIds = {
+            finalIssueStatus: true,
+            finalIssueCommentType: true,
+            finalIssueCommentEditor: true
+        };
+
+        modal.querySelectorAll('input, select, textarea').forEach(function (el) {
+            if (el.type === 'hidden') return;
+            if (allowedIds[el.id]) {
+                el.disabled = !enable;
+                return;
+            }
+            el.disabled = true;
+        });
+
+        ['btnResetToTemplate', 'btnOpenUrlSelectionModal', 'btnApplyUrlSelection', 'btnCopyGroupedUrls'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.disabled = true;
+        });
+
+        var commentTypeEl = document.getElementById('finalIssueCommentType');
+        if (commentTypeEl) {
+            commentTypeEl.value = 'regression';
+            commentTypeEl.disabled = true;
+        }
+
+        var addCommentBtn = document.getElementById('finalIssueAddCommentBtn');
+        if (addCommentBtn) addCommentBtn.disabled = !enable;
+
+        var saveBtn = document.getElementById('finalIssueSaveBtn');
+        if (saveBtn) saveBtn.disabled = !enable;
+
+        if (window.jQuery && jQuery.fn.summernote) {
+            jQuery('#finalIssueDetails').summernote('disable');
+            if (document.getElementById('finalIssueCommentEditor')) {
+                jQuery('#finalIssueCommentEditor').summernote(enable ? 'enable' : 'disable');
+            }
+        }
+
+        if (window.jQuery && jQuery.fn.select2) {
+            jQuery('#finalIssuePages, #finalIssueGroupedUrls, #finalIssueReporters, #finalIssueAssignee').prop('disabled', true).trigger('change.select2');
+        }
+
+        syncClientIssueStatusOptions();
+    }
 
     function cleanupModalOverlayState() {
         if (document.querySelectorAll('.modal.show').length > 0) return;
@@ -2341,6 +2421,7 @@
             jQuery('.issue-select2, .issue-select2-tags').prop('disabled', !enable);
         }
         applyIssueQaPermissionState();
+        applyClientIssueEditingState(enable);
     }
 
     function openFinalViewer(issue) {
@@ -2488,6 +2569,7 @@
             if (statusOption) statusValue = String(statusOption.id);
         }
         document.getElementById('finalIssueStatus').value = statusValue;
+        syncClientIssueStatusOptions();
 
         // Store values to set after modal is shown
         var reportersValue = issue ? (issue.reporters || []) : (draftData ? draftData.reporters : []);
@@ -2527,6 +2609,7 @@
             // avoiding the previous nested setTimeout(50) / setTimeout(60) / setTimeout(150) race conditions.
             Promise.resolve().then(function () {
                 applyIssueQaPermissionState();
+                applyClientIssueEditingState(true);
                 setFinalQaStatusValue(qaStatusValue);
                 // Temporarily suppress the reporter change handler to avoid
                 // refreshReporterQaStatusEditor() firing without seedMap (which blanks the field)
@@ -3259,7 +3342,7 @@
                 '<span class="badge bg-secondary">' + pageCount + ' page(s)</span>' +
                 '</td>';
             
-            // Actions column - hide for client
+            // Actions column
             if (userRole !== 'client') {
                 mainRow += '<td class="action-buttons-cell">' +
                     '<button class="btn btn-sm btn-outline-primary me-1 final-edit" data-id="' + issue.id + '" type="button" title="Edit Issue">' +
@@ -3267,6 +3350,12 @@
                     '</button>' +
                     '<button class="btn btn-sm btn-outline-danger final-delete" data-id="' + issue.id + '" type="button" title="' + escapeAttr(deleteTitle) + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
                     '<i class="fas fa-trash"></i>' +
+                    '</button>' +
+                    '</td>';
+            } else {
+                mainRow += '<td class="action-buttons-cell">' +
+                    '<button class="btn btn-sm btn-outline-primary issue-open" data-id="' + issue.id + '" type="button" title="Update status or add comment">' +
+                    '<i class="fas fa-pen-to-square me-1"></i>Update' +
                     '</button>' +
                     '</td>';
             }
@@ -3431,14 +3520,14 @@
             titleEl.addEventListener('click', function (e) {
                 e.stopPropagation();
                 
-                // For client users, just expand/collapse the row
+                // For client users, open the restricted modal
                 if (userRole === 'client') {
-                    var row = this.closest('tr');
-                    if (row) {
-                        var chevronBtn = row.querySelector('.chevron-toggle-btn');
-                        if (chevronBtn) {
-                            toggleIssueRow(chevronBtn);
-                        }
+                    var issueId = this.getAttribute('data-issue-id');
+                    if (issueId && issueData.selectedPageId) {
+                        var clientIssue = issueData.pages[issueData.selectedPageId].final.find(function (i) {
+                            return String(i.id) === String(issueId);
+                        });
+                        if (clientIssue) openFinalEditor(clientIssue);
                     }
                 } else {
                     // For non-client users, open edit modal
@@ -4013,7 +4102,7 @@
                 '<span class="badge bg-secondary">' + pageCount + ' page(s)</span>' +
                 '</td>';
 
-            // Actions column - hide for client
+            // Actions column
             if (userRole !== 'client') {
                 mainRowHtml += '<td class="action-buttons-cell">' +
                     '<button class="btn btn-sm btn-outline-primary me-1 final-edit" data-id="' + issue.id + '" type="button" title="Edit Issue">' +
@@ -4021,6 +4110,12 @@
                     '</button>' +
                     '<button class="btn btn-sm btn-outline-danger final-delete" data-id="' + issue.id + '" type="button" title="' + escapeAttr(deleteTitle) + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
                     '<i class="fas fa-trash"></i>' +
+                    '</button>' +
+                    '</td>';
+            } else {
+                mainRowHtml += '<td class="action-buttons-cell">' +
+                    '<button class="btn btn-sm btn-outline-primary issue-open" data-id="' + issue.id + '" type="button" title="Update status or add comment">' +
+                    '<i class="fas fa-pen-to-square me-1"></i>Update' +
                     '</button>' +
                     '</td>';
             }
@@ -4205,12 +4300,12 @@
                     e.stopPropagation();
 
                     if (userRole === 'client') {
-                        var row = this.closest('tr');
-                        if (row) {
-                            var chevronBtn = row.querySelector('.chevron-toggle-btn');
-                            if (chevronBtn) {
-                                toggleIssueRow(chevronBtn);
-                            }
+                        var issueId = this.getAttribute('data-issue-id');
+                        if (issueId && issueData.selectedPageId) {
+                            var clientIssue = issueData.pages[issueData.selectedPageId].final.find(function (i) {
+                                return String(i.id) === String(issueId);
+                            });
+                            if (clientIssue) openFinalEditor(clientIssue);
                         }
                     } else {
                         var issueId = this.getAttribute('data-issue-id');
@@ -5515,6 +5610,9 @@
         // Get comment type
         var commentTypeEl = document.getElementById('finalIssueCommentType');
         var commentType = commentTypeEl ? commentTypeEl.value : 'normal';
+        if (userRole === 'client') {
+            commentType = 'regression';
+        }
 
         // Get reply_to if exists
         var replyToEl = document.getElementById('replyToCommentId');
@@ -5911,6 +6009,9 @@
         var pendingCommentPlain = String(pendingCommentHtml || '').replace(/<[^>]*>/g, '').trim();
         var pendingCommentType = ((document.getElementById('finalIssueCommentType') || {}).value || 'normal');
         var pendingReplyTo = ((document.getElementById('replyToCommentId') || {}).value || '');
+        if (userRole === 'client') {
+            pendingCommentType = 'regression';
+        }
 
         try {
             var fd = new FormData();
@@ -6650,7 +6751,7 @@
     }
 
     var historyBtn = document.getElementById('btnShowHistory');
-    if (historyBtn) {
+    if (historyBtn && userRole !== 'client') {
         historyBtn.addEventListener('shown.bs.tab', function () {
             var id = document.getElementById('finalIssueEditId').value;
             if (!id) {
@@ -7082,6 +7183,7 @@
     }
 
     function loadVisitHistoryTab() {
+        if (userRole === 'client') return;
         var wrap = document.getElementById('visitHistoryEntries');
         if (wrap) wrap.innerHTML = '<div class="text-center py-4 text-muted">Loading visit history...</div>';
         var id = (document.getElementById('finalIssueEditId') || {}).value;
@@ -7103,6 +7205,7 @@
     }
 
     document.addEventListener('shown.bs.tab', function (e) {
+        if (userRole === 'client') return;
         var target = e && e.target ? e.target : null;
         if (!target) return;
         var targetPane = target.getAttribute('data-bs-target') || target.getAttribute('href') || '';

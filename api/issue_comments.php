@@ -113,9 +113,11 @@ if (!$projectId) jsonError('project_id required', 400);
 if (!$issueId) jsonError('issue_id required', 400);
 if (!hasProjectAccess($db, $userId, $projectId)) jsonError('Permission denied', 403);
 
-$chk = $db->prepare("SELECT COUNT(*) FROM issues WHERE id = ? AND project_id = ?");
+$chk = $db->prepare("SELECT client_ready FROM issues WHERE id = ? AND project_id = ? LIMIT 1");
 $chk->execute([$issueId, $projectId]);
-if ($chk->fetchColumn() == 0) jsonError('Invalid issue for project', 404);
+$issueRow = $chk->fetch(PDO::FETCH_ASSOC);
+if (!$issueRow) jsonError('Invalid issue for project', 404);
+if ($role === 'client' && (int)($issueRow['client_ready'] ?? 0) !== 1) jsonError('Permission denied', 403);
 
 try {
     if ($method === 'GET' && $action === 'list') {
@@ -168,6 +170,12 @@ try {
             }
         }
 
+        if ($role === 'client') {
+            $rows = array_values(array_filter($rows, static function ($row) {
+                return (string)($row['comment_type'] ?? 'normal') === 'regression';
+            }));
+        }
+
         jsonResponse(['success' => true, 'comments' => $rows]);
     }
 
@@ -182,6 +190,11 @@ try {
         $qaStatusRaw = $_POST['qa_status_id'] ?? '';
         $qaStatusId = is_numeric($qaStatusRaw) ? (int)$qaStatusRaw : (int)(getStatusId($db, $qaStatusRaw) ?: 0);
         if (!$commentHtml) jsonError('comment_html required', 400);
+
+        if ($role === 'client') {
+            $commentType = 'regression';
+            $qaStatusId = 0;
+        }
 
         if (!in_array($commentType, ['normal', 'regression'], true)) {
             $commentType = 'normal';

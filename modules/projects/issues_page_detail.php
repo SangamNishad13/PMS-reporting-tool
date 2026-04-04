@@ -833,6 +833,10 @@ include __DIR__ . '/../../includes/header.php';
                             <button class="btn btn-sm btn-outline-secondary" id="finalDeleteSelected" disabled>Delete Selected</button>
                         </div>
                     </div>
+                    <?php else: ?>
+                    <div class="px-3 py-2 border-bottom bg-light small text-muted">
+                        Use the Update button to change issue status or add a regression comment.
+                    </div>
                     <?php endif; ?>
                     <div class="final-issues-table-wrap">
                         <table class="table table-sm table-hover align-middle mb-0">
@@ -851,9 +855,7 @@ include __DIR__ . '/../../includes/header.php';
                                     <th style="width:95px;">Client Ready</th>
                                     <?php endif; ?>
                                     <th style="width:90px;">Pages</th>
-                                    <?php if ($_SESSION['role'] !== 'client'): ?>
                                     <th style="width:110px;">Actions</th>
-                                    <?php endif; ?>
                                 </tr>
                             </thead>
                             <tbody id="finalIssuesBody">
