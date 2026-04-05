@@ -163,7 +163,7 @@ class UnifiedDashboardController {
             try {
                 $report = $engine->generateReport($projectId, $clientUserId);
                 $reports[$type] = $report;
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 error_log("Error generating {$type} analytics: " . $e->getMessage());
                 $reports[$type] = null;
             }
@@ -268,23 +268,25 @@ class UnifiedDashboardController {
                     'value' => $summary['total_issues'] ?? 0
                 ],
                 [
-                    'label' => 'Users Affected',
+                    'label' => 'Mentioned Groups',
+                    'value' => number_format($summary['distinct_user_groups'] ?? 0)
+                ],
+                [
+                    'label' => 'Total Mentions',
                     'value' => number_format($summary['total_users_affected'] ?? 0)
                 ],
                 [
-                    'label' => 'High Impact Issues',
-                    'value' => $summary['high_impact_issues'] ?? 0
-                ],
-                [
-                    'label' => 'Avg Users/Issue',
+                    'label' => 'Avg Mentions/Issue',
                     'value' => $summary['average_users_per_issue'] ?? 0
                 ]
             ],
             'quickChart' => [
-                'labels' => array_keys($data['distribution'] ?? []),
+                'labels' => array_map(function ($item) {
+                    return $item['range_label'] ?? '';
+                }, array_values($data['distribution'] ?? [])),
                 'datasets' => [[
-                    'data' => array_column($data['distribution'] ?? [], 'count'),
-                    'backgroundColor' => ['#28a745', '#ffc107', '#fd7e14', '#dc3545']
+                    'data' => array_column(array_values($data['distribution'] ?? []), 'count'),
+                    'backgroundColor' => ['#28a745', '#ffc107', '#fd7e14', '#dc3545', '#20c997', '#0dcaf0', '#6f42c1', '#d63384']
                 ]]
             ]
         ];
@@ -965,15 +967,17 @@ class UnifiedDashboardController {
                 $summary = $data['summary'] ?? [];
                 $widgetConfig['summary'] = [
                     ['label' => 'Total Issues', 'value' => $summary['total_issues'] ?? 0],
-                    ['label' => 'Users Affected', 'value' => number_format($summary['total_users_affected'] ?? 0)],
-                    ['label' => 'High Impact', 'value' => $summary['high_impact_issues'] ?? 0],
-                    ['label' => 'Avg Users/Issue', 'value' => round($summary['average_users_per_issue'] ?? 0, 1)]
+                    ['label' => 'Mentioned Groups', 'value' => number_format($summary['distinct_user_groups'] ?? 0)],
+                    ['label' => 'Total Mentions', 'value' => number_format($summary['total_users_affected'] ?? 0)],
+                    ['label' => 'Avg Mentions/Issue', 'value' => round($summary['average_users_per_issue'] ?? 0, 1)]
                 ];
                 $widgetConfig['quickChart'] = [
-                    'labels' => array_keys($data['distribution'] ?? []),
+                    'labels' => array_map(function ($item) {
+                        return $item['range_label'] ?? '';
+                    }, array_values($data['distribution'] ?? [])),
                     'datasets' => [[
-                        'data' => array_column($data['distribution'] ?? [], 'count'),
-                        'backgroundColor' => ['#28a745', '#ffc107', '#fd7e14', '#dc3545']
+                        'data' => array_column(array_values($data['distribution'] ?? []), 'count'),
+                        'backgroundColor' => ['#28a745', '#ffc107', '#fd7e14', '#dc3545', '#20c997', '#0dcaf0', '#6f42c1', '#d63384']
                     ]]
                 ];
                 break;

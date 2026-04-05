@@ -146,8 +146,8 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
      * @return string
      */
     private function generateIssueSignature($issue) {
-        $title = strtolower($issue['title'] ?? '');
-        $description = strtolower($issue['description'] ?? '');
+        $title = $this->normalizeLowerText($issue['title'] ?? '');
+        $description = $this->normalizeLowerText($issue['description'] ?? '');
         
         // Extract key terms and normalize
         $keyTerms = $this->extractKeyTerms($title . ' ' . $description);
@@ -239,7 +239,7 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
      * @return string
      */
     private function categorizeIssue($issue) {
-        $content = strtolower(($issue['title'] ?? '') . ' ' . ($issue['description'] ?? ''));
+        $content = $this->normalizeLowerText(($issue['title'] ?? '') . ' ' . ($issue['description'] ?? ''));
         
         $categories = [
             'Images and Media' => ['image', 'alt', 'media', 'video', 'audio', 'graphic'],
@@ -330,7 +330,7 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
         if ($totalSeverities > 0) {
             $severityMultiplier = 0;
             foreach ($severities as $severity => $count) {
-                $multiplier = $severityMultiplierMap[strtolower($severity)] ?? 1.0;
+                $multiplier = $severityMultiplierMap[$this->normalizeLowerText($severity)] ?? 1.0;
                 $severityMultiplier += ($count / $totalSeverities) * $multiplier;
             }
         }
@@ -357,7 +357,7 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
         $totalCount = 0;
         
         foreach ($severities as $severity => $count) {
-            $weight = $weights[strtolower($severity)] ?? 2;
+            $weight = $weights[$this->normalizeLowerText($severity)] ?? 2;
             $totalWeight += $weight * $count;
             $totalCount += $count;
         }

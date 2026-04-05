@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/project_permissions.php';
+require_once __DIR__ . '/../includes/client_issue_snapshots.php';
 ob_end_clean();
 
 header('Content-Type: application/json; charset=utf-8');
@@ -117,7 +118,14 @@ $chk = $db->prepare("SELECT client_ready FROM issues WHERE id = ? AND project_id
 $chk->execute([$issueId, $projectId]);
 $issueRow = $chk->fetch(PDO::FETCH_ASSOC);
 if (!$issueRow) jsonError('Invalid issue for project', 404);
-if ($role === 'client' && (int)($issueRow['client_ready'] ?? 0) !== 1) jsonError('Permission denied', 403);
+$isClientLiveVisible = (int)($issueRow['client_ready'] ?? 0) === 1;
+$clientSnapshot = null;
+if ($role === 'client' && !$isClientLiveVisible) {
+    $clientSnapshot = getIssueClientSnapshot($db, $issueId);
+    if (!$clientSnapshot || (int)($clientSnapshot['project_id'] ?? 0) !== $projectId) {
+        jsonError('Permission denied', 403);
+    }
+}
 
 try {
     if ($method === 'GET' && $action === 'list') {
@@ -139,11 +147,17 @@ try {
                 JOIN users u ON ic.user_id = u.id
                 LEFT JOIN users r ON ic.recipient_id = r.id
                 LEFT JOIN issue_statuses s ON ic.qa_status_id = s.id
-                WHERE ic.issue_id = ?
-                ORDER BY ic.created_at DESC";
+            WHERE ic.issue_id = ?";
+
+        $params = [$issueId];
+        if ($role === 'client' && !$isClientLiveVisible && !empty($clientSnapshot['published_at'])) {
+            $sql .= " AND ic.created_at <= ?";
+            $params[] = (string) $clientSnapshot['published_at'];
+        }
+        $sql .= " ORDER BY ic.created_at DESC";
 
         $stmt = $db->prepare($sql);
-        $stmt->execute([$issueId]);
+        $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         foreach ($rows as &$row) {
@@ -180,6 +194,7 @@ try {
     }
 
     if ($method === 'POST' && $action === 'create') {
+        if ($role === 'client' && !$isClientLiveVisible) jsonError('Issue is under internal review. Client comments are temporarily read-only until the updated issue is approved.', 403);
         ensureIssueCommentAuditSchema($db);
 
         $commentHtml = $_POST['comment_html'] ?? '';
@@ -283,6 +298,7 @@ try {
     }
 
     if ($method === 'POST' && $action === 'edit') {
+        if ($role === 'client' && !$isClientLiveVisible) jsonError('Issue is under internal review. Client comments are temporarily read-only until the updated issue is approved.', 403);
         ensureIssueCommentAuditSchema($db);
 
         $commentId = (int)($_POST['comment_id'] ?? 0);
@@ -331,6 +347,7 @@ try {
     }
 
     if ($method === 'POST' && $action === 'delete') {
+        if ($role === 'client' && !$isClientLiveVisible) jsonError('Issue is under internal review. Client comments are temporarily read-only until the updated issue is approved.', 403);
         ensureIssueCommentAuditSchema($db);
 
         $commentId = (int)($_POST['comment_id'] ?? 0);

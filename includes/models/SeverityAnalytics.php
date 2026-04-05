@@ -199,7 +199,7 @@ class SeverityAnalytics extends AnalyticsEngine {
      * @return string
      */
     private function normalizeSeverity($severity) {
-        $severity = strtolower(trim($severity));
+        $severity = $this->normalizeLowerText($severity);
         
         $mapping = [
             'critical' => 'Critical',
@@ -225,7 +225,7 @@ class SeverityAnalytics extends AnalyticsEngine {
      * @return string
      */
     private function normalizeIssueSeverityTerm($severity) {
-        $severity = strtolower(trim($severity));
+        $severity = $this->normalizeLowerText($severity);
 
         $mapping = [
             'blocker' => 'Blocker',

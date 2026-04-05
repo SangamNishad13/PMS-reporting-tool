@@ -9,17 +9,21 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/constants.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/client_issue_snapshots.php';
 ob_end_clean();
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) { http_response_code(401); exit('Unauthorized'); }
 
 $projectId = (int)($_GET['project_id'] ?? 0);
+$format = strtolower(trim((string)($_GET['format'] ?? 'excel')));
+$clientReadyOnly = !empty($_GET['client_ready_only']) || (($_SESSION['role'] ?? '') === 'client');
 if (!$projectId) { http_response_code(400); exit('project_id required'); }
-if (!class_exists('ZipArchive')) { http_response_code(500); exit('ZipArchive not available'); }
+if (!in_array($format, ['excel', 'pdf'], true)) { http_response_code(400); exit('Invalid format'); }
+if ($format === 'excel' && !class_exists('ZipArchive')) { http_response_code(500); exit('ZipArchive not available'); }
 
 $templatePath = __DIR__ . '/../assets/templates/report_template.xlsx';
-if (!file_exists($templatePath)) { http_response_code(404); exit('Template not found'); }
+if ($format === 'excel' && !file_exists($templatePath)) { http_response_code(404); exit('Template not found'); }
 
 $db = Database::getInstance();
 
@@ -441,43 +445,32 @@ $roleLabels = ['admin'=>'Admin','project_lead'=>'Project Lead',
                'qa'=>'QA','at_tester'=>'AT Tester','ft_tester'=>'FT Tester'];
 
 // ── issues + metadata ─────────────────────────────────────────────────────────
-$issueStmt = $db->prepare("
-    SELECT i.id, i.title, i.description, i.severity, i.issue_key,
-           s.name as status_name
-    FROM issues i
-    LEFT JOIN issue_statuses s ON s.id = i.status_id
-    WHERE i.project_id = ?
-    ORDER BY i.id ASC
-");
-$issueStmt->execute([$projectId]);
-$allIssues = $issueStmt->fetchAll(PDO::FETCH_ASSOC);
-$issueIds  = array_column($allIssues, 'id');
-
-$metaMap       = [];
-$pagesByIssue  = [];
+$allIssues = [];
+$metaMap = [];
+$pagesByIssue = [];
 $qaStatusByIssue = [];
 
-if (!empty($issueIds)) {
-    $ph = implode(',', array_fill(0, count($issueIds), '?'));
+if ($clientReadyOnly) {
+    $records = getClientVisibleIssueRecords($db, [$projectId], ['order_by' => 'i.id ASC']);
+    foreach ($records as $record) {
+        $issue = $record['issue'] ?? [];
+        $iid = (int)($issue['id'] ?? 0);
+        if ($iid <= 0) {
+            continue;
+        }
+        $allIssues[] = [
+            'id' => $iid,
+            'title' => (string)($issue['title'] ?? ''),
+            'description' => (string)($issue['description'] ?? ''),
+            'severity' => (string)($issue['severity'] ?? ''),
+            'issue_key' => (string)($issue['issue_key'] ?? ''),
+            'status_name' => (string)($issue['status_name'] ?? ''),
+        ];
+        $metaMap[$iid] = $record['meta'] ?? [];
+        $pagesByIssue[$iid] = $record['pages'] ?? [];
 
-    // All metadata — each key stores array of raw DB values
-    $ms = $db->prepare("SELECT issue_id, meta_key, meta_value FROM issue_metadata WHERE issue_id IN ($ph) ORDER BY id ASC");
-    $ms->execute($issueIds);
-    while ($m = $ms->fetch(PDO::FETCH_ASSOC)) {
-        $metaMap[(int)$m['issue_id']][$m['meta_key']][] = $m['meta_value'];
-    }
-
-    // Pages per issue
-    $ps = $db->prepare("SELECT ip.issue_id, pp.page_number, pp.page_name, pp.url FROM issue_pages ip JOIN project_pages pp ON ip.page_id = pp.id WHERE ip.issue_id IN ($ph)");
-    $ps->execute($issueIds);
-    while ($p = $ps->fetch(PDO::FETCH_ASSOC)) {
-        $pagesByIssue[(int)$p['issue_id']][] = $p;
-    }
-
-    // QA statuses per issue
-    foreach ($issueIds as $iid) {
-        $meta = $metaMap[$iid] ?? [];
         $keys = [];
+        $meta = $metaMap[$iid] ?? [];
         if (!empty($meta['reporter_qa_status_map'])) {
             foreach ($meta['reporter_qa_status_map'] as $v) {
                 $d = json_decode($v, true);
@@ -494,11 +487,68 @@ if (!empty($issueIds)) {
         if (empty($keys) && !empty($meta['qa_status'])) {
             foreach ($meta['qa_status'] as $v) {
                 $d = json_decode($v, true);
-                if (is_array($d)) { foreach ($d as $sk) $keys[] = strtolower(trim((string)$sk)); }
-                else { $keys[] = strtolower(trim($v)); }
+                if (is_array($d)) {
+                    foreach ($d as $sk) $keys[] = strtolower(trim((string)$sk));
+                } else {
+                    $keys[] = strtolower(trim((string)$v));
+                }
             }
         }
         $qaStatusByIssue[$iid] = array_values(array_unique(array_filter($keys)));
+    }
+} else {
+    $issueStmt = $db->prepare("
+        SELECT i.id, i.title, i.description, i.severity, i.issue_key,
+               s.name as status_name
+        FROM issues i
+        LEFT JOIN issue_statuses s ON s.id = i.status_id
+        WHERE i.project_id = ?
+        ORDER BY i.id ASC
+    ");
+    $issueStmt->execute([$projectId]);
+    $allIssues = $issueStmt->fetchAll(PDO::FETCH_ASSOC);
+    $issueIds  = array_column($allIssues, 'id');
+
+    if (!empty($issueIds)) {
+        $ph = implode(',', array_fill(0, count($issueIds), '?'));
+
+        $ms = $db->prepare("SELECT issue_id, meta_key, meta_value FROM issue_metadata WHERE issue_id IN ($ph) ORDER BY id ASC");
+        $ms->execute($issueIds);
+        while ($m = $ms->fetch(PDO::FETCH_ASSOC)) {
+            $metaMap[(int)$m['issue_id']][$m['meta_key']][] = $m['meta_value'];
+        }
+
+        $ps = $db->prepare("SELECT ip.issue_id, pp.page_number, pp.page_name, pp.url FROM issue_pages ip JOIN project_pages pp ON ip.page_id = pp.id WHERE ip.issue_id IN ($ph)");
+        $ps->execute($issueIds);
+        while ($p = $ps->fetch(PDO::FETCH_ASSOC)) {
+            $pagesByIssue[(int)$p['issue_id']][] = $p;
+        }
+
+        foreach ($issueIds as $iid) {
+            $meta = $metaMap[$iid] ?? [];
+            $keys = [];
+            if (!empty($meta['reporter_qa_status_map'])) {
+                foreach ($meta['reporter_qa_status_map'] as $v) {
+                    $d = json_decode($v, true);
+                    if (is_array($d)) {
+                        foreach ($d as $statuses) {
+                            foreach ((array)$statuses as $sk) {
+                                $sk = strtolower(trim((string)$sk));
+                                if ($sk !== '') $keys[] = $sk;
+                            }
+                        }
+                    }
+                }
+            }
+            if (empty($keys) && !empty($meta['qa_status'])) {
+                foreach ($meta['qa_status'] as $v) {
+                    $d = json_decode($v, true);
+                    if (is_array($d)) { foreach ($d as $sk) $keys[] = strtolower(trim((string)$sk)); }
+                    else { $keys[] = strtolower(trim($v)); }
+                }
+            }
+            $qaStatusByIssue[$iid] = array_values(array_unique(array_filter($keys)));
+        }
     }
 }
 
@@ -525,6 +575,132 @@ foreach ($allIssues as $iss) {
         }
     }
     if (!$skip) $filteredIssues[] = $iss;
+}
+
+if ($format === 'pdf') {
+    $safeTitle = trim(preg_replace('/[^a-zA-Z0-9_\- ]/', '', $project['title'] ?? 'Project')) ?: 'Project';
+    $filename  = $safeTitle . ' - Accessibility Audit Report.pdf';
+
+    header('Content-Type: text/html; charset=utf-8');
+    header('Content-Disposition: inline; filename="' . $filename . '"');
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title><?php echo htmlspecialchars($safeTitle, ENT_QUOTES, 'UTF-8'); ?> - Accessibility Audit Report</title>
+        <style>
+            body { font-family: Arial, sans-serif; color: #1f2937; margin: 24px; }
+            h1, h2 { margin: 0 0 12px; }
+            .meta { color: #6b7280; margin-bottom: 20px; }
+            .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
+            .card { border: 1px solid #dbe3f0; border-radius: 10px; padding: 14px; background: #f8fbff; }
+            .value { font-size: 24px; font-weight: 700; color: #0f4c81; }
+            .label { font-size: 12px; text-transform: uppercase; color: #6b7280; }
+            table { width: 100%; border-collapse: collapse; margin: 14px 0 24px; }
+            th, td { border: 1px solid #d1d5db; padding: 8px 10px; text-align: left; vertical-align: top; }
+            th { background: #eef4fb; }
+            .section { margin-top: 28px; page-break-inside: avoid; }
+            .actions { margin-bottom: 20px; }
+            .actions button { padding: 10px 16px; border: 0; border-radius: 6px; cursor: pointer; }
+            .print-btn { background: #0f4c81; color: #fff; }
+            .close-btn { background: #6b7280; color: #fff; margin-left: 10px; }
+            @media print { .actions { display: none; } body { margin: 0; } }
+        </style>
+    </head>
+    <body>
+        <div class="actions">
+            <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+            <button class="close-btn" onclick="window.close()">Close</button>
+        </div>
+
+        <h1>Accessibility Audit Report</h1>
+        <div class="meta">
+            <div><strong>Digital Asset:</strong> <?php echo htmlspecialchars($project['title'] ?? '', ENT_QUOTES, 'UTF-8'); ?></div>
+            <div><strong>Project Type:</strong> <?php echo htmlspecialchars($projectTypeLabel, ENT_QUOTES, 'UTF-8'); ?></div>
+            <div><strong>Generated:</strong> <?php echo htmlspecialchars(date('F j, Y, g:i a'), ENT_QUOTES, 'UTF-8'); ?></div>
+            <div><strong>Issue Scope:</strong> <?php echo $clientReadyOnly ? 'Client-ready issues only' : 'All issues'; ?></div>
+        </div>
+
+        <div class="stats">
+            <div class="card"><div class="value"><?php echo count($filteredIssues); ?></div><div class="label">Total Issues</div></div>
+            <div class="card"><div class="value"><?php echo count($failingSCsA); ?></div><div class="label">Failing A</div></div>
+            <div class="card"><div class="value"><?php echo count($failingSCsAA); ?></div><div class="label">Failing AA</div></div>
+            <div class="card"><div class="value"><?php echo count($projectPages); ?></div><div class="label">Pages</div></div>
+        </div>
+
+        <div class="section">
+            <h2>Issue Severity Distribution</h2>
+            <table>
+                <thead><tr><th>Severity</th><th>Count</th></tr></thead>
+                <tbody>
+                <?php foreach ($severityCountsSorted as $row): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($row['severity'], ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo (int)$row['count']; ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Top Issues</h2>
+            <table>
+                <thead><tr><th>Issue Title</th><th>WCAG SC</th></tr></thead>
+                <tbody>
+                <?php foreach ($topIssues as $row): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($row['title'], ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars($row['sc_nums'], ENT_QUOTES, 'UTF-8'); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Final Report</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Issue Key</th>
+                        <th>Page No</th>
+                        <th>Page Name</th>
+                        <th>Issue Title</th>
+                        <th>Severity</th>
+                        <th>Developer Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php $rowNumber = 1; ?>
+                <?php foreach ($filteredIssues as $iss): ?>
+                    <?php
+                    $iid = (int)$iss['id'];
+                    $meta = $metaMap[$iid] ?? [];
+                    $pages = $pagesByIssue[$iid] ?? [];
+                    $pageNums = implode(', ', array_column($pages, 'page_number'));
+                    $pageNames = implode(', ', array_column($pages, 'page_name'));
+                    $severity = ucfirst(strtolower(metaFirst($meta, 'severity') ?: ($iss['severity'] ?? 'minor')));
+                    ?>
+                    <tr>
+                        <td><?php echo $rowNumber++; ?></td>
+                        <td><?php echo htmlspecialchars((string)($iss['issue_key'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars($pageNums, ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars($pageNames, ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars((string)($iss['title'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars($severity, ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars((string)($iss['status_name'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
 }
 
 // ── overview calculations ─────────────────────────────────────────────────────

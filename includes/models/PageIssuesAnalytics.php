@@ -250,7 +250,7 @@ class PageIssuesAnalytics extends AnalyticsEngine {
         $weightedScore = 0;
         
         foreach ($severityCounts as $severity => $count) {
-            $weight = $weights[strtolower($severity)] ?? 2;
+            $weight = $weights[$this->normalizeLowerText($severity)] ?? 2;
             $weightedScore += $weight * $count;
         }
         
@@ -281,7 +281,7 @@ class PageIssuesAnalytics extends AnalyticsEngine {
         $pageTypeComplexity = 0;
         $complexPageTypes = ['form', 'checkout', 'dashboard', 'admin', 'search', 'cart'];
         foreach ($complexPageTypes as $type) {
-            if (strpos(strtolower($pageUrl), $type) !== false) {
+            if (strpos($this->normalizeLowerText($pageUrl), $type) !== false) {
                 $pageTypeComplexity += 5;
                 break;
             }
@@ -331,7 +331,7 @@ class PageIssuesAnalytics extends AnalyticsEngine {
      * @return string
      */
     private function identifyPageType($pageUrl) {
-        $url = strtolower($pageUrl);
+        $url = $this->normalizeLowerText($pageUrl);
         
         $pageTypes = [
             'Home Page' => ['', 'home', 'index', 'main'],
@@ -364,7 +364,7 @@ class PageIssuesAnalytics extends AnalyticsEngine {
      * @return string
      */
     private function categorizeIssue($issue) {
-        $content = strtolower(($issue['title'] ?? '') . ' ' . ($issue['description'] ?? ''));
+        $content = $this->normalizeLowerText(($issue['title'] ?? '') . ' ' . ($issue['description'] ?? ''));
         
         $categories = [
             'Navigation' => ['navigation', 'menu', 'link', 'breadcrumb'],

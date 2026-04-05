@@ -97,9 +97,7 @@ try {
 // Fetch issue statuses from issue_statuses table (admin managed)
 $issueStatuses = [];
 try {
-    $issueStatusStmt = $db->prepare("SELECT id, name, color FROM issue_statuses ORDER BY name");
-    $issueStatusStmt->execute();
-    $issueStatuses = $issueStatusStmt->fetchAll(PDO::FETCH_ASSOC);
+    $issueStatuses = getIssueStatusesForRole($db, $userRole);
 } catch (Exception $e) {
     $issueStatuses = [];
 }
@@ -235,6 +233,14 @@ include __DIR__ . '/../../includes/header.php';
             </div>
         </div>
         <div class="card-body">
+            <?php if ($_SESSION['role'] === 'client'): ?>
+            <div class="alert alert-info d-flex align-items-start gap-2">
+                <i class="fas fa-circle-info mt-1"></i>
+                <div>
+                    Shared issues are shown here as a read-only summary so your team can quickly review patterns repeated across multiple pages.
+                </div>
+            </div>
+            <?php endif; ?>
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
                     <thead class="table-light">
@@ -264,7 +270,10 @@ include __DIR__ . '/../../includes/header.php';
             </div>
             <div class="alert alert-info small mt-3 mb-0">
                 <i class="fas fa-info-circle me-1"></i>
-                <strong>Tip:</strong> If a final issue applies to more than one page, fill the "Common Issue Title" field while adding it.
+                <strong><?php echo $_SESSION['role'] === 'client' ? 'Note:' : 'Tip:'; ?></strong>
+                <?php echo $_SESSION['role'] === 'client'
+                    ? 'These issues are maintained by the delivery team when the same problem appears on multiple pages.'
+                    : 'If a final issue applies to more than one page, fill the "Common Issue Title" field while adding it.'; ?>
             </div>
         </div>
     </div>

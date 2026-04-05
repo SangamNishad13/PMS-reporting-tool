@@ -239,7 +239,7 @@ try {
             handle404();
     }
     
-} catch (Exception $e) {
+} catch (Throwable $e) {
     error_log("Client router error: " . $e->getMessage());
     error_log("Stack trace: " . $e->getTraceAsString());
     

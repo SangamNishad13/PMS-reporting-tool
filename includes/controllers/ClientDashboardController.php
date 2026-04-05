@@ -65,7 +65,7 @@ class ClientDashboardController {
             // Render dashboard
             $this->renderDashboard($clientUser, $assignedProjects, $dashboardData);
             
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             error_log("Dashboard error: " . $e->getMessage());
             $this->renderError("Unable to load dashboard. Please try again later.");
         }
@@ -125,7 +125,7 @@ class ClientDashboardController {
             // Render project view
             $this->renderProjectView($clientUser, $projectId, $projectAnalytics);
             
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             error_log("Project view error: " . $e->getMessage());
             file_put_contents(__DIR__ . '/../../debug_error.txt', date('Y-m-d H:i:s') . "\n" . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n\n", FILE_APPEND);
             $this->renderError("Unable to load project analytics. Please try again later.");
@@ -184,7 +184,7 @@ class ClientDashboardController {
             header('Content-Type: application/json');
             echo json_encode($widgetData);
             
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             error_log("AJAX widget error: " . $e->getMessage());
             http_response_code(500);
             echo json_encode(['error' => 'Internal server error']);

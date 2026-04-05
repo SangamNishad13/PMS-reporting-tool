@@ -8,6 +8,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../config/redis.php';
 require_once __DIR__ . '/ClientComplianceScoreResolver.php';
+require_once __DIR__ . '/../client_issue_snapshots.php';
 
 class ClientAccessControlManager {
     private $db;
@@ -235,6 +236,20 @@ class ClientAccessControlManager {
                 // client_permissions table may not have expected columns - ignore
                 error_log('ClientAccessControlManager legacy permissions lookup error: ' . $legacyEx->getMessage());
             }
+
+            $visibleCountByProject = [];
+            $projectIdsForCounts = array_values(array_unique(array_filter(array_map('intval', array_column($projects, 'id')))));
+            if (!empty($projectIdsForCounts)) {
+                $visibleRecords = getClientVisibleIssueRecords($this->db, $projectIdsForCounts, [
+                    'order_by' => 'i.created_at DESC, i.id DESC',
+                ]);
+                foreach ($visibleRecords as $record) {
+                    $visibleProjectId = (int)($record['project_id'] ?? (($record['issue']['project_id'] ?? 0)));
+                    if ($visibleProjectId > 0) {
+                        $visibleCountByProject[$visibleProjectId] = ($visibleCountByProject[$visibleProjectId] ?? 0) + 1;
+                    }
+                }
+            }
             
             // Process and enrich project data
             $enrichedProjects = [];
@@ -254,7 +269,7 @@ class ClientAccessControlManager {
                     'expires_at' => $project['expires_at'],
                     'assignment_notes' => $project['assignment_notes'],
                     'assigned_by_name' => $project['assigned_by_name'],
-                    'client_ready_issues_count' => (int)$project['client_ready_issues_count'],
+                    'client_ready_issues_count' => (int)($visibleCountByProject[(int)$project['id']] ?? $project['client_ready_issues_count']),
                     'total_issues_count' => (int)$project['total_issues_count'],
                     'created_at' => $project['created_at'],
                     'completed_at' => $project['completed_at']
@@ -325,52 +340,55 @@ class ClientAccessControlManager {
             if (empty($projectIds)) {
                 return [];
             }
-            
-            // Build query with placeholders
-            $placeholders = implode(',', array_fill(0, count($projectIds), '?'));
-            
-            $stmt = $this->db->prepare("
-                SELECT 
-                    i.id,
-                    i.project_id,
-                    i.issue_key,
-                    i.title,
-                    i.description,
-                    i.severity,
-                    i.created_at,
-                    i.updated_at,
-                    i.resolved_at,
-                    p.title as project_title,
-                    p.project_code,
-                    s.name as status_name,
-                    s.color as status_color,
-                    pr.name as priority_name,
-                    reporter.full_name as reporter_name,
-                    -- Get metadata
-                    GROUP_CONCAT(DISTINCT CONCAT(im.meta_key, ':', im.meta_value) SEPARATOR '|') as metadata,
-                    -- Count comments
-                    (SELECT COUNT(*) FROM issue_comments ic WHERE ic.issue_id = i.id) as comment_count
-                FROM issues i
-                INNER JOIN projects p ON i.project_id = p.id
-                LEFT JOIN issue_statuses s ON i.status_id = s.id
-                LEFT JOIN issue_priorities pr ON i.priority_id = pr.id
-                LEFT JOIN users reporter ON i.reporter_id = reporter.id
-                LEFT JOIN issue_metadata im ON i.id = im.issue_id
-                WHERE i.project_id IN ($placeholders)
-                AND i.client_ready = 1
-                GROUP BY i.id
-                ORDER BY i.created_at DESC
-            ");
-            
-            $stmt->execute($projectIds);
-            $issues = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Process metadata
-            foreach ($issues as &$issue) {
-                $issue['metadata'] = $this->parseMetadata($issue['metadata']);
-                $issue['comment_count'] = (int)$issue['comment_count'];
+
+            $records = getClientVisibleIssueRecords($this->db, $projectIds, [
+                'order_by' => 'i.created_at DESC, i.id DESC',
+            ]);
+            $issues = [];
+            foreach ($records as $record) {
+                $issue = $record['issue'] ?? [];
+                if (empty($issue)) {
+                    continue;
+                }
+
+                $projectStmt = $this->db->prepare("SELECT title, project_code FROM projects WHERE id = ? LIMIT 1");
+                $projectStmt->execute([(int) ($issue['project_id'] ?? 0)]);
+                $projectData = $projectStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                $commentCount = 0;
+                if (($record['source'] ?? 'live') === 'snapshot' && !empty($record['published_at'])) {
+                    $commentStmt = $this->db->prepare("SELECT COUNT(*) FROM issue_comments WHERE issue_id = ? AND comment_type = 'regression' AND created_at <= ?");
+                    $commentStmt->execute([(int) ($issue['id'] ?? 0), (string) $record['published_at']]);
+                    $commentCount = (int) $commentStmt->fetchColumn();
+                } else {
+                    $commentStmt = $this->db->prepare("SELECT COUNT(*) FROM issue_comments WHERE issue_id = ? AND comment_type = 'regression'");
+                    $commentStmt->execute([(int) ($issue['id'] ?? 0)]);
+                    $commentCount = (int) $commentStmt->fetchColumn();
+                }
+
+                $issues[] = [
+                    'id' => (int) ($issue['id'] ?? 0),
+                    'project_id' => (int) ($issue['project_id'] ?? 0),
+                    'issue_key' => (string) ($issue['issue_key'] ?? ''),
+                    'title' => (string) ($issue['title'] ?? ''),
+                    'description' => (string) ($issue['description'] ?? ''),
+                    'severity' => (string) ($issue['severity'] ?? ''),
+                    'created_at' => (string) ($issue['created_at'] ?? ''),
+                    'updated_at' => (string) ($issue['updated_at'] ?? ''),
+                    'resolved_at' => $issue['resolved_at'] ?? null,
+                    'project_title' => (string) ($projectData['title'] ?? ''),
+                    'project_code' => (string) ($projectData['project_code'] ?? ''),
+                    'status_name' => (string) ($issue['status_name'] ?? ''),
+                    'status_color' => (string) ($issue['status_color'] ?? ''),
+                    'priority_name' => (string) ($issue['priority_name'] ?? ''),
+                    'reporter_name' => (string) ($issue['reporter_name'] ?? ''),
+                    'metadata' => $record['meta'] ?? [],
+                    'comment_count' => $commentCount,
+                    'client_visible_source' => (string) ($record['source'] ?? 'live'),
+                    'client_visible_published_at' => (string) ($record['published_at'] ?? ''),
+                ];
             }
-            
+
             return $issues;
             
         } catch (Exception $e) {
@@ -391,15 +409,15 @@ class ClientAccessControlManager {
         }
         
         try {
-            $stmt = $this->db->prepare("
-                SELECT i.project_id, i.client_ready
-                FROM issues i
-                WHERE i.id = ?
-            ");
+            $stmt = $this->db->prepare("SELECT i.project_id, i.client_ready FROM issues i WHERE i.id = ?");
             $stmt->execute([$issueId]);
             $issue = $stmt->fetch(PDO::FETCH_ASSOC);
             
-            if (!$issue || $issue['client_ready'] != 1) {
+            if (!$issue) {
+                return false;
+            }
+
+            if ((int) ($issue['client_ready'] ?? 0) !== 1 && !isIssueVisibleToClientThroughSnapshot($this->db, (int) $issueId, (int) ($issue['project_id'] ?? 0))) {
                 return false;
             }
             
@@ -544,39 +562,32 @@ class ClientAccessControlManager {
                 $projectsByStatus[(string)$status] = ($projectsByStatus[(string)$status] ?? 0) + 1;
             }
             
-            // Get issue severity distribution
-            $placeholders = implode(',', array_fill(0, count($projectIds), '?'));
-            $stmt = $this->db->prepare("
-                SELECT 
-                    i.severity,
-                    COUNT(*) as count
-                FROM issues i
-                WHERE i.project_id IN ($placeholders)
-                AND i.client_ready = 1
-                GROUP BY i.severity
-            ");
-            $stmt->execute($projectIds);
+            $visibleRecords = getClientVisibleIssueRecords($this->db, $projectIds, [
+                'order_by' => 'i.created_at DESC, i.id DESC',
+            ]);
             $issuesBySeverity = [];
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $issuesBySeverity[$row['severity']] = (int)$row['count'];
+            $clientReadyIssues = 0;
+            $openIssues = 0;
+            $resolvedIssues = 0;
+            foreach ($visibleRecords as $record) {
+                $issue = $record['issue'] ?? [];
+                if (empty($issue)) {
+                    continue;
+                }
+                $clientReadyIssues++;
+                $severity = (string) ($issue['severity'] ?? '');
+                if ($severity !== '') {
+                    $issuesBySeverity[$severity] = ($issuesBySeverity[$severity] ?? 0) + 1;
+                }
+
+                $statusName = strtolower(trim((string) ($issue['status_name'] ?? '')));
+                if (in_array($statusName, ['open', 'in progress', 'reopened', 'in_progress'], true)) {
+                    $openIssues++;
+                }
+                if (in_array($statusName, ['resolved', 'closed', 'fixed'], true)) {
+                    $resolvedIssues++;
+                }
             }
-
-            $statusStmt = $this->db->prepare("
-                SELECT 
-                    COUNT(*) as client_ready_issues,
-                    COUNT(CASE WHEN LOWER(COALESCE(ist.name, '')) IN ('open', 'in progress', 'reopened', 'in_progress') THEN 1 END) as open_issues,
-                    COUNT(CASE WHEN LOWER(COALESCE(ist.name, '')) IN ('resolved', 'closed', 'fixed') THEN 1 END) as resolved_issues
-                FROM issues i
-                LEFT JOIN issue_statuses ist ON i.status_id = ist.id
-                WHERE i.project_id IN ($placeholders)
-                AND i.client_ready = 1
-            ");
-            $statusStmt->execute($projectIds);
-            $statusCounts = $statusStmt->fetch(PDO::FETCH_ASSOC) ?: [];
-
-            $clientReadyIssues = (int) ($statusCounts['client_ready_issues'] ?? 0);
-            $openIssues = (int) ($statusCounts['open_issues'] ?? 0);
-            $resolvedIssues = (int) ($statusCounts['resolved_issues'] ?? 0);
 
             $complianceResolver = new ClientComplianceScoreResolver($this);
             $complianceScore = $complianceResolver->resolveForClientUser((int) $clientUserId, $projectIds);

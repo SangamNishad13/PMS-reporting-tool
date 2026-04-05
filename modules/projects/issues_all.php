@@ -45,8 +45,7 @@ $pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_p
 $pagesStmt->execute([$projectId]);
 $projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
 
-$statusesStmt = $db->query("SELECT id, name, color FROM issue_statuses ORDER BY id");
-$issueStatuses = $statusesStmt->fetchAll(PDO::FETCH_ASSOC);
+$issueStatuses = getIssueStatusesForRole($db, $userRole);
 
 $qaStatusesStmt = $db->query("SELECT status_key, status_label, badge_color FROM qa_status_master WHERE is_active = 1 ORDER BY display_order");
 $qaStatuses = $qaStatusesStmt->fetchAll(PDO::FETCH_ASSOC);

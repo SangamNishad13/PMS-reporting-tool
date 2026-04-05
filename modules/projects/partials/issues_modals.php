@@ -39,7 +39,7 @@
                 <div class="row g-3">
                     <div class="col-lg-8">
                         <label class="form-label mb-1 fw-bold">Issue Details</label>
-                        <div class="d-flex justify-content-end mb-1">
+                        <div class="d-flex justify-content-end mb-1<?php echo $_SESSION['role'] === 'client' ? ' d-none' : ''; ?>">
                             <button class="btn btn-xs btn-outline-info" id="btnResetToTemplate">
                                 <i class="fas fa-undo"></i> Reset to Template
                             </button>
@@ -67,31 +67,17 @@
                             <div class="tab-content mt-3">
                                 <div class="tab-pane fade show active" id="tabChat">
                                     <div class="issue-chat-container">
+                                        <?php if ($_SESSION['role'] !== 'client'): ?>
                                         <div class="mb-3">
                                             <label class="form-label small fw-bold">Comment Type</label>
                                             <select id="finalIssueCommentType" class="form-select form-select-sm mb-2" style="max-width: 200px;">
-                                                <?php if ($_SESSION['role'] === 'client'): ?>
-                                                <option value="regression">Regression Comment</option>
-                                                <?php else: ?>
                                                 <option value="normal">Normal Comment</option>
                                                 <option value="regression">Regression Comment</option>
-                                                <?php endif; ?>
                                             </select>
-                                            <?php if ($_SESSION['role'] === 'client'): ?>
-                                            <div class="small text-muted">You can add regression comments and update the issue status only.</div>
-                                            <?php endif; ?>
                                         </div>
+                                        <?php endif; ?>
                                         <div class="mb-3">
                                             <textarea id="finalIssueCommentEditor" class="issue-summernote"></textarea>
-                                            <div class="small text-muted mt-1">
-                                                <?php if ($_SESSION['role'] === 'client'): ?>
-                                                <i class="fas fa-info-circle me-1"></i>
-                                                Regression comments are visible on the client side.
-                                                <?php else: ?>
-                                                <i class="fas fa-info-circle me-1"></i>
-                                                Type @ to mention users
-                                                <?php endif; ?>
-                                            </div>
                                         </div>
                                         <div class="text-end mb-3">
                                             <button class="btn btn-sm btn-primary" id="finalIssueAddCommentBtn">
@@ -138,7 +124,7 @@
                             <?php endforeach; ?>
                         </select>
                         <div class="d-grid gap-1 mt-2">
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="btnOpenUrlSelectionModal">
+                            <button type="button" class="btn btn-sm btn-outline-primary<?php echo $_SESSION['role'] === 'client' ? ' d-none' : ''; ?>" id="btnOpenUrlSelectionModal">
                                 <i class="fas fa-link me-1"></i> Manage Grouped URLs
                             </button>
                             <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#finalIssueGroupedUrlsPreview" aria-expanded="false">

@@ -6,6 +6,7 @@ $auth = new Auth();
 $auth->requireRole('admin');
 
 $db = Database::getInstance();
+ensureIssueStatusVisibilityColumns($db);
 
 // Handle status updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -21,6 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $statusCategory = sanitizeInput($_POST['status_category']);
         $statusPoints = (int)$_POST['status_points'];
         $isQa = isset($_POST['is_qa']) ? 1 : 0;
+        $visibleToClient = isset($_POST['visible_to_client']) ? 1 : 0;
+        $visibleToInternal = isset($_POST['visible_to_internal']) ? 1 : 0;
         
         $stmt = $db->prepare("
             UPDATE issue_statuses 
@@ -28,11 +31,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 color = ?,
                 category = ?, 
                 points = ?,
-                is_qa = ?
+                is_qa = ?,
+                visible_to_client = ?,
+                visible_to_internal = ?
             WHERE id = ?
         ");
         
-        if ($stmt->execute([$statusName, $statusColor, $statusCategory, $statusPoints, $isQa, $statusId])) {
+        if ($stmt->execute([$statusName, $statusColor, $statusCategory, $statusPoints, $isQa, $visibleToClient, $visibleToInternal, $statusId])) {
             $_SESSION['success'] = "Issue Status updated successfully!";
         } else {
             $_SESSION['error'] = "Failed to update issue status.";
@@ -48,13 +53,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $statusCategory = sanitizeInput($_POST['status_category']);
         $statusPoints = (int)$_POST['status_points'];
         $isQa = isset($_POST['is_qa']) ? 1 : 0;
+        $visibleToClient = isset($_POST['visible_to_client']) ? 1 : 0;
+        $visibleToInternal = isset($_POST['visible_to_internal']) ? 1 : 0;
         
         $stmt = $db->prepare("
-            INSERT INTO issue_statuses (name, color, category, points, is_qa)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO issue_statuses (name, color, category, points, is_qa, visible_to_client, visible_to_internal)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ");
         
-        if ($stmt->execute([$statusName, $statusColor, $statusCategory, $statusPoints, $isQa])) {
+        if ($stmt->execute([$statusName, $statusColor, $statusCategory, $statusPoints, $isQa, $visibleToClient, $visibleToInternal])) {
             $_SESSION['success'] = "Issue Status added successfully!";
         } else {
             $_SESSION['error'] = "Failed to add issue status. Status name might already exist.";
@@ -153,6 +160,8 @@ include __DIR__ . '/../../includes/header.php';
                                     <th>Color</th>
                                     <th>Points</th>
                                     <th>QA Status</th>
+                                    <th>Client Visible</th>
+                                    <th>Internal Visible</th>
                                     <th>Usage Count</th>
                                     <th>Actions</th>
                                 </tr>
@@ -176,10 +185,24 @@ include __DIR__ . '/../../includes/header.php';
                                                 <span class="badge bg-secondary">Regular</span>
                                             <?php endif; ?>
                                         </td>
+                                        <td>
+                                            <?php if (!empty($status['visible_to_client'])): ?>
+                                                <span class="badge bg-success">Visible</span>
+                                            <?php else: ?>
+                                                <span class="badge bg-secondary">Hidden</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if (!empty($status['visible_to_internal'])): ?>
+                                                <span class="badge bg-success">Visible</span>
+                                            <?php else: ?>
+                                                <span class="badge bg-secondary">Hidden</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td><?php echo $usageStats[$status['id']] ?? 0; ?> issues</td>
                                         <td>
                                             <button type="button" class="btn btn-sm btn-outline-primary" 
-                                                    onclick="editStatus(<?php echo $status['id']; ?>, '<?php echo addslashes($status['name']); ?>', '<?php echo addslashes($status['category'] ?? ''); ?>', '<?php echo $status['color']; ?>', <?php echo $status['points']; ?>, <?php echo $status['is_qa']; ?>)">
+                                                    onclick="editStatus(<?php echo $status['id']; ?>, '<?php echo addslashes($status['name']); ?>', '<?php echo addslashes($status['category'] ?? ''); ?>', '<?php echo $status['color']; ?>', <?php echo $status['points']; ?>, <?php echo $status['is_qa']; ?>, <?php echo (int)($status['visible_to_client'] ?? 1); ?>, <?php echo (int)($status['visible_to_internal'] ?? 1); ?>)">
                                                 <i class="fas fa-edit"></i> Edit
                                             </button>
                                             <button type="button" class="btn btn-sm btn-outline-danger"
@@ -265,6 +288,17 @@ include __DIR__ . '/../../includes/header.php';
                         </div>
                         <small class="text-muted">Check if this is a QA-specific status</small>
                     </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="visible_to_client" id="add_visible_to_client" checked>
+                            <label class="form-check-label" for="add_visible_to_client">Visible to Client</label>
+                        </div>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="visible_to_internal" id="add_visible_to_internal" checked>
+                            <label class="form-check-label" for="add_visible_to_internal">Visible to Internal Team</label>
+                        </div>
+                        <small class="text-muted">Control which roles can see this issue status in issue workflows.</small>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -314,6 +348,17 @@ include __DIR__ . '/../../includes/header.php';
                             </label>
                         </div>
                         <small class="text-muted">Check if this is a QA-specific status</small>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="visible_to_client" id="edit_visible_to_client">
+                            <label class="form-check-label" for="edit_visible_to_client">Visible to Client</label>
+                        </div>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="visible_to_internal" id="edit_visible_to_internal">
+                            <label class="form-check-label" for="edit_visible_to_internal">Visible to Internal Team</label>
+                        </div>
+                        <small class="text-muted">Control which roles can see this issue status in issue workflows.</small>
                     </div>
                 </div>
                 <div class="modal-footer">

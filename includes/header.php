@@ -90,7 +90,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
     }
     ?>
     <link rel="icon" type="image/png" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/storage/favicon.png?v=20260225v1">
-    <?php $assetVersion = '20260311v12'; ?>
+    <?php $assetVersion = '20260405v13'; ?>
     <link href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/css/style.css?v=<?php echo $assetVersion; ?>" rel="stylesheet">
     <link href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/css/dashboard.css?v=<?php echo $assetVersion; ?>" rel="stylesheet">
     <link href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/css/header-fix.css?v=<?php echo $assetVersion; ?>" rel="stylesheet">

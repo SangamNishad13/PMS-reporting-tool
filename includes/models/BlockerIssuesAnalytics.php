@@ -143,10 +143,10 @@ class BlockerIssuesAnalytics extends AnalyticsEngine {
      * @return bool
      */
     private function isBlockerIssue($issue) {
-        $title = strtolower($issue['title'] ?? '');
-        $description = strtolower($issue['description'] ?? '');
-        $severity = strtolower($issue['severity'] ?? '');
-        $priority = strtolower($issue['priority'] ?? '');
+        $title = $this->normalizeLowerText($issue['title'] ?? '');
+        $description = $this->normalizeLowerText($issue['description'] ?? '');
+        $severity = $this->normalizeLowerText($issue['severity'] ?? '');
+        $priority = $this->normalizeLowerText($issue['priority'] ?? '');
         
         // Check explicit blocker indicators
         $blockerKeywords = [
@@ -191,7 +191,7 @@ class BlockerIssuesAnalytics extends AnalyticsEngine {
      * @return string
      */
     private function classifyBlockerType($issue) {
-        $content = strtolower(($issue['title'] ?? '') . ' ' . ($issue['description'] ?? ''));
+        $content = $this->normalizeLowerText(($issue['title'] ?? '') . ' ' . ($issue['description'] ?? ''));
         
         $types = [
             'Accessibility Blocker' => ['keyboard', 'screen reader', 'navigation', 'focus', 'alt text', 'aria'],
@@ -220,7 +220,7 @@ class BlockerIssuesAnalytics extends AnalyticsEngine {
      * @return string
      */
     private function assessFunctionalityImpact($issue) {
-        $content = strtolower(($issue['title'] ?? '') . ' ' . ($issue['description'] ?? ''));
+        $content = $this->normalizeLowerText(($issue['title'] ?? '') . ' ' . ($issue['description'] ?? ''));
         
         $functionalities = [
             'Navigation' => ['navigation', 'menu', 'link', 'breadcrumb', 'tab'],
@@ -252,9 +252,9 @@ class BlockerIssuesAnalytics extends AnalyticsEngine {
      * @return string
      */
     private function assessUrgencyLevel($issue) {
-        $severity = strtolower($issue['severity'] ?? '');
-        $priority = strtolower($issue['priority'] ?? '');
-        $content = strtolower(($issue['title'] ?? '') . ' ' . ($issue['description'] ?? ''));
+        $severity = $this->normalizeLowerText($issue['severity'] ?? '');
+        $priority = $this->normalizeLowerText($issue['priority'] ?? '');
+        $content = $this->normalizeLowerText(($issue['title'] ?? '') . ' ' . ($issue['description'] ?? ''));
         
         // Critical urgency indicators
         $criticalIndicators = ['critical', 'immediate', 'showstopper', 'emergency'];
@@ -301,7 +301,7 @@ class BlockerIssuesAnalytics extends AnalyticsEngine {
             'low' => 0.5
         ];
         
-        $severity = strtolower($issue['severity'] ?? 'medium');
+        $severity = $this->normalizeLowerText($issue['severity'] ?? 'medium');
         $severityMultiplier = $severityMultipliers[$severity] ?? 1.0;
         
         // Users affected multiplier

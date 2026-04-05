@@ -59,6 +59,15 @@ if (($_SESSION['role'] ?? '') === 'client') {
     }
 }
 
+if ($projectId) {
+    header('Location: export_client_report.php?' . http_build_query([
+        'project_id' => (int) $projectId,
+        'format' => $format,
+        'client_ready_only' => 1,
+    ]));
+    exit;
+}
+
 // Get client info
 $stmt = $db->prepare("SELECT name FROM clients WHERE id = ?");
 $stmt->execute([$clientId]);

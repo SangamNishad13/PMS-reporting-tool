@@ -71,8 +71,7 @@ $qaStatusesStmt = $db->query("SELECT id, status_key, status_label, badge_color F
 $qaStatuses = $qaStatusesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch Issue statuses from issue_statuses table
-$issueStatusesStmt = $db->query("SELECT id, name, color, category FROM issue_statuses ORDER BY name ASC");
-$issueStatuses = $issueStatusesStmt->fetchAll(PDO::FETCH_ASSOC);
+$issueStatuses = getIssueStatusesForRole($db, $userRole, ['category']);
 
 // Fetch issue metadata fields - actual columns are: field_key, field_label, options_json
 $metadataFieldsStmt = $db->query("SELECT id, field_key, field_label, options_json FROM issue_metadata_fields WHERE is_active = 1 ORDER BY sort_order ASC");
@@ -836,6 +835,25 @@ include __DIR__ . '/../../includes/header.php';
                     <?php else: ?>
                     <div class="px-3 py-2 border-bottom bg-light small text-muted">
                         Use the Update button to change issue status or add a regression comment.
+                    </div>
+                    <div class="px-3 py-3 border-bottom bg-white">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-6">
+                                <label for="clientIssueSearch" class="form-label">Search issues</label>
+                                <input type="search" class="form-control" id="clientIssueSearch" placeholder="Search by issue title or details">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="clientIssueStatusFilter" class="form-label">Filter by status</label>
+                                <select class="form-select" id="clientIssueStatusFilter">
+                                    <option value="">All statuses</option>
+                                    <option value="open">Open</option>
+                                    <option value="in_progress">In Progress</option>
+                                    <option value="fixed">Fixed</option>
+                                    <option value="resolved">Resolved</option>
+                                    <option value="reopened">Reopened</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                     <?php endif; ?>
                     <div class="final-issues-table-wrap">

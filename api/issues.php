@@ -8,6 +8,7 @@ require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/project_permissions.php';
 require_once __DIR__ . '/../includes/models/AuditLogger.php';
 require_once __DIR__ . '/../includes/api_issues_helpers.php';
+require_once __DIR__ . '/../includes/client_issue_snapshots.php';
 ob_end_clean();
 
 try {
@@ -61,8 +62,25 @@ function getIssueStatusNameById($db, $statusId) {
 }
 
 function isClientEditableIssueStatusValue($value) {
-    static $allowed = ['open', 'in_progress', 'resolved', 'reopened', 'fixed'];
+    global $db;
+    static $allowed = null;
+
+    if ($allowed === null) {
+        $allowed = [];
+        foreach (getIssueStatusesForRole($db, 'client') as $statusRow) {
+            $allowed[] = normalizeIssueStatusValue($statusRow['name'] ?? '');
+        }
+    }
+
     return in_array(normalizeIssueStatusValue($value), $allowed, true);
+}
+
+function isResolvedIssueStatusValue($value) {
+    return in_array(normalizeIssueStatusValue($value), ['resolved', 'closed', 'fixed'], true);
+}
+
+function canUserMarkIssueResolved($userRole) {
+    return in_array((string)$userRole, ['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester'], true);
 }
 
 function parseMetaIntValues($values) {
@@ -132,67 +150,80 @@ if ($method === 'POST' && $action === 'delete_image') {
 try {
     if ($method === 'GET' && $action === 'list') {
         $pageId = (int)($_GET['page_id'] ?? 0);
-        $params = [$projectId];
-        $sql = "SELECT DISTINCT i.*, 
-                       s.name as status_name, 
-                       p.name as priority_name,
-                       reporter.full_name as reporter_name,
-                       assignee.full_name as qa_name,
-                       (SELECT COALESCE(MAX(ih.id), 0) FROM issue_history ih WHERE ih.issue_id = i.id) AS latest_history_id
-                FROM issues i
-                LEFT JOIN issue_statuses s ON i.status_id = s.id
-                LEFT JOIN issue_priorities p ON i.priority_id = p.id
-                LEFT JOIN users reporter ON i.reporter_id = reporter.id
-                LEFT JOIN users assignee ON i.assignee_id = assignee.id";
-        if ($pageId) {
-            // Use issue_pages as the authoritative source (always wiped+re-inserted on save).
-            // Fall back to i.page_id for legacy issues that were created before issue_pages existed.
-            $sql .= " WHERE i.project_id = ? AND (
-                EXISTS (SELECT 1 FROM issue_pages ip WHERE ip.issue_id = i.id AND ip.page_id = ?)
-                OR (
-                    i.page_id = ?
-                    AND NOT EXISTS (SELECT 1 FROM issue_pages ip2 WHERE ip2.issue_id = i.id)
-                )
-            )";
-            $params[] = $pageId;
-            $params[] = $pageId;
-        } else {
-            $sql .= " WHERE i.project_id = ?";
-        }
-        
-        // Filter for client role - only show client_ready issues
-        if ($userRole === 'client') {
-            $sql .= " AND i.client_ready = 1";
-        }
-        
-        $orderByClause = columnExists($db, 'issues', 'issue_key') ? "ORDER BY i.issue_key ASC" : "ORDER BY i.id ASC";
-        $sql .= " $orderByClause";
-        
-        $stmt = $db->prepare($sql);
-        $stmt->execute($params);
-        $issues = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $issueIds = array_map(function($r){ return (int)$r['id']; }, $issues);
+        $issues = [];
         $metaMap = [];
         $commentCountMap = [];
         $reporterQaStatusByIssue = [];
-        if (!empty($issueIds)) {
-            $placeholders = implode(',', array_fill(0, count($issueIds), '?'));
-            $metaStmt = $db->prepare("SELECT issue_id, meta_key, meta_value FROM issue_metadata WHERE issue_id IN ($placeholders)");
-            $metaStmt->execute($issueIds);
-            while ($m = $metaStmt->fetch(PDO::FETCH_ASSOC)) {
-                $iid = (int)$m['issue_id'];
-                if (!isset($metaMap[$iid])) $metaMap[$iid] = [];
-                if (!isset($metaMap[$iid][$m['meta_key']])) $metaMap[$iid][$m['meta_key']] = [];
-                $metaMap[$iid][$m['meta_key']][] = $m['meta_value'];
+        if ($userRole === 'client') {
+            $records = getClientVisibleIssueRecords($db, [$projectId], ['page_id' => $pageId]);
+            foreach ($records as $record) {
+                $issue = $record['issue'] ?? [];
+                $iid = (int)($issue['id'] ?? 0);
+                if ($iid <= 0) {
+                    continue;
+                }
+                $issues[] = $issue;
+                $metaMap[$iid] = $record['meta'] ?? [];
+            }
+        } else {
+            $params = [$projectId];
+            $sql = "SELECT DISTINCT i.*, 
+                           s.name as status_name, 
+                           p.name as priority_name,
+                           reporter.full_name as reporter_name,
+                           assignee.full_name as qa_name,
+                           (SELECT COALESCE(MAX(ih.id), 0) FROM issue_history ih WHERE ih.issue_id = i.id) AS latest_history_id
+                    FROM issues i
+                    LEFT JOIN issue_statuses s ON i.status_id = s.id
+                    LEFT JOIN issue_priorities p ON i.priority_id = p.id
+                    LEFT JOIN users reporter ON i.reporter_id = reporter.id
+                    LEFT JOIN users assignee ON i.assignee_id = assignee.id";
+            if ($pageId) {
+                $sql .= " WHERE i.project_id = ? AND (
+                    EXISTS (SELECT 1 FROM issue_pages ip WHERE ip.issue_id = i.id AND ip.page_id = ?)
+                    OR (
+                        i.page_id = ?
+                        AND NOT EXISTS (SELECT 1 FROM issue_pages ip2 WHERE ip2.issue_id = i.id)
+                    )
+                )";
+                $params[] = $pageId;
+                $params[] = $pageId;
+            } else {
+                $sql .= " WHERE i.project_id = ?";
             }
 
+            $orderByClause = columnExists($db, 'issues', 'issue_key') ? "ORDER BY i.issue_key ASC" : "ORDER BY i.id ASC";
+            $sql .= " $orderByClause";
+
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            $issues = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $issueIds = array_map(function($r){ return (int)$r['id']; }, $issues);
+            if (!empty($issueIds)) {
+                $placeholders = implode(',', array_fill(0, count($issueIds), '?'));
+                $metaStmt = $db->prepare("SELECT issue_id, meta_key, meta_value FROM issue_metadata WHERE issue_id IN ($placeholders)");
+                $metaStmt->execute($issueIds);
+                while ($m = $metaStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $iid = (int)$m['issue_id'];
+                    if (!isset($metaMap[$iid])) $metaMap[$iid] = [];
+                    if (!isset($metaMap[$iid][$m['meta_key']])) $metaMap[$iid][$m['meta_key']] = [];
+                    $metaMap[$iid][$m['meta_key']][] = $m['meta_value'];
+                }
+            }
+        }
+
+        $issueIds = array_map(function($r){ return (int)$r['id']; }, $issues);
+        if (!empty($issueIds)) {
+            $placeholders = implode(',', array_fill(0, count($issueIds), '?'));
             $commentStmt = $db->prepare("SELECT issue_id, COUNT(*) AS c FROM issue_comments WHERE issue_id IN ($placeholders) GROUP BY issue_id");
             $commentStmt->execute($issueIds);
             while ($c = $commentStmt->fetch(PDO::FETCH_ASSOC)) {
                 $commentCountMap[(int)$c['issue_id']] = (int)$c['c'];
             }
-            $reporterQaStatusByIssue = loadReporterQaStatusMapByIssueIds($db, $issueIds);
+            if ($userRole !== 'client') {
+                $reporterQaStatusByIssue = loadReporterQaStatusMapByIssueIds($db, $issueIds);
+            }
         }
 
         $out = [];
@@ -311,6 +342,123 @@ try {
             if ($cached) {
                 jsonResponse(['success' => true, 'issues' => $data, 'cached' => true]);
             }
+        }
+
+        if ($userRole === 'client') {
+            $records = getClientVisibleIssueRecords($db, [$projectId]);
+
+            $qaStatusStmt = $db->query("SELECT status_key, status_label, badge_color FROM qa_status_master WHERE is_active = 1");
+            $qaStatusMaster = [];
+            while ($qs = $qaStatusStmt->fetch(PDO::FETCH_ASSOC)) {
+                $qaStatusMaster[$qs['status_key']] = [
+                    'label' => $qs['status_label'],
+                    'color' => $qs['badge_color']
+                ];
+            }
+
+            $out = [];
+            foreach ($records as $record) {
+                $i = $record['issue'] ?? [];
+                $iid = (int)($i['id'] ?? 0);
+                if ($iid <= 0) {
+                    continue;
+                }
+
+                $meta = $record['meta'] ?? [];
+                $pages = $record['pages'] ?? [];
+                $pageNames = array_map(function($p) { return trim((string)($p['page_number'] ?? '')) . ' - ' . trim((string)($p['page_name'] ?? '')); }, $pages);
+                $pageNames = array_values(array_filter(array_map('trim', $pageNames)));
+                $pageIds = array_values(array_filter(array_map(function($p) { return (int)($p['id'] ?? 0); }, $pages)));
+
+                $reporterQaStatusMap = [];
+                if (isset($meta['reporter_qa_status_map'])) {
+                    $reporterQaStatusMap = parseReporterQaStatusMapFromMetaValues($meta['reporter_qa_status_map']);
+                }
+
+                $qaStatuses = [];
+                $qaStatusKeys = [];
+                if (!empty($reporterQaStatusMap)) {
+                    foreach ($reporterQaStatusMap as $statusValues) {
+                        foreach ((array)$statusValues as $statusKey) {
+                            $key = strtolower(trim((string)$statusKey));
+                            if ($key !== '') {
+                                $qaStatusKeys[] = $key;
+                            }
+                        }
+                    }
+                    $qaStatusKeys = array_values(array_unique($qaStatusKeys));
+                }
+                if (empty($qaStatusKeys) && isset($meta['qa_status'])) {
+                    $qaStatusKeys = array_values(array_filter(array_map('trim', (array)$meta['qa_status'])));
+                }
+                foreach ($qaStatusKeys as $key) {
+                    if (isset($qaStatusMaster[$key])) {
+                        $qaStatuses[] = [
+                            'key' => $key,
+                            'label' => $qaStatusMaster[$key]['label'],
+                            'color' => $qaStatusMaster[$key]['color']
+                        ];
+                    }
+                }
+
+                $reporters = [];
+                $reporterIds = [];
+                if (!empty($i['reporter_name'])) {
+                    $reporters[] = (string)$i['reporter_name'];
+                }
+                if (!empty($i['reporter_id'])) {
+                    $reporterIds[] = (int)$i['reporter_id'];
+                }
+                if (isset($meta['reporter_ids'])) {
+                    $additionalReporterIds = array_values(array_filter(array_map('intval', (array)$meta['reporter_ids'])));
+                    if (!empty($additionalReporterIds)) {
+                        $placeholders = implode(',', array_fill(0, count($additionalReporterIds), '?'));
+                        $reporterStmt = $db->prepare("SELECT id, full_name FROM users WHERE id IN ($placeholders)");
+                        $reporterStmt->execute($additionalReporterIds);
+                        while ($r = $reporterStmt->fetch(PDO::FETCH_ASSOC)) {
+                            if (!in_array($r['full_name'], $reporters, true)) {
+                                $reporters[] = $r['full_name'];
+                            }
+                            $reporterIds[] = (int)$r['id'];
+                        }
+                    }
+                }
+                $reporterIds = array_values(array_unique(array_filter($reporterIds)));
+
+                $out[] = [
+                    'id' => $iid,
+                    'issue_key' => $i['issue_key'] ?? 'ISS-' . $iid,
+                    'title' => $i['title'] ?? '',
+                    'description' => $i['description'] ?? '',
+                    'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? ($meta['common_title'][0] ?? '') : ($meta['common_title'] ?? ''),
+                    'status_id' => (int)($i['status_id'] ?? 0),
+                    'status_name' => $i['status_name'] ?? '',
+                    'status_color' => $i['status_color'] ?? '#6c757d',
+                    'pages' => implode(', ', $pageNames),
+                    'page_ids' => $pageIds,
+                    'qa_statuses' => $qaStatuses,
+                    'qa_status_keys' => $qaStatusKeys,
+                    'reporter_qa_status_map' => $reporterQaStatusMap,
+                    'reporters' => implode(', ', $reporters),
+                    'reporter_ids' => $reporterIds,
+                    'assignee_id' => (int)($i['assignee_id'] ?? 0) ?: null,
+                    'assignee_ids' => isset($meta['assignee_ids']) ? array_values(array_filter(array_map('intval', $meta['assignee_ids']), function($v){ return $v > 0; })) : ((int)($i['assignee_id'] ?? 0) ? [(int)$i['assignee_id']] : []),
+                    'severity' => isset($meta['severity']) ? (is_array($meta['severity']) ? ($meta['severity'][0] ?? 'medium') : $meta['severity']) : ($i['severity'] ?? 'medium'),
+                    'priority' => isset($meta['priority']) ? (is_array($meta['priority']) ? ($meta['priority'][0] ?? 'medium') : $meta['priority']) : 'medium',
+                    'grouped_urls' => isset($meta['grouped_urls']) && is_array($meta['grouped_urls']) ? $meta['grouped_urls'] : [],
+                    'client_ready' => 1,
+                    'metadata' => $meta,
+                    'created_at' => $i['created_at'] ?? null,
+                    'updated_at' => $i['updated_at'] ?? null,
+                    'latest_history_id' => (int)($i['latest_history_id'] ?? 0)
+                ];
+            }
+
+            if (function_exists('apcu_store')) {
+                apcu_store($cacheKey, $out, $cacheTtl);
+            }
+
+            jsonResponse(['success' => true, 'issues' => $out]);
         }
 
         // Fetch all issues for the project with complete information
@@ -722,18 +870,39 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         $assigneeIds = array_values(array_filter(array_map('intval', $assigneeIdsRaw), function($v){ return $v > 0; }));
         $assigneeId = !empty($assigneeIds) ? $assigneeIds[0] : null;
 
+        $hasResolvedAtColumn = columnExists($db, 'issues', 'resolved_at');
+        $requestedStatusValue = normalizeIssueStatusValue(is_numeric($statusInput)
+            ? getIssueStatusNameById($db, $statusId)
+            : $statusInput);
+
+        if ($action === 'create' && isResolvedIssueStatusValue($requestedStatusValue) && !canUserMarkIssueResolved($userRole)) {
+            jsonError('Only the testing team can mark issues as resolved.', 403);
+        }
+
         try {
             if (!$db->inTransaction()) {
                 $db->beginTransaction();
             }
 
             if ($action === 'create') {
-                $stmt = $db->prepare("INSERT INTO issues (project_id, issue_key, title, description, type_id, priority_id, status_id, reporter_id, assignee_id, page_id, severity, is_final, common_issue_title, client_ready) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
+                if ($hasResolvedAtColumn) {
+                    $resolvedAtValue = isResolvedIssueStatusValue($requestedStatusValue) ? date('Y-m-d H:i:s') : null;
+                    $stmt = $db->prepare("INSERT INTO issues (project_id, issue_key, title, description, type_id, priority_id, status_id, reporter_id, assignee_id, page_id, severity, resolved_at, is_final, common_issue_title, client_ready) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
+                } else {
+                    $resolvedAtValue = null;
+                    $stmt = $db->prepare("INSERT INTO issues (project_id, issue_key, title, description, type_id, priority_id, status_id, reporter_id, assignee_id, page_id, severity, is_final, common_issue_title, client_ready) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
+                }
                 $created = false;
                 for ($attempt = 0; $attempt < 5; $attempt++) {
                     $issueKey = getIssueKey($db, $projectId);
                     try {
-                        $stmt->execute([$projectId, $issueKey, $title, $description, $typeId, $priorityId, $statusId, $reporterId, $assigneeId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady]);
+                        $params = [$projectId, $issueKey, $title, $description, $typeId, $priorityId, $statusId, $reporterId, $assigneeId, $pageId ?: null, $severity];
+                        if ($hasResolvedAtColumn) {
+                            $params[] = $resolvedAtValue;
+                        }
+                        $params[] = $commonTitle ?: null;
+                        $params[] = $clientReady;
+                        $stmt->execute($params);
                         $id = (int)$db->lastInsertId();
                         $created = true;
                         break;
@@ -803,11 +972,30 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                     $oldMeta[$k][] = (string)$m['meta_value'];
                 }
 
+                $currentStatusValue = normalizeIssueStatusValue(getIssueStatusNameById($db, (int)($oldIssue['status_id'] ?? 0)));
+                if ($requestedStatusValue === '') {
+                    $requestedStatusValue = $currentStatusValue;
+                }
+
+                if (isResolvedIssueStatusValue($requestedStatusValue)
+                    && $requestedStatusValue !== $currentStatusValue
+                    && !canUserMarkIssueResolved($userRole)) {
+                    if ($db->inTransaction()) $db->rollBack();
+                    jsonError('Only the testing team can mark issues as resolved.', 403);
+                }
+
+                $resolvedAtValue = $oldIssue['resolved_at'] ?? null;
+                if ($hasResolvedAtColumn) {
+                    if (isResolvedIssueStatusValue($requestedStatusValue)) {
+                        if (empty($resolvedAtValue)) {
+                            $resolvedAtValue = date('Y-m-d H:i:s');
+                        }
+                    } else {
+                        $resolvedAtValue = null;
+                    }
+                }
+
                 if ($userRole === 'client') {
-                    $currentStatusValue = normalizeIssueStatusValue(getIssueStatusNameById($db, (int)($oldIssue['status_id'] ?? 0)));
-                    $requestedStatusValue = normalizeIssueStatusValue(is_numeric($statusInput)
-                        ? getIssueStatusNameById($db, $statusInput)
-                        : $statusInput);
                     if ($requestedStatusValue === '') {
                         $requestedStatusValue = $currentStatusValue;
                     }
@@ -851,6 +1039,7 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                 if ($oldIssue['common_issue_title'] !== ($commonTitle ?: null)) $hasChanged = true;
                 if ((int)($oldIssue['client_ready'] ?? 0) !== $clientReady) $hasChanged = true;
                 if ((int)($oldIssue['assignee_id'] ?? 0) !== (int)($assigneeId ?? 0)) $hasChanged = true;
+                if ($hasResolvedAtColumn && (string)($oldIssue['resolved_at'] ?? '') !== (string)($resolvedAtValue ?? '')) $hasChanged = true;
 
                 logHistory($db, $id, $userId, 'title', $oldIssue['title'], $title);
                 logHistory($db, $id, $userId, 'description', $oldIssue['description'], $description);
@@ -858,13 +1047,24 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                 logHistory($db, $id, $userId, 'common_issue_title', $oldIssue['common_issue_title'], $commonTitle ?: null);
                 logHistory($db, $id, $userId, 'client_ready', $oldIssue['client_ready'] ?? 0, $clientReady);
                 logHistory($db, $id, $userId, 'assignee_id', $oldIssue['assignee_id'] ?? null, $assigneeId);
+                if ($hasResolvedAtColumn) logHistory($db, $id, $userId, 'resolved_at', $oldIssue['resolved_at'] ?? null, $resolvedAtValue);
 
-                if ($hasChanged) {
+                if ($hasResolvedAtColumn && $hasChanged) {
+                    $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, resolved_at = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
+                } elseif ($hasResolvedAtColumn) {
+                    $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, resolved_at = ? WHERE id = ? AND project_id = ?");
+                } elseif ($hasChanged) {
                     $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
                 } else {
                     $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ? WHERE id = ? AND project_id = ?");
                 }
-                $stmt->execute([$title, $description, $priorityId, $statusId, $reporterId, $assigneeId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady, $id, $projectId]);
+                $params = [$title, $description, $priorityId, $statusId, $reporterId, $assigneeId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady];
+                if ($hasResolvedAtColumn) {
+                    $params[] = $resolvedAtValue;
+                }
+                $params[] = $id;
+                $params[] = $projectId;
+                $stmt->execute($params);
             }
 
         // For update operations, check if QA status is actually being changed
@@ -1013,6 +1213,10 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         }
 
         $db->commit();
+
+        if ((int) $id > 0 && (int) $clientReady === 1) {
+            publishIssueClientSnapshot($db, (int) $id);
+        }
         
         // Debug logging
         error_log("Issue API: Transaction committed successfully for $action action. Issue ID: $id");
@@ -1235,6 +1439,12 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         try {
             $stmt = $db->prepare("UPDATE issues SET client_ready = ?, updated_at = NOW() WHERE id IN ($placeholders) AND project_id = ?");
             $stmt->execute($params);
+
+            if ($clientReady === 1) {
+                foreach ($ids as $snapshotIssueId) {
+                    publishIssueClientSnapshot($db, (int) $snapshotIssueId);
+                }
+            }
             
             // Invalidate get_all cache
             if (function_exists('apcu_delete')) {
@@ -1327,13 +1537,15 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
 
     if ($method === 'GET' && $action === 'common_list') {
         $orderByClause = columnExists($db, 'issues', 'issue_key') ? "ORDER BY i.issue_key ASC" : "ORDER BY i.id ASC";
-        
+        $clientReadyClause = $userRole === 'client' ? ' AND i.client_ready = 1' : '';
+
         $stmt = $db->prepare("
             SELECT ci.id as common_id, ci.title as common_title, i.*, s.name AS status_name
             FROM common_issues ci
             JOIN issues i ON ci.issue_id = i.id
             LEFT JOIN issue_statuses s ON s.id = i.status_id
             WHERE ci.project_id = ?
+            {$clientReadyClause}
             $orderByClause
         ");
         $stmt->execute([$projectId]);

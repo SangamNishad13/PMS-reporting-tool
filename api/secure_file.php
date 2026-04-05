@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/project_permissions.php';
+require_once __DIR__ . '/../includes/client_issue_snapshots.php';
 
 // Only log errors, not every request
 if (!isset($_SESSION['user_id'])) {
@@ -88,6 +89,7 @@ function escapeLikeValue($value) {
 
 function userCanAccessReferencedIssueProject(PDO $db, int $userId, string $role, string $relPath): bool {
     $like = '%' . escapeLikeValue($relPath) . '%';
+    ensureIssueClientSnapshotTable($db);
 
     $issueSql = "
         SELECT DISTINCT i.project_id
@@ -121,6 +123,33 @@ function userCanAccessReferencedIssueProject(PDO $db, int $userId, string $role,
     while (($projectId = (int)$commentStmt->fetchColumn()) > 0) {
         if (hasProjectAccess($db, $userId, $projectId)) {
             return true;
+        }
+    }
+
+    if ($role === 'client') {
+        $snapshotIssueStmt = $db->prepare(
+            "SELECT DISTINCT s.project_id
+             FROM issue_client_snapshots s
+             WHERE s.snapshot_json LIKE ? ESCAPE '\\\\'"
+        );
+        $snapshotIssueStmt->execute([$like]);
+        while (($projectId = (int)$snapshotIssueStmt->fetchColumn()) > 0) {
+            if (hasProjectAccess($db, $userId, $projectId)) {
+                return true;
+            }
+        }
+
+        $snapshotCommentStmt = $db->prepare(
+            "SELECT DISTINCT s.project_id
+             FROM issue_client_snapshots s
+             JOIN issue_comments ic ON ic.issue_id = s.issue_id AND ic.created_at <= s.published_at
+             WHERE ic.comment_html LIKE ? ESCAPE '\\\\'"
+        );
+        $snapshotCommentStmt->execute([$like]);
+        while (($projectId = (int)$snapshotCommentStmt->fetchColumn()) > 0) {
+            if (hasProjectAccess($db, $userId, $projectId)) {
+                return true;
+            }
         }
     }
 

@@ -39,7 +39,8 @@
     var isAdminUser = userRole === 'admin' || userRole === 'admin' || userRole === 'superadmin';
     var isTesterRole = userRole === 'at_tester' || userRole === 'ft_tester';
     var canUpdateIssueQaStatus = !!ProjectConfig.canUpdateIssueQaStatus;
-    var clientEditableIssueStatuses = ['open', 'in_progress', 'resolved', 'reopened', 'fixed'];
+    var clientEditableIssueStatuses = ['open', 'in_progress', 'reopened'];
+    var resolutionAuthorityRoles = ['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester'];
     if (isTesterRole) {
         canUpdateIssueQaStatus = false;
     }
@@ -112,6 +113,134 @@
         return clientEditableIssueStatuses.indexOf(normalizeIssueStatusSlug(value)) !== -1;
     }
 
+    function isResolutionStatus(value) {
+        return ['resolved', 'fixed', 'closed'].indexOf(normalizeIssueStatusSlug(value)) !== -1;
+    }
+
+    function canCurrentUserMarkResolved() {
+        return resolutionAuthorityRoles.indexOf(userRole) !== -1;
+    }
+
+    function getClientQuickStatusOptions() {
+        return (ProjectConfig.issueStatuses || []).filter(function (status) {
+            var label = status.status_label || status.name || status.label || '';
+            return isClientIssueStatusAllowed(label);
+        });
+    }
+
+    function buildClientQuickStatusActions(issue) {
+        if (userRole !== 'client') return '';
+
+        var options = getClientQuickStatusOptions();
+        if (!options.length) return '';
+
+        var currentStatusId = String(issue.status_id || '');
+        return '<div class="mt-3 pt-3 border-top">' +
+            '<div class="small text-muted fw-semibold mb-2">Quick Status</div>' +
+            '<div class="d-flex flex-wrap gap-2">' +
+            options.map(function (status) {
+                var statusId = String(status.id || '');
+                var label = status.status_label || status.name || 'Status';
+                var isActive = statusId === currentStatusId;
+                return '<button type="button" class="btn btn-sm ' + (isActive ? 'btn-primary' : 'btn-outline-primary') + ' client-quick-status" data-issue-id="' + issue.id + '" data-status-id="' + escapeAttr(statusId) + '"' + (isActive ? ' disabled' : '') + '>' +
+                    escapeHtml(label) +
+                    '</button>';
+            }).join('') +
+            '</div>' +
+            '</div>';
+    }
+
+    function applyClientFinalIssueFilters(issues) {
+        if (userRole !== 'client') return issues;
+
+        var searchEl = document.getElementById('clientIssueSearch');
+        var statusEl = document.getElementById('clientIssueStatusFilter');
+        var searchTerm = String(searchEl ? searchEl.value : '').trim().toLowerCase();
+        var statusValue = normalizeIssueStatusSlug(statusEl ? statusEl.value : '');
+
+        return issues.filter(function (issue) {
+            var searchable = [
+                issue.issue_key || '',
+                issue.title || '',
+                stripHtml(issue.details || ''),
+                issue.common_title || ''
+            ].join(' ').toLowerCase();
+            var issueStatus = normalizeIssueStatusSlug(issue.status || issue.status_name || '');
+
+            if (searchTerm && searchable.indexOf(searchTerm) === -1) {
+                return false;
+            }
+            if (statusValue && issueStatus !== statusValue) {
+                return false;
+            }
+            return true;
+        });
+    }
+
+    function getSelectedPageFinalIssues() {
+        if (!issueData.selectedPageId || !issueData.pages[issueData.selectedPageId]) return [];
+        return issueData.pages[issueData.selectedPageId].final || [];
+    }
+
+    async function quickUpdateClientIssueStatus(issueId, statusId, triggerBtn) {
+        if (userRole !== 'client') return;
+
+        var issues = getSelectedPageFinalIssues();
+        var issue = issues.find(function (item) { return String(item.id) === String(issueId); });
+        if (!issue) return;
+
+        var fd = new FormData();
+        fd.append('action', 'update');
+        fd.append('project_id', projectId);
+        fd.append('id', String(issue.id));
+        fd.append('title', String(issue.title || 'Issue'));
+        fd.append('issue_status', String(statusId));
+        if (issue.updated_at) fd.append('expected_updated_at', String(issue.updated_at));
+        if (issue.latest_history_id != null) fd.append('expected_history_id', String(issue.latest_history_id));
+
+        if (triggerBtn) {
+            triggerBtn.disabled = true;
+            triggerBtn.dataset.originalText = triggerBtn.textContent;
+            triggerBtn.textContent = 'Saving...';
+        }
+
+        try {
+            var response = await fetch(issuesApiBase, {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin',
+                headers: { 'X-Session-Refresh': '1' }
+            });
+            var result = await response.json();
+            if (!response.ok || !result || result.error) {
+                throw new Error((result && result.error) ? result.error : 'Failed to update issue status');
+            }
+
+            var updatedIssue = result.issue || result.data || result;
+            var issueIndex = issues.findIndex(function (item) { return String(item.id) === String(issueId); });
+            if (issueIndex >= 0) {
+                issues[issueIndex] = Object.assign({}, issues[issueIndex], updatedIssue);
+            }
+
+            renderFinalIssues();
+            if (typeof showToast === 'function') {
+                var statusLabel = (ProjectConfig.issueStatuses || []).find(function (status) { return String(status.id) === String(statusId); });
+                var label = statusLabel ? (statusLabel.status_label || statusLabel.name || 'Status updated') : 'Status updated';
+                showToast('Issue moved to ' + label, 'success');
+            }
+        } catch (error) {
+            if (typeof showToast === 'function') {
+                showToast(error && error.message ? error.message : 'Failed to update issue status', 'danger');
+            }
+        } finally {
+            if (triggerBtn) {
+                triggerBtn.disabled = false;
+                triggerBtn.textContent = triggerBtn.dataset.originalText || triggerBtn.textContent;
+                delete triggerBtn.dataset.originalText;
+            }
+        }
+    }
+
     function syncClientIssueStatusOptions() {
         if (userRole !== 'client') return;
 
@@ -126,6 +255,23 @@
             option.hidden = !(isAllowed || isCurrent);
             option.disabled = !(isAllowed || isCurrent);
             option.dataset.clientAllowed = isAllowed ? '1' : '0';
+        });
+    }
+
+    function syncResolutionStatusOptions() {
+        var statusEl = document.getElementById('finalIssueStatus');
+        if (!statusEl || canCurrentUserMarkResolved()) return;
+
+        var selectedValue = String(statusEl.value || '');
+        Array.prototype.forEach.call(statusEl.options || [], function (option) {
+            var normalized = normalizeIssueStatusSlug(option.text || option.label || option.value);
+            var isCurrent = String(option.value) === selectedValue;
+            var restricted = isResolutionStatus(normalized);
+            if (!restricted) {
+                return;
+            }
+            option.hidden = !isCurrent;
+            option.disabled = !isCurrent;
         });
     }
 
@@ -179,6 +325,7 @@
         }
 
         syncClientIssueStatusOptions();
+        syncResolutionStatusOptions();
     }
 
     function cleanupModalOverlayState() {
@@ -2437,6 +2584,7 @@
         }
 
         document.getElementById('finalIssueStatus').value = issue.status || 'Open';
+        syncResolutionStatusOptions();
         setFinalQaStatusValue(issue.qa_status || []);
         jQuery('#finalIssuePages').val(issue.pages || [issueData.selectedPageId]).trigger('change');
         jQuery('#finalIssueGroupedUrls').val(issue.grouped_urls || []).trigger('change');
@@ -2570,6 +2718,7 @@
         }
         document.getElementById('finalIssueStatus').value = statusValue;
         syncClientIssueStatusOptions();
+        syncResolutionStatusOptions();
 
         // Store values to set after modal is shown
         var reportersValue = issue ? (issue.reporters || []) : (draftData ? draftData.reporters : []);
@@ -3211,6 +3360,8 @@
             return numA - numB;
         });
         
+        issues = applyClientFinalIssueFilters(issues);
+
         if (!issues.length) {
             tbody.innerHTML = '<tr><td colspan="9" class="text-center py-5"><div class="text-muted mb-2"><i class="fas fa-check-circle fa-2x opacity-25"></i></div><div class="text-muted fw-medium">No final issues recorded yet.</div></td></tr>';
             updateIssueTabCounts();
@@ -3458,9 +3609,18 @@
                         urlsHtml += '</div></div></div>';
                     }
 
+                    if (userRole === 'client') {
+                        return '<div class="mb-2"><strong>Page:</strong><br><small class="text-muted">' + escapeHtml(getPageName(issueData.selectedPageId || (issue.pages && issue.pages[0]) || '')) + '</small></div>';
+                    }
+
                     return pagesHtml + urlsHtml;
                 })() +
                 (function () {
+                    if (userRole === 'client') {
+                        return buildClientQuickStatusActions(issue) +
+                            '<div class="small text-muted mt-3">Open the panel above to post regression comments with screenshots.</div>';
+                    }
+
                     var metaHtml = '';
                     if (typeof issueMetadataFields !== 'undefined') {
                         issueMetadataFields.forEach(function (f) {
@@ -3539,6 +3699,14 @@
                         if (issue) openFinalEditor(issue);
                     }
                 }
+            });
+        });
+
+        document.querySelectorAll('#finalIssuesBody .client-quick-status').forEach(function (button) {
+            button.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                quickUpdateClientIssueStatus(this.getAttribute('data-issue-id'), this.getAttribute('data-status-id'), this);
             });
         });
 
@@ -4217,9 +4385,18 @@
                         urlsHtml += '</div></div></div>';
                     }
 
+                    if (userRole === 'client') {
+                        return '<div class="mb-2"><strong>Page:</strong><br><small class="text-muted">' + escapeHtml(getPageName(issueData.selectedPageId || (issue.pages && issue.pages[0]) || '')) + '</small></div>';
+                    }
+
                     return pagesHtml + urlsHtml;
                 })() +
                 (function () {
+                    if (userRole === 'client') {
+                        return buildClientQuickStatusActions(issue) +
+                            '<div class="small text-muted mt-3">Use comments below to share regression details and screenshots.</div>';
+                    }
+
                     var metaHtml = '';
                     if (typeof issueMetadataFields !== 'undefined') {
                         issueMetadataFields.forEach(function (f) {
@@ -4318,6 +4495,14 @@
                     }
                 });
             }
+
+            mainRow.querySelectorAll('.client-quick-status').forEach(function (button) {
+                button.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    quickUpdateClientIssueStatus(this.getAttribute('data-issue-id'), this.getAttribute('data-status-id'), this);
+                });
+            });
 
             // Row click handler
             mainRow.addEventListener('click', function (e) {
@@ -4455,16 +4640,36 @@
         if (!tbody) return;
         var colspanCount = (userRole === 'client') ? 2 : 4;
         if (!issueData.common.length) {
-            tbody.innerHTML = '<tr><td colspan="' + colspanCount + '" class="text-center py-5 text-muted">No common issues found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="' + colspanCount + '" class="text-center py-5 text-muted">' + (userRole === 'client' ? 'No shared issues available right now.' : 'No common issues found.') + '</td></tr>';
             return;
         }
 
         tbody.innerHTML = issueData.common.map(function (it) {
+            var descriptionPreview = stripHtml(it.description || '').substring(0, 100);
+            if (descriptionPreview && stripHtml(it.description || '').length > 100) descriptionPreview += '...';
+
+            if (userRole === 'client') {
+                var clientPages = (it.pages || []).map(getPageName).slice(0, 4);
+                var extraPages = Math.max(0, (it.pages || []).length - clientPages.length);
+                return '<tr>' +
+                    '<td>' +
+                    '<div class="fw-semibold">' + escapeHtml(it.title || 'Shared issue') + '</div>' +
+                    (descriptionPreview ? '<div class="small text-muted mt-1">' + escapeHtml(descriptionPreview) + '</div>' : '') +
+                    '</td>' +
+                    '<td>' +
+                    '<div class="d-flex flex-wrap gap-1">' +
+                    clientPages.map(function (pageName) {
+                        return '<span class="badge bg-light text-dark border">' + escapeHtml(pageName) + '</span>';
+                    }).join('') +
+                    (extraPages ? '<span class="badge bg-secondary">+' + extraPages + ' more</span>' : '') +
+                    '</div>' +
+                    '</td>' +
+                    '</tr>';
+            }
+
             var pagesStr = (it.pages || []).map(getPageName).slice(0, 5).join(', ') + ((it.pages && it.pages.length > 5) ? '...' : '');
             var uniqueId = 'common-issue-details-' + it.id;
             var pageCount = (it.pages || []).length;
-            var descriptionPreview = stripHtml(it.description || '').substring(0, 100);
-            if (descriptionPreview && stripHtml(it.description || '').length > 100) descriptionPreview += '...';
             var testerDeleteBlocked = !!(isTesterRole && it.can_tester_delete === false);
             var deleteTitle = testerDeleteBlocked
                 ? 'Testers cannot delete this issue because it has comments or QA status is set on an Open issue.'
@@ -5140,6 +5345,7 @@
             var bgClass = '';
             var borderStyle = '';
             var regressionHeading = '';
+            var roleHeading = '';
             if (isRegression) {
                 bgClass = '';
                 borderStyle = 'background: #e7f3ff !important; border-left: 3px solid #0d6efd;';
@@ -5154,7 +5360,13 @@
                 bgClass = 'bg-light';
             }
 
-            var regressionBadge = isRegression ? '<span class="badge bg-info ms-2" style="font-size: 0.65rem;"><i class="fas fa-retweet me-1"></i>Regression</span>' : '';
+            if (userRole === 'client') {
+                roleHeading = '<div class="small text-muted mb-2">' + (isOwn ? 'Your update' : 'Team response') + '</div>';
+                regressionHeading = '';
+                borderStyle += 'border-radius: 14px; box-shadow: 0 8px 20px rgba(13,110,253,0.08);';
+            }
+
+            var regressionBadge = (isRegression && userRole !== 'client') ? '<span class="badge bg-info ms-2" style="font-size: 0.65rem;"><i class="fas fa-retweet me-1"></i>Regression</span>' : '';
             var editedBadge = c.edited_at ? '<small class="text-muted">(edited)</small>' : '';
             var actionButtons = '';
             if (!isDeleted) {
@@ -5182,6 +5394,7 @@
                 '<div class="d-flex flex-wrap gap-2 mb-2">' + actionButtons + '</div>' +
                 replyPreview +
                 '<div class="message-content p-2 rounded ' + bgClass + '" style="' + borderStyle + '">' +
+                roleHeading +
                 regressionHeading +
                 commentText +
                 '</div>' +
@@ -5302,7 +5515,7 @@
             if (opts.clearEditor) {
                 if (window.jQuery && jQuery.fn.summernote) jQuery('#finalIssueCommentEditor').summernote('code', '');
                 var commentTypeEl = document.getElementById('finalIssueCommentType');
-                if (commentTypeEl) commentTypeEl.value = 'normal';
+                if (commentTypeEl) commentTypeEl.value = (userRole === 'client' ? 'regression' : 'normal');
                 var previewEl = document.getElementById('issueCommentReplyPreview');
                 if (previewEl) previewEl.style.display = 'none';
                 var replyToEl = document.getElementById('replyToCommentId');
@@ -6729,6 +6942,15 @@
             addIssueComment(String(id));
         });
     }
+
+    ['clientIssueSearch', 'clientIssueStatusFilter'].forEach(function (id) {
+        var field = document.getElementById(id);
+        if (!field) return;
+        var eventName = field.tagName === 'SELECT' ? 'change' : 'input';
+        field.addEventListener(eventName, function () {
+            renderFinalIssues();
+        });
+    });
 
     var resetBtn = document.getElementById('btnResetToTemplate');
     if (resetBtn) {

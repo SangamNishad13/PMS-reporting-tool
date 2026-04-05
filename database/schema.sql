@@ -702,7 +702,6 @@ CREATE TABLE `issue_status_master` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `status_key` (`status_key`),
   KEY `idx_active` (`is_active`),
-  KEY `idx_order` (`display_order`)
 ) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Table: issue_statuses
@@ -714,6 +713,8 @@ CREATE TABLE `issue_statuses` (
   `color` varchar(32) DEFAULT '#6c757d',
   `points` int(11) DEFAULT 0,
   `is_qa` tinyint(1) DEFAULT 0,
+  `visible_to_client` tinyint(1) NOT NULL DEFAULT 1,
+  `visible_to_internal` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

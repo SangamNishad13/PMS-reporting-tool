@@ -3,12 +3,8 @@
 function exportProject(format, button) {
     var cfg = window._projectHeaderConfig || {};
     var projectId = cfg.projectId || 0;
-    var clientId = cfg.clientId || 0;
     var baseDir = cfg.baseDir || '';
-    var exportUrl = baseDir + '/api/client_export.php?format=' + encodeURIComponent(format) + '&project_id=' + encodeURIComponent(projectId);
-    if (clientId) {
-        exportUrl += '&client_id=' + encodeURIComponent(clientId);
-    }
+    var exportUrl = baseDir + '/api/export_client_report.php?project_id=' + encodeURIComponent(projectId) + '&format=' + encodeURIComponent(format) + '&client_ready_only=1';
 
     var originalText = button.innerHTML;
     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';

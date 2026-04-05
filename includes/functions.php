@@ -153,6 +153,52 @@ function getStatusOptions($entityType) {
     }
 }
 
+function ensureIssueStatusVisibilityColumns($db) {
+    static $checked = false;
+    if ($checked) {
+        return;
+    }
+    $checked = true;
+
+    try {
+        $columns = [];
+        $stmt = $db->query("SHOW COLUMNS FROM issue_statuses");
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $columns[] = strtolower((string)($row['Field'] ?? ''));
+        }
+
+        if (!in_array('visible_to_client', $columns, true)) {
+            $db->exec("ALTER TABLE issue_statuses ADD COLUMN visible_to_client TINYINT(1) NOT NULL DEFAULT 1 AFTER is_qa");
+        }
+        if (!in_array('visible_to_internal', $columns, true)) {
+            $db->exec("ALTER TABLE issue_statuses ADD COLUMN visible_to_internal TINYINT(1) NOT NULL DEFAULT 1 AFTER visible_to_client");
+        }
+    } catch (Exception $e) {
+        error_log('Failed to ensure issue status visibility columns: ' . $e->getMessage());
+    }
+}
+
+function getIssueStatusesForRole($db, $role = '', array $columns = []) {
+    ensureIssueStatusVisibilityColumns($db);
+
+    $baseColumns = ['id', 'name', 'color', 'category', 'points', 'is_qa', 'visible_to_client', 'visible_to_internal'];
+    $selectColumns = array_values(array_unique(array_merge($baseColumns, $columns)));
+    $sql = 'SELECT ' . implode(', ', $selectColumns) . ' FROM issue_statuses';
+    $params = [];
+    $normalizedRole = strtolower(trim((string)$role));
+
+    if ($normalizedRole === 'client') {
+        $sql .= ' WHERE visible_to_client = 1';
+    } elseif ($normalizedRole !== '') {
+        $sql .= ' WHERE visible_to_internal = 1';
+    }
+
+    $sql .= ' ORDER BY name ASC';
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
 /**
  * Sanitize chat HTML allowing only a small whitelist of tags and safe attributes.
  * Allows <a href>, <img src> (http/https only), <b>, <strong>, <i>, <em>, <u>, <br>, <p>, <ul>, <ol>, <li>

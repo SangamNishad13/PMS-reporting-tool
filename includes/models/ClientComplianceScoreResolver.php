@@ -64,6 +64,11 @@ class ClientComplianceScoreResolver {
     }
 
     public function calculateWcagComplianceFromIssues(array $issues): float {
+        $totalIssues = count($issues);
+        $issues = array_values(array_filter($issues, function ($issue) {
+            return !$this->isResolvedIssue($issue);
+        }));
+
         $levelCounts = [
             'A' => 0,
             'AA' => 0,
@@ -76,13 +81,13 @@ class ClientComplianceScoreResolver {
             $levelCounts[$level] = ($levelCounts[$level] ?? 0) + 1;
         }
 
-        $totalIssues = array_sum($levelCounts);
-
         if ($totalIssues === 0) {
             return 100.0;
         }
 
-        $levelACompliance = max(0, 100 - ($levelCounts['A'] / $totalIssues * 100));
+        $effectiveLevelACount = $levelCounts['A'] + $levelCounts['Unknown'];
+
+        $levelACompliance = max(0, 100 - ($effectiveLevelACount / $totalIssues * 100));
         $levelAACompliance = max(0, 100 - ($levelCounts['AA'] / $totalIssues * 100));
         $levelAAACompliance = max(0, 100 - ($levelCounts['AAA'] / $totalIssues * 100));
 
@@ -132,8 +137,9 @@ class ClientComplianceScoreResolver {
         ];
 
         $levelAA = [
-            '1.2.4', '1.2.5', '1.4.3', '1.4.4', '1.4.5', '2.4.5', '2.4.6', '2.4.7',
-            '3.1.2', '3.2.3', '3.2.4', '3.3.3', '3.3.4'
+            '1.2.4', '1.2.5', '1.3.4', '1.3.5', '1.4.3', '1.4.4', '1.4.5', '1.4.10', '1.4.11',
+            '1.4.12', '1.4.13', '2.4.5', '2.4.6', '2.4.7', '2.4.11', '2.4.12', '2.4.13',
+            '2.5.3', '2.5.7', '2.5.8', '3.1.2', '3.2.3', '3.2.4', '3.2.6', '3.3.3', '3.3.4'
         ];
 
         if (in_array($criteria, $levelA, true)) {
@@ -150,6 +156,7 @@ class ClientComplianceScoreResolver {
     private function inferWCAGLevel(string $content): string {
         $levelAPatterns = [
             'alt text', 'alternative text', 'image alt', 'missing alt',
+            'accessible name', 'name computation', 'link name', 'button name',
             'keyboard navigation', 'keyboard access', 'tab order',
             'form label', 'input label', 'missing label',
             'heading structure', 'heading hierarchy', 'h1', 'h2', 'h3',
@@ -159,6 +166,7 @@ class ClientComplianceScoreResolver {
         $levelAAPatterns = [
             'color contrast', 'contrast ratio', 'text contrast',
             'focus indicator', 'focus visible', 'focus outline',
+            'hover or focus', 'additional content on hover', 'not dismissible',
             'resize text', 'text scaling', 'zoom',
             'link purpose', 'link text', 'descriptive link'
         ];
@@ -169,9 +177,9 @@ class ClientComplianceScoreResolver {
             'error prevention', 'error suggestion'
         ];
 
-        foreach ($levelAPatterns as $pattern) {
+        foreach ($levelAAAPatterns as $pattern) {
             if (strpos($content, $pattern) !== false) {
-                return 'A';
+                return 'AAA';
             }
         }
 
@@ -181,12 +189,17 @@ class ClientComplianceScoreResolver {
             }
         }
 
-        foreach ($levelAAAPatterns as $pattern) {
+        foreach ($levelAPatterns as $pattern) {
             if (strpos($content, $pattern) !== false) {
-                return 'AAA';
+                return 'A';
             }
         }
 
         return 'Unknown';
+    }
+
+    private function isResolvedIssue(array $issue): bool {
+        $status = strtolower(trim((string) ($issue['status_name'] ?? ($issue['status'] ?? ''))));
+        return in_array($status, ['resolved', 'closed', 'fixed'], true);
     }
 }

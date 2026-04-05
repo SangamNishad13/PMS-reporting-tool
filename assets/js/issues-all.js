@@ -109,7 +109,7 @@ function renderIssues() {
     var tbody    = document.getElementById('issuesTableBody');
     var userRole = window.ProjectConfig ? window.ProjectConfig.userRole : '';
     var isClient = (userRole === 'client');
-    var colspan  = isClient ? 4 : 7;
+    var colspan  = isClient ? 5 : 7;
 
     if (filteredIssues.length === 0) {
         tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="text-center py-5"><i class="fas fa-inbox fa-3x text-muted mb-3"></i><p class="text-muted">No issues found</p></td></tr>';
@@ -135,6 +135,8 @@ function renderIssues() {
                 '<td><small>' + (issue.reporters ? escapeHtml(issue.reporters) : '<span class="text-muted">-</span>') + '</small></td>' +
                 '<td><button class="btn btn-sm btn-outline-primary edit-btn me-1" data-issue-id="' + issue.id + '" title="Edit"><i class="fas fa-edit"></i></button>' +
                 '<button class="btn btn-sm btn-outline-danger delete-btn" data-issue-id="' + issue.id + '" title="Delete"><i class="fas fa-trash"></i></button></td>';
+        } else {
+            mainRow += '<td><button class="btn btn-sm btn-outline-primary issue-open" data-issue-id="' + issue.id + '" title="Update status or add comment"><i class="fas fa-pen-to-square me-1"></i>Update</button></td>';
         }
 
         mainRow += '</tr><tr id="issue-details-' + issue.id + '" style="display:none;"><td colspan="' + colspan + '" class="p-0">' +
@@ -235,6 +237,9 @@ function applyFilters() {
 
 function attachEventListeners() {
     document.querySelectorAll('.edit-btn').forEach(function (btn) {
+        btn.addEventListener('click', function (e) { e.stopPropagation(); editIssue(this.dataset.issueId); });
+    });
+    document.querySelectorAll('.issue-open').forEach(function (btn) {
         btn.addEventListener('click', function (e) { e.stopPropagation(); editIssue(this.dataset.issueId); });
     });
     document.querySelectorAll('.delete-btn').forEach(function (btn) {

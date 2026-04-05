@@ -10,70 +10,86 @@ $totalProjects = $projectStats['total_projects'] ?? 0;
 $clientReadyIssues = $projectStats['client_ready_issues'] ?? 0;
 // For client view, client-ready issues ARE the total issues
 $totalIssues = $clientReadyIssues; // Hide internal total count from client
+$openIssues = (int) ($projectStats['open_issues'] ?? 0);
+$resolvedIssues = (int) ($projectStats['resolved_issues'] ?? 0);
 $compliancePercentage = $dashboardData['compliance_percentage'] ?? 0;
 $cardLinks = [
     'assets' => $baseDir . '/modules/client/projects.php',
-    'issues' => $baseDir . '/modules/client/issues_overview.php',
-    'compliance' => $baseDir . '/modules/client/compliance_overview.php'
+    'issues' => '#analytics-report-severity_analysis',
+    'resolved' => '#analytics-report-compliance_trend',
+    'compliance' => '#analytics-report-wcag_compliance'
 ];
 ?>
 
-<div class="row mb-4">
-    <div class="col-12">
-        <h2 class="section-title">
-            <i class="fas fa-chart-bar text-primary"></i>
-            Overview Statistics
-        </h2>
+<div class="section-heading">
+    <div>
+        <span class="section-kicker">Portfolio Snapshot</span>
+        <h2 class="section-title mb-2">Overview statistics</h2>
+        <p class="section-description mb-0">Use these headline metrics to decide where to drill in next across issues, resolution progress, and compliance movement.</p>
     </div>
 </div>
 
-<div class="row mb-4">
-    <!-- Total Digital Assets Card -->
-    <div class="col-lg-4 col-md-6 mb-3">
+<div class="row mb-4 g-3">
+    <div class="col-xl-3 col-md-6">
         <a href="<?php echo htmlspecialchars($cardLinks['assets'], ENT_QUOTES, 'UTF-8'); ?>" class="summary-card-link">
-        <div class="summary-card card h-100 border-0 shadow-sm">
-            <div class="card-body text-center">
-                <div class="summary-icon mb-3">
-                    <i class="fas fa-folder-open fa-2x text-primary"></i>
+        <div class="summary-card card h-100 border-0 shadow-sm summary-card-primary">
+            <div class="card-body">
+                <div class="summary-card-topline">Digital Assets</div>
+                <div class="summary-card-main">
+                    <div class="summary-icon"><i class="fas fa-folder-open"></i></div>
+                    <h3 class="summary-value text-primary mb-0"><?php echo number_format($totalProjects); ?></h3>
                 </div>
-                <h3 class="summary-value text-primary"><?php echo number_format($totalProjects); ?></h3>
                 <p class="summary-label mb-2">Assigned Digital Assets</p>
-                <small class="text-muted">Open your digital asset library</small>
+                <small class="text-muted">Open your full asset library and switch context quickly.</small>
             </div>
         </div>
         </a>
     </div>
 
-    <!-- Total Issues Card -->
-    <div class="col-lg-4 col-md-6 mb-3">
+    <div class="col-xl-3 col-md-6">
         <a href="<?php echo htmlspecialchars($cardLinks['issues'], ENT_QUOTES, 'UTF-8'); ?>" class="summary-card-link">
-        <div class="summary-card card h-100 border-0 shadow-sm">
-            <div class="card-body text-center">
-                <div class="summary-icon mb-3">
-                    <i class="fas fa-exclamation-triangle fa-2x text-warning"></i>
+        <div class="summary-card card h-100 border-0 shadow-sm summary-card-warning">
+            <div class="card-body">
+                <div class="summary-card-topline">Active workload</div>
+                <div class="summary-card-main">
+                    <div class="summary-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <h3 class="summary-value text-warning mb-0"><?php echo number_format($openIssues); ?></h3>
                 </div>
-                <h3 class="summary-value text-warning"><?php echo number_format($totalIssues); ?></h3>
-                <p class="summary-label mb-2">Total Issues</p>
-                <small class="text-muted">Review issue totals by digital asset</small>
+                <p class="summary-label mb-2">Open Issues</p>
+                <small class="text-muted"><?php echo number_format($totalIssues); ?> visible issues currently in client scope.</small>
             </div>
         </div>
         </a>
     </div>
 
-    <!-- Processing Status Card -->
-    <div class="col-lg-4 col-md-6 mb-3">
-        <a href="<?php echo htmlspecialchars($cardLinks['compliance'], ENT_QUOTES, 'UTF-8'); ?>" class="summary-card-link">
-        <div class="summary-card card h-100 border-0 shadow-sm">
-            <div class="card-body text-center">
-                <div class="summary-icon mb-3">
-                    <i class="fas fa-percentage fa-2x text-info"></i>
+    <div class="col-xl-3 col-md-6">
+        <a href="<?php echo htmlspecialchars($cardLinks['resolved'], ENT_QUOTES, 'UTF-8'); ?>" class="summary-card-link">
+        <div class="summary-card card h-100 border-0 shadow-sm summary-card-success">
+            <div class="card-body">
+                <div class="summary-card-topline">Progress</div>
+                <div class="summary-card-main">
+                    <div class="summary-icon"><i class="fas fa-check-circle"></i></div>
+                    <h3 class="summary-value text-success mb-0"><?php echo number_format($resolvedIssues); ?></h3>
                 </div>
-                <h3 class="summary-value text-info"><?php echo $compliancePercentage; ?>%</h3>
+                <p class="summary-label mb-2">Resolved Issues</p>
+                <small class="text-muted">Track how quickly the visible issue backlog is shrinking.</small>
+            </div>
+        </div>
+        </a>
+    </div>
+
+    <div class="col-xl-3 col-md-6">
+        <a href="<?php echo htmlspecialchars($cardLinks['compliance'], ENT_QUOTES, 'UTF-8'); ?>" class="summary-card-link">
+        <div class="summary-card card h-100 border-0 shadow-sm summary-card-info">
+            <div class="card-body">
+                <div class="summary-card-topline">Compliance signal</div>
+                <div class="summary-card-main">
+                    <div class="summary-icon"><i class="fas fa-percentage"></i></div>
+                    <h3 class="summary-value text-info mb-0"><?php echo $compliancePercentage; ?>%</h3>
+                </div>
                 <p class="summary-label mb-2">Compliance Percentage</p>
-                <small class="text-muted">Open compliance breakdown and trends</small>
-                
-                <!-- Progress Bar -->
-                <div class="progress mt-2" style="height: 6px;">
+                <small class="text-muted">Jump to the WCAG compliance widget and trend line.</small>
+                <div class="progress summary-progress mt-3">
                     <div class="progress-bar bg-info" 
                          style="width: <?php echo $compliancePercentage; ?>%"
                          role="progressbar" 
@@ -87,93 +103,3 @@ $cardLinks = [
         </a>
     </div>
 </div>
-
-<style>
-.section-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #2c3e50;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 2px solid #e9ecef;
-}
-
-.summary-card {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    border-radius: 12px;
-    overflow: hidden;
-}
-
-.summary-card-link {
-    display: block;
-    color: inherit;
-    text-decoration: none;
-}
-
-.summary-card-link:hover,
-.summary-card-link:focus {
-    color: inherit;
-    text-decoration: none;
-}
-
-.summary-card-link:focus-visible .summary-card {
-    outline: 3px solid rgba(37, 99, 235, 0.35);
-    outline-offset: 2px;
-}
-
-.summary-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
-}
-
-.summary-card .card-body {
-    padding: 1.5rem;
-}
-
-.summary-icon {
-    opacity: 0.8;
-}
-
-.summary-value {
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
-    line-height: 1;
-}
-
-.summary-label {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #495057;
-    margin-bottom: 0.25rem;
-}
-
-.summary-card small {
-    font-size: 0.875rem;
-    line-height: 1.3;
-}
-
-@media (max-width: 768px) {
-    .summary-value {
-        font-size: 2rem;
-    }
-    
-    .summary-card .card-body {
-        padding: 1.25rem;
-    }
-    
-    .summary-icon i {
-        font-size: 1.5rem !important;
-    }
-}
-
-@media (max-width: 576px) {
-    .summary-value {
-        font-size: 1.75rem;
-    }
-    
-    .section-title {
-        font-size: 1.25rem;
-    }
-}
-</style>

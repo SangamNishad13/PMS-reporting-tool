@@ -269,7 +269,7 @@ foreach ($uniqueIssuePages as $u) {
 $qaStatuses = $db->query("SELECT status_key, status_label FROM qa_status_master WHERE is_active = 1 ORDER BY display_order ASC, status_label ASC")->fetchAll(PDO::FETCH_ASSOC);
 
 // Load issue statuses for issue modal
-$issueStatuses = $db->query("SELECT id, name, color FROM issue_statuses ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+$issueStatuses = getIssueStatusesForRole($db, $normalizedUserRole);
 
 // Load project users for issue modal
 $projectUsersStmt = $db->prepare("
