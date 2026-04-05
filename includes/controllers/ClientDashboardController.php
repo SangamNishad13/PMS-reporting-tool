@@ -74,25 +74,32 @@ class ClientDashboardController {
     /**
      * Individual project view
      */
-    public function projectView($projectId) {
+    public function projectView($projectIdentifier) {
         try {
-            // Validate input
-            $validation = $this->securityValidator->validateInput(
-                ['project_id' => $projectId],
-                ['project_id' => ['required' => true, 'type' => 'int']]
-            );
-            
-            if (!$validation['valid']) {
-                $this->renderError("Invalid project ID");
-                return;
-            }
-            
-            $projectId = $validation['data']['project_id'];
-            
             // Authenticate client
             $clientUser = $this->authenticateClient();
             if (!$clientUser) {
                 $this->redirectToLogin();
+                return;
+            }
+
+            $projectIdentifier = trim((string) $projectIdentifier);
+            $projectId = $this->accessControl->resolveProjectIdentifier($clientUser['id'], $projectIdentifier);
+
+            if (!$projectId) {
+                $this->renderError("Invalid project reference");
+                return;
+            }
+
+            $canonicalIdentifier = $this->accessControl->getCanonicalProjectIdentifier($clientUser['id'], $projectId);
+            if ($canonicalIdentifier && $projectIdentifier !== $canonicalIdentifier) {
+                $target = getBaseDir() . '/client/project/' . rawurlencode($canonicalIdentifier);
+                $queryString = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+                if ($queryString !== '') {
+                    $target .= '?' . $queryString;
+                }
+
+                header('Location: ' . $target, true, 302);
                 return;
             }
             
@@ -101,7 +108,7 @@ class ClientDashboardController {
                 $this->auditLogger->logSecurityViolation(
                     $clientUser['id'],
                     'unauthorized_project_access',
-                    "Attempted to access project $projectId",
+                    "Attempted to access project {$projectIdentifier}",
                     'high'
                 );
                 $this->renderError("Access denied to this project");

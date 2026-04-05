@@ -139,11 +139,11 @@ try {
 }
 ?>
 
-<script nonce="<?php echo $cspNonce ?? ''; ?>">
+<script nonce="<?php echo htmlspecialchars($cspNonce ?? '', ENT_QUOTES, 'UTF-8'); ?>">
 // Global config for dashboard.js
-window.actualClientId = '<?php echo $actualClientId; ?>';
-window.selectedProjectId = '<?php echo $selectedProjectId ?? ""; ?>';
-window.baseUrl = '<?php echo $baseDir; ?>';
+window.actualClientId = <?php echo json_encode((int) $actualClientId); ?>;
+window.selectedProjectId = <?php echo json_encode((int) ($selectedProjectId ?? 0)); ?>;
+window.baseUrl = <?php echo json_encode($baseDir, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 if (typeof initializeDashboard === "function") initializeDashboard();
 </script>
 <?php include __DIR__ . '/../../includes/footer.php'; 

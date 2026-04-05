@@ -40,7 +40,7 @@ require_once __DIR__ . '/../../header.php';
                     <nav aria-label="breadcrumb">
                         <ol class="breadcrumb mb-3">
                             <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/client/dashboard">Dashboard</a></li>
-                            <li class="breadcrumb-item active" aria-current="page">Digital Asset Details</li>
+                            <li class="breadcrumb-item active" aria-current="page">Digital Asset Analytics</li>
                         </ol>
                     </nav>
                     <h1 class="hero-title mb-2"><?php echo htmlspecialchars($projectName, ENT_QUOTES, 'UTF-8'); ?></h1>
@@ -72,8 +72,8 @@ require_once __DIR__ . '/../../header.php';
                     <a href="#project-actions" class="hero-toolbar-link">Actions</a>
                 </div>
                 <div class="hero-toolbar-actions">
-                    <a href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/projects/issues.php?project_id=<?php echo (int) $projectId; ?>" class="btn btn-light" title="Open Accessibility Report">
-                        <i class="fas fa-list-ul"></i> Accessibility Report
+                    <a href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/issues_overview.php?project_id=<?php echo (int) $projectId; ?>" class="btn btn-light" title="Open Issue Summary">
+                        <i class="fas fa-list-ul"></i> Issue Summary
                     </a>
                     <button type="button" class="btn btn-outline-light" data-project-refresh="1" title="Refresh Data">
                         <i class="fas fa-sync-alt"></i> Refresh
@@ -175,9 +175,9 @@ require_once __DIR__ . '/../../header.php';
                     <div class="action-content">
                         <span class="action-eyebrow">Issue workflow</span>
                         <h4 class="action-title">Review issue backlog</h4>
-                        <p class="action-description">Jump into the accessibility report and inspect the current open and resolved issue list for this asset.</p>
-                        <a href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/projects/issues.php?project_id=<?php echo (int) $projectId; ?>" class="btn btn-primary action-button">
-                            <i class="fas fa-arrow-right"></i> Open Report
+                        <p class="action-description">Review the client-visible issue totals for this asset without leaving the client-safe workflow.</p>
+                        <a href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/issues_overview.php?project_id=<?php echo (int) $projectId; ?>" class="btn btn-primary action-button">
+                            <i class="fas fa-arrow-right"></i> Open Summary
                         </a>
                     </div>
                 </div>

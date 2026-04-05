@@ -32,18 +32,17 @@
                 <select id="projectNavSelect" class="form-select form-select-sm">
                     <option value="">Select a digital asset...</option>
                     <?php foreach ($assignedProjects as $proj): ?>
-                        <option value="<?php echo $proj['id']; ?>" 
-                                <?php echo ($proj['id'] == $projectId) ? 'selected' : ''; ?>>
+                        <option value="<?php echo htmlspecialchars(buildClientProjectUrl((int) $proj['id'], (string) ($proj['title'] ?? ''), (string) ($proj['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>" 
+                            <?php echo ((int) $proj['id'] === (int) $projectId) ? 'selected' : ''; ?>>
                             <?php echo htmlspecialchars($proj['title']); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
 <script nonce="<?php echo htmlspecialchars($cspNonce ?? '', ENT_QUOTES, 'UTF-8'); ?>">
 document.getElementById('projectNavSelect').addEventListener('change', function() {
-    var id = this.value;
-    if (id) {
-        var base = '<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>';
-        window.location.href = base + '/client/project/' + id;
+    var url = this.value;
+    if (url) {
+        window.location.href = url;
     }
 });
 </script>

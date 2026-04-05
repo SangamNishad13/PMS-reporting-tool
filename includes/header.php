@@ -513,7 +513,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                 <ul class="dropdown-menu shadow-sm" aria-labelledby="clientProjectsDropdown">
                                     <?php foreach ($clientAssignedProjects as $clientNavProject): ?>
                                     <li>
-                                        <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/project/<?php echo (int) $clientNavProject['id']; ?>">
+                                        <a class="dropdown-item" href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $clientNavProject['id'], (string) ($clientNavProject['title'] ?? ''), (string) ($clientNavProject['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>">
                                             <?php echo htmlspecialchars($clientNavProject['title'] ?? ('Asset #' . (int) $clientNavProject['id']), ENT_QUOTES, 'UTF-8'); ?>
                                         </a>
                                     </li>
@@ -522,12 +522,12 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                             </li>
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle text-white <?php echo $isClientDetailPage ? 'active' : ''; ?>" href="#" id="clientProjectDetailsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="fas fa-eye me-1 opacity-50"></i> Asset Details
+                                    <i class="fas fa-eye me-1 opacity-50"></i> Asset Analytics
                                 </a>
                                 <ul class="dropdown-menu shadow-sm" aria-labelledby="clientProjectDetailsDropdown">
                                     <?php foreach ($clientAssignedProjects as $clientNavProject): ?>
                                     <li>
-                                        <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/projects/view.php?id=<?php echo (int) $clientNavProject['id']; ?>">
+                                        <a class="dropdown-item" href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $clientNavProject['id'], (string) ($clientNavProject['title'] ?? ''), (string) ($clientNavProject['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>">
                                             <?php echo htmlspecialchars($clientNavProject['title'] ?? ('Asset #' . (int) $clientNavProject['id']), ENT_QUOTES, 'UTF-8'); ?>
                                         </a>
                                     </li>
@@ -921,6 +921,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
     })();
     </script>
     
+    <?php if (isset($_SESSION['role']) && !in_array($_SESSION['role'], ['admin', 'client'], true)): ?>
     <!-- Hours Reminder System -->
     <script nonce="<?php echo $cspNonce; ?>">
     (function() {
@@ -1015,6 +1016,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
         setInterval(checkHoursReminder, 120000);
     })();
     </script>
+    <?php endif; ?>
 
     <!-- Global Accessibility Scan Monitor -->
     <script nonce="<?php echo $cspNonce; ?>">

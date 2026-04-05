@@ -160,6 +160,17 @@ function isAjaxRequest() {
            strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
 }
 
+function applyClientResponseHeaders($path) {
+    if ($path === '/download') {
+        return;
+    }
+
+    header('Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    header('X-Content-Type-Options: nosniff');
+}
+
 // Handle 404
 function handle404() {
     http_response_code(404);
@@ -178,6 +189,9 @@ try {
     
     // Apply authentication middleware
     requireAuth($path);
+
+    // Prevent authenticated client pages and JSON responses from being cached.
+    applyClientResponseHeaders($path);
     
     // Find matching route
     $methodRoutes = $routes[$requestMethod] ?? [];

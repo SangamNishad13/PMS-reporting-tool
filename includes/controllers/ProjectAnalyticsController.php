@@ -165,7 +165,7 @@ class ProjectAnalyticsController {
                     'reportType' => $type,
                     'enhanced' => true,
                     'project_id' => $projectId,
-                    'drillDownUrl' => ((function_exists('getBaseDir') ? rtrim((string) getBaseDir(), '/') : '/PMS') . '/client/project/' . (int) $projectId . '?report=' . rawurlencode($type) . '#analytics-report-' . rawurlencode($type)),
+                    'drillDownUrl' => buildClientProjectUrl((int) $projectId, '', '', ['report' => $type]) . '#analytics-report-' . rawurlencode($type),
                     'summary' => $this->getWidgetSummary($report->getData(), $type),
                     'insights' => $this->generateInsights($report->getData(), $type)
                 ];

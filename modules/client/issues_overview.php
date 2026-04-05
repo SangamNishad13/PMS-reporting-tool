@@ -18,7 +18,24 @@ if (in_array($userRole, ['admin']) && isset($_GET['client_id'])) {
     $clientUserId = intval($_GET['client_id']);
 }
 
+$selectedProjectId = isset($_GET['project_id']) ? (int) $_GET['project_id'] : 0;
+
 $assignedProjects = $accessControl->getAssignedProjects($clientUserId);
+$assignedProjectIds = array_map(static function ($project) {
+    return (int) ($project['id'] ?? 0);
+}, $assignedProjects);
+
+if ($selectedProjectId > 0) {
+    if (!in_array($selectedProjectId, $assignedProjectIds, true)) {
+        http_response_code(403);
+        exit('Unauthorized project access');
+    }
+
+    $assignedProjects = array_values(array_filter($assignedProjects, static function ($project) use ($selectedProjectId) {
+        return (int) ($project['id'] ?? 0) === $selectedProjectId;
+    }));
+}
+
 $pageTitle = 'Issue Overview';
 
 $issueRows = [];
@@ -51,12 +68,15 @@ include __DIR__ . '/../../includes/header.php';
                 <nav aria-label="breadcrumb">
                     <ol class="breadcrumb">
                         <li class="breadcrumb-item"><a href="<?php echo $baseDir; ?>/client/dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                        <?php if ($selectedProjectId > 0 && !empty($assignedProjects)): ?>
+                        <li class="breadcrumb-item"><a href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $assignedProjects[0]['id'], (string) ($assignedProjects[0]['title'] ?? ''), (string) ($assignedProjects[0]['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>"><i class="fas fa-chart-line"></i> Analytics</a></li>
+                        <?php endif; ?>
                         <li class="breadcrumb-item active" aria-current="page"><i class="fas fa-exclamation-triangle"></i> Issue Overview</li>
                     </ol>
                 </nav>
                 <div class="header-content">
                     <h1 class="page-title"><i class="fas fa-exclamation-triangle text-warning"></i> Issue Overview</h1>
-                    <p class="page-subtitle">Issue totals across all assigned digital assets</p>
+                    <p class="page-subtitle"><?php echo $selectedProjectId > 0 && !empty($assignedProjects) ? 'Issue totals for ' . htmlspecialchars($assignedProjects[0]['title']) : 'Issue totals across all assigned digital assets'; ?></p>
                 </div>
             </div>
         </div>
@@ -105,8 +125,8 @@ include __DIR__ . '/../../includes/header.php';
                     <td class="text-end text-info fw-semibold"><?php echo number_format($row['compliance'], 1); ?>%</td>
                     <td>
                         <div class="table-actions">
-                            <a href="<?php echo $baseDir; ?>/client/project/<?php echo $row['id']; ?>" class="btn btn-primary btn-sm"><i class="fas fa-chart-line"></i> Analytics</a>
-                            <a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $row['id']; ?>" class="btn btn-outline-secondary btn-sm"><i class="fas fa-list"></i> Issues</a>
+                            <a href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $row['id'], (string) ($row['title'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-primary btn-sm"><i class="fas fa-chart-line"></i> Analytics</a>
+                            <a href="<?php echo $baseDir; ?>/modules/client/issues_overview.php?project_id=<?php echo $row['id']; ?>" class="btn btn-outline-secondary btn-sm"><i class="fas fa-list"></i> Issue Summary</a>
                         </div>
                     </td>
                 </tr>

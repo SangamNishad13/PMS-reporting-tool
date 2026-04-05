@@ -3,10 +3,18 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/models/ClientAccessControlManager.php';
 require_once __DIR__ . '/../includes/models/ClientComplianceScoreResolver.php';
+require_once __DIR__ . '/../includes/models/SecurityValidator.php';
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) {
     die('Unauthorized');
+}
+
+$securityValidator = new SecurityValidator();
+$csrfToken = (string) ($_GET['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+if (!$securityValidator->validateCSRFToken($csrfToken, (string) ($_SESSION['csrf_token'] ?? ''))) {
+    http_response_code(403);
+    exit('Invalid CSRF token');
 }
 
 $db = Database::getInstance();
@@ -64,6 +72,7 @@ if ($projectId) {
         'project_id' => (int) $projectId,
         'format' => $format,
         'client_ready_only' => 1,
+        'csrf_token' => $csrfToken,
     ]));
     exit;
 }

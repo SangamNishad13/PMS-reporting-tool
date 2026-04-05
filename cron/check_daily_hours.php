@@ -57,11 +57,11 @@ try {
     
     $today = date('Y-m-d');
     
-    // Get all active users (excluding admins)
+    // Get all active users who are expected to log daily production hours.
     $stmt = $pdo->query("
         SELECT id, username, full_name, email, role
         FROM users
-        WHERE is_active = TRUE AND role NOT IN ('admin')
+        WHERE is_active = TRUE AND role NOT IN ('admin', 'client')
     ");
     $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
     

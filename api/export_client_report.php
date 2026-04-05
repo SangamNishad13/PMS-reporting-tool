@@ -10,10 +10,18 @@ require_once __DIR__ . '/../config/constants.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/client_issue_snapshots.php';
+require_once __DIR__ . '/../includes/models/SecurityValidator.php';
 ob_end_clean();
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) { http_response_code(401); exit('Unauthorized'); }
+
+$securityValidator = new SecurityValidator();
+$csrfToken = (string) ($_GET['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+if (!$securityValidator->validateCSRFToken($csrfToken, (string) ($_SESSION['csrf_token'] ?? ''))) {
+    http_response_code(403);
+    exit('Invalid CSRF token');
+}
 
 $projectId = (int)($_GET['project_id'] ?? 0);
 $format = strtolower(trim((string)($_GET['format'] ?? 'excel')));

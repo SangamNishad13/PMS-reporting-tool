@@ -9,6 +9,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../config/redis.php';
 require_once __DIR__ . '/ClientComplianceScoreResolver.php';
 require_once __DIR__ . '/../client_issue_snapshots.php';
+require_once __DIR__ . '/../helpers.php';
 
 class ClientAccessControlManager {
     private $db;
@@ -287,6 +288,74 @@ class ClientAccessControlManager {
             error_log('ClientAccessControlManager getAssignedProjects error: ' . $e->getMessage());
             return [];
         }
+    }
+
+    public function getAssignedProject($clientUserId, $projectId) {
+        foreach ($this->getAssignedProjects($clientUserId) as $project) {
+            if ((int) ($project['id'] ?? 0) === (int) $projectId) {
+                return $project;
+            }
+        }
+
+        return null;
+    }
+
+    public function getCanonicalProjectIdentifier($clientUserId, $projectId) {
+        $project = $this->getAssignedProject($clientUserId, $projectId);
+
+        if (!$project) {
+            return null;
+        }
+
+        return getClientProjectRouteKey(
+            (int) $project['id'],
+            (string) ($project['title'] ?? ''),
+            (string) ($project['project_code'] ?? '')
+        );
+    }
+
+    public function resolveProjectIdentifier($clientUserId, $identifier) {
+        $identifier = trim((string) $identifier);
+
+        if ($identifier === '') {
+            return null;
+        }
+
+        if (ctype_digit($identifier)) {
+            $projectId = (int) $identifier;
+            return $this->hasProjectAccess($clientUserId, $projectId) ? $projectId : null;
+        }
+
+        $slugMatches = [];
+
+        foreach ($this->getAssignedProjects($clientUserId) as $project) {
+            $projectId = (int) ($project['id'] ?? 0);
+            if ($projectId <= 0) {
+                continue;
+            }
+
+            $canonicalIdentifier = getClientProjectRouteKey(
+                $projectId,
+                (string) ($project['title'] ?? ''),
+                (string) ($project['project_code'] ?? '')
+            );
+
+            if (hash_equals($canonicalIdentifier, $identifier) || hash_equals(getClientProjectRouteToken($projectId), $identifier)) {
+                return $projectId;
+            }
+
+            $projectSlug = slugifyPathSegment((string) (($project['project_code'] ?? '') !== '' ? $project['project_code'] : ($project['title'] ?? '')));
+            if ($projectSlug === $identifier) {
+                $slugMatches[] = $projectId;
+            }
+        }
+
+        $slugMatches = array_values(array_unique($slugMatches));
+        if (count($slugMatches) === 1) {
+            return $slugMatches[0];
+        }
+
+        return null;
     }
     
     /**

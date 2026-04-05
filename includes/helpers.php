@@ -154,6 +154,67 @@ function getBaseDir() {
     return $baseDir;
 }
 
+function slugifyPathSegment($value) {
+    $value = trim((string) $value);
+    if ($value === '') {
+        return 'asset';
+    }
+
+    $asciiValue = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+    if ($asciiValue !== false && $asciiValue !== '') {
+        $value = $asciiValue;
+    }
+
+    $value = strtolower($value);
+    $value = preg_replace('/[^a-z0-9]+/', '-', $value);
+    $value = trim((string) $value, '-');
+
+    return $value !== '' ? $value : 'asset';
+}
+
+function getClientProjectRouteToken($projectId) {
+    static $secret = null;
+
+    if ($secret === null) {
+        $secretCandidates = [
+            (string) (getenv('APP_KEY') ?: ''),
+            (string) (getenv('APP_SECRET') ?: ''),
+            defined('DB_NAME') ? (string) DB_NAME : '',
+            'pms-client-project-route-v1'
+        ];
+
+        foreach ($secretCandidates as $candidate) {
+            if ($candidate !== '') {
+                $secret = $candidate;
+                break;
+            }
+        }
+    }
+
+    return substr(hash_hmac('sha256', 'client-project|' . (int) $projectId, $secret), 0, 12);
+}
+
+function getClientProjectRouteKey($projectId, $projectTitle = '', $projectCode = '') {
+    $token = getClientProjectRouteToken((int) $projectId);
+    $slugSource = trim((string) ($projectCode !== '' ? $projectCode : $projectTitle));
+
+    if ($slugSource === '') {
+        return $token;
+    }
+
+    return slugifyPathSegment($slugSource) . '-' . $token;
+}
+
+function buildClientProjectUrl($projectId, $projectTitle = '', $projectCode = '', array $query = []) {
+    $url = getBaseDir() . '/client/project/' . rawurlencode(getClientProjectRouteKey((int) $projectId, (string) $projectTitle, (string) $projectCode));
+
+    if (!empty($query)) {
+        $url .= '?' . http_build_query($query);
+    }
+
+    return $url;
+}
+
 /**
  * Create an in-app notification.
  *

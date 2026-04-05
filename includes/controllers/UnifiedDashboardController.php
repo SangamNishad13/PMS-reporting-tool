@@ -39,8 +39,8 @@ class UnifiedDashboardController {
         return $this->getClientBasePath() . '/client/dashboard';
     }
 
-    private function getClientProjectUrl(int $projectId): string {
-        return $this->getClientBasePath() . '/client/project/' . $projectId;
+    private function getClientProjectUrl(int $projectId, string $projectTitle = '', string $projectCode = ''): string {
+        return buildClientProjectUrl($projectId, $projectTitle, $projectCode);
     }
 
     private function getSelectedProjectId(array $assignedProjects): ?int {
@@ -64,14 +64,7 @@ class UnifiedDashboardController {
         if (count($projectIds) === 1) {
             $selectedProjectId = (int) reset($projectIds);
 
-            switch ($reportType) {
-                case 'page_issues':
-                    return $this->getClientBasePath() . '/modules/projects/issues_pages.php?project_id=' . $selectedProjectId;
-                case 'common_issues':
-                    return $this->getClientBasePath() . '/modules/projects/issues_common.php?project_id=' . $selectedProjectId;
-                default:
-                    return $this->getProjectReportUrl($selectedProjectId, $reportType);
-            }
+            return $this->getProjectReportUrl($selectedProjectId, $reportType);
         }
 
         return $this->getClientDashboardUrl()

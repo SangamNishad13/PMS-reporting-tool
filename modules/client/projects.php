@@ -115,11 +115,11 @@ if (!isset($baseDir)) {
                     <td class="text-end text-info fw-semibold"><?php echo round((float) ($projectStats['compliance_score'] ?? 0), 1); ?>%</td>
                     <td>
                         <div class="project-actions">
-                            <a href="<?php echo $baseDir; ?>/client/project/<?php echo (int) $project['id']; ?>" class="btn btn-primary btn-sm">
+                            <a href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $project['id'], (string) ($project['title'] ?? ''), (string) ($project['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-primary btn-sm">
                                 <i class="fas fa-chart-line"></i> Analytics
                             </a>
-                            <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo (int) $project['id']; ?>" class="btn btn-outline-secondary btn-sm">
-                                <i class="fas fa-eye"></i> Details
+                            <a href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $project['id'], (string) ($project['title'] ?? ''), (string) ($project['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-eye"></i> Overview
                             </a>
                         </div>
                     </td>

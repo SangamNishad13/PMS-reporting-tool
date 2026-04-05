@@ -22,6 +22,11 @@ $user_role = $_SESSION['role'];
 try {
     switch ($action) {
         case 'check_reminder_time':
+            if (in_array($user_role, ['admin', 'client'], true)) {
+                echo json_encode(['success' => true, 'show_reminder' => false, 'message' => '', 'current_hours' => 0, 'minimum_hours' => 0]);
+                break;
+            }
+
             // Check if it's time to show reminder
             $stmt = $pdo->query("SELECT * FROM hours_reminder_settings WHERE enabled = TRUE LIMIT 1");
             $settings = $stmt->fetch();
@@ -104,7 +109,7 @@ try {
             
             $date = $_GET['date'] ?? date('Y-m-d', strtotime('-1 day'));
             
-            // Get all active users (excluding admins)
+            // Get all active users who are expected to log daily production hours.
             $stmt = $pdo->prepare("
                 SELECT 
                     u.id,
@@ -119,7 +124,7 @@ try {
                 FROM users u
                 LEFT JOIN project_time_logs ptl ON u.id = ptl.user_id AND DATE(ptl.log_date) = ?
                 LEFT JOIN daily_hours_compliance dhc ON u.id = dhc.user_id AND dhc.date = ?
-                WHERE u.is_active = TRUE AND u.role NOT IN ('admin')
+                WHERE u.is_active = TRUE AND u.role NOT IN ('admin', 'client')
                 GROUP BY u.id, u.username, u.full_name, u.email, u.role, dhc.is_compliant, dhc.reminder_sent, dhc.reminder_sent_at
                 ORDER BY total_hours ASC, u.full_name
             ");

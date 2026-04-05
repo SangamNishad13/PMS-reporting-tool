@@ -215,8 +215,8 @@ $activeReport = (string) ($_GET['report'] ?? '');
             <p class="text-muted mb-4">
                 This project doesn't have any accessibility issues available yet. Analytics will appear once issues are available for review.
             </p>
-            <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $projectId; ?>" class="btn btn-primary">
-                <i class="fas fa-eye"></i> View Digital Asset Details
+            <a href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $projectId, (string) ($project['title'] ?? ''), (string) ($project['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-primary">
+                <i class="fas fa-eye"></i> Return to Asset Analytics
             </a>
         </div>
     </div>

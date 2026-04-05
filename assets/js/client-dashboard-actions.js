@@ -3,6 +3,7 @@ function exportDashboard(format, button) {
     var baseDir = window.baseUrl || '';
     var clientId = window.actualClientId || '';
     var selectedProjectId = window.selectedProjectId || '';
+    var csrfToken = window._csrfToken || '';
     var exportUrl = baseDir + '/api/client_export.php?format=' + encodeURIComponent(format);
 
     if (clientId !== '') {
@@ -10,6 +11,9 @@ function exportDashboard(format, button) {
     }
     if (selectedProjectId !== '') {
         exportUrl += '&project_id=' + encodeURIComponent(selectedProjectId);
+    }
+    if (csrfToken !== '') {
+        exportUrl += '&csrf_token=' + encodeURIComponent(csrfToken);
     }
 
     var originalText = button ? button.innerHTML : '';

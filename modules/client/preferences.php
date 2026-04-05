@@ -7,11 +7,12 @@
  */
 
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/models/NotificationManager.php';
 
 // Ensure user is authenticated and has client role
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'client') {
-    header('Location: /login.php');
+    header('Location: ' . getBaseDir() . '/modules/auth/login.php');
     exit;
 }
 

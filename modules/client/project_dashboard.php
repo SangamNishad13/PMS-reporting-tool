@@ -100,8 +100,8 @@ ob_start();
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <?php echo $dashboardController->visualization->getVisualizationJS(); ?>
 
-<script nonce="<?php echo htmlspecialchars($cspNonce ?? '', ENT_QUOTES, 'UTF-8'); ?>">window._clientProjectConfig = { projectId: <?php echo (int)$projectId; ?>, clientUserId: <?php echo (int)$clientUserId; ?>, baseDir: '<?php echo $baseDir; ?>' };</script>
-<script src="<?php echo $baseDir; ?>/assets/js/client-project-dashboard.js?v=<?php echo time(); ?>"></script>
+<script nonce="<?php echo htmlspecialchars($cspNonce ?? '', ENT_QUOTES, 'UTF-8'); ?>">window._clientProjectConfig = <?php echo json_encode(['projectId' => (int) $projectId, 'clientUserId' => (int) $clientUserId, 'baseDir' => (string) $baseDir], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;</script>
+<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/client-project-dashboard.js?v=<?php echo time(); ?>"></script>
 
 
 

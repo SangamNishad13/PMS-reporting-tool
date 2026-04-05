@@ -111,8 +111,8 @@ include __DIR__ . '/../../includes/header.php';
                     <td class="text-end fw-semibold"><?php echo number_format($row['total_issues']); ?></td>
                     <td>
                         <div class="table-actions">
-                            <a href="<?php echo $baseDir; ?>/client/project/<?php echo $row['id']; ?>" class="btn btn-primary btn-sm"><i class="fas fa-chart-line"></i> Analytics</a>
-                            <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $row['id']; ?>" class="btn btn-outline-secondary btn-sm"><i class="fas fa-eye"></i> Details</a>
+                            <a href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $row['id'], (string) ($row['title'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-primary btn-sm"><i class="fas fa-chart-line"></i> Analytics</a>
+                            <a href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $row['id'], (string) ($row['title'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-secondary btn-sm"><i class="fas fa-eye"></i> Overview</a>
                         </div>
                     </td>
                 </tr>

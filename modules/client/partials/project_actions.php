@@ -65,20 +65,20 @@ if ($currentIndex !== false) {
                     View Details
                 </h4>
                 <div class="action-buttons">
-                    <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $projectId; ?>" 
+                          <a href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $projectId, (string) ($project['title'] ?? ''), (string) ($project['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>" 
                        class="btn btn-info action-btn">
                         <i class="fas fa-project-diagram"></i>
                         <span class="btn-text">
-                            <strong>Digital Asset Details</strong>
-                            <small>Full digital asset information</small>
+                            <strong>Digital Asset Analytics</strong>
+                            <small>Client-safe asset overview</small>
                         </span>
                     </a>
-                    <a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>" 
+                    <a href="<?php echo $baseDir; ?>/modules/client/issues_overview.php?project_id=<?php echo $projectId; ?>" 
                        class="btn btn-warning action-btn">
                         <i class="fas fa-list-ul"></i>
                         <span class="btn-text">
-                            <strong>Issue List</strong>
-                            <small>Browse all issues</small>
+                            <strong>Issue Summary</strong>
+                            <small>Review client-visible issue counts</small>
                         </span>
                     </a>
                 </div>
@@ -126,7 +126,7 @@ if ($currentIndex !== false) {
             
             <div class="project-nav-buttons">
                 <?php if ($prevProject): ?>
-                     <a href="<?php echo $baseDir; ?>/client/project/<?php echo (int) $prevProject['id']; ?>" 
+                                         <a href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $prevProject['id'], (string) ($prevProject['title'] ?? ''), (string) ($prevProject['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>" 
                    class="nav-project-btn prev-project">
                     <div class="nav-direction">
                         <i class="fas fa-chevron-left"></i>
@@ -163,7 +163,7 @@ if ($currentIndex !== false) {
                 </div>
 
                 <?php if ($nextProject): ?>
-                     <a href="<?php echo $baseDir; ?>/client/project/<?php echo (int) $nextProject['id']; ?>" 
+                                         <a href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $nextProject['id'], (string) ($nextProject['title'] ?? ''), (string) ($nextProject['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>" 
                    class="nav-project-btn next-project">
                     <div class="nav-project-info text-end">
                         <div class="nav-project-title"><?php echo htmlspecialchars($nextProject['title']); ?></div>

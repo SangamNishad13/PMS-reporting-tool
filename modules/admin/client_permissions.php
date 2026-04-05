@@ -100,65 +100,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     error_log("Failed to log activity: " . $e->getMessage());
                 }
                 
-                // Create in-app notification (after commit)
-                try {
-                    $permissionsList = array_map(function($p) {
-                        return ucfirst(str_replace('_', ' ', $p));
-                    }, $permissions);
-                    $notificationMessage = "You have been granted access to " . count($projectIds) . " project(s).";
-                    createNotification($db, $targetUserId, 'permission_update', $notificationMessage, '/modules/projects/my_client_projects.php');
-                } catch (Exception $e) {
-                    error_log("Failed to create notification: " . $e->getMessage());
-                }
-                
-                // Send email notification to user
-                try {
-                    $emailSender = new EmailSender();
-                    
-                    $emailSubject = "Project Access Granted";
-                    $emailBody = "
-                        <!DOCTYPE html>
-                        <html>
-                        <head>
-                            <style>
-                                body { font-family: Arial, sans-serif; line-height: 1.6; }
-                                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                                .header { background-color: #28a745; color: white; padding: 20px; text-align: center; }
-                                .content { padding: 20px; background-color: #f8f9fa; }
-                                .button { display: inline-block; padding: 10px 20px; background-color: #007bff; 
-                                          color: white; text-decoration: none; border-radius: 5px; }
-                                ul { background-color: white; padding: 20px; border-radius: 5px; }
-                            </style>
-                        </head>
-                        <body>
-                            <div class='container'>
-                                <div class='header'>
-                                    <h1>Project Access Granted</h1>
-                                </div>
-                                <div class='content'>
-                                    <h2>Hello " . htmlspecialchars($targetUser['full_name']) . ",</h2>
-                                    <p>You have been granted access to the following project(s):</p>
-                                    <ul>
-                                        <li>" . implode("</li><li>", array_map('htmlspecialchars', $projectNames)) . "</li>
-                                    </ul>
-                                    " . ($expiresAt ? "<p><strong>Access Expires:</strong> " . date('F d, Y', strtotime($expiresAt)) . "</p>" : "") . "
-                                    " . ($notes ? "<p><strong>Notes:</strong> " . nl2br(htmlspecialchars($notes)) . "</p>" : "") . "
-                                    <p>You can now view issues and track progress for these projects.</p>
-                                    <p style='text-align: center; margin-top: 30px;'>
-                                        <a href='" . $baseDir . "/modules/client/dashboard.php' class='button'>View Dashboard</a>
-                                    </p>
-                                </div>
-                            </div>
-                        </body>
-                        </html>
-                    ";
-                    
-                    $emailSender->send($targetUser['email'], $emailSubject, $emailBody, true);
-                } catch (Exception $e) {
-                    error_log("Failed to send permission notification email: " . $e->getMessage());
-                    // Don't fail the request if email fails
-                }
-                
                 $_SESSION['success'] = "Project access granted successfully to " . htmlspecialchars($targetUser['full_name']) . " for " . count($projectIds) . " project(s)!";
                 redirect("/modules/admin/client_permissions.php?user_id=" . $targetUserId);
                 exit;
