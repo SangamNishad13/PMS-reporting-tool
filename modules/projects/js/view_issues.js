@@ -529,6 +529,34 @@
             .replace(/>/g, '&gt;');
     }
 
+    function normalizeIssueImageSrc(src) {
+        var rawSrc = String(src || '').trim();
+        if (!rawSrc) return rawSrc;
+
+        try {
+            var parsed = new URL(rawSrc, window.location.origin);
+            var pathname = parsed.pathname || '';
+            var prefixMatch = pathname.match(/^\/(PMS(?:-UAT)?)(\/(?:uploads\/|assets\/uploads\/|api\/public_image\.php|api\/secure_file\.php).*)$/i);
+            if (!prefixMatch) {
+                return rawSrc;
+            }
+
+            var normalizedBaseDir = String(baseDir || '').replace(/\/+$/, '');
+            var normalizedPath = (normalizedBaseDir ? normalizedBaseDir : '') + prefixMatch[2];
+            if (!normalizedPath) normalizedPath = prefixMatch[2];
+            if (normalizedPath.charAt(0) !== '/') normalizedPath = '/' + normalizedPath;
+
+            if (/^(?:https?:)?\/\//i.test(rawSrc)) {
+                parsed.pathname = normalizedPath;
+                return parsed.toString();
+            }
+
+            return normalizedPath + (parsed.search || '') + (parsed.hash || '');
+        } catch (e) {
+            return rawSrc;
+        }
+    }
+
     function cleanInstanceValue(raw) {
         var txt = String(raw || '').trim();
         if (!txt) return '';
@@ -5284,6 +5312,11 @@
         if (!html) return ''; 
         return String(html).replace(/<img\b([^>]*)>/gi, function (_, attrs) { 
             let newAttrs = attrs;
+
+            newAttrs = newAttrs.replace(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i, function (match, dq, sq, bare) {
+                var currentSrc = dq || sq || bare || '';
+                return 'src="' + escapeAttr(normalizeIssueImageSrc(currentSrc)) + '"';
+            });
             
             // Add issue-image-thumb class
             if (/class\s*=/.test(attrs)) { 
@@ -5305,7 +5338,7 @@
         var i = document.getElementById('issueImagePreview');
         if (!m || !i) return;
         
-        i.src = src || '';
+        i.src = normalizeIssueImageSrc(src || '');
         i.alt = alt || '';
         
         var altTextDiv = document.getElementById('issueImageAltText');

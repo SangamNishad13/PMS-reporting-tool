@@ -10,11 +10,52 @@ var allIssues = [];
 var filteredIssues = [];
 var loadIssuesDebounceTimer = null;
 
+function escapeAttr(text) {
+    return String(text == null ? '' : text)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function normalizeIssueImageSrc(src) {
+    var rawSrc = String(src || '').trim();
+    if (!rawSrc) return rawSrc;
+
+    try {
+        var parsed = new URL(rawSrc, window.location.origin);
+        var pathname = parsed.pathname || '';
+        var prefixMatch = pathname.match(/^\/(PMS(?:-UAT)?)(\/(?:uploads\/|assets\/uploads\/|api\/public_image\.php|api\/secure_file\.php).*)$/i);
+        if (!prefixMatch) {
+            return rawSrc;
+        }
+
+        var normalizedBaseDir = String(baseDir || '').replace(/\/+$/, '');
+        var normalizedPath = (normalizedBaseDir ? normalizedBaseDir : '') + prefixMatch[2];
+        if (!normalizedPath) normalizedPath = prefixMatch[2];
+        if (normalizedPath.charAt(0) !== '/') normalizedPath = '/' + normalizedPath;
+
+        if (/^(?:https?:)?\/\//i.test(rawSrc)) {
+            parsed.pathname = normalizedPath;
+            return parsed.toString();
+        }
+
+        return normalizedPath + (parsed.search || '') + (parsed.hash || '');
+    } catch (e) {
+        return rawSrc;
+    }
+}
+
 // Fallback decorateIssueImages if not loaded from view_issues.js
 function decorateIssueImages(html) {
     if (!html) return '';
     return String(html).replace(/<img\b([^>]*)>/gi, function (_, attrs) {
         var newAttrs = attrs;
+        newAttrs = newAttrs.replace(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i, function (match, dq, sq, bare) {
+            var currentSrc = dq || sq || bare || '';
+            return 'src="' + escapeAttr(normalizeIssueImageSrc(currentSrc)) + '"';
+        });
         if (/class\s*=/.test(attrs)) {
             newAttrs = attrs.replace(/class\s*=(["\'])([^"\']*)\1/, 'class="$2 issue-image-thumb"');
         } else {
@@ -31,7 +72,7 @@ function openIssueImageModal(src) {
     var modal = document.getElementById('issueImageModal');
     var previewImg = document.getElementById('issueImagePreview');
     if (modal && previewImg) {
-        previewImg.src = src;
+        previewImg.src = normalizeIssueImageSrc(src);
         previewImg.onerror = function () {
             this.alt = 'Failed to load image: ' + src;
             this.style.border = '2px solid #dc3545';
