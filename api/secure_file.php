@@ -196,6 +196,15 @@ function userCanAccessFilePath(PDO $db, int $userId, string $role, string $relPa
     }
 
     if (strpos($relPath, 'assets/uploads/') === 0) {
+        if (strpos($relPath, 'assets/uploads/issues/') === 0) {
+            return userCanAccessReferencedIssueProject($db, $userId, $role, $relPath);
+        }
+
+        if (strpos($relPath, 'assets/uploads/chat/') === 0) {
+            return userCanAccessReferencedIssueProject($db, $userId, $role, $relPath)
+                || userCanAccessReferencedChat($db, $userId, $role, $relPath);
+        }
+
         return false;
     }
 

@@ -26,14 +26,23 @@ function normalizeIssueImageSrc(src) {
     try {
         var parsed = new URL(rawSrc, window.location.origin);
         var pathname = parsed.pathname || '';
-        var prefixMatch = pathname.match(/^\/(PMS(?:-UAT)?)(\/(?:uploads\/|assets\/uploads\/|api\/public_image\.php|api\/secure_file\.php).*)$/i);
+        var prefixMatch = pathname.match(/^\/(?:(PMS(?:-UAT)?)\/)?((?:uploads\/|assets\/uploads\/|api\/public_image\.php|api\/secure_file\.php).*)$/i);
         if (!prefixMatch) {
             return rawSrc;
         }
 
         var normalizedBaseDir = String(baseDir || '').replace(/\/+$/, '');
-        var normalizedPath = (normalizedBaseDir ? normalizedBaseDir : '') + prefixMatch[2];
-        if (!normalizedPath) normalizedPath = prefixMatch[2];
+        var normalizedTarget = '/' + String(prefixMatch[2] || '').replace(/^\/+/, '');
+        if (/^\/(?:assets\/uploads|uploads)\/(issues|chat)\//i.test(normalizedTarget)) {
+            var relativePath = normalizedTarget.replace(/^\//, '');
+            return (normalizedBaseDir ? normalizedBaseDir : '')
+                + '/api/secure_file.php?path='
+                + encodeURIComponent(relativePath)
+                + (parsed.hash || '');
+        }
+
+        var normalizedPath = (normalizedBaseDir ? normalizedBaseDir : '') + normalizedTarget;
+        if (!normalizedPath) normalizedPath = normalizedTarget;
         if (normalizedPath.charAt(0) !== '/') normalizedPath = '/' + normalizedPath;
 
         if (/^(?:https?:)?\/\//i.test(rawSrc)) {
@@ -45,6 +54,16 @@ function normalizeIssueImageSrc(src) {
     } catch (e) {
         return rawSrc;
     }
+}
+
+function tryRecoverIssueImageElement(img) {
+    if (!img || img.dataset.issueImageRecoveryAttempted === '1') return false;
+    var currentSrc = img.getAttribute('src') || img.src || '';
+    var normalizedSrc = normalizeIssueImageSrc(currentSrc);
+    if (!normalizedSrc || normalizedSrc === currentSrc) return false;
+    img.dataset.issueImageRecoveryAttempted = '1';
+    img.setAttribute('src', normalizedSrc);
+    return true;
 }
 
 // Fallback decorateIssueImages if not loaded from view_issues.js
@@ -74,6 +93,9 @@ function openIssueImageModal(src) {
     if (modal && previewImg) {
         previewImg.src = normalizeIssueImageSrc(src);
         previewImg.onerror = function () {
+            if (tryRecoverIssueImageElement(this)) {
+                return;
+            }
             this.alt = 'Failed to load image: ' + src;
             this.style.border = '2px solid #dc3545';
             this.style.padding = '20px';
@@ -323,7 +345,15 @@ function attachImageHandlers() {
             img.addEventListener('click', img._imageClickHandler);
             if (!img.hasAttribute('loading')) img.setAttribute('loading', 'lazy');
             if (!img._errorHandlerAttached) {
-                img.onerror = function () { this.style.border = '2px solid #dc3545'; this.style.backgroundColor = '#f8d7da'; this.title = 'Image failed to load: ' + this.src; this.alt = 'Failed to load image'; };
+                img.onerror = function () {
+                    if (tryRecoverIssueImageElement(this)) {
+                        return;
+                    }
+                    this.style.border = '2px solid #dc3545';
+                    this.style.backgroundColor = '#f8d7da';
+                    this.title = 'Image failed to load: ' + this.src;
+                    this.alt = 'Failed to load image';
+                };
                 img.onload  = function () { this.style.border = ''; this.style.backgroundColor = ''; this.title = 'Click to view full size'; };
                 img._errorHandlerAttached = true;
             }

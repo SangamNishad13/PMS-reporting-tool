@@ -536,14 +536,23 @@
         try {
             var parsed = new URL(rawSrc, window.location.origin);
             var pathname = parsed.pathname || '';
-            var prefixMatch = pathname.match(/^\/(PMS(?:-UAT)?)(\/(?:uploads\/|assets\/uploads\/|api\/public_image\.php|api\/secure_file\.php).*)$/i);
+            var prefixMatch = pathname.match(/^\/(?:(PMS(?:-UAT)?)\/)?((?:uploads\/|assets\/uploads\/|api\/public_image\.php|api\/secure_file\.php).*)$/i);
             if (!prefixMatch) {
                 return rawSrc;
             }
 
             var normalizedBaseDir = String(baseDir || '').replace(/\/+$/, '');
-            var normalizedPath = (normalizedBaseDir ? normalizedBaseDir : '') + prefixMatch[2];
-            if (!normalizedPath) normalizedPath = prefixMatch[2];
+            var normalizedTarget = '/' + String(prefixMatch[2] || '').replace(/^\/+/, '');
+            if (/^\/(?:assets\/uploads|uploads)\/(issues|chat)\//i.test(normalizedTarget)) {
+                var relativePath = normalizedTarget.replace(/^\//, '');
+                return (normalizedBaseDir ? normalizedBaseDir : '')
+                    + '/api/secure_file.php?path='
+                    + encodeURIComponent(relativePath)
+                    + (parsed.hash || '');
+            }
+
+            var normalizedPath = (normalizedBaseDir ? normalizedBaseDir : '') + normalizedTarget;
+            if (!normalizedPath) normalizedPath = normalizedTarget;
             if (normalizedPath.charAt(0) !== '/') normalizedPath = '/' + normalizedPath;
 
             if (/^(?:https?:)?\/\//i.test(rawSrc)) {
@@ -555,6 +564,16 @@
         } catch (e) {
             return rawSrc;
         }
+    }
+
+    function tryRecoverIssueImageElement(img) {
+        if (!img || img.dataset.issueImageRecoveryAttempted === '1') return false;
+        var currentSrc = img.getAttribute('src') || img.src || '';
+        var normalizedSrc = normalizeIssueImageSrc(currentSrc);
+        if (!normalizedSrc || normalizedSrc === currentSrc) return false;
+        img.dataset.issueImageRecoveryAttempted = '1';
+        img.setAttribute('src', normalizedSrc);
+        return true;
     }
 
     function cleanInstanceValue(raw) {
@@ -5302,6 +5321,16 @@
             }
         }
     });
+
+    document.addEventListener('error', function (e) {
+        var target = e.target;
+        if (!target || target.tagName !== 'IMG') return;
+        if (!(target.classList.contains('issue-image-thumb') || target.classList.contains('editable-issue-image'))) return;
+        if (tryRecoverIssueImageElement(target)) {
+            e.preventDefault();
+            return;
+        }
+    }, true);
 
     function getPageName(id) { var p = (pages || []).find(function (x) { return String(x.id) === String(id); }); return p ? p.page_name : id; }
     // escapeHtml defined at top of scope

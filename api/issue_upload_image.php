@@ -184,10 +184,9 @@ $baseDir = '';
 if (function_exists('getBaseDir')) {
     $baseDir = getBaseDir();
 }
-// Construct a root-relative URL for consistency
-$url = '/' . ltrim($baseDir . '/uploads/issues/' . date('Ymd') . '/' . $filename, '/');
-// Ensure no double slashes
-$url = preg_replace('#/+#', '/', $url);
+
+$relativePath = 'uploads/issues/' . date('Ymd') . '/' . $filename;
+$url = rtrim((string)$baseDir, '/') . '/api/secure_file.php?path=' . rawurlencode($relativePath);
 
 
 issue_upload_debug_log('Upload complete. URL: ' . $url);
