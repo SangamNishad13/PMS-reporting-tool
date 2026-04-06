@@ -96,6 +96,54 @@ function parseMetaIntValues($values) {
     return array_values(array_unique($out));
 }
 
+function normalizeIssuePageSelection($db, $projectId, $pageId, $pageIds) {
+    $requestedPrimaryPageId = (int)$pageId;
+    $requestedPageIds = array_values(array_unique(array_filter(array_map('intval', (array)$pageIds), function($value) {
+        return $value > 0;
+    })));
+
+    $candidatePageIds = $requestedPageIds;
+    if ($requestedPrimaryPageId > 0 && !in_array($requestedPrimaryPageId, $candidatePageIds, true)) {
+        array_unshift($candidatePageIds, $requestedPrimaryPageId);
+    }
+
+    if (empty($candidatePageIds)) {
+        return [
+            'page_id' => 0,
+            'page_ids' => [],
+            'had_invalid_primary' => false,
+            'had_requested_pages' => false
+        ];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($candidatePageIds), '?'));
+    $stmt = $db->prepare("SELECT id FROM project_pages WHERE project_id = ? AND id IN ($placeholders)");
+    $stmt->execute(array_merge([(int)$projectId], $candidatePageIds));
+    $validPageLookup = array_fill_keys(array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN)), true);
+
+    $normalizedPageIds = [];
+    foreach ($requestedPageIds as $candidatePageId) {
+        if (isset($validPageLookup[$candidatePageId])) {
+            $normalizedPageIds[] = $candidatePageId;
+        }
+    }
+
+    $normalizedPrimaryPageId = isset($validPageLookup[$requestedPrimaryPageId])
+        ? $requestedPrimaryPageId
+        : (!empty($normalizedPageIds) ? (int)$normalizedPageIds[0] : 0);
+
+    if ($normalizedPrimaryPageId > 0 && !in_array($normalizedPrimaryPageId, $normalizedPageIds, true)) {
+        array_unshift($normalizedPageIds, $normalizedPrimaryPageId);
+    }
+
+    return [
+        'page_id' => $normalizedPrimaryPageId,
+        'page_ids' => array_values($normalizedPageIds),
+        'had_invalid_primary' => $requestedPrimaryPageId > 0 && !isset($validPageLookup[$requestedPrimaryPageId]),
+        'had_requested_pages' => !empty($candidatePageIds)
+    ];
+}
+
 if (!hasProjectAccess($db, $userId, $projectId)) {
     jsonError('Permission denied', 403);
 }
@@ -830,6 +878,12 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         $pageIds = parseArrayInput($_POST['pages'] ?? []);
         $pageId = (int)($_POST['page_id'] ?? 0);
         if (!$pageId && !empty($pageIds)) $pageId = (int)$pageIds[0];
+        $pageSelection = normalizeIssuePageSelection($db, $projectId, $pageId, $pageIds);
+        $pageId = (int)$pageSelection['page_id'];
+        $pageIds = $pageSelection['page_ids'];
+        if ($pageSelection['had_invalid_primary'] && empty($pageIds)) {
+            jsonError('Selected page is invalid or no longer available for this project.', 400);
+        }
 
         $statusId = null;
         $statusInput = $_POST['issue_status'] ?? '';
@@ -1025,6 +1079,14 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                     if (empty($pageIds) && $pageId > 0) {
                         $pageIds = [$pageId];
                     }
+                }
+
+                $pageSelection = normalizeIssuePageSelection($db, $projectId, $pageId, $pageIds);
+                $pageId = (int)$pageSelection['page_id'];
+                $pageIds = $pageSelection['page_ids'];
+                if ($pageSelection['had_invalid_primary'] && empty($pageIds)) {
+                    if ($db->inTransaction()) $db->rollBack();
+                    jsonError('Selected page is invalid or no longer available for this project.', 400);
                 }
 
                 // DETECT CHANGES
@@ -1601,6 +1663,8 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         if (!$title) jsonError('title is required', 400);
         $description = $_POST['description'] ?? '';
         $pageIds = parseArrayInput($_POST['pages'] ?? []);
+        $pageSelection = normalizeIssuePageSelection($db, $projectId, 0, $pageIds);
+        $pageIds = $pageSelection['page_ids'];
         $statusId = getStatusId($db, 'Open');
         $priorityId = getPriorityId($db, 'Medium');
         $typeId = getDefaultTypeId($db, $projectId);

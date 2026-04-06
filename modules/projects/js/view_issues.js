@@ -121,6 +121,39 @@
         return resolutionAuthorityRoles.indexOf(userRole) !== -1;
     }
 
+    function getValidProjectPageIds() {
+        return pages.map(function (page) {
+            return String(page.id);
+        });
+    }
+
+    function isValidProjectPageId(pageId) {
+        var candidate = String(pageId || '').trim();
+        if (!candidate) return false;
+        return getValidProjectPageIds().indexOf(candidate) !== -1;
+    }
+
+    function normalizeProjectPageIds(pageIds) {
+        return (Array.isArray(pageIds) ? pageIds : []).map(function (pageId) {
+            return String(pageId || '').trim();
+        }).filter(function (pageId, index, list) {
+            return pageId && isValidProjectPageId(pageId) && list.indexOf(pageId) === index;
+        });
+    }
+
+    function resolveValidSelectedPageId(preferredPageId, fallbackPageIds) {
+        var preferred = String(preferredPageId || '').trim();
+        if (preferred && isValidProjectPageId(preferred)) {
+            return preferred;
+        }
+        var normalizedFallbacks = normalizeProjectPageIds(fallbackPageIds || []);
+        if (normalizedFallbacks.length) {
+            return normalizedFallbacks[0];
+        }
+        var allProjectPageIds = getValidProjectPageIds();
+        return allProjectPageIds.length ? allProjectPageIds[0] : '';
+    }
+
     function getClientQuickStatusOptions() {
         return (ProjectConfig.issueStatuses || []).filter(function (status) {
             var label = status.status_label || status.name || status.label || '';
@@ -2740,7 +2773,14 @@
                 return (raw && typeof raw === 'object') ? raw : {};
             })()
             : (draftData ? (draftData.reporter_qa_status_map || {}) : {});
-        var pageIds = (issue && issue.pages) ? issue.pages : ((draftData && draftData.pages) ? draftData.pages : [issueData.selectedPageId]);
+        var pageIds = normalizeProjectPageIds((issue && issue.pages) ? issue.pages : ((draftData && draftData.pages) ? draftData.pages : [issueData.selectedPageId]));
+        if (!pageIds.length) {
+            var fallbackSelectedPageId = resolveValidSelectedPageId(issueData.selectedPageId, []);
+            pageIds = fallbackSelectedPageId ? [fallbackSelectedPageId] : [];
+            if (fallbackSelectedPageId) {
+                issueData.selectedPageId = fallbackSelectedPageId;
+            }
+        }
 
         // Set pages immediately (this usually works)
         jQuery('#finalIssuePages').val(pageIds).trigger('change');
@@ -6131,13 +6171,11 @@
     }
 
     async function addOrUpdateFinalIssue() {
-        var selectedPageId = issueData.selectedPageId;
-        if (!selectedPageId) {
-            var selectedPagesFallback = (window.jQuery ? (jQuery('#finalIssuePages').val() || []) : []);
-            if (selectedPagesFallback.length) {
-                selectedPageId = selectedPagesFallback[0];
-                issueData.selectedPageId = selectedPageId;
-            }
+        var selectedPagesFallback = (window.jQuery ? (jQuery('#finalIssuePages').val() || []) : []);
+        var normalizedSelectedPages = normalizeProjectPageIds(selectedPagesFallback);
+        var selectedPageId = resolveValidSelectedPageId(issueData.selectedPageId, normalizedSelectedPages);
+        if (selectedPageId) {
+            issueData.selectedPageId = selectedPageId;
         }
         if (!selectedPageId) {
             issueNotify('Please select at least one page before saving the issue.', 'warning');
@@ -6179,7 +6217,7 @@
             status: document.getElementById('finalIssueStatus').value,
             qa_status: qaStatusValue,
             priority: document.getElementById('finalIssueField_priority') ? document.getElementById('finalIssueField_priority').value : 'medium',
-            pages: jQuery('#finalIssuePages').val() || [],
+            pages: normalizedSelectedPages.length ? normalizedSelectedPages : [selectedPageId],
             grouped_urls: normalizeGroupedUrlsSelection(jQuery('#finalIssueGroupedUrls').val() || []),
             reporters: jQuery('#finalIssueReporters').val() || [],
             reporter_qa_status_map: reporterQaMap,

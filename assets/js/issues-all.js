@@ -297,11 +297,25 @@ function editIssue(issueId) {
     var issueData = allIssues.find(function (i) { return i.id == issueId; });
     if (!issueData) { showError('Issue not found. ID: ' + issueId); return; }
 
+    function getValidProjectPageIds() {
+        if (!window.ProjectConfig || !Array.isArray(window.ProjectConfig.projectPages)) return [];
+        return window.ProjectConfig.projectPages.map(function (page) { return String(page.id); });
+    }
+
+    function normalizeProjectPageIds(pageIds) {
+        var validPageIds = getValidProjectPageIds();
+        return (Array.isArray(pageIds) ? pageIds : []).map(function (pageId) {
+            return String(pageId || '').trim();
+        }).filter(function (pageId, index, list) {
+            return pageId && validPageIds.indexOf(pageId) !== -1 && list.indexOf(pageId) === index;
+        });
+    }
+
     var issue = {
         id: issueData.id, issue_key: issueData.issue_key, title: issueData.title,
         details: issueData.description, common_title: issueData.common_title || '',
         status_id: issueData.status_id, status: issueData.status_name,
-        pages: issueData.page_ids || [], grouped_urls: Array.isArray(issueData.grouped_urls) ? issueData.grouped_urls : [],
+        pages: normalizeProjectPageIds(issueData.page_ids || []), grouped_urls: Array.isArray(issueData.grouped_urls) ? issueData.grouped_urls : [],
         reporters: issueData.reporter_ids || [], qa_status: issueData.qa_status_keys || [],
         severity: issueData.severity || 'medium', priority: issueData.priority || 'medium',
         updated_at: issueData.updated_at || null,

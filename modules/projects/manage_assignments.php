@@ -933,9 +933,9 @@ if (!$projectId) {
                 $delChatMessages = $db->prepare("DELETE FROM chat_messages WHERE page_id IN ($validPlaceholders)");
                 $delChatMessages->execute($validPageIds);
                 
-                // Delete project_time_logs
-                $delTimeLogs = $db->prepare("DELETE FROM project_time_logs WHERE page_id IN ($validPlaceholders)");
-                $delTimeLogs->execute($validPageIds);
+                // Preserve production hours by detaching logs from deleted pages.
+                $detachTimeLogs = $db->prepare("UPDATE project_time_logs SET page_id = NULL WHERE page_id IN ($validPlaceholders)");
+                $detachTimeLogs->execute($validPageIds);
                 
                 // Delete page_environments
                 $deleteEnvStmt = $db->prepare("DELETE FROM page_environments WHERE page_id IN ($validPlaceholders)");
