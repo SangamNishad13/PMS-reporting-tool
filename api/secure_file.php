@@ -87,8 +87,47 @@ function escapeLikeValue($value) {
     ]);
 }
 
+function buildReferencedFileLikePatterns(string $relPath): array {
+    $normalized = ltrim(str_replace('\\', '/', trim($relPath)), '/');
+    if ($normalized === '') {
+        return [];
+    }
+
+    $variants = [$normalized];
+    $encoded = rawurlencode($normalized);
+    if ($encoded !== '') {
+        $variants[] = $encoded;
+        $variants[] = 'path=' . $encoded;
+        $variants[] = '/api/secure_file.php?path=' . $encoded;
+        $variants[] = 'api/secure_file.php?path=' . $encoded;
+    }
+
+    $likePatterns = [];
+    foreach (array_values(array_unique($variants)) as $variant) {
+        $likePatterns[] = '%' . escapeLikeValue($variant) . '%';
+    }
+
+    return $likePatterns;
+}
+
+function queryAccessibleProjectIds(PDO $db, string $sql, array $likePatterns, int $userId): bool {
+    foreach ($likePatterns as $like) {
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$like]);
+        while (($projectId = (int)$stmt->fetchColumn()) > 0) {
+            if (hasProjectAccess($db, $userId, $projectId)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 function userCanAccessReferencedIssueProject(PDO $db, int $userId, string $role, string $relPath): bool {
-    $like = '%' . escapeLikeValue($relPath) . '%';
+    $likePatterns = buildReferencedFileLikePatterns($relPath);
+    if (empty($likePatterns)) {
+        return false;
+    }
     ensureIssueClientSnapshotTable($db);
 
     $issueSql = "
@@ -96,16 +135,11 @@ function userCanAccessReferencedIssueProject(PDO $db, int $userId, string $role,
         FROM issues i
         WHERE i.description LIKE ? ESCAPE '\\\\'
     ";
-    $params = [$like];
     if ($role === 'client') {
         $issueSql .= " AND i.client_ready = 1";
     }
-    $issueStmt = $db->prepare($issueSql);
-    $issueStmt->execute($params);
-    while (($projectId = (int)$issueStmt->fetchColumn()) > 0) {
-        if (hasProjectAccess($db, $userId, $projectId)) {
-            return true;
-        }
+    if (queryAccessibleProjectIds($db, $issueSql, $likePatterns, $userId)) {
+        return true;
     }
 
     $commentSql = "
@@ -114,42 +148,35 @@ function userCanAccessReferencedIssueProject(PDO $db, int $userId, string $role,
         JOIN issues i ON i.id = ic.issue_id
         WHERE ic.comment_html LIKE ? ESCAPE '\\\\'
     ";
-    $commentParams = [$like];
     if ($role === 'client') {
         $commentSql .= " AND i.client_ready = 1";
     }
-    $commentStmt = $db->prepare($commentSql);
-    $commentStmt->execute($commentParams);
-    while (($projectId = (int)$commentStmt->fetchColumn()) > 0) {
-        if (hasProjectAccess($db, $userId, $projectId)) {
-            return true;
-        }
+    if (queryAccessibleProjectIds($db, $commentSql, $likePatterns, $userId)) {
+        return true;
     }
 
     if ($role === 'client') {
-        $snapshotIssueStmt = $db->prepare(
+        if (queryAccessibleProjectIds(
+            $db,
             "SELECT DISTINCT s.project_id
              FROM issue_client_snapshots s
-             WHERE s.snapshot_json LIKE ? ESCAPE '\\\\'"
-        );
-        $snapshotIssueStmt->execute([$like]);
-        while (($projectId = (int)$snapshotIssueStmt->fetchColumn()) > 0) {
-            if (hasProjectAccess($db, $userId, $projectId)) {
-                return true;
-            }
+             WHERE s.snapshot_json LIKE ? ESCAPE '\\\\'",
+            $likePatterns,
+            $userId
+        )) {
+            return true;
         }
 
-        $snapshotCommentStmt = $db->prepare(
+        if (queryAccessibleProjectIds(
+            $db,
             "SELECT DISTINCT s.project_id
              FROM issue_client_snapshots s
              JOIN issue_comments ic ON ic.issue_id = s.issue_id AND ic.created_at <= s.published_at
-             WHERE ic.comment_html LIKE ? ESCAPE '\\\\'"
-        );
-        $snapshotCommentStmt->execute([$like]);
-        while (($projectId = (int)$snapshotCommentStmt->fetchColumn()) > 0) {
-            if (hasProjectAccess($db, $userId, $projectId)) {
-                return true;
-            }
+             WHERE ic.comment_html LIKE ? ESCAPE '\\\\'",
+            $likePatterns,
+            $userId
+        )) {
+            return true;
         }
     }
 
@@ -157,25 +184,41 @@ function userCanAccessReferencedIssueProject(PDO $db, int $userId, string $role,
 }
 
 function userCanAccessReferencedChat(PDO $db, int $userId, string $role, string $relPath): bool {
-    $like = '%' . escapeLikeValue($relPath) . '%';
+    $likePatterns = buildReferencedFileLikePatterns($relPath);
+    if (empty($likePatterns)) {
+        return false;
+    }
 
-    $chatStmt = $db->prepare("SELECT DISTINCT project_id FROM chat_messages WHERE project_id IS NOT NULL AND message LIKE ? ESCAPE '\\\\'");
-    $chatStmt->execute([$like]);
-    while (($projectId = (int)$chatStmt->fetchColumn()) > 0) {
-        if (hasProjectAccess($db, $userId, $projectId)) {
-            return true;
+    foreach ($likePatterns as $like) {
+        $chatStmt = $db->prepare("SELECT DISTINCT project_id FROM chat_messages WHERE project_id IS NOT NULL AND message LIKE ? ESCAPE '\\\\'");
+        $chatStmt->execute([$like]);
+        while (($projectId = (int)$chatStmt->fetchColumn()) > 0) {
+            if (hasProjectAccess($db, $userId, $projectId)) {
+                return true;
+            }
         }
     }
 
     if ($role === 'admin') {
-        $adminStmt = $db->prepare("SELECT 1 FROM chat_messages WHERE message LIKE ? ESCAPE '\\\\' LIMIT 1");
-        $adminStmt->execute([$like]);
-        return (bool)$adminStmt->fetchColumn();
+        foreach ($likePatterns as $like) {
+            $adminStmt = $db->prepare("SELECT 1 FROM chat_messages WHERE message LIKE ? ESCAPE '\\\\' LIMIT 1");
+            $adminStmt->execute([$like]);
+            if ((bool)$adminStmt->fetchColumn()) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    $ownStmt = $db->prepare("SELECT 1 FROM chat_messages WHERE project_id IS NULL AND user_id = ? AND message LIKE ? ESCAPE '\\\\' LIMIT 1");
-    $ownStmt->execute([$userId, $like]);
-    return (bool)$ownStmt->fetchColumn();
+    foreach ($likePatterns as $like) {
+        $ownStmt = $db->prepare("SELECT 1 FROM chat_messages WHERE project_id IS NULL AND user_id = ? AND message LIKE ? ESCAPE '\\\\' LIMIT 1");
+        $ownStmt->execute([$userId, $like]);
+        if ((bool)$ownStmt->fetchColumn()) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function userCanAccessFilePath(PDO $db, int $userId, string $role, string $relPath): bool {

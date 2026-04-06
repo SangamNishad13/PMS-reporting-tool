@@ -210,6 +210,32 @@ function injectRows(string &$xml, string $rows): void {
     $xml = preg_replace('/<dimension\s+ref="[^"]*"\s*\/>/s', '', $xml);
 }
 
+function shouldSkipIssueForExport(array $qaStatusKeys, array $qaStatusLabels): bool {
+    if (empty($qaStatusKeys)) {
+        return false;
+    }
+
+    $deleteOrDuplicateCount = 0;
+    $meaningfulStatusCount = 0;
+
+    foreach ($qaStatusKeys as $qk) {
+        $normalized = strtolower(str_replace([' ', '-'], '_', trim((string) $qk)));
+        $label = strtolower(trim((string) ($qaStatusLabels[strtolower(trim((string) $qk))] ?? $normalized)));
+
+        if ($normalized === '' && $label === '') {
+            continue;
+        }
+
+        $meaningfulStatusCount++;
+        if (strpos($normalized, 'delete') !== false || strpos($normalized, 'duplicate') !== false
+            || strpos($label, 'delete') !== false || strpos($label, 'duplicate') !== false) {
+            $deleteOrDuplicateCount++;
+        }
+    }
+
+    return $meaningfulStatusCount > 0 && $deleteOrDuplicateCount === $meaningfulStatusCount;
+}
+
 /** Convert a column letter (A, B, ..., Z, AA, ...) to a 1-based integer. */
 function colToNum(string $col): int {
     $col = strtoupper($col);
@@ -573,16 +599,12 @@ try {
 $filteredIssues = [];
 foreach ($allIssues as $iss) {
     $iid  = (int)$iss['id'];
-    $skip = false;
-    foreach ($qaStatusByIssue[$iid] ?? [] as $qk) {
-        $normalized = strtolower(str_replace([' ', '-'], '_', $qk));
-        $label = $qaStatusLabels[$qk] ?? $normalized;
-        if (strpos($normalized, 'delete') !== false || strpos($normalized, 'duplicate') !== false
-            || strpos($label, 'delete') !== false || strpos($label, 'duplicate') !== false) {
-            $skip = true; break;
-        }
-    }
+    $skip = shouldSkipIssueForExport($qaStatusByIssue[$iid] ?? [], $qaStatusLabels);
     if (!$skip) $filteredIssues[] = $iss;
+}
+
+if (empty($filteredIssues) && !empty($allIssues)) {
+    $filteredIssues = $allIssues;
 }
 
 if ($format === 'pdf') {

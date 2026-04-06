@@ -13,7 +13,6 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
     <div>
         <span class="section-kicker">Next Steps</span>
         <h2 class="section-title mb-2">Quick actions</h2>
-        <p class="section-description mb-0">Export reports, open your asset library, or jump from analytics into the next operational step.</p>
     </div>
 </div>
 
@@ -59,7 +58,7 @@ $projectIdsList = implode(',', array_column($assignedProjects, 'id'));
                 <div class="action-content">
                     <span class="action-eyebrow">Portfolio navigation</span>
                     <h4 class="action-title">View Digital Assets</h4>
-                    <p class="action-description">Browse all assigned digital assets from one place</p>
+                          <p class="action-description">Browse all digital assets from one place</p>
                     <a href="<?php echo $baseDir; ?>/modules/client/projects.php" 
                        class="btn btn-secondary action-button">
                         <i class="fas fa-arrow-right"></i> Browse Digital Assets

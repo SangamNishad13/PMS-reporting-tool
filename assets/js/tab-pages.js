@@ -67,9 +67,16 @@
         clientReportBtn.addEventListener('click', function () {
             var baseDir   = window.ProjectConfig ? window.ProjectConfig.baseDir   : '';
             var projectId = window.ProjectConfig ? window.ProjectConfig.projectId : 0;
+            var csrfToken = window._csrfToken || '';
+            var exportUrl = baseDir + '/api/export_client_report.php?project_id=' + encodeURIComponent(projectId) + '&format=excel&client_ready_only=1';
+
+            if (csrfToken !== '') {
+                exportUrl += '&csrf_token=' + encodeURIComponent(csrfToken);
+            }
+
             clientReportBtn.disabled = true;
             clientReportBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Preparing...';
-            window.location.href = baseDir + '/api/export_client_report.php?project_id=' + encodeURIComponent(projectId);
+            window.location.href = exportUrl;
             setTimeout(function () {
                 clientReportBtn.disabled = false;
                 clientReportBtn.innerHTML = '<i class="fas fa-file-excel me-1"></i> Export Client Report';

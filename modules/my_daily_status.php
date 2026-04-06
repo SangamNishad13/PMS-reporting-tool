@@ -126,34 +126,96 @@ if (!function_exists('recordProjectTimeLogHistory')) {
     }
 }
 
+if (!function_exists('getEditRequestState')) {
+    function getEditRequestState($db, $userId, $reqDate) {
+        $stmt = $db->prepare("
+            SELECT *
+            FROM user_edit_requests
+            WHERE user_id = ?
+              AND req_date = ?
+              AND request_type = 'edit'
+            LIMIT 1
+        ");
+        $stmt->execute([(int)$userId, (string)$reqDate]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $status = (string)($row['status'] ?? '');
+        $locked = !empty($row['locked_at']);
+
+        return [
+            'row' => $row,
+            'status' => $status,
+            'locked' => $locked,
+            'pending' => ($status === 'pending'),
+            'approved' => ($status === 'approved' && !$locked),
+            'waiting_approval' => ($status === 'pending' && !$locked),
+            'submitted' => ($status === 'pending' && $locked),
+            'rejected' => ($status === 'rejected'),
+            'used' => ($status === 'used')
+        ];
+    }
+}
+
+if (!function_exists('notifyEditRequestAdmins')) {
+    function notifyEditRequestAdmins($db, $userId, $adminMessage, $userMessage) {
+        $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin') AND is_active = 1");
+        $adminStmt->execute();
+        $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($admins as $admin) {
+            createNotification($db, (int)$admin['id'], 'edit_request', (string)$adminMessage, '/modules/admin/edit_requests.php');
+        }
+
+        if ((string)$userMessage !== '') {
+            createNotification($db, (int)$userId, 'edit_request', (string)$userMessage, '/modules/notifications.php?filter=edit_request');
+        }
+
+        return count($admins);
+    }
+}
+
+if (!function_exists('hasPendingEditPayload')) {
+    function hasPendingEditPayload($db, $userId, $reqDate) {
+        try {
+            $pendingStmt = $db->prepare("SELECT id FROM user_pending_changes WHERE user_id = ? AND req_date = ? LIMIT 1");
+            $pendingStmt->execute([(int)$userId, (string)$reqDate]);
+            if ($pendingStmt->fetchColumn()) {
+                return true;
+            }
+        } catch (Exception $e) {}
+
+        try {
+            $editStmt = $db->prepare("SELECT id FROM user_pending_log_edits WHERE user_id = ? AND req_date = ? AND status = 'pending' LIMIT 1");
+            $editStmt->execute([(int)$userId, (string)$reqDate]);
+            if ($editStmt->fetchColumn()) {
+                return true;
+            }
+        } catch (Exception $e) {}
+
+        try {
+            $deleteStmt = $db->prepare("SELECT id FROM user_pending_log_deletions WHERE user_id = ? AND req_date = ? AND status = 'pending' LIMIT 1");
+            $deleteStmt->execute([(int)$userId, (string)$reqDate]);
+            if ($deleteStmt->fetchColumn()) {
+                return true;
+            }
+        } catch (Exception $e) {}
+
+        return false;
+    }
+}
+
 // Handle AJAX: check if edit request is pending for this date
 if (isset($_GET['action']) && $_GET['action'] === 'check_edit_request') {
     $reqDate = $_GET['date'] ?? $date;
-    $stmt = $db->prepare("
-        SELECT status, locked_at
-        FROM user_edit_requests
-        WHERE user_id = ?
-          AND req_date = ?
-          AND request_type = 'edit'
-    ");
-    $stmt->execute([$userId, $reqDate]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    $status = $row['status'] ?? null;
-    $pending = ($status === 'pending');
-    $pendingLocked = ($pending && !empty($row['locked_at']));
-    // Keep UI behavior consistent: only "pending" is actionable in the client.
-    // Approved/used/rejected requests should show normal "Request Edit" flow.
-    $approved = false;
-    $rejected = ($status === 'rejected');
-    $used = ($status === 'used');
+    $reqState = getEditRequestState($db, $userId, $reqDate);
     header('Content-Type: application/json');
     echo json_encode([
-        'pending' => $pending,
-        'pending_locked' => $pendingLocked,
-        'approved' => $approved,
-        'rejected' => $rejected,
-        'used' => $used,
-        'status' => $status
+        'pending' => $reqState['pending'],
+        'pending_locked' => $reqState['submitted'],
+        'approved' => $reqState['approved'],
+        'waiting_approval' => $reqState['waiting_approval'],
+        'rejected' => $reqState['rejected'],
+        'used' => $reqState['used'],
+        'status' => $reqState['status']
     ]);
     exit;
 }
@@ -164,35 +226,49 @@ if (isset($_POST['action']) && $_POST['action'] === 'request_edit') {
     $reason = $_POST['reason'] ?? '';
     
     try {
+        $reqState = getEditRequestState($db, $userId, $reqDate);
+        if ($reqState['approved']) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'already_approved' => true, 'message' => 'Edit access is already approved for this date.']);
+            exit;
+        }
+
+        if ($reqState['waiting_approval']) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'already_requested' => true, 'message' => 'Edit access request is already pending admin approval.']);
+            exit;
+        }
+
+        if ($reqState['submitted']) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Changes for this date are already submitted and awaiting admin review.']);
+            exit;
+        }
+
         // Insert or update request to pending
         $stmt = $db->prepare("INSERT INTO user_edit_requests (user_id, req_date, request_type, status, reason, locked_at) VALUES (?, ?, 'edit', 'pending', ?, NULL) ON DUPLICATE KEY UPDATE request_type='edit', status='pending', reason=VALUES(reason), locked_at=NULL, updated_at=NOW()");
         $stmt->execute([$userId, $reqDate, $reason]);
 
-        // Insert notification for all admins
-        $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin') AND is_active = 1");
-        $adminStmt->execute();
-        $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        if (empty($admins)) {
+        $userName = $_SESSION['full_name'] ?? 'User';
+        $msg = $userName . " requested edit access for " . $reqDate;
+        if ($reason) {
+            $msg .= " - Reason: " . substr($reason, 0, 100) . (strlen($reason) > 100 ? '...' : '');
+        }
+        $adminCount = notifyEditRequestAdmins(
+            $db,
+            (int)$userId,
+            $msg,
+            "Your edit access request for {$reqDate} was submitted to admin."
+        );
+
+        if ($adminCount === 0) {
             header('Content-Type: application/json');
             echo json_encode(['success' => false, 'error' => 'No active admins found']);
             exit;
         }
         
-        $userName = $_SESSION['full_name'] ?? 'User';
-        $msg = $userName . " requested edit for " . $reqDate;
-        if ($reason) {
-            $msg .= " - Reason: " . substr($reason, 0, 100) . (strlen($reason) > 100 ? '...' : '');
-        }
-        $link = "/modules/admin/edit_requests.php";
-        
-        foreach ($admins as $admin) {
-            createNotification($db, (int)$admin['id'], 'edit_request', $msg, $link);
-        }
-        createNotification($db, (int)$userId, 'edit_request', "Your edit request for {$reqDate} was submitted to admin.", "/modules/notifications.php?filter=edit_request");
-        
         header('Content-Type: application/json');
-        echo json_encode(['success' => true, 'message' => 'Edit request sent to ' . count($admins) . ' admin(s)']);
+        echo json_encode(['success' => true, 'message' => 'Edit request sent to ' . $adminCount . ' admin(s)']);
         exit;
         
     } catch (Exception $e) {
@@ -206,35 +282,53 @@ if (isset($_POST['action']) && $_POST['action'] === 'request_edit') {
 if (isset($_POST['action']) && $_POST['action'] === 'submit_pending') {
     $reqDate = $_POST['date'] ?? $date;
     try {
-        $rowStmt = $db->prepare("
-            SELECT id, status, locked_at
-            FROM user_edit_requests
-            WHERE user_id = ?
-              AND req_date = ?
-              AND request_type = 'edit'
-            LIMIT 1
-        ");
-        $rowStmt->execute([$userId, $reqDate]);
-        $reqRow = $rowStmt->fetch(PDO::FETCH_ASSOC);
+        $reqState = getEditRequestState($db, $userId, $reqDate);
+        $reqRow = $reqState['row'];
 
-        if (!$reqRow || (string)($reqRow['status'] ?? '') !== 'pending') {
+        if (!$reqRow) {
             header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'error' => 'No pending edit request found for this date']);
+            echo json_encode(['success' => false, 'error' => 'No approved edit access found for this date']);
             exit;
         }
 
-        if (!empty($reqRow['locked_at'])) {
+        if ($reqState['submitted']) {
             header('Content-Type: application/json');
             echo json_encode(['success' => true, 'already_submitted' => true]);
             exit;
         }
 
+        if ($reqState['waiting_approval']) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Edit access is still waiting for admin approval.']);
+            exit;
+        }
+
+        if (!$reqState['approved']) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Edit access is not active for this date. Please send a new request.']);
+            exit;
+        }
+
+        if (!hasPendingEditPayload($db, $userId, $reqDate)) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'No pending changes found to submit.']);
+            exit;
+        }
+
         $updStmt = $db->prepare("
             UPDATE user_edit_requests
-            SET locked_at = NOW(), updated_at = NOW()
+            SET status = 'pending', locked_at = NOW(), updated_at = NOW()
             WHERE id = ?
         ");
         $updStmt->execute([(int)$reqRow['id']]);
+
+        $userName = $_SESSION['full_name'] ?? 'User';
+        notifyEditRequestAdmins(
+            $db,
+            (int)$userId,
+            $userName . " submitted final pending changes for " . $reqDate,
+            "Your pending changes for {$reqDate} were submitted for admin review."
+        );
 
         header('Content-Type: application/json');
         echo json_encode(['success' => true, 'message' => 'Pending changes submitted']);
@@ -252,25 +346,27 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_pending') {
     $status = normalizeAvailabilityStatusKey($_POST['status'] ?? 'not_updated', $availabilityStatusKeys, 'not_updated');
     $notes = $_POST['notes'] ?? '';
     $personal_note = $_POST['personal_note'] ?? '';
-    
+
     try {
-        $lockStmt = $db->prepare("
-            SELECT locked_at
-            FROM user_edit_requests
-            WHERE user_id = ?
-              AND req_date = ?
-              AND request_type = 'edit'
-            LIMIT 1
-        ");
-        $lockStmt->execute([$userId, $reqDate]);
-        $lockRow = $lockStmt->fetch(PDO::FETCH_ASSOC);
-        if ($lockRow && !empty($lockRow['locked_at'])) {
+        $reqState = getEditRequestState($db, $userId, $reqDate);
+        if (!$reqState['row']) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Please request edit access first.']);
+            exit;
+        }
+
+        if ($reqState['submitted']) {
             header('Content-Type: application/json');
             echo json_encode(['success' => false, 'error' => 'Request already submitted. You can no longer modify pending changes.']);
             exit;
         }
 
-        // Create pending changes table if not exists
+        if (!$reqState['approved']) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Edit access is not approved yet for this date.']);
+            exit;
+        }
+
         $db->exec("CREATE TABLE IF NOT EXISTS user_pending_changes (
             id INT PRIMARY KEY AUTO_INCREMENT,
             user_id INT NOT NULL,
@@ -284,10 +380,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_pending') {
             UNIQUE KEY uq_user_date (user_id, req_date),
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
-        // Keep status storage flexible when new master keys are introduced.
         $db->exec("ALTER TABLE user_pending_changes MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'not_updated'");
-        
-        // Save pending changes
+
         $hasPendingLogsInput = array_key_exists('pending_time_logs', $_POST);
         $appendPendingLogs = (isset($_POST['pending_time_logs_append']) && (string)$_POST['pending_time_logs_append'] === '1');
         $existingPendingLogsRaw = '[]';
@@ -719,14 +813,22 @@ if ($isTimeLogPost) {
         // Prevent logging for past dates unless admin or approved edit request
         $today = date('Y-m-d');
         if (!$isAdmin && $date < $today) {
-            if ($hasRequestTypeColumn) {
-                $reqCheck = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND status = 'approved' AND request_type = 'edit'");
-            } else {
-                $reqCheck = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND status = 'approved' AND (reason IS NULL OR reason NOT LIKE 'Deletion request for time log ID %')");
-            }
-            $reqCheck->execute([$userId, $date]);
-            $approved = $reqCheck->fetch(PDO::FETCH_ASSOC);
-            if (!$approved) {
+            $reqState = $hasRequestTypeColumn
+                ? getEditRequestState($db, $userId, $date)
+                : ['approved' => false, 'waiting_approval' => false, 'submitted' => false];
+            if (!$reqState['approved']) {
+                if ($reqState['waiting_approval']) {
+                    setMyDailyStatusToast('info', 'Edit access request is already pending admin approval for this date.');
+                    header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+                    exit;
+                }
+
+                if ($reqState['submitted']) {
+                    setMyDailyStatusToast('warning', 'Pending changes for this date are already submitted and awaiting admin review.');
+                    header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+                    exit;
+                }
+
                 // Capture current date values so admin can review and apply pending logs on approval.
                 $statusRowStmt = $db->prepare("SELECT status, notes FROM user_daily_status WHERE user_id = ? AND status_date = ?");
                 $statusRowStmt->execute([$userId, $date]);
@@ -792,17 +894,13 @@ if ($isTimeLogPost) {
                     ");
                 }
                 $reqStmt->execute([$userId, $date, $reason]);
-
-                $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin') AND is_active = 1");
-                $adminStmt->execute();
-                $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
                 $userName = $_SESSION['full_name'] ?? 'User';
-                $msg = $userName . " requested edit approval for time log on " . $date;
-                $link = "/modules/admin/edit_requests.php";
-                foreach ($admins as $admin) {
-                    createNotification($db, (int)$admin['id'], 'edit_request', $msg, $link);
-                }
-                createNotification($db, (int)$userId, 'edit_request', "Your time log edit request for {$date} was submitted to admin.", "/modules/notifications.php?filter=edit_request");
+                notifyEditRequestAdmins(
+                    $db,
+                    (int)$userId,
+                    $userName . " requested edit access for " . $date,
+                    "Your edit access request for {$date} was submitted to admin."
+                );
 
                 setMyDailyStatusToast('success', 'Edit request sent to admin for approval. Your log will be applied after approval.');
                 header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
@@ -1230,13 +1328,42 @@ if (isset($_GET['edit_log_request'])) {
                 exit;
             }
 
-            $reason = "Edit request for time log ID {$logId}";
-            $reqStmt = $db->prepare("
-                INSERT INTO user_edit_requests (user_id, req_date, request_type, status, reason)
-                VALUES (?, ?, 'edit', 'pending', ?)
-                ON DUPLICATE KEY UPDATE request_type = 'edit', status = 'pending', reason = VALUES(reason), updated_at = NOW()
-            ");
-            $reqStmt->execute([$userId, $date, $reason]);
+            $reqState = getEditRequestState($db, $userId, $date);
+            if (!$reqState['approved']) {
+                if ($reqState['waiting_approval']) {
+                    $_SESSION['error'] = 'Edit access for this date is still pending admin approval.';
+                    header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+                    exit;
+                }
+
+                if ($reqState['submitted']) {
+                    $_SESSION['error'] = 'Pending changes for this date are already submitted and awaiting admin review.';
+                    header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+                    exit;
+                }
+
+                $reason = 'Time log edit access request for date ' . $date;
+                $reqStmt = $db->prepare("
+                    INSERT INTO user_edit_requests (user_id, req_date, request_type, status, reason, locked_at)
+                    VALUES (?, ?, 'edit', 'pending', ?, NULL)
+                    ON DUPLICATE KEY UPDATE request_type = 'edit', status = 'pending', reason = VALUES(reason), locked_at = NULL, updated_at = NOW()
+                ");
+                $reqStmt->execute([$userId, $date, $reason]);
+
+                $userName = $_SESSION['full_name'] ?? 'User';
+                notifyEditRequestAdmins(
+                    $db,
+                    (int)$userId,
+                    $userName . " requested edit access for time log date " . $date,
+                    "Your edit access request for {$date} was submitted to admin."
+                );
+
+                $_SESSION['success'] = 'Edit access request sent. After admin approval, resubmit your log changes.';
+                header("Location: " . $_SERVER['PHP_SELF'] . "?date=$date");
+                exit;
+            }
+
+            $reason = "Pending edit for time log ID {$logId}";
 
             $editReqStmt = $db->prepare("
                 INSERT INTO user_pending_log_edits (
@@ -1274,18 +1401,7 @@ if (isset($_GET['edit_log_request'])) {
                 $reason
             ]);
 
-            $adminStmt = $db->prepare("SELECT id FROM users WHERE role IN ('admin') AND is_active = 1");
-            $adminStmt->execute();
-            $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
-            $userName = $_SESSION['full_name'] ?? 'User';
-            $msg = $userName . " requested edit approval for time log on " . $date . " (Log ID: " . $logId . ")";
-            $link = "/modules/admin/edit_requests.php";
-            foreach ($admins as $admin) {
-                createNotification($db, (int)$admin['id'], 'edit_request', $msg, $link);
-            }
-            createNotification($db, (int)$userId, 'edit_request', "Your log edit request for {$date} (Log ID: {$logId}) was submitted to admin.", "/modules/notifications.php?filter=edit_request");
-
-            $_SESSION['success'] = "Edit request sent to admin for approval.";
+            $_SESSION['success'] = 'Pending log edit saved. Submit pending changes when you finish all edits for this date.';
         } catch (Exception $e) {
             $_SESSION['error'] = "Failed to send edit request: " . $e->getMessage();
         }
@@ -1363,11 +1479,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_personal_note') {
 
 
 
-    // Check if there's a pending edit request for this date
-    $editRequestStmt = $db->prepare("SELECT status FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND request_type = 'edit'");
+    // Check if there's a draft-capable edit request for this date
+    $editRequestStmt = $db->prepare("SELECT status, locked_at FROM user_edit_requests WHERE user_id = ? AND req_date = ? AND request_type = 'edit'");
     $editRequestStmt->execute([$targetUser, $queriedDate]);
     $editRequest = $editRequestStmt->fetch(PDO::FETCH_ASSOC);
-    $hasPendingRequest = ($editRequest && $editRequest['status'] === 'pending');
+    $hasPendingRequest = ($editRequest && in_array((string)$editRequest['status'], ['approved', 'pending'], true));
 
 
 
@@ -1395,7 +1511,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_personal_note') {
                 'notes' => $pendingData['notes'],
                 'personal_note' => $pendingData['personal_note'],
                 'role' => $userRole,
-                'is_pending' => true
+                'is_pending' => true,
+                'edit_request_status' => (string)($editRequest['status'] ?? '')
             ]);
             exit;
         }
@@ -1433,6 +1550,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_personal_note') {
             'target_user' => $targetUser,
             'current_user' => $userId,
             'has_pending_request' => $hasPendingRequest,
+            'edit_request_status' => (string)($editRequest['status'] ?? ''),
             'status_found' => !empty($currentStatus)
         ]
     ];
@@ -1441,26 +1559,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_personal_note') {
 
     header('Content-Type: application/json');
     echo json_encode($response);
-    exit;
-}
-
-// Handle AJAX: check if edit request is pending or approved for this date
-if (isset($_GET['action']) && $_GET['action'] === 'check_edit_request') {
-    $reqDate = $_GET['date'] ?? $date;
-    $stmt = $db->prepare("
-        SELECT status, locked_at
-        FROM user_edit_requests
-        WHERE user_id = ?
-          AND req_date = ?
-          AND request_type = 'edit'
-    ");
-    $stmt->execute([$userId, $reqDate]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    $pending = ($row && $row['status'] === 'pending');
-    $pendingLocked = ($pending && !empty($row['locked_at']));
-    $approved = false;
-    header('Content-Type: application/json');
-    echo json_encode(['pending' => $pending, 'pending_locked' => $pendingLocked, 'approved' => $approved]);
     exit;
 }
 
@@ -1480,8 +1578,11 @@ $editReqStmt = $db->prepare("SELECT * FROM user_edit_requests WHERE user_id = ? 
 $editReqStmt->execute([$userId, $date]);
 $editReq = $editReqStmt->fetch(PDO::FETCH_ASSOC);
 $hasPendingRequest = ($editReq && $editReq['status'] === 'pending');
+$hasSubmittedPendingRequest = ($hasPendingRequest && !empty($editReq['locked_at']));
+$hasWaitingApprovalRequest = ($hasPendingRequest && empty($editReq['locked_at']));
+$hasApprovedEditAccess = ($editReq && $editReq['status'] === 'approved' && empty($editReq['locked_at']));
 $pendingData = null;
-if ($hasPendingRequest) {
+if ($editReq && in_array((string)$editReq['status'], ['approved', 'pending'], true)) {
     try {
         $pendingStmt = $db->prepare("SELECT * FROM user_pending_changes WHERE user_id = ? AND req_date = ?");
         $pendingStmt->execute([$userId, $date]);
@@ -1641,6 +1742,10 @@ include __DIR__ . '/../includes/header.php';
         toastData: <?php echo json_encode($myDailyToast, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         isPast: <?php echo $isPastDateReadonly ? 'true' : 'false'; ?>,
         hasPending: <?php echo $hasPendingRequest ? 'true' : 'false'; ?>,
+        hasApprovedAccess: <?php echo $hasApprovedEditAccess ? 'true' : 'false'; ?>,
+        hasSubmittedPending: <?php echo $hasSubmittedPendingRequest ? 'true' : 'false'; ?>,
+        isWaitingApproval: <?php echo $hasWaitingApprovalRequest ? 'true' : 'false'; ?>,
+        editRequestStatus: <?php echo json_encode((string)($editReq['status'] ?? ''), JSON_HEX_TAG | JSON_HEX_AMP); ?>,
         date: <?php echo json_encode($date, JSON_HEX_TAG | JSON_HEX_AMP); ?>,
         baseDir: <?php echo json_encode($baseDir, JSON_HEX_TAG | JSON_HEX_AMP); ?>,
         isAdmin: <?php echo $isAdmin ? 'true' : 'false'; ?>,
@@ -1689,15 +1794,20 @@ include __DIR__ . '/../includes/header.php';
                         </div>
 
                         <?php if ($isPastDateReadonly): ?>
-                            <?php if ($hasPendingRequest): ?>
-                                <div class="alert alert-warning">An edit request is pending for this date. Your pending changes will be shown once admin reviews.</div>
+                            <?php if ($hasSubmittedPendingRequest): ?>
+                                <div class="alert alert-warning">Pending changes for this date are submitted and waiting for admin review.</div>
+                            <?php elseif ($hasApprovedEditAccess): ?>
+                                <div class="alert alert-success">Edit access is approved for this date. You can add multiple changes and then submit them together for final review.</div>
+                            <?php elseif ($hasWaitingApprovalRequest): ?>
+                                <div class="alert alert-info">Edit access request is pending admin approval for this date.</div>
                             <?php else: ?>
-                                <div class="alert alert-secondary">This date is read-only. Click <button type="button" id="editToggleBtn" class="btn btn-sm btn-outline-primary">Edit</button> to make changes and submit an edit request to admins.</div>
+                                <div class="alert alert-secondary">This date is read-only. Click <button type="button" id="editToggleBtn" class="btn btn-sm btn-outline-primary">Request Edit Access</button> to ask admin for access.</div>
                             <?php endif; ?>
                         <?php endif; ?>
 
                         <button type="submit" name="update_status" id="updateStatusBtn" class="btn btn-info text-dark w-100" style="<?php echo $isPastDateReadonly ? 'display:none;' : ''; ?>">Update Status</button>
-                        <button type="button" id="saveRequestBtn" class="btn btn-warning text-dark w-100" style="display:none;">Save & Request Edit</button>
+                        <button type="button" id="saveRequestBtn" class="btn btn-warning text-dark w-100" style="display:<?php echo ($isPastDateReadonly && $hasApprovedEditAccess) ? 'block' : 'none'; ?>;">Save Pending Changes</button>
+                        <button type="button" id="submitPendingBtn" class="btn btn-primary w-100 mt-2" style="display:<?php echo ($isPastDateReadonly && $hasApprovedEditAccess) ? 'block' : 'none'; ?>;">Submit Pending Changes</button>
                     </form>
                 </div>
             </div>

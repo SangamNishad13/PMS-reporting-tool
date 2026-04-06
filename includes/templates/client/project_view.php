@@ -197,8 +197,9 @@ require_once __DIR__ . '/../../header.php';
     </div>
 </div>
 
-<!-- Chart.js and Dashboard Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- Dashboard Visualization Scripts -->
+<script src="https://code.highcharts.com/highcharts.js"></script>
+<script src="https://code.highcharts.com/modules/accessibility.js"></script>
 <?php 
 try {
     if ($dashboardController && isset($dashboardController->visualization)) {

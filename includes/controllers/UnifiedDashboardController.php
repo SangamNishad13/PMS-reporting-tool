@@ -71,6 +71,70 @@ class UnifiedDashboardController {
             . '?report=' . rawurlencode($reportType)
             . '#analytics-report-' . rawurlencode($reportType);
     }
+
+    private function getClientIssueOverviewUrl(array $projectIds = []): string {
+        $url = $this->getClientBasePath() . '/modules/client/issues_overview.php';
+
+        if (count($projectIds) === 1) {
+            $url .= '?project_id=' . (int) reset($projectIds);
+        }
+
+        return $url;
+    }
+
+    private function getClientFullIssueListUrl(array $projectIds = []): string {
+        if (count($projectIds) === 1) {
+            return $this->getClientBasePath()
+                . '/modules/projects/issues_all.php?project_id=' . (int) reset($projectIds);
+        }
+
+        return $this->getClientIssueOverviewUrl($projectIds);
+    }
+
+    private function getIssueCommentsApiUrl(int $projectId, int $issueId): string {
+        if ($projectId <= 0 || $issueId <= 0) {
+            return '';
+        }
+
+        return $this->getClientBasePath()
+            . '/api/issue_comments.php?action=list&project_id=' . $projectId
+            . '&issue_id=' . $issueId;
+    }
+
+    private function formatDashboardDate(string $value): string {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        try {
+            $dateTime = new DateTime($value);
+            return $dateTime->format('d M Y, g:i A');
+        } catch (Throwable $e) {
+            return $value;
+        }
+    }
+
+    private function buildIssueDetailUrl(array $issue): string {
+        $projectId = (int) ($issue['project_id'] ?? 0);
+        $pageId = (int) ($issue['page_id'] ?? 0);
+        $issueId = (int) ($issue['id'] ?? 0);
+
+        if ($projectId <= 0) {
+            return '';
+        }
+
+        if ($pageId > 0) {
+            return $this->getClientBasePath()
+                . '/modules/projects/issues_page_detail.php?project_id=' . $projectId
+                . '&page_id=' . $pageId
+                . ($issueId > 0 ? '&issue_id=' . $issueId : '');
+        }
+
+        return $this->getClientBasePath()
+            . '/modules/projects/issues.php?project_id=' . $projectId
+            . ($issueId > 0 ? '&issue_id=' . $issueId : '');
+    }
     
     public function __construct() {
         $this->accessControl = new ClientAccessControlManager();
@@ -380,7 +444,8 @@ class UnifiedDashboardController {
      */
     private function createCommonIssuesWidget($report, $projectIds) {
         $data = $report->getData();
-        $topIssues = array_slice($data['top_issues'] ?? [], 0, 3);
+        $topIssues = array_slice($data['top_common_issues'] ?? $data['top_issues'] ?? [], 0, 5);
+        $commonIssueUrl = $this->getClientFullIssueListUrl($projectIds);
         
         return [
             'type' => 'analytics',
@@ -391,9 +456,28 @@ class UnifiedDashboardController {
             'summary' => array_map(function($issue, $index) {
                 return [
                     'label' => '#' . ($index + 1) . ' Issue',
-                    'value' => $issue['count'] ?? 0
+                    'value' => $issue['frequency'] ?? $issue['count'] ?? 0
                 ];
             }, $topIssues, array_keys($topIssues))
+            ,
+            'detailList' => [
+                'title' => 'Common issue patterns',
+                'emptyMessage' => 'No repeated issue patterns are available for this selection yet.',
+                'sections' => [[
+                    'title' => 'Top repeated patterns',
+                        'items' => array_map(function($issue) use ($commonIssueUrl) {
+                        return [
+                            'title' => $issue['pattern'] ?? 'Untitled pattern',
+                                'url' => $commonIssueUrl,
+                            'meta' => trim((string) (($issue['category'] ?? 'General') . ' • ' . (int) ($issue['pages_affected'] ?? 0) . ' pages affected')),
+                            'submeta' => !empty($issue['sample_pages']) ? ('Sample pages: ' . implode(', ', array_slice($issue['sample_pages'], 0, 3))) : '',
+                            'badges' => [
+                                ['label' => (string) ((int) ($issue['frequency'] ?? $issue['count'] ?? 0)) . ' occurrences', 'className' => 'issue-link-badge'],
+                            ],
+                        ];
+                    }, $topIssues),
+                ]],
+            ]
         ];
     }
     
@@ -403,13 +487,15 @@ class UnifiedDashboardController {
     private function createBlockerIssuesWidget($report, $projectIds) {
         $data = $report->getData();
         $summary = $data['summary'] ?? [];
+        $issueList = $data['blocker_issue_list'] ?? [];
         
         return [
             'type' => 'analytics',
             'title' => 'Blocker Issues',
             'icon' => 'fas fa-ban',
             'reportType' => 'blocker_issues',
-            'drillDownUrl' => $this->getDashboardReportUrl('blocker_issues', $projectIds),
+            'drillDownUrl' => $this->getClientFullIssueListUrl($projectIds),
+            'drillDownLabel' => count($projectIds) === 1 ? 'Open full issue list' : 'Open issue summary',
             'summary' => [
                 [
                     'label' => 'Active Blockers',
@@ -421,9 +507,36 @@ class UnifiedDashboardController {
                 ],
                 [
                     'label' => 'Avg Resolution Time',
-                    'value' => ($summary['avg_resolution_days'] ?? 0) . ' days'
+                    'value' => ($summary['avg_resolution_time'] ?? 0) . ' days'
                 ]
-            ]
+            ],
+            'issueListTitle' => 'Blocker issue list',
+            'issueListEmptyMessage' => 'No blocker issues are available for this selection yet.',
+            'issueList' => array_map(function($issue) {
+                $metaParts = [];
+                $issueKey = trim((string) ($issue['issue_key'] ?? ''));
+                $blockerType = trim((string) ($issue['blocker_type'] ?? ''));
+                $urgencyLevel = trim((string) ($issue['urgency_level'] ?? ''));
+
+                if ($issueKey !== '') {
+                    $metaParts[] = $issueKey;
+                }
+                if ($blockerType !== '') {
+                    $metaParts[] = $blockerType;
+                }
+                if ($urgencyLevel !== '') {
+                    $metaParts[] = $urgencyLevel . ' priority';
+                }
+
+                return [
+                    'title' => $issue['title'] ?? 'Untitled Issue',
+                    'url' => $this->buildIssueDetailUrl($issue),
+                    'status' => $issue['status'] ?? 'Open',
+                    'issueKey' => $issueKey,
+                    'meta' => implode(' • ', $metaParts),
+                    'pageUrl' => $issue['page_url'] ?? '',
+                ];
+            }, $issueList)
         ];
     }
     
@@ -433,6 +546,8 @@ class UnifiedDashboardController {
     private function createPageIssuesWidget($report, $projectIds) {
         $data = $report->getData();
         $summary = $data['summary'] ?? [];
+        $topPages = array_slice($data['top_pages'] ?? [], 0, 8);
+        $topPageLabel = (string) (($topPages[0]['display_url'] ?? $topPages[0]['url'] ?? '') ?: 0);
         
         return [
             'type' => 'analytics',
@@ -451,8 +566,35 @@ class UnifiedDashboardController {
                 ],
                 [
                     'label' => 'Most Affected Page',
-                    'value' => $summary['most_affected_page_issues'] ?? 0
+                    'value' => $topPageLabel
                 ]
+            ],
+            'detailList' => [
+                'title' => 'Pages with highest impact',
+                'emptyMessage' => 'No page issue distribution is available for this selection yet.',
+                'sections' => [[
+                    'title' => 'Top affected pages',
+                    'items' => array_map(function($page) {
+                        $displayUrl = (string) ($page['display_url'] ?? $page['url'] ?? 'Unknown page');
+                        $rawUrl = (string) ($page['raw_url'] ?? '');
+                        $pageUrlLabel = $rawUrl !== '' && $rawUrl !== $displayUrl ? ('URL: ' . $rawUrl) : '';
+                        $pageLink = $this->buildIssueDetailUrl([
+                            'project_id' => (int) ($page['project_id'] ?? 0),
+                            'page_id' => (int) ($page['page_id'] ?? 0),
+                            'id' => (int) ($page['sample_issue_id'] ?? 0),
+                        ]);
+
+                        return [
+                            'title' => $displayUrl,
+                            'url' => $pageLink,
+                            'meta' => 'Resolution ' . round((float) ($page['resolution_rate'] ?? 0), 1) . '%',
+                            'submeta' => $pageUrlLabel,
+                            'badges' => [
+                                ['label' => (string) ((int) ($page['issue_count'] ?? 0)) . ' issues', 'className' => 'issue-link-badge'],
+                            ],
+                        ];
+                    }, $topPages),
+                ]],
             ]
         ];
     }
@@ -463,6 +605,7 @@ class UnifiedDashboardController {
     private function createCommentedIssuesWidget($report, $projectIds) {
         $data = $report->getData();
         $summary = $data['summary'] ?? [];
+        $commentedIssues = array_slice($data['commented_issue_list'] ?? [], 0, 8);
         
         return [
             'type' => 'analytics',
@@ -473,7 +616,7 @@ class UnifiedDashboardController {
             'summary' => [
                 [
                     'label' => 'Issues with Comments',
-                    'value' => $summary['commented_issues_count'] ?? 0
+                    'value' => $summary['total_commented_issues'] ?? 0
                 ],
                 [
                     'label' => 'Total Comments',
@@ -481,8 +624,47 @@ class UnifiedDashboardController {
                 ],
                 [
                     'label' => 'Recent Activity',
-                    'value' => $summary['recent_activity_count'] ?? 0
+                    'value' => $summary['issues_with_recent_activity'] ?? 0
                 ]
+            ],
+            'detailList' => [
+                'title' => 'Most discussed issues',
+                'emptyMessage' => 'No commented issues are available for this selection yet.',
+                'sections' => [[
+                    'title' => 'Issues with highest comment activity',
+                    'items' => array_map(function($issue) {
+                        $metaParts = [];
+                        if (!empty($issue['severity'])) {
+                            $metaParts[] = $issue['severity'];
+                        }
+                        if (!empty($issue['author_count'])) {
+                            $metaParts[] = (int) $issue['author_count'] . ' contributors';
+                        }
+
+                        return [
+                            'title' => $issue['title'] ?? 'Untitled Issue',
+                            'url' => $this->buildIssueDetailUrl($issue),
+                            'key' => $issue['issue_key'] ?? '',
+                            'meta' => implode(' • ', $metaParts),
+                            'submeta' => !empty($issue['last_comment_date']) ? ('Last comment: ' . $this->formatDashboardDate((string) $issue['last_comment_date'])) : ($issue['page_url'] ?? ''),
+                            'badges' => [
+                                ['label' => (string) ((int) ($issue['comment_count'] ?? 0)) . ' comments', 'className' => 'issue-link-badge'],
+                                ['label' => (string) ($issue['status'] ?? 'Open'), 'className' => 'issue-link-score'],
+                            ],
+                            'action' => [
+                                'type' => 'button',
+                                'label' => 'Read comments',
+                                'className' => 'issue-link-score issue-link-action',
+                                'attributes' => [
+                                    'data-comment-modal-trigger' => 'true',
+                                    'data-comment-fetch-url' => $this->getIssueCommentsApiUrl((int) ($issue['project_id'] ?? 0), (int) ($issue['id'] ?? 0)),
+                                    'data-comment-issue-title' => (string) ($issue['title'] ?? 'Issue comments'),
+                                    'data-comment-issue-key' => (string) ($issue['issue_key'] ?? ''),
+                                ],
+                            ],
+                        ];
+                    }, $commentedIssues),
+                ]],
             ]
         ];
     }
@@ -1037,49 +1219,16 @@ class UnifiedDashboardController {
                 break;
                 
             case 'common_issues':
-                $widgetConfig['title'] = 'Common Issues';
-                $widgetConfig['icon'] = 'fas fa-list-ul';
-                $topIssues = array_slice($data['top_issues'] ?? [], 0, 4);
-                $widgetConfig['summary'] = array_map(function($issue, $index) {
-                    return [
-                        'label' => '#' . ($index + 1) . ' Issue',
-                        'value' => $issue['count'] ?? 0
-                    ];
-                }, $topIssues, array_keys($topIssues));
-                break;
+                return $this->createCommonIssuesWidget($report, [$projectId]);
                 
             case 'blocker_issues':
-                $widgetConfig['title'] = 'Blocker Issues';
-                $widgetConfig['icon'] = 'fas fa-ban';
-                $summary = $data['summary'] ?? [];
-                $widgetConfig['summary'] = [
-                    ['label' => 'Active Blockers', 'value' => $summary['active_blockers'] ?? 0],
-                    ['label' => 'Resolved', 'value' => $summary['resolved_blockers'] ?? 0],
-                    ['label' => 'Avg Resolution', 'value' => ($summary['avg_resolution_days'] ?? 0) . ' days']
-                ];
-                break;
+                return $this->createBlockerIssuesWidget($report, [$projectId]);
                 
             case 'page_issues':
-                $widgetConfig['title'] = 'Page Analysis';
-                $widgetConfig['icon'] = 'fas fa-file-alt';
-                $summary = $data['summary'] ?? [];
-                $widgetConfig['summary'] = [
-                    ['label' => 'Pages Analyzed', 'value' => $summary['total_pages'] ?? 0],
-                    ['label' => 'Issues per Page', 'value' => round($summary['avg_issues_per_page'] ?? 0, 1)],
-                    ['label' => 'Most Affected', 'value' => $summary['most_affected_page_issues'] ?? 0]
-                ];
-                break;
+                return $this->createPageIssuesWidget($report, [$projectId]);
                 
             case 'commented_issues':
-                $widgetConfig['title'] = 'Discussion Activity';
-                $widgetConfig['icon'] = 'fas fa-comments';
-                $summary = $data['summary'] ?? [];
-                $widgetConfig['summary'] = [
-                    ['label' => 'With Comments', 'value' => $summary['commented_issues_count'] ?? 0],
-                    ['label' => 'Total Comments', 'value' => $summary['total_comments'] ?? 0],
-                    ['label' => 'Recent Activity', 'value' => $summary['recent_activity_count'] ?? 0]
-                ];
-                break;
+                return $this->createCommentedIssuesWidget($report, [$projectId]);
                 
             case 'compliance_trend':
                 $widgetConfig['type'] = 'trend';

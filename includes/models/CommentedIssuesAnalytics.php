@@ -22,7 +22,7 @@ class CommentedIssuesAnalytics extends AnalyticsEngine {
      * @return AnalyticsReport
      */
     public function generateReport($projectId = null, $clientId = null) {
-        $cacheKey = $this->generateCacheKey('commented_issues', $projectId, $clientId);
+        $cacheKey = $this->generateCacheKey('commented_issues_v2', $projectId, $clientId);
         
         if ($cached = $this->getCachedReport($cacheKey)) {
             return $cached;
@@ -107,6 +107,7 @@ class CommentedIssuesAnalytics extends AnalyticsEngine {
                 'collaboration_score' => $collaborationMetrics['overall_score']
             ],
             'top_commented_issues' => $topCommentedIssues,
+            'commented_issue_list' => $this->buildCommentedIssueList($commentedIssues),
             'comment_type_breakdown' => $commentCategories,
             'activity_metrics' => $activityMetrics,
             'recent_activity' => $recentActivity,
@@ -493,6 +494,34 @@ class CommentedIssuesAnalytics extends AnalyticsEngine {
         }
         
         return $topIssues;
+    }
+
+    /**
+     * Build a raw commented issue list for dashboard rendering.
+     *
+     * @param array $commentedIssues
+     * @return array
+     */
+    private function buildCommentedIssueList($commentedIssues) {
+        usort($commentedIssues, function($a, $b) {
+            return ($b['comment_count'] ?? 0) <=> ($a['comment_count'] ?? 0);
+        });
+
+        return array_map(function($issue) {
+            return [
+                'id' => (int) ($issue['id'] ?? 0),
+                'project_id' => (int) ($issue['project_id'] ?? 0),
+                'page_id' => (int) ($issue['page_id'] ?? 0),
+                'issue_key' => (string) ($issue['issue_key'] ?? ''),
+                'title' => (string) ($issue['title'] ?? 'Untitled Issue'),
+                'status' => (string) ($issue['status'] ?? 'Open'),
+                'severity' => (string) ($issue['severity'] ?? 'Medium'),
+                'page_url' => (string) ($issue['page_url'] ?? ''),
+                'comment_count' => (int) ($issue['comment_count'] ?? 0),
+                'author_count' => count($issue['comment_authors'] ?? []),
+                'last_comment_date' => (string) ($issue['last_comment_date'] ?? ''),
+            ];
+        }, array_slice($commentedIssues, 0, 8));
     }
     
     /**

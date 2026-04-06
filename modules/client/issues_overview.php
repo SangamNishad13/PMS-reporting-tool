@@ -76,7 +76,7 @@ include __DIR__ . '/../../includes/header.php';
                 </nav>
                 <div class="header-content">
                     <h1 class="page-title"><i class="fas fa-exclamation-triangle text-warning"></i> Issue Overview</h1>
-                    <p class="page-subtitle"><?php echo $selectedProjectId > 0 && !empty($assignedProjects) ? 'Issue totals for ' . htmlspecialchars($assignedProjects[0]['title']) : 'Issue totals across all assigned digital assets'; ?></p>
+                    <p class="page-subtitle"><?php echo $selectedProjectId > 0 && !empty($assignedProjects) ? 'Issue totals for ' . htmlspecialchars($assignedProjects[0]['title']) : 'Issue totals across all digital assets'; ?></p>
                 </div>
             </div>
         </div>
@@ -126,7 +126,7 @@ include __DIR__ . '/../../includes/header.php';
                     <td>
                         <div class="table-actions">
                             <a href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $row['id'], (string) ($row['title'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-primary btn-sm"><i class="fas fa-chart-line"></i> Analytics</a>
-                            <a href="<?php echo $baseDir; ?>/modules/client/issues_overview.php?project_id=<?php echo $row['id']; ?>" class="btn btn-outline-secondary btn-sm"><i class="fas fa-list"></i> Issue Summary</a>
+                            <a href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/projects/issues_all.php?project_id=<?php echo (int) $row['id']; ?>" class="btn btn-outline-secondary btn-sm"><i class="fas fa-list"></i> Full Issue List</a>
                         </div>
                     </td>
                 </tr>

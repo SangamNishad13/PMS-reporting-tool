@@ -68,9 +68,6 @@ if (!isset($baseDir)) {
                         <i class="fas fa-folder-open text-primary"></i>
                         My Digital Assets
                     </h1>
-                    <p class="page-subtitle">
-                        Browse and analyze your assigned digital assets
-                    </p>
                 </div>
             </div>
         </div>
@@ -140,8 +137,7 @@ if (!isset($baseDir)) {
                 </div>
                 <h3>No Digital Assets Assigned</h3>
                 <p class="text-muted">
-                    You don't have any digital assets assigned to your account yet. 
-                    Please contact your administrator to get started.
+                    No digital assets are available yet.
                 </p>
                 <a href="<?php echo $baseDir; ?>/client/dashboard" class="btn btn-primary">
                     <i class="fas fa-tachometer-alt"></i> Return to Dashboard

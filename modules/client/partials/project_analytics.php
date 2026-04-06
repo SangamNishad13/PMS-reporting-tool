@@ -124,12 +124,12 @@ $activeReport = (string) ($_GET['report'] ?? '');
                     $healthScore += $criticalFactor * 100;
                     $factors[] = ['label' => 'Critical Issues', 'score' => 100 - $criticalRate, 'weight' => 20];
                     
-                    // Client readiness factor (10% weight)
+                    // Availability factor (10% weight)
                     $readinessWeight = 0.1;
                     $readinessRate = $totalIssues > 0 ? ($clientReadyIssues / $totalIssues) * 100 : 100;
                     $readinessFactor = ($readinessRate / 100) * $readinessWeight;
                     $healthScore += $readinessFactor * 100;
-                    $factors[] = ['label' => 'Client Readiness', 'score' => $readinessRate, 'weight' => 10];
+                    $factors[] = ['label' => 'Availability', 'score' => $readinessRate, 'weight' => 10];
                     
                     $healthScore = round($healthScore, 1);
                     
@@ -381,4 +381,4 @@ $activeReport = (string) ($_GET['report'] ?? '');
 }
 </style>
 
-<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/client-dashboard-widgets.js"></script>
+<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/client-dashboard-widgets.js?v=<?php echo urlencode((string) ($assetVersion ?? '20260406v16')); ?>"></script>

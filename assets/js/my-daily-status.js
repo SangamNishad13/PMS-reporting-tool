@@ -16,15 +16,62 @@
     // Past-date edit logic
     var isPast = !!cfg.isPast;
     var hasPending = !!cfg.hasPending;
+    var hasApprovedAccess = !!cfg.hasApprovedAccess;
+    var hasSubmittedPending = !!cfg.hasSubmittedPending;
     var date = cfg.date || '';
     if (!isPast) return;
 
     var editBtn = document.getElementById('editToggleBtn');
     var saveBtn = document.getElementById('saveRequestBtn');
+    var submitPendingBtn = document.getElementById('submitPendingBtn');
     var updateBtn = document.getElementById('updateStatusBtn');
     var statusSelect = document.getElementById('statusSelect');
     var notesField = document.getElementById('notesField');
     var personalNote = document.getElementById('personal_note');
+
+    function loadDraftData() {
+        return fetch(window.location.pathname + '?action=get_personal_note&date=' + encodeURIComponent(date))
+            .then(function(r){ return r.json(); })
+            .then(function(data) {
+                if (data.success && data.is_pending) {
+                    if (statusSelect) statusSelect.value = data.status || statusSelect.value;
+                    if (notesField) notesField.value = data.notes || '';
+                    if (personalNote) personalNote.value = data.personal_note || '';
+                }
+            })
+            .catch(function(){});
+    }
+
+    function buildPendingPayload() {
+        var fd = new FormData();
+        fd.append('action', 'save_pending');
+        fd.append('date', date);
+        fd.append('status', statusSelect ? statusSelect.value : '');
+        fd.append('notes', notesField ? notesField.value : '');
+        fd.append('personal_note', personalNote ? personalNote.value : '');
+        try {
+            var pendingLogs = [];
+            var proj = document.querySelector('#logProductionHoursForm select[name="project_id"]');
+            if (proj && proj.value) {
+                var taskTypeSel = document.querySelector('#logProductionHoursForm select[name="task_type"]');
+                pendingLogs.push({
+                    project_id: proj.value || null,
+                    task_type: taskTypeSel ? taskTypeSel.value : null,
+                    page_ids: Array.from(document.querySelectorAll('#productionPageSelect option:checked')).map(function(o){ return o.value; }).filter(Boolean),
+                    environment_ids: Array.from(document.querySelectorAll('#productionEnvSelect option:checked')).map(function(o){ return o.value; }).filter(Boolean),
+                    testing_type: document.querySelector('#testingTypeSelect') ? document.querySelector('#testingTypeSelect').value : null,
+                    issue_id: document.querySelector('#productionIssueSelect') ? document.querySelector('#productionIssueSelect').value : null,
+                    hours: document.getElementById('logHoursInput') ? document.getElementById('logHoursInput').value : null,
+                    description: document.getElementById('logDescriptionInput') ? document.getElementById('logDescriptionInput').value : null,
+                    is_utilized: document.querySelector('#logProductionHoursForm input[name="is_utilized"]') ? (document.querySelector('#logProductionHoursForm input[name="is_utilized"]').checked ? 1 : 0) : 1
+                });
+            }
+            fd.append('pending_time_logs', JSON.stringify(pendingLogs));
+        } catch (e) {
+            fd.append('pending_time_logs', '[]');
+        }
+        return fd;
+    }
 
     function setEditable(on) {
         if (statusSelect) statusSelect.disabled = !on;
@@ -48,27 +95,26 @@
         if (logBtn) logBtn.disabled = !on;
         if (on) {
             if (saveBtn) saveBtn.style.display = 'block';
+            if (submitPendingBtn) submitPendingBtn.style.display = 'block';
             if (updateBtn) updateBtn.style.display = 'none';
             var pnc = document.getElementById('personalNoteContainer');
             if (pnc) pnc.style.display = 'block';
         } else {
-            if (saveBtn) saveBtn.style.display = 'none';
+            if (saveBtn) saveBtn.style.display = hasApprovedAccess ? 'block' : 'none';
+            if (submitPendingBtn) submitPendingBtn.style.display = hasApprovedAccess ? 'block' : 'none';
             if (updateBtn) updateBtn.style.display = 'none';
             var pnc2 = document.getElementById('personalNoteContainer');
             if (pnc2) pnc2.style.display = 'none';
         }
     }
 
-    if (hasPending) {
-        fetch(window.location.pathname + '?action=get_personal_note&date=' + encodeURIComponent(date))
-            .then(function(r){ return r.json(); })
-            .then(function(data) {
-                if (data.success && data.is_pending) {
-                    if (statusSelect) statusSelect.value = data.status || statusSelect.value;
-                    if (notesField) notesField.value = data.notes || '';
-                    if (personalNote) personalNote.value = data.personal_note || '';
-                }
-            }).catch(function(){});
+    if (hasPending || hasApprovedAccess) {
+        loadDraftData();
+    }
+
+    if (hasApprovedAccess) {
+        setEditable(true);
+    } else if (hasPending || hasSubmittedPending) {
         setEditable(false);
     } else {
         setEditable(false);
@@ -76,69 +122,91 @@
 
     if (editBtn) {
         editBtn.addEventListener('click', function() {
-            setEditable(true);
-            editBtn.style.display = 'none';
+            var fd = new FormData();
+            fd.append('action', 'request_edit');
+            fd.append('date', date);
+            fd.append('reason', 'Past-date edit access requested from daily status.');
+            editBtn.disabled = true;
+            fetch(window.location.pathname + '?action=request_edit', { method: 'POST', body: fd })
+                .then(function(r){ return r.json(); })
+                .then(function(resp) {
+                    if (!resp || !resp.success) {
+                        throw new Error((resp && (resp.error || resp.message)) || 'Failed to request edit access.');
+                    }
+                    if (typeof showToast === 'function') {
+                        showToast(resp.message || 'Edit access request sent to admin.', 'success');
+                    }
+                    window.location.reload();
+                })
+                .catch(function(err) {
+                    if (typeof showToast === 'function') {
+                        showToast(err.message || 'Failed to request edit access.', 'danger');
+                    }
+                    editBtn.disabled = false;
+                });
         });
     }
 
     if (saveBtn) {
         saveBtn.addEventListener('click', function() {
-            var fd = new FormData();
-            fd.append('action', 'save_pending');
-            fd.append('date', date);
-            fd.append('status', statusSelect ? statusSelect.value : '');
-            fd.append('notes', notesField ? notesField.value : '');
-            fd.append('personal_note', personalNote ? personalNote.value : '');
-            try {
-                var pendingLogs = [];
-                var proj = document.querySelector('#logProductionHoursForm select[name="project_id"]');
-                if (proj) {
-                    var taskTypeSel = document.querySelector('#logProductionHoursForm select[name="task_type"]');
-                    var entry = {
-                        project_id: proj.value || null,
-                        task_type: taskTypeSel ? taskTypeSel.value : null,
-                        page_ids: Array.from(document.querySelectorAll('#productionPageSelect option:checked')).map(function(o){ return o.value; }).filter(Boolean),
-                        environment_ids: Array.from(document.querySelectorAll('#productionEnvSelect option:checked')).map(function(o){ return o.value; }).filter(Boolean),
-                        testing_type: document.querySelector('#testingTypeSelect') ? document.querySelector('#testingTypeSelect').value : null,
-                        issue_id: document.querySelector('#productionIssueSelect') ? document.querySelector('#productionIssueSelect').value : null,
-                        hours: document.getElementById('logHoursInput') ? document.getElementById('logHoursInput').value : null,
-                        description: document.getElementById('logDescriptionInput') ? document.getElementById('logDescriptionInput').value : null,
-                        is_utilized: document.querySelector('#logProductionHoursForm input[name="is_utilized"]') ? (document.querySelector('#logProductionHoursForm input[name="is_utilized"]').checked ? 1 : 0) : 1
-                    };
-                    pendingLogs.push(entry);
-                }
-                fd.append('pending_time_logs', JSON.stringify(pendingLogs));
-            } catch (e) { fd.append('pending_time_logs', '[]'); }
-
+            var fd = buildPendingPayload();
             saveBtn.disabled = true;
             saveBtn.textContent = 'Saving...';
 
             fetch(window.location.pathname + '?action=save_pending', { method: 'POST', body: fd })
             .then(function(r){ return r.json(); })
             .then(function(resp) {
-                if (resp.success) {
-                    var fd2 = new FormData();
-                    fd2.append('action', 'request_edit');
-                    fd2.append('date', date);
-                    fd2.append('reason', 'User requested edit via calendar');
-                    return fetch(window.location.pathname + '?action=request_edit', { method: 'POST', body: fd2 });
-                } else { throw new Error(resp.error || 'Failed to save pending'); }
-            })
-            .then(function(r){ return r.json(); })
-            .then(function(resp2) {
-                if (resp2.success) {
-                    if (typeof showToast === 'function') showToast('Edit request submitted to admins. You will be notified when approved.', 'success');
-                    setEditable(false);
-                    location.reload();
-                } else { throw new Error(resp2.error || 'Failed to request edit'); }
+                if (!resp || !resp.success) {
+                    throw new Error((resp && (resp.error || resp.message)) || 'Failed to save pending changes.');
+                }
+                if (typeof showToast === 'function') {
+                    showToast('Pending changes saved.', 'success');
+                }
             })
             .catch(function(err) {
                 if (typeof showToast === 'function') showToast('Error: ' + (err.message || 'unknown'), 'danger');
             })
             .finally(function() {
                 saveBtn.disabled = false;
-                saveBtn.textContent = 'Save & Request Edit';
+                saveBtn.textContent = 'Save Pending Changes';
             });
+        });
+    }
+
+    if (submitPendingBtn) {
+        submitPendingBtn.addEventListener('click', function() {
+            var fd = buildPendingPayload();
+            submitPendingBtn.disabled = true;
+            submitPendingBtn.textContent = 'Submitting...';
+
+            fetch(window.location.pathname + '?action=save_pending', { method: 'POST', body: fd })
+                .then(function(r){ return r.json(); })
+                .then(function(resp) {
+                    if (!resp || !resp.success) {
+                        throw new Error((resp && (resp.error || resp.message)) || 'Failed to save pending changes.');
+                    }
+                    var submitFd = new FormData();
+                    submitFd.append('action', 'submit_pending');
+                    submitFd.append('date', date);
+                    return fetch(window.location.pathname + '?action=submit_pending', { method: 'POST', body: submitFd });
+                })
+                .then(function(r){ return r.json(); })
+                .then(function(resp) {
+                    if (!resp || !resp.success) {
+                        throw new Error((resp && (resp.error || resp.message)) || 'Failed to submit pending changes.');
+                    }
+                    if (typeof showToast === 'function') {
+                        showToast('Pending changes submitted for admin review.', 'success');
+                    }
+                    window.location.reload();
+                })
+                .catch(function(err) {
+                    if (typeof showToast === 'function') showToast(err.message || 'Failed to submit pending changes.', 'danger');
+                    submitPendingBtn.disabled = false;
+                })
+                .finally(function() {
+                    submitPendingBtn.textContent = 'Submit Pending Changes';
+                });
         });
     }
 })();
@@ -713,9 +781,9 @@ function handleEditLogRequest(logId, dateStr, logData) {
         if (modalHint) modalHint.textContent = 'No admin approval required for same-day edits.';
         if (submitBtn) submitBtn.textContent = 'Update';
     } else {
-        if (modalTitle) modalTitle.textContent = 'Request Log Edit Approval';
-        if (modalHint) modalHint.textContent = 'Admin approval is required. This will send an edit request.';
-        if (submitBtn) submitBtn.textContent = 'Send Request';
+        if (modalTitle) modalTitle.textContent = 'Save Pending Log Edit';
+        if (modalHint) modalHint.textContent = 'This change will be saved in pending edits. Submit all pending changes together when done.';
+        if (submitBtn) submitBtn.textContent = 'Save Pending Edit';
     }
 
     if (!modalEl || !projectSel || !taskTypeSel || !hoursEl || !descEl || !submitBtn) return false;
@@ -758,7 +826,7 @@ function handleEditLogRequest(logId, dateStr, logData) {
         var d = (descEl.value || '').trim();
         if (!projectId || !taskType || !(h > 0) || !d) { if (typeof showToast === 'function') showToast('Project, task type, hours and description are required.', 'warning'); return; }
         
-        // Use edit_log for direct, edit_log_request for approval bypass
+        // Same-day edits update immediately. Older dates save into pending edits.
         var actionKey = isToday ? 'edit_log' : 'edit_log_request';
         var url = '?date=' + encodeURIComponent(dateStr) + '&' + actionKey + '=' + encodeURIComponent(logId) + '&new_project_id=' + encodeURIComponent(projectId) + '&new_task_type=' + encodeURIComponent(taskType) + '&new_page_id=' + encodeURIComponent(pageId) + '&new_environment_id=' + encodeURIComponent(environmentId) + '&new_issue_id=' + encodeURIComponent(issueId) + '&new_phase_id=' + encodeURIComponent(phaseId) + '&new_generic_category_id=' + encodeURIComponent(genericCategoryId) + '&new_testing_type=' + encodeURIComponent(testingType) + '&new_phase_activity=' + encodeURIComponent(phaseActivity) + '&new_generic_task_detail=' + encodeURIComponent(genericDetail) + '&new_hours=' + encodeURIComponent(h) + '&new_description=' + encodeURIComponent(d);
         

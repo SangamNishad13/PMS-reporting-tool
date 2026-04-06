@@ -70,7 +70,7 @@ if ($currentIndex !== false) {
                         <i class="fas fa-project-diagram"></i>
                         <span class="btn-text">
                             <strong>Digital Asset Analytics</strong>
-                            <small>Client-safe asset overview</small>
+                                <small>Asset overview</small>
                         </span>
                     </a>
                     <a href="<?php echo $baseDir; ?>/modules/client/issues_overview.php?project_id=<?php echo $projectId; ?>" 
@@ -78,7 +78,7 @@ if ($currentIndex !== false) {
                         <i class="fas fa-list-ul"></i>
                         <span class="btn-text">
                             <strong>Issue Summary</strong>
-                            <small>Review client-visible issue counts</small>
+                                <small>Review visible issue counts</small>
                         </span>
                     </a>
                 </div>

@@ -293,6 +293,14 @@ $isClientProjectDetailPage = strpos($currentPath, '/modules/projects/view.php') 
                     </li>
 
                     <li class="nav-item">
+                        <a class="nav-link pms-nav-link <?php echo (strpos($currentPath, 'issues_overview') !== false) ? 'active' : ''; ?>" 
+                           href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/issues_overview.php">
+                            <i class="fas fa-list-ul"></i>
+                            <span>Issue Overview</span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
                         <a class="nav-link pms-nav-link <?php echo (strpos($currentPath, 'analytics') !== false || strpos($currentPath, 'view=analytics') !== false) ? 'active' : ''; ?>" 
                            href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/dashboard">
                             <i class="fas fa-chart-line"></i>
@@ -310,26 +318,18 @@ $isClientProjectDetailPage = strpos($currentPath, '/modules/projects/view.php') 
 
                     <?php if (!empty($clientHeaderProjects)): ?>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle pms-nav-link <?php echo (strpos($currentPath, '/client/project/') !== false) ? 'active' : ''; ?>" href="#" id="clientProjectPagesDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-chart-line"></i>
-                            <span>Digital Assets</span>
-                        </a>
-                        <ul class="dropdown-menu shadow-sm" aria-labelledby="clientProjectPagesDropdown">
-                            <?php foreach ($clientHeaderProjects as $clientHeaderProject): ?>
-                            <li>
-                                <a class="dropdown-item" href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $clientHeaderProject['id'], (string) ($clientHeaderProject['title'] ?? ''), (string) ($clientHeaderProject['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>">
-                                    <?php echo htmlspecialchars($clientHeaderProject['title'] ?? ('Asset #' . (int) $clientHeaderProject['id']), ENT_QUOTES, 'UTF-8'); ?>
-                                </a>
-                            </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle pms-nav-link <?php echo $isClientProjectDetailPage ? 'active' : ''; ?>" href="#" id="clientAssetDetailsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <a class="nav-link dropdown-toggle pms-nav-link <?php echo ($isClientProjectDetailPage || strpos($currentPath, 'project_dashboard.php') !== false) ? 'active' : ''; ?>" href="#" id="clientAssetDetailsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fas fa-eye"></i>
                             <span>Asset Analytics</span>
                         </a>
                         <ul class="dropdown-menu shadow-sm" aria-labelledby="clientAssetDetailsDropdown">
+                            <li>
+                                <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/dashboard?report=wcag_compliance#analytics-report-wcag_compliance">
+                                    <i class="fas fa-shield-alt me-2 text-primary opacity-75"></i>
+                                    Accessibility Report
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
                             <?php foreach ($clientHeaderProjects as $clientHeaderProject): ?>
                             <li>
                                 <a class="dropdown-item" href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $clientHeaderProject['id'], (string) ($clientHeaderProject['title'] ?? ''), (string) ($clientHeaderProject['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>">

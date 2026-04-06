@@ -60,7 +60,7 @@ include __DIR__ . '/../../includes/header.php';
                 </nav>
                 <div class="header-content">
                     <h1 class="page-title"><i class="fas fa-percentage text-info"></i> Compliance Overview</h1>
-                    <p class="page-subtitle">Compliance health across your assigned digital assets</p>
+                    <p class="page-subtitle">Compliance health across your digital assets</p>
                 </div>
             </div>
         </div>

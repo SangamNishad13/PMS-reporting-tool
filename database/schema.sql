@@ -1433,7 +1433,7 @@ CREATE TABLE `user_edit_requests` (
   `user_id` int(11) NOT NULL,
   `req_date` date NOT NULL,
   `reason` text DEFAULT NULL,
-  `status` enum('pending','approved','rejected') DEFAULT 'pending',
+  `status` enum('pending','approved','rejected','used') DEFAULT 'pending',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),

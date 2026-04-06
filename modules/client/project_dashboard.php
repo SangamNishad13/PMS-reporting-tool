@@ -68,9 +68,7 @@ if (!isset($cspNonce) && function_exists('generateCspNonce')) {
 }
 
 // Prepare additional CSS
-$additionalCSS = '
-<link href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.css" rel="stylesheet">
-' . $dashboardController->visualization->getVisualizationCSS();
+$additionalCSS = $dashboardController->visualization->getVisualizationCSS();
 
 // Start output buffering for page content
 ob_start();
@@ -96,8 +94,9 @@ ob_start();
 
 </div>
 
-<!-- Chart.js and Dashboard Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- Dashboard Visualization Scripts -->
+<script src="https://code.highcharts.com/highcharts.js"></script>
+<script src="https://code.highcharts.com/modules/accessibility.js"></script>
 <?php echo $dashboardController->visualization->getVisualizationJS(); ?>
 
 <script nonce="<?php echo htmlspecialchars($cspNonce ?? '', ENT_QUOTES, 'UTF-8'); ?>">window._clientProjectConfig = <?php echo json_encode(['projectId' => (int) $projectId, 'clientUserId' => (int) $clientUserId, 'baseDir' => (string) $baseDir], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;</script>

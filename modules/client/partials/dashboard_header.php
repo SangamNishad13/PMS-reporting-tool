@@ -32,9 +32,9 @@ $assetCount = count($assignedProjects);
             <h1 class="hero-title"><?php echo $selectedProject ? htmlspecialchars((string) ($selectedProject['title'] ?? 'Analytics Dashboard'), ENT_QUOTES, 'UTF-8') : 'Analytics Dashboard'; ?></h1>
             <p class="hero-subtitle mb-0">
                 <?php if ($selectedProject): ?>
-                    Focused accessibility analytics for the selected digital asset, with live issue mix, compliance status, and drill-down reports.
+                    Accessibility analytics for the selected digital asset.
                 <?php else: ?>
-                    Comprehensive accessibility analytics across <strong><?php echo $assetCount; ?></strong> assigned digital assets, organized for quick review and export.
+                    Accessibility analytics across <strong><?php echo $assetCount; ?></strong> digital assets.
                 <?php endif; ?>
             </p>
         </div>

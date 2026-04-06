@@ -320,23 +320,14 @@ document.addEventListener('DOMContentLoaded', function() {
             // Past dates - check approval status
             checkEditRequestStatus(normalizedDate, function(pending, approved, status, pendingLocked) {
                 if (approved) {
-                    // Approved requests are already applied by admin flow.
-                    // User should raise a fresh request for any further edits.
-                    showRequestFooter(true);
+                    showRequestFooter(false);
+                    enableEditingForPendingRequest(normalizedDate);
                 } else if (pending) {
-                    // Pending exists: if submitted, keep read-only. Otherwise allow pending edit.
                     showRequestFooter(false);
                     if (pendingLocked) {
                         disableEditing();
                     } else {
-                        var editBtn = document.createElement('button');
-                        editBtn.type = 'button';
-                        editBtn.className = 'btn btn-warning dynamic-btn';
-                        editBtn.textContent = 'Edit Pending Changes';
-                        editBtn.onclick = function() {
-                            enableEditingForPendingRequest(normalizedDate);
-                        };
-                        modalFooter.insertBefore(editBtn, cancelBtn);
+                        disableEditing();
                     }
                 } else {
                     // No pending/approved request: show only Request Edit.
@@ -545,9 +536,6 @@ document.addEventListener('DOMContentLoaded', function() {
             bootstrap.Modal.getOrCreateInstance(modalEl).hide();
         } catch (e) {}
 
-        // Optimistic UI: allow editing immediately after click.
-        enableEditingForPendingRequest(date);
-
         var formData = new FormData();
         formData.append('action', 'request_edit');
         formData.append('date', date);
@@ -560,9 +548,10 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showToast('Edit request sent successfully! You can now make changes that will be saved as pending.', 'success');
+                disableEditing();
+                addModalButtons(date);
+                showToast(data.message || 'Edit access request sent successfully. You can edit after admin approval.', 'success');
             } else {
-                // Rollback optimistic state on server failure.
                 disableEditing();
                 addModalButtons(date);
                 showToast('Failed to send edit request: ' + (data.error || 'Unknown error'), 'danger');
@@ -572,7 +561,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            // Rollback optimistic state on request failure.
             disableEditing();
             addModalButtons(date);
             showToast('Failed to send edit request. Please try again.', 'danger');
@@ -867,8 +855,14 @@ document.addEventListener('DOMContentLoaded', function() {
             var isOlderPastDate = date < todayStr && !isEditableDate(date);
             if (!isAdmin && isOlderPastDate) {
                 checkEditRequestStatus(date, function(pending, approved, status, pendingLocked) {
-                    if (!pending) {
-                        notifyCalendar('Please send an Edit Request first for this date.', 'warning');
+                    if (!approved) {
+                        if (pending && !pendingLocked) {
+                            notifyCalendar('Edit access for this date is still waiting for admin approval.', 'warning');
+                        } else if (pendingLocked) {
+                            notifyCalendar('Pending changes are already submitted and locked. You cannot edit until admin reviews.', 'warning');
+                        } else {
+                            notifyCalendar('Please get edit access approved first for this date.', 'warning');
+                        }
                         if (submitBtn) {
                             submitBtn.disabled = false;
                             submitBtn.textContent = oldLabel || 'Log Hours';
@@ -1000,6 +994,11 @@ document.addEventListener('DOMContentLoaded', function() {
     if (globalCalForm && !globalCalForm.dataset.boundSubmit) {
         globalCalForm.addEventListener('submit', submitCalendarLogHours);
         globalCalForm.dataset.boundSubmit = '1';
+    }
+    var logTimeBtn = document.getElementById('logTimeBtn');
+    if (logTimeBtn && !logTimeBtn.dataset.boundClick) {
+        logTimeBtn.addEventListener('click', submitCalendarLogHours);
+        logTimeBtn.dataset.boundClick = '1';
     }
     var openLogBtn = document.getElementById('openLogHoursModalBtn');
     if (openLogBtn && !openLogBtn.dataset.boundClick) {

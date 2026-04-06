@@ -64,8 +64,20 @@ issue_upload_debug_log('File received: name=' . ($file['name'] ?? 'N/A') . ', si
 // Validate file
 if ($file['error'] !== UPLOAD_ERR_OK) {
     issue_upload_debug_log('Upload error: ' . $file['error']);
+    $uploadErrorMessages = [
+        UPLOAD_ERR_INI_SIZE => 'Uploaded file exceeds the server upload limit. Please try a smaller screenshot.',
+        UPLOAD_ERR_FORM_SIZE => 'Uploaded file exceeds the allowed form upload size. Please try a smaller screenshot.',
+        UPLOAD_ERR_PARTIAL => 'File upload was interrupted. Please try again.',
+        UPLOAD_ERR_NO_FILE => 'No file was uploaded.',
+        UPLOAD_ERR_NO_TMP_DIR => 'Upload temporary directory is missing on the server.',
+        UPLOAD_ERR_CANT_WRITE => 'Server could not write the uploaded file.',
+        UPLOAD_ERR_EXTENSION => 'A server extension stopped the upload.'
+    ];
     http_response_code(400);
-    echo json_encode(['error' => 'Upload error: ' . $file['error']]);
+    echo json_encode([
+        'error' => $uploadErrorMessages[$file['error']] ?? ('Upload error: ' . $file['error']),
+        'code' => (int) $file['error']
+    ]);
     exit;
 }
 

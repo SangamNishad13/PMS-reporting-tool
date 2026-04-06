@@ -21,7 +21,7 @@ class PageIssuesAnalytics extends AnalyticsEngine {
      * @return AnalyticsReport
      */
     public function generateReport($projectId = null, $clientId = null) {
-        $cacheKey = $this->generateCacheKey('page_issues', $projectId, $clientId);
+        $cacheKey = $this->generateCacheKey('page_issues_v2', $projectId, $clientId);
         
         if ($cached = $this->getCachedReport($cacheKey)) {
             return $cached;
@@ -131,12 +131,18 @@ class PageIssuesAnalytics extends AnalyticsEngine {
             $pageUrl = $this->normalizePageUrl($issue['page_url'] ?? 'Unknown');
             
             if (!isset($pageGroups[$pageUrl])) {
+                $pageId = (int) ($issue['page_id'] ?? 0);
+                $projectId = (int) ($issue['project_id'] ?? 0);
+                $issueId = (int) ($issue['id'] ?? 0);
                 $pageGroups[$pageUrl] = [
                     'url' => $pageUrl,
                     'issues' => [],
                     'severities' => [],
                     'categories' => [],
-                    'statuses' => []
+                    'statuses' => [],
+                    'page_id' => $pageId,
+                    'project_id' => $projectId,
+                    'sample_issue_id' => $issueId,
                 ];
             }
             
@@ -212,6 +218,9 @@ class PageIssuesAnalytics extends AnalyticsEngine {
             $pageMetrics[] = [
                 'url' => $pageUrl,
                 'display_url' => $this->getDisplayUrl($pageUrl),
+                'project_id' => (int) ($group['project_id'] ?? 0),
+                'page_id' => (int) ($group['page_id'] ?? 0),
+                'sample_issue_id' => (int) ($group['sample_issue_id'] ?? 0),
                 'issue_count' => $issueCount,
                 'severity_score' => $severityScore,
                 'complexity_score' => $complexityScore,
@@ -500,6 +509,11 @@ class PageIssuesAnalytics extends AnalyticsEngine {
             $topPages[] = [
                 'rank' => $index + 1,
                 'url' => $page['display_url'],
+                'raw_url' => $page['url'],
+                'display_url' => $page['display_url'],
+                'project_id' => (int) ($page['project_id'] ?? 0),
+                'page_id' => (int) ($page['page_id'] ?? 0),
+                'sample_issue_id' => (int) ($page['sample_issue_id'] ?? 0),
                 'issue_count' => $page['issue_count'],
                 'severity_score' => $page['severity_score'],
                 'issue_density' => $page['issue_density'],

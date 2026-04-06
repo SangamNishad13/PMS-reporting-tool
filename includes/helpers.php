@@ -206,7 +206,30 @@ function getClientProjectRouteKey($projectId, $projectTitle = '', $projectCode =
 }
 
 function buildClientProjectUrl($projectId, $projectTitle = '', $projectCode = '', array $query = []) {
-    $url = getBaseDir() . '/client/project/' . rawurlencode(getClientProjectRouteKey((int) $projectId, (string) $projectTitle, (string) $projectCode));
+    $projectId = (int) $projectId;
+    $projectTitle = (string) $projectTitle;
+    $projectCode = (string) $projectCode;
+
+    if ($projectId > 0 && $projectCode === '' && class_exists('Database')) {
+        try {
+            $db = Database::getInstance();
+            $stmt = $db->prepare('SELECT title, project_code FROM projects WHERE id = ? LIMIT 1');
+            $stmt->execute([$projectId]);
+            $projectRow = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+            if ($projectTitle === '' && !empty($projectRow['title'])) {
+                $projectTitle = (string) $projectRow['title'];
+            }
+
+            if ($projectCode === '' && !empty($projectRow['project_code'])) {
+                $projectCode = (string) $projectRow['project_code'];
+            }
+        } catch (Throwable $e) {
+            error_log('buildClientProjectUrl metadata lookup failed: ' . $e->getMessage());
+        }
+    }
+
+    $url = getBaseDir() . '/client/project/' . rawurlencode(getClientProjectRouteKey($projectId, $projectTitle, $projectCode));
 
     if (!empty($query)) {
         $url .= '?' . http_build_query($query);

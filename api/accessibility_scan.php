@@ -988,7 +988,7 @@ try {
 
     $combinedFindings = [];
     $summary = ['issues' => 0, 'critical' => 0, 'serious' => 0, 'moderate' => 0, 'minor' => 0];
-    $scanMode = trim((string)($_POST['scan_mode'] ?? 'default'));
+    $scanMode = 'default';
     foreach ($scanUrls as $targetUrlRaw) {
         $targetUrl = normalizeScanUrl($targetUrlRaw);
         if ($targetUrl === null) continue;

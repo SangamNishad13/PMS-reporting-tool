@@ -4,7 +4,7 @@
  * VisualizationRenderer Class
  * 
  * Handles rendering of interactive charts, tables, and dashboard widgets
- * with Chart.js integration and accessibility compliance.
+ * with accessible chart integration and compliance-focused defaults.
  * 
  * Requirements: 16.1, 16.2, 16.3, 16.4
  */
@@ -13,6 +13,7 @@ class VisualizationRenderer implements VisualizationInterface {
     
     private $chartIdCounter = 0;
     private $accessibilityConfig;
+    private $commentsModalRendered = false;
     
     public function __construct() {
         $this->accessibilityConfig = [
@@ -39,11 +40,11 @@ class VisualizationRenderer implements VisualizationInterface {
     }
     
     /**
-     * Render interactive pie chart using Chart.js
+    * Render interactive pie chart using Highcharts
      * 
      * @param array $data Chart data with labels and datasets
      * @param array $options Chart configuration options
-     * @return string HTML with embedded Chart.js pie chart
+    * @return string HTML with embedded Highcharts pie chart
      */
     public function renderPieChart(array $data, array $options = []): string {
         if (empty($data) || empty($data['labels']) || empty($data['datasets'])) {
@@ -51,17 +52,17 @@ class VisualizationRenderer implements VisualizationInterface {
         }
         
         $chartId = $this->generateChartId('pie');
-        $config = $this->buildPieChartConfig($data, $options);
-        
-        return $this->generateChartHTML($chartId, $config, 'pie');
+        $config = $this->buildHighchartsPieConfig($data, $options);
+
+        return $this->generateHighchartsHTML($chartId, $config, $options['title'] ?? 'Pie chart visualization', (int) ($options['height'] ?? 400), $data);
     }
     
     /**
-     * Render interactive bar chart using Chart.js
+    * Render interactive bar chart using Highcharts
      * 
      * @param array $data Chart data with labels and datasets
      * @param array $options Chart configuration options
-     * @return string HTML with embedded Chart.js bar chart
+    * @return string HTML with embedded Highcharts bar chart
      */
     public function renderBarChart(array $data, array $options = []): string {
         if (empty($data) || empty($data['labels']) || empty($data['datasets'])) {
@@ -69,17 +70,17 @@ class VisualizationRenderer implements VisualizationInterface {
         }
         
         $chartId = $this->generateChartId('bar');
-        $config = $this->buildBarChartConfig($data, $options);
-        
-        return $this->generateChartHTML($chartId, $config, 'bar');
+        $config = $this->buildHighchartsBarConfig($data, $options);
+
+        return $this->generateHighchartsHTML($chartId, $config, $options['title'] ?? 'Bar chart visualization', (int) ($options['height'] ?? 400), $data);
     }
     
     /**
-     * Render interactive line chart using Chart.js
+    * Render interactive line chart using Highcharts
      * 
      * @param array $data Chart data with labels and datasets
      * @param array $options Chart configuration options
-     * @return string HTML with embedded Chart.js line chart
+    * @return string HTML with embedded Highcharts line chart
      */
     public function renderLineChart(array $data, array $options = []): string {
         if (empty($data) || empty($data['labels']) || empty($data['datasets'])) {
@@ -87,9 +88,9 @@ class VisualizationRenderer implements VisualizationInterface {
         }
         
         $chartId = $this->generateChartId('line');
-        $config = $this->buildLineChartConfig($data, $options);
-        
-        return $this->generateChartHTML($chartId, $config, 'line');
+        $config = $this->buildHighchartsLineConfig($data, $options);
+
+        return $this->generateHighchartsHTML($chartId, $config, $options['title'] ?? 'Line chart visualization', (int) ($options['height'] ?? 400), $data);
     }
     
     /**
@@ -331,11 +332,219 @@ class VisualizationRenderer implements VisualizationInterface {
             '#dc2626', // Red - WCAG AA compliant
             '#16a34a', // Green - WCAG AA compliant
             '#ca8a04', // Yellow/Gold - WCAG AA compliant
-            '#9333ea', // Purple - WCAG AA compliant
+            '#475569', // Slate - WCAG AA compliant
             '#ea580c', // Orange - WCAG AA compliant
             '#0891b2', // Cyan - WCAG AA compliant
             '#be185d', // Pink - WCAG AA compliant
         ];
+    }
+
+    private function getHighchartsBaseConfig(array $options, string $chartType): array {
+        $title = (string) ($options['title'] ?? '');
+        $description = (string) ($options['description'] ?? ($title !== '' ? $title : ucfirst($chartType) . ' chart visualization'));
+
+        return [
+            'chart' => [
+                'type' => $chartType,
+                'backgroundColor' => 'transparent',
+                'style' => [
+                    'fontFamily' => 'Manrope, Inter, sans-serif'
+                ],
+                'spacing' => [16, 16, 16, 16]
+            ],
+            'title' => [
+                'text' => $title !== '' ? $title : null,
+                'style' => [
+                    'fontSize' => '16px',
+                    'fontWeight' => '700'
+                ]
+            ],
+            'credits' => ['enabled' => false],
+            'legend' => [
+                'enabled' => $options['displayLegend'] ?? true,
+                'itemStyle' => [
+                    'fontWeight' => '600',
+                    'color' => '#334155'
+                ]
+            ],
+            'accessibility' => [
+                'enabled' => true,
+                'description' => $description,
+                'keyboardNavigation' => ['enabled' => true],
+                'screenReaderSection' => [
+                    'beforeChartFormat' => '<h4>{chartTitle}</h4><p>' . htmlspecialchars($description, ENT_QUOTES, 'UTF-8') . '</p>'
+                ]
+            ],
+            'tooltip' => [
+                'shared' => true,
+                'valueDecimals' => 1
+            ]
+        ];
+    }
+
+    private function buildHighchartsPieConfig(array $data, array $options): array {
+        $palette = $this->getAccessibleColorPalette();
+        $dataset = $data['datasets'][0] ?? [];
+        $seriesData = [];
+
+        foreach ($data['labels'] as $index => $label) {
+            $seriesData[] = [
+                'name' => (string) $label,
+                'y' => (float) ($dataset['data'][$index] ?? 0),
+                'color' => $dataset['backgroundColor'][$index] ?? $palette[$index % count($palette)]
+            ];
+        }
+
+        $config = $this->getHighchartsBaseConfig($options, 'pie');
+        $config['tooltip']['pointFormat'] = '<span style="color:{point.color}">●</span> <b>{point.percentage:.1f}%</b> ({point.y})<br/>';
+        $config['plotOptions'] = [
+            'pie' => [
+                'allowPointSelect' => true,
+                'cursor' => 'pointer',
+                'showInLegend' => true,
+                'dataLabels' => [
+                    'enabled' => true,
+                    'format' => '{point.name}: {point.percentage:.1f}%'
+                ]
+            ]
+        ];
+        $config['series'] = [[
+            'name' => (string) ($dataset['label'] ?? 'Value'),
+            'data' => $seriesData
+        ]];
+
+        return $config;
+    }
+
+    private function buildHighchartsBarConfig(array $data, array $options): array {
+        $palette = $this->getAccessibleColorPalette();
+        $chartType = !empty($options['horizontal']) ? 'bar' : 'column';
+        $config = $this->getHighchartsBaseConfig($options, $chartType);
+        $config['xAxis'] = [
+            'categories' => array_values($data['labels']),
+            'labels' => ['style' => ['color' => '#475569']]
+        ];
+        $config['yAxis'] = [
+            'min' => 0,
+            'title' => ['text' => $options['yAxisTitle'] ?? null],
+            'allowDecimals' => true
+        ];
+        $config['plotOptions'] = [
+            $chartType => [
+                'borderRadius' => 6,
+                'pointPadding' => 0.08,
+                'groupPadding' => 0.12,
+                'dataLabels' => ['enabled' => false]
+            ]
+        ];
+        $config['series'] = [];
+
+        foreach ($data['datasets'] as $index => $dataset) {
+            $config['series'][] = [
+                'name' => (string) ($dataset['label'] ?? ('Series ' . ($index + 1))),
+                'data' => array_map('floatval', $dataset['data'] ?? []),
+                'color' => $dataset['backgroundColor'] ?? $palette[$index % count($palette)]
+            ];
+        }
+
+        return $config;
+    }
+
+    private function buildHighchartsLineConfig(array $data, array $options): array {
+        $palette = $this->getAccessibleColorPalette();
+        $config = $this->getHighchartsBaseConfig($options, 'line');
+        $config['xAxis'] = [
+            'categories' => array_values($data['labels']),
+            'labels' => ['style' => ['color' => '#475569']]
+        ];
+        $config['yAxis'] = [
+            'min' => 0,
+            'title' => ['text' => $options['yAxisTitle'] ?? null]
+        ];
+        $config['plotOptions'] = [
+            'series' => [
+                'marker' => ['enabled' => true, 'radius' => 4],
+                'lineWidth' => 3
+            ]
+        ];
+        $config['series'] = [];
+
+        foreach ($data['datasets'] as $index => $dataset) {
+            $config['series'][] = [
+                'name' => (string) ($dataset['label'] ?? ('Series ' . ($index + 1))),
+                'data' => array_map('floatval', $dataset['data'] ?? []),
+                'color' => $dataset['borderColor'] ?? $dataset['backgroundColor'] ?? $palette[$index % count($palette)]
+            ];
+        }
+
+        return $config;
+    }
+
+    private function generateHighchartsHTML(string $chartId, array $config, string $description, int $height, array $rawData = []): string {
+        $scriptNonce = $this->getScriptNonceAttribute();
+        $height = max(180, $height);
+        $configJson = json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        $html = '<div class="chart-container highcharts-chart-container" style="position: relative; min-height: ' . $height . 'px; margin: 20px 0;">';
+        $html .= '<div id="' . $chartId . '" class="highcharts-chart-host" role="img" aria-label="' . htmlspecialchars($description, ENT_QUOTES, 'UTF-8') . '"></div>';
+        $html .= '<div id="' . $chartId . '_description" class="sr-only">';
+        $html .= htmlspecialchars($description, ENT_QUOTES, 'UTF-8');
+        if (!empty($rawData['labels'])) {
+            $html .= ' Data includes: ' . htmlspecialchars(implode(', ', $rawData['labels']), ENT_QUOTES, 'UTF-8');
+        }
+        $html .= '</div>';
+        $html .= '</div>';
+
+        $html .= '<script' . $scriptNonce . '>';
+        $html .= 'document.addEventListener("DOMContentLoaded", function() {';
+        $html .= '  function loadScript(src) {';
+        $html .= '    return new Promise(function(resolve, reject) {';
+        $html .= '      var existing = document.querySelector("script[src=\"" + src + "\"]");';
+        $html .= '      if (existing) {';
+        $html .= '        if (existing.getAttribute("data-loaded") === "true") {';
+        $html .= '          resolve();';
+        $html .= '          return;';
+        $html .= '        }';
+        $html .= '        existing.addEventListener("load", function() { resolve(); }, { once: true });';
+        $html .= '        existing.addEventListener("error", reject, { once: true });';
+        $html .= '        return;';
+        $html .= '      }';
+        $html .= '      var script = document.createElement("script");';
+        $html .= '      script.src = src;';
+        $html .= '      script.async = true;';
+        $html .= '      script.addEventListener("load", function() {';
+        $html .= '        script.setAttribute("data-loaded", "true");';
+        $html .= '        resolve();';
+        $html .= '      }, { once: true });';
+        $html .= '      script.addEventListener("error", reject, { once: true });';
+        $html .= '      document.head.appendChild(script);';
+        $html .= '    });';
+        $html .= '  }';
+        $html .= '  function ensureHighcharts() {';
+        $html .= '    if (typeof Highcharts !== "undefined") {';
+        $html .= '      return Promise.resolve();';
+        $html .= '    }';
+        $html .= '    if (!window.__pmsHighchartsLoader) {';
+        $html .= '      window.__pmsHighchartsLoader = loadScript("https://code.highcharts.com/highcharts.js")';
+        $html .= '        .then(function() { return loadScript("https://code.highcharts.com/modules/accessibility.js"); });';
+        $html .= '    }';
+        $html .= '    return window.__pmsHighchartsLoader;';
+        $html .= '  }';
+        $html .= '  ensureHighcharts()';
+        $html .= '    .then(function() {';
+        $html .= '      if (typeof Highcharts === "undefined") {';
+        $html .= '        throw new Error("Highcharts unavailable after load");';
+        $html .= '      }';
+        $html .= '      Highcharts.chart("' . $chartId . '", ' . $configJson . ');';
+        $html .= '    })';
+        $html .= '    .catch(function(error) {';
+        $html .= '      console.error("Highcharts library not loaded", error);';
+        $html .= '      document.getElementById("' . $chartId . '").innerHTML = "<div class=\"alert alert-warning\">Highcharts library required for visualization</div>";';
+        $html .= '    });';
+        $html .= '});';
+        $html .= '</script>';
+
+        return $html;
     }
     
     /**
@@ -551,7 +760,13 @@ class VisualizationRenderer implements VisualizationInterface {
         $reportType = htmlspecialchars($data['reportType'] ?? '');
         $summary = $data['summary'] ?? [];
         $drillDownUrl = htmlspecialchars($data['drillDownUrl'] ?? '');
+        $drillDownLabel = htmlspecialchars($data['drillDownLabel'] ?? 'View full report');
         $icon = htmlspecialchars($data['icon'] ?? 'fas fa-analytics');
+        $emptyMessage = htmlspecialchars($data['emptyMessage'] ?? 'No data available for this report yet.');
+        $issueList = is_array($data['issueList'] ?? null) ? $data['issueList'] : [];
+        $issueListTitle = htmlspecialchars($data['issueListTitle'] ?? 'Issue list');
+        $issueListEmptyMessage = htmlspecialchars($data['issueListEmptyMessage'] ?? 'No issues available right now.');
+        $detailList = is_array($data['detailList'] ?? null) ? $data['detailList'] : [];
         
         $html = '<div class="dashboard-widget analytics-widget" id="' . $widgetId . '"';
         if ($reportType !== '') {
@@ -584,13 +799,241 @@ class VisualizationRenderer implements VisualizationInterface {
                 $html .= '</div>';
             }
             $html .= '</div>';
+        } else {
+            $html .= '<div class="analytics-empty-state text-center py-4">';
+            $html .= '<div class="metric-value">0</div>';
+            $html .= '<div class="metric-label">' . $title . '</div>';
+            $html .= '<div class="text-muted small mt-2">' . $emptyMessage . '</div>';
+            $html .= '</div>';
         }
         
         // Quick chart if provided
         if (isset($data['quickChart'])) {
             $html .= '<div class="quick-chart">';
-            $html .= $this->renderPieChart($data['quickChart'], ['height' => 200]);
+            $html .= $this->renderPieChart($data['quickChart'], ['height' => 320]);
             $html .= '</div>';
+        }
+
+        if (array_key_exists('issueList', $data)) {
+            $activeIssueList = [];
+            $resolvedIssueList = [];
+
+            foreach ($issueList as $issue) {
+                $issueStatus = strtolower((string) ($issue['status'] ?? ''));
+                if (in_array($issueStatus, ['resolved', 'closed'], true)) {
+                    $resolvedIssueList[] = $issue;
+                } else {
+                    $activeIssueList[] = $issue;
+                }
+            }
+
+            $html .= '<div class="analytics-issue-list">';
+            $html .= '<div class="analytics-issue-list-header">';
+            $html .= '<h4 class="analytics-issue-list-title">' . $issueListTitle . '</h4>';
+            $html .= '<span class="analytics-issue-list-count">' . count($issueList) . '</span>';
+            $html .= '</div>';
+
+            if (!empty($issueList)) {
+                foreach ([
+                    'Active blockers' => $activeIssueList,
+                    'Resolved blockers' => $resolvedIssueList,
+                ] as $sectionTitle => $sectionIssues) {
+                    if (empty($sectionIssues)) {
+                        continue;
+                    }
+
+                    $html .= '<div class="issue-link-section">';
+                    $html .= '<div class="issue-link-section-header">';
+                    $html .= '<span class="issue-link-section-title">' . htmlspecialchars($sectionTitle) . '</span>';
+                    $html .= '<span class="issue-link-section-count">' . count($sectionIssues) . '</span>';
+                    $html .= '</div>';
+                    $html .= '<div class="issue-link-list">';
+
+                    foreach ($sectionIssues as $issue) {
+                        $itemTitle = htmlspecialchars($issue['title'] ?? 'Untitled Issue');
+                        $itemUrl = htmlspecialchars($issue['url'] ?? '');
+                        $itemMeta = htmlspecialchars($issue['meta'] ?? '');
+                        $itemStatus = htmlspecialchars($issue['status'] ?? 'Open');
+                        $itemIssueKey = htmlspecialchars($issue['issueKey'] ?? '');
+                        $impactScore = isset($issue['impactScore']) ? htmlspecialchars((string) $issue['impactScore']) : '';
+                        $pageUrl = htmlspecialchars($issue['pageUrl'] ?? '');
+
+                        $html .= '<div class="issue-link-item">';
+                        $html .= '<div class="issue-link-main">';
+                        $html .= '<div class="issue-link-title-row">';
+                        if ($itemIssueKey !== '') {
+                            $html .= '<span class="issue-link-key">' . $itemIssueKey . '</span>';
+                        }
+                        if ($itemUrl !== '') {
+                            $html .= '<a class="issue-link-anchor" href="' . $itemUrl . '">' . $itemTitle . '</a>';
+                        } else {
+                            $html .= '<div class="issue-link-anchor is-static">' . $itemTitle . '</div>';
+                        }
+                        $html .= '</div>';
+
+                        if ($itemMeta !== '') {
+                            $html .= '<div class="issue-link-meta">' . $itemMeta . '</div>';
+                        }
+                        if ($pageUrl !== '') {
+                            $html .= '<div class="issue-link-submeta">' . $pageUrl . '</div>';
+                        }
+                        $html .= '</div>';
+
+                        $html .= '<div class="issue-link-side">';
+                        $html .= '<span class="issue-link-badge">' . $itemStatus . '</span>';
+                        if ($impactScore !== '') {
+                            $html .= '<span class="issue-link-score">Impact ' . $impactScore . '</span>';
+                        }
+                        $html .= '</div>';
+                        $html .= '</div>';
+                    }
+
+                    $html .= '</div>';
+                    $html .= '</div>';
+                }
+
+                if ($drillDownUrl !== '') {
+                    $html .= '<div class="analytics-issue-list-footer">';
+                    $html .= '<a class="analytics-issue-list-link" href="' . $drillDownUrl . '">' . $drillDownLabel . '</a>';
+                    $html .= '</div>';
+                }
+            } else {
+                $html .= '<div class="analytics-issue-list-empty">' . $issueListEmptyMessage . '</div>';
+            }
+
+            $html .= '</div>';
+        }
+
+        if (!empty($detailList)) {
+            $detailTitle = htmlspecialchars($detailList['title'] ?? 'Details');
+            $detailEmptyMessage = htmlspecialchars($detailList['emptyMessage'] ?? 'No details available right now.');
+            $detailSections = is_array($detailList['sections'] ?? null) ? $detailList['sections'] : [];
+            $detailCount = 0;
+            foreach ($detailSections as $detailSection) {
+                $detailCount += count($detailSection['items'] ?? []);
+            }
+
+            $html .= '<div class="analytics-issue-list analytics-detail-list">';
+            $html .= '<div class="analytics-issue-list-header">';
+            $html .= '<h4 class="analytics-issue-list-title">' . $detailTitle . '</h4>';
+            $html .= '<span class="analytics-issue-list-count">' . $detailCount . '</span>';
+            $html .= '</div>';
+
+            if ($detailCount > 0) {
+                foreach ($detailSections as $detailSection) {
+                    $sectionItems = is_array($detailSection['items'] ?? null) ? $detailSection['items'] : [];
+                    if (empty($sectionItems)) {
+                        continue;
+                    }
+
+                    $sectionTitle = htmlspecialchars($detailSection['title'] ?? 'Items');
+                    $html .= '<div class="issue-link-section">';
+                    $html .= '<div class="issue-link-section-header">';
+                    $html .= '<span class="issue-link-section-title">' . $sectionTitle . '</span>';
+                    $html .= '<span class="issue-link-section-count">' . count($sectionItems) . '</span>';
+                    $html .= '</div>';
+                    $html .= '<div class="issue-link-list">';
+
+                    foreach ($sectionItems as $item) {
+                        $itemTitle = htmlspecialchars($item['title'] ?? 'Untitled');
+                        $itemUrl = htmlspecialchars($item['url'] ?? '');
+                        $itemKey = htmlspecialchars($item['key'] ?? '');
+                        $itemMeta = htmlspecialchars($item['meta'] ?? '');
+                        $itemSubmeta = htmlspecialchars($item['submeta'] ?? '');
+                        $itemBadges = is_array($item['badges'] ?? null) ? $item['badges'] : [];
+                        $itemAction = is_array($item['action'] ?? null) ? $item['action'] : [];
+
+                        $html .= '<div class="issue-link-item">';
+                        $html .= '<div class="issue-link-main">';
+                        $html .= '<div class="issue-link-title-row">';
+                        if ($itemKey !== '') {
+                            $html .= '<span class="issue-link-key">' . $itemKey . '</span>';
+                        }
+                        if ($itemUrl !== '') {
+                            $html .= '<a class="issue-link-anchor" href="' . $itemUrl . '">' . $itemTitle . '</a>';
+                        } else {
+                            $html .= '<div class="issue-link-anchor is-static">' . $itemTitle . '</div>';
+                        }
+                        $html .= '</div>';
+
+                        if ($itemMeta !== '') {
+                            $html .= '<div class="issue-link-meta">' . $itemMeta . '</div>';
+                        }
+                        if ($itemSubmeta !== '') {
+                            $html .= '<div class="issue-link-submeta">' . $itemSubmeta . '</div>';
+                        }
+                        $html .= '</div>';
+
+                        if (!empty($itemBadges) || !empty($itemAction)) {
+                            $html .= '<div class="issue-link-side">';
+                            foreach ($itemBadges as $badge) {
+                                if (is_array($badge)) {
+                                    $badgeLabel = htmlspecialchars($badge['label'] ?? '');
+                                    $badgeClassName = htmlspecialchars($badge['className'] ?? 'issue-link-badge');
+                                } else {
+                                    $badgeLabel = htmlspecialchars((string) $badge);
+                                    $badgeClassName = 'issue-link-badge';
+                                }
+
+                                if ($badgeLabel !== '') {
+                                    $html .= '<span class="' . $badgeClassName . '">' . $badgeLabel . '</span>';
+                                }
+                            }
+
+                            if (!empty($itemAction) && !empty($itemAction['label'])) {
+                                $actionLabel = htmlspecialchars((string) $itemAction['label']);
+                                $actionClassName = htmlspecialchars((string) ($itemAction['className'] ?? 'issue-link-score issue-link-action'));
+                                $actionType = (string) ($itemAction['type'] ?? 'button');
+                                $actionAttributes = '';
+
+                                foreach ((array) ($itemAction['attributes'] ?? []) as $attributeName => $attributeValue) {
+                                    $attributeName = trim((string) $attributeName);
+                                    if ($attributeName === '') {
+                                        continue;
+                                    }
+
+                                    $actionAttributes .= ' ' . htmlspecialchars($attributeName, ENT_QUOTES, 'UTF-8')
+                                        . '="' . htmlspecialchars((string) $attributeValue, ENT_QUOTES, 'UTF-8') . '"';
+                                }
+
+                                if ($actionType === 'link' && !empty($itemAction['url'])) {
+                                    $html .= '<a class="' . $actionClassName . '" href="' . htmlspecialchars((string) $itemAction['url'], ENT_QUOTES, 'UTF-8') . '"' . $actionAttributes . '>' . $actionLabel . '</a>';
+                                } else {
+                                    $html .= '<button type="button" class="' . $actionClassName . '"' . $actionAttributes . '>' . $actionLabel . '</button>';
+                                }
+                            }
+
+                            $html .= '</div>';
+                        }
+                        $html .= '</div>';
+                    }
+
+                    $html .= '</div>';
+                    $html .= '</div>';
+                }
+            } else {
+                $html .= '<div class="analytics-issue-list-empty">' . $detailEmptyMessage . '</div>';
+            }
+
+            $html .= '</div>';
+        }
+
+        if (!$this->commentsModalRendered) {
+            $html .= '<div class="modal fade analytics-comments-modal" id="analyticsCommentsModal" tabindex="-1" aria-labelledby="analyticsCommentsModalLabel" aria-hidden="true">';
+            $html .= '<div class="modal-dialog modal-dialog-scrollable modal-lg">';
+            $html .= '<div class="modal-content">';
+            $html .= '<div class="modal-header">';
+            $html .= '<h5 class="modal-title" id="analyticsCommentsModalLabel">Issue comments</h5>';
+            $html .= '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>';
+            $html .= '</div>';
+            $html .= '<div class="modal-body">';
+            $html .= '<div class="analytics-comments-loading text-muted">Select an issue to load comments.</div>';
+            $html .= '<div class="analytics-comments-list d-none"></div>';
+            $html .= '</div>';
+            $html .= '</div>';
+            $html .= '</div>';
+            $html .= '</div>';
+            $this->commentsModalRendered = true;
         }
         
         // Action buttons

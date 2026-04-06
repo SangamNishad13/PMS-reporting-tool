@@ -903,9 +903,6 @@ include __DIR__ . '/../../includes/header.php';
                             <button class="btn btn-sm btn-outline-primary" id="needsReviewRunScanBtn" title="Run standard rule-based accessibility scan" type="button">
                                 <i class="fas fa-universal-access me-1"></i> Run Scan
                             </button>
-                            <button class="btn btn-sm btn-outline-info" id="needsReviewRunAiDeepAuditBtn" title="Run holistic AI-driven accessibility audit (slower but deeper)" type="button">
-                                <i class="fas fa-robot me-1"></i> AI Deep Audit
-                            </button>
                         </div>
                     </div>
                     <div class="px-3 py-2 border-bottom bg-white d-none" id="needsReviewScanProgressWrap">
@@ -1195,7 +1192,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                 closeList();
                 var isHeader = (idx === 0) || (line.length < 100 && /:$/.test(line)) || (line === line.toUpperCase() && line.length < 50);
                 if (isHeader) {
-                    html += '<div class="mb-2 fw-semibold text-primary" style="font-size:0.95rem;">' + simpleCodeHighlight(line) + '</div>';
+                    html += '<div class="mb-2" style="font-size:0.95rem;">' + simpleCodeHighlight(line) + '</div>';
                 } else {
                     html += '<div class="mb-2 text-muted-foreground" style="font-size:0.9rem;">' + simpleCodeHighlight(line) + '</div>';
                 }
@@ -1444,12 +1441,6 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         var grouped = Array.isArray(cfg.groupedUrls) ? cfg.groupedUrls : [];
         grouped.forEach(function (g) {
             var u = String((g && (g.url || g.normalized_url)) || '').trim();
-            if (u) urls.push(u);
-        });
-
-        var pPages = Array.isArray(cfg.projectPages) ? cfg.projectPages : [];
-        pPages.forEach(function (p) {
-            var u = String((p && p.url) || '').trim();
             if (u) urls.push(u);
         });
 
@@ -2059,9 +2050,8 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
     }
 
     async function runAutomatedScanForCurrentPage(scanUrls, mode) {
-        var scanMode = String(mode || 'default').toLowerCase();
+        var scanMode = 'default';
         var btn = document.getElementById('needsReviewRunScanBtn');
-        var aiBtn = document.getElementById('needsReviewRunAiDeepAuditBtn');
         var runSelectedBtn = document.getElementById('needsReviewRunSelectedScanBtn');
         var progressWrap = document.getElementById('needsReviewScanProgressWrap');
         var progressText = document.getElementById('needsReviewScanProgressText');
@@ -2070,7 +2060,6 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         var cancelBtnUI = document.getElementById('needsReviewCancelScanBtn');
 
         if (btn) btn.disabled = true;
-        if (aiBtn) aiBtn.disabled = true;
         if (runSelectedBtn) runSelectedBtn.disabled = true;
         
         var token = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -2100,7 +2089,7 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
             clearInterval(scanProgressTimer);
             scanProgressTimer = null;
         }
-        var startMsg = (scanMode === 'discovery' ? 'Starting AI Deep Audit' : 'Starting scan');
+        var startMsg = 'Starting scan';
         setProgress(0, totalUrls, 0, startMsg);
         
         // Persist token in localStorage so we can resume if user navigates away/refreshes
@@ -2113,17 +2102,16 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                 if (!pJson || !pJson.success) return;
                 
                 if (pJson.status === 'running') {
-                    var statusMsg = pJson.message || (scanMode === 'discovery' ? 'AI Auditing' : 'Scanning');
+                    var statusMsg = pJson.message || 'Scanning';
                     setProgress(pJson.completed || 0, pJson.total || totalUrls, pJson.percent || 0, statusMsg);
                 } else if (pJson.status === 'completed') {
                     clearInterval(scanProgressTimer);
                     scanProgressTimer = null;
                     localStorage.removeItem('pms_a11y_scan_' + pageId);
                     setProgress(pJson.total, pJson.total, 100, 'Scan completed');
-                    if (typeof window.showToast === 'function') window.showToast((scanMode === 'discovery' ? 'AI Deep Audit' : 'Automated scan') + ' completed.', 'success');
+                    if (typeof window.showToast === 'function') window.showToast('Automated scan completed.', 'success');
                     await loadNeedsReviewFindings();
                     if (btn) btn.disabled = false;
-                    if (aiBtn) aiBtn.disabled = false;
                     if (runSelectedBtn) runSelectedBtn.disabled = false;
                     setTimeout(() => { if (progressWrap) progressWrap.classList.add('d-none'); }, 3000);
                 } else if (pJson.status === 'failed' || pJson.status === 'cancelled') {
@@ -2132,7 +2120,6 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                     localStorage.removeItem('pms_a11y_scan_' + pageId);
                     setProgress(0, 0, 0, pJson.error || 'Scan failed or cancelled');
                     if (btn) btn.disabled = false;
-                    if (aiBtn) aiBtn.disabled = false;
                     if (runSelectedBtn) runSelectedBtn.disabled = false;
                     setTimeout(() => { if (progressWrap) progressWrap.classList.add('d-none'); }, 4000);
                 }
@@ -2229,10 +2216,8 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                         setProgress(0, 0, 0, pJson.error || 'Scan stopped');
                     }
                     var btn = document.getElementById('needsReviewRunScanBtn');
-                    var aiBtn = document.getElementById('needsReviewRunAiDeepAuditBtn');
                     var runSelectedBtn = document.getElementById('needsReviewRunSelectedScanBtn');
                     if (btn) btn.disabled = false;
-                    if (aiBtn) aiBtn.disabled = false;
                     if (runSelectedBtn) runSelectedBtn.disabled = false;
                     setTimeout(() => { if (progressWrap) progressWrap.classList.add('d-none'); }, 3000);
                 }
@@ -2245,7 +2230,6 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
     document.addEventListener('DOMContentLoaded', function () {
         var refreshBtn = document.getElementById('needsReviewRefreshBtn');
         var runBtn = document.getElementById('needsReviewRunScanBtn');
-        var aiAuditBtn = document.getElementById('needsReviewRunAiDeepAuditBtn');
         var deleteSelectedBtn = document.getElementById('needsReviewDeleteSelectedBtn');
         var scanModalEl = document.getElementById('needsReviewScanUrlModal');
         var issueImageModalEl = document.getElementById('issueImageModal');
@@ -2261,7 +2245,6 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         }
         if (refreshBtn) refreshBtn.addEventListener('click', loadNeedsReviewFindings);
         if (runBtn) runBtn.addEventListener('click', function() { openScanUrlSelectionModal('default'); });
-        if (aiAuditBtn) aiAuditBtn.addEventListener('click', function() { openScanUrlSelectionModal('discovery'); });
         
         var cancelBtn = document.getElementById('needsReviewCancelScanBtn');
         if (cancelBtn) {

@@ -66,8 +66,8 @@ header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload"
 header("Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()");
 
 // Set CSP header with nonce (replaces .htaccess static CSP for pages using this header)
-// unsafe-eval required by CDN libs: SheetJS, Summernote, DataTables, FullCalendar, Chart.js
-header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://code.jquery.com https://cdn.datatables.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; media-src 'self'; object-src 'none'; frame-src 'self'; base-uri 'self'; form-action 'self'");
+// unsafe-eval required by CDN libs: SheetJS, Summernote, DataTables, FullCalendar, Chart.js, Highcharts
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://code.jquery.com https://cdn.datatables.net https://cdn.sheetjs.com https://code.highcharts.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://code.highcharts.com; media-src 'self'; object-src 'none'; frame-src 'self'; base-uri 'self'; form-action 'self'");
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -79,6 +79,8 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
     <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/accessibility.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -90,7 +92,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
     }
     ?>
     <link rel="icon" type="image/png" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/storage/favicon.png?v=20260225v1">
-    <?php $assetVersion = '20260405v13'; ?>
+    <?php $assetVersion = '20260406v16'; ?>
     <link href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/css/style.css?v=<?php echo $assetVersion; ?>" rel="stylesheet">
     <link href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/css/dashboard.css?v=<?php echo $assetVersion; ?>" rel="stylesheet">
     <link href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/css/header-fix.css?v=<?php echo $assetVersion; ?>" rel="stylesheet">
@@ -501,30 +503,27 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                 </a>
                             </li>
                             <li class="nav-item">
+                                <a class="nav-link text-white <?php echo (strpos($currentRequestPath, '/modules/client/issues_overview.php') !== false) ? 'active' : ''; ?>" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/issues_overview.php">
+                                    <i class="fas fa-list-ul me-1 opacity-50"></i> Issue Overview
+                                </a>
+                            </li>
+                            <li class="nav-item">
                                 <a class="nav-link text-white <?php echo (strpos($currentRequestPath, '/modules/client/preferences.php') !== false) ? 'active' : ''; ?>" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/client/preferences.php">
                                     <i class="fas fa-sliders-h me-1 opacity-50"></i> Preferences
                                 </a>
                             </li>
                             <?php if (!empty($clientAssignedProjects)): ?>
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle text-white <?php echo (strpos($currentRequestPath, '/client/project/') !== false) ? 'active' : ''; ?>" href="#" id="clientProjectsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="fas fa-chart-line me-1 opacity-50"></i> Digital Assets
-                                </a>
-                                <ul class="dropdown-menu shadow-sm" aria-labelledby="clientProjectsDropdown">
-                                    <?php foreach ($clientAssignedProjects as $clientNavProject): ?>
-                                    <li>
-                                        <a class="dropdown-item" href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $clientNavProject['id'], (string) ($clientNavProject['title'] ?? ''), (string) ($clientNavProject['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>">
-                                            <?php echo htmlspecialchars($clientNavProject['title'] ?? ('Asset #' . (int) $clientNavProject['id']), ENT_QUOTES, 'UTF-8'); ?>
-                                        </a>
-                                    </li>
-                                    <?php endforeach; ?>
-                                </ul>
-                            </li>
-                            <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle text-white <?php echo $isClientDetailPage ? 'active' : ''; ?>" href="#" id="clientProjectDetailsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                <a class="nav-link dropdown-toggle text-white <?php echo ($isClientDetailPage || strpos($currentRequestPath, '/modules/client/project_dashboard.php') !== false) ? 'active' : ''; ?>" href="#" id="clientProjectDetailsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                                     <i class="fas fa-eye me-1 opacity-50"></i> Asset Analytics
                                 </a>
                                 <ul class="dropdown-menu shadow-sm" aria-labelledby="clientProjectDetailsDropdown">
+                                    <li>
+                                        <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/dashboard?report=wcag_compliance#analytics-report-wcag_compliance">
+                                            <i class="fas fa-shield-alt me-2 text-primary opacity-75"></i> Accessibility Report
+                                        </a>
+                                    </li>
+                                    <li><hr class="dropdown-divider"></li>
                                     <?php foreach ($clientAssignedProjects as $clientNavProject): ?>
                                     <li>
                                         <a class="dropdown-item" href="<?php echo htmlspecialchars(buildClientProjectUrl((int) $clientNavProject['id'], (string) ($clientNavProject['title'] ?? ''), (string) ($clientNavProject['project_code'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>">

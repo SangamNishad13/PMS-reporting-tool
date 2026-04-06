@@ -137,7 +137,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
     // Fetch edit requests for current user in date range
     $editRequests = [];
     if (!$isAdminUser || !$filterUserId) {
-        $editStmt = $db->prepare("SELECT req_date, status, reason, created_at, updated_at FROM user_edit_requests WHERE user_id = ? AND req_date BETWEEN ? AND ?");
+        $editStmt = $db->prepare("SELECT req_date, status, reason, created_at, updated_at FROM user_edit_requests WHERE user_id = ? AND req_date BETWEEN ? AND ? AND request_type = 'edit'");
         $editStmt->execute([$userId, $start, $end]);
         while ($editRow = $editStmt->fetch(PDO::FETCH_ASSOC)) {
             $editRequests[$editRow['req_date']] = $editRow;
@@ -590,7 +590,7 @@ $canEditFuture = true;
                                                 <input type="text" id="logDescriptionInput" class="form-control">
                                             </div>
                                             <div class="col-12 d-flex justify-content-end">
-                                                <button type="button" id="logTimeBtn" class="btn btn-primary" onclick="if(window.submitCalendarLogHours){return window.submitCalendarLogHours(event);} return false;">Log Hours</button>
+                                                <button type="button" id="logTimeBtn" class="btn btn-primary">Log Hours</button>
                                             </div>
                                         </form>
                                     </div>

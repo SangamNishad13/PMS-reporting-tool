@@ -25,7 +25,6 @@ $cardLinks = [
     <div>
         <span class="section-kicker">Portfolio Snapshot</span>
         <h2 class="section-title mb-2">Overview statistics</h2>
-        <p class="section-description mb-0">Use these headline metrics to decide where to drill in next across issues, resolution progress, and compliance movement.</p>
     </div>
 </div>
 
@@ -33,14 +32,15 @@ $cardLinks = [
     <div class="col-xl-3 col-md-6">
         <a href="<?php echo htmlspecialchars($cardLinks['assets'], ENT_QUOTES, 'UTF-8'); ?>" class="summary-card-link">
         <div class="summary-card card h-100 border-0 shadow-sm summary-card-primary">
-            <div class="card-body">
+            <div class="card-body d-flex flex-column h-100">
                 <div class="summary-card-topline">Digital Assets</div>
                 <div class="summary-card-main">
                     <div class="summary-icon"><i class="fas fa-folder-open"></i></div>
                     <h3 class="summary-value text-primary mb-0"><?php echo number_format($totalProjects); ?></h3>
                 </div>
-                <p class="summary-label mb-2">Assigned Digital Assets</p>
-                <small class="text-muted">Open your full asset library and switch context quickly.</small>
+                <div class="mt-auto">
+                    <p class="summary-label mb-2">Digital Assets</p>
+                </div>
             </div>
         </div>
         </a>
@@ -49,14 +49,16 @@ $cardLinks = [
     <div class="col-xl-3 col-md-6">
         <a href="<?php echo htmlspecialchars($cardLinks['issues'], ENT_QUOTES, 'UTF-8'); ?>" class="summary-card-link">
         <div class="summary-card card h-100 border-0 shadow-sm summary-card-warning">
-            <div class="card-body">
+            <div class="card-body d-flex flex-column h-100">
                 <div class="summary-card-topline">Active workload</div>
                 <div class="summary-card-main">
                     <div class="summary-icon"><i class="fas fa-exclamation-triangle"></i></div>
                     <h3 class="summary-value text-warning mb-0"><?php echo number_format($openIssues); ?></h3>
                 </div>
-                <p class="summary-label mb-2">Open Issues</p>
-                <small class="text-muted"><?php echo number_format($totalIssues); ?> visible issues currently in client scope.</small>
+                <div class="mt-auto">
+                    <p class="summary-label mb-2">Open Issues</p>
+                    <small class="text-muted"><?php echo number_format($totalIssues); ?> visible issues right now.</small>
+                </div>
             </div>
         </div>
         </a>
@@ -65,14 +67,15 @@ $cardLinks = [
     <div class="col-xl-3 col-md-6">
         <a href="<?php echo htmlspecialchars($cardLinks['resolved'], ENT_QUOTES, 'UTF-8'); ?>" class="summary-card-link">
         <div class="summary-card card h-100 border-0 shadow-sm summary-card-success">
-            <div class="card-body">
+            <div class="card-body d-flex flex-column h-100">
                 <div class="summary-card-topline">Progress</div>
                 <div class="summary-card-main">
                     <div class="summary-icon"><i class="fas fa-check-circle"></i></div>
                     <h3 class="summary-value text-success mb-0"><?php echo number_format($resolvedIssues); ?></h3>
                 </div>
-                <p class="summary-label mb-2">Resolved Issues</p>
-                <small class="text-muted">Track how quickly the visible issue backlog is shrinking.</small>
+                <div class="mt-auto">
+                    <p class="summary-label mb-2">Resolved Issues</p>
+                </div>
             </div>
         </div>
         </a>
@@ -81,21 +84,23 @@ $cardLinks = [
     <div class="col-xl-3 col-md-6">
         <a href="<?php echo htmlspecialchars($cardLinks['compliance'], ENT_QUOTES, 'UTF-8'); ?>" class="summary-card-link">
         <div class="summary-card card h-100 border-0 shadow-sm summary-card-info">
-            <div class="card-body">
+            <div class="card-body d-flex flex-column h-100">
                 <div class="summary-card-topline">Compliance signal</div>
                 <div class="summary-card-main">
                     <div class="summary-icon"><i class="fas fa-percentage"></i></div>
                     <h3 class="summary-value text-info mb-0"><?php echo $compliancePercentage; ?>%</h3>
                 </div>
-                <p class="summary-label mb-2">Compliance Percentage</p>
-                <small class="text-muted">Jump to the WCAG compliance widget and trend line.</small>
-                <div class="progress summary-progress mt-3">
-                    <div class="progress-bar bg-info" 
-                         style="width: <?php echo $compliancePercentage; ?>%"
-                         role="progressbar" 
-                         aria-valuenow="<?php echo $compliancePercentage; ?>" 
-                         aria-valuemin="0" 
-                         aria-valuemax="100">
+                <div class="mt-auto">
+                    <p class="summary-label mb-2">Compliance Percentage</p>
+                    <small class="text-muted">Jump to the WCAG compliance widget and trend line.</small>
+                    <div class="progress summary-progress mt-3">
+                        <div class="progress-bar bg-info" 
+                             style="width: <?php echo $compliancePercentage; ?>%"
+                             role="progressbar" 
+                             aria-valuenow="<?php echo $compliancePercentage; ?>" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                        </div>
                     </div>
                 </div>
             </div>

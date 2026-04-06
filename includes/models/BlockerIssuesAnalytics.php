@@ -21,7 +21,7 @@ class BlockerIssuesAnalytics extends AnalyticsEngine {
      * @return AnalyticsReport
      */
     public function generateReport($projectId = null, $clientId = null) {
-        $cacheKey = $this->generateCacheKey('blocker_issues', $projectId, $clientId);
+        $cacheKey = $this->generateCacheKey('blocker_issues_v2', $projectId, $clientId);
         
         if ($cached = $this->getCachedReport($cacheKey)) {
             return $cached;
@@ -104,6 +104,7 @@ class BlockerIssuesAnalytics extends AnalyticsEngine {
                 'critical_blockers' => $this->countCriticalBlockers($blockerIssues)
             ],
             'top_blockers' => $topBlockers,
+            'blocker_issue_list' => $this->buildBlockerIssueList($blockerIssues),
             'functionality_breakdown' => $functionalityBreakdown,
             'resolution_metrics' => $resolutionMetrics,
             'urgency_analysis' => $urgencyAnalysis,
@@ -481,6 +482,40 @@ class BlockerIssuesAnalytics extends AnalyticsEngine {
         }
         
         return $topBlockers;
+    }
+
+    /**
+     * Build a full blocker issue list for dashboard rendering.
+     *
+     * @param array $blockerIssues
+     * @return array
+     */
+    private function buildBlockerIssueList($blockerIssues) {
+        usort($blockerIssues, function($left, $right) {
+            $leftResolved = in_array($left['status'] ?? 'Open', ['Resolved', 'Closed'], true);
+            $rightResolved = in_array($right['status'] ?? 'Open', ['Resolved', 'Closed'], true);
+
+            if ($leftResolved !== $rightResolved) {
+                return $leftResolved ? 1 : -1;
+            }
+
+            return ($right['impact_score'] ?? 0) <=> ($left['impact_score'] ?? 0);
+        });
+
+        return array_map(function($issue) {
+            return [
+                'id' => (int) ($issue['id'] ?? 0),
+                'project_id' => (int) ($issue['project_id'] ?? 0),
+                'page_id' => (int) ($issue['page_id'] ?? 0),
+                'issue_key' => (string) ($issue['issue_key'] ?? ''),
+                'title' => (string) ($issue['title'] ?? 'Untitled Issue'),
+                'status' => (string) ($issue['status'] ?? 'Open'),
+                'urgency_level' => (string) ($issue['urgency_level'] ?? 'Medium'),
+                'blocker_type' => (string) ($issue['blocker_type'] ?? 'General Blocker'),
+                'impact_score' => (float) ($issue['impact_score'] ?? 0),
+                'page_url' => (string) ($issue['page_url'] ?? ''),
+            ];
+        }, $blockerIssues);
     }
     
     /**
