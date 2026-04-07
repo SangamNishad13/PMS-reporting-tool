@@ -87,9 +87,35 @@ foreach ($metadataFields as &$field) {
 }
 
 // Pre-fetch project pages with URLs
-$pagesStmt = $db->prepare("SELECT id, page_name, url FROM project_pages WHERE project_id = ? ORDER BY page_name");
+$pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_pages WHERE project_id = ? ORDER BY page_name");
 $pagesStmt->execute([$projectId]);
 $projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
+
+$pageDisplayNumberById = [];
+$pageDisplaySequence = 1;
+$globalDisplaySequence = 1;
+try {
+    $pageOrderStmt = $db->prepare("SELECT id, page_number FROM project_pages WHERE project_id = ? ORDER BY CASE WHEN page_number LIKE 'Global%' THEN 0 WHEN page_number LIKE 'Page%' THEN 1 ELSE 2 END, CAST(SUBSTRING_INDEX(page_number, ' ', -1) AS UNSIGNED), page_number, page_name, id");
+    $pageOrderStmt->execute([$projectId]);
+    foreach ($pageOrderStmt->fetchAll(PDO::FETCH_ASSOC) as $orderedPageRow) {
+        $orderedPageId = (int)($orderedPageRow['id'] ?? 0);
+        if ($orderedPageId <= 0) {
+            continue;
+        }
+        $rawPageNumber = trim((string)($orderedPageRow['page_number'] ?? ''));
+        if (stripos($rawPageNumber, 'Global') === 0) {
+            $pageDisplayNumberById[$orderedPageId] = 'Global ' . $globalDisplaySequence++;
+        } elseif (stripos($rawPageNumber, 'Page') === 0 || $rawPageNumber === '') {
+            $pageDisplayNumberById[$orderedPageId] = 'Page ' . $pageDisplaySequence++;
+        } else {
+            $pageDisplayNumberById[$orderedPageId] = $rawPageNumber;
+        }
+    }
+} catch (Exception $e) {
+    $pageDisplayNumberById = [];
+}
+
+$displayPageNumber = $pageDisplayNumberById[$pageId] ?? ($page['page_number'] ?? '-');
 
 // Get page metadata with correct issues count
 $issuePageSummary = [];
@@ -530,7 +556,7 @@ include __DIR__ . '/../../includes/header.php';
                     <h5 class="mb-0">
                         <i class="fas fa-file-alt text-primary me-2"></i>
                         <?php echo htmlspecialchars($page['page_name']); ?>
-                        <span class="badge bg-primary-subtle text-primary ms-2"><?php echo htmlspecialchars($page['page_number'] ?? '-'); ?></span>
+                        <span class="badge bg-primary-subtle text-primary ms-2"><?php echo htmlspecialchars($displayPageNumber); ?></span>
                     </h5>
                     <div class="small text-muted text-truncate" style="max-width: 500px;" title="<?php echo htmlspecialchars($page['url'] ?? '-'); ?>">
                         <?php echo htmlspecialchars($page['url'] ?? '-'); ?>
@@ -590,6 +616,16 @@ include __DIR__ . '/../../includes/header.php';
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <?php $pageNotes = trim((string)($page['notes'] ?? '')); ?>
+    <?php if ($pageNotes !== ''): ?>
+    <div class="card mb-2 border-start border-4 border-info-subtle">
+        <div class="card-body py-2">
+            <div class="small text-muted mb-1"><i class="fas fa-note-sticky me-1"></i>Page Notes</div>
+            <div class="small text-break"><?php echo nl2br(htmlspecialchars($pageNotes)); ?></div>
         </div>
     </div>
     <?php endif; ?>

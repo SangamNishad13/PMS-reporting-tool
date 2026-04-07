@@ -469,7 +469,7 @@ class UnifiedDashboardController {
                         return [
                             'title' => $issue['pattern'] ?? 'Untitled pattern',
                                 'url' => $commonIssueUrl,
-                            'meta' => trim((string) (($issue['category'] ?? 'General') . ' • ' . (int) ($issue['pages_affected'] ?? 0) . ' pages affected')),
+                            'meta' => trim((string) ((int) ($issue['pages_affected'] ?? 0) . ' pages affected')),
                             'submeta' => !empty($issue['sample_pages']) ? ('Sample pages: ' . implode(', ', array_slice($issue['sample_pages'], 0, 3))) : '',
                             'badges' => [
                                 ['label' => (string) ((int) ($issue['frequency'] ?? $issue['count'] ?? 0)) . ' occurrences', 'className' => 'issue-link-badge'],

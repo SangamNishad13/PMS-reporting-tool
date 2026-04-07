@@ -10,6 +10,17 @@ header('Content-Type: application/json');
 $auth = new Auth();
 $auth->requireLogin();
 
+$viewerRole = strtolower(trim((string)($_SESSION['role'] ?? '')));
+$viewerRole = preg_replace('/[^a-z0-9]+/', '_', $viewerRole);
+$viewerRole = trim($viewerRole, '_');
+if ($viewerRole === 'client') {
+    echo json_encode([
+        'success' => true,
+        'message' => 'No chat access for this account'
+    ]);
+    exit;
+}
+
 // Only allow POST to prevent CSRF via GET-based attacks (img tags, link prefetch, etc.)
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);

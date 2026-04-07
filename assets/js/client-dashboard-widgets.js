@@ -125,7 +125,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(function() {
                 setCommentsModalState('ready');
                 if (commentsModalList) {
-                    commentsModalList.innerHTML = '<div class="analytics-comments-empty text-muted">Comments abhi load nahi ho paaye. Thoda der baad dobara try karo.</div>';
+                    commentsModalList.innerHTML = '<div class="analytics-comments-empty text-muted">Comments could not be loaded. Please try again in a moment.</div>';
                 }
             });
     });

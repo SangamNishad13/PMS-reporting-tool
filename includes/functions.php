@@ -749,6 +749,33 @@ function build_public_image_url_from_src($src) {
     return rtrim($baseDir, '/') . '/api/public_image.php?t=' . rawurlencode($token);
 }
 
+function rewrite_html_public_image_urls($html) {
+    $html = (string)$html;
+    if ($html === '') {
+        return $html;
+    }
+
+    $rewritten = preg_replace_callback(
+        '/\b(src|href)\s*=\s*(["\'])(.*?)\2/i',
+        static function ($matches) {
+            $attrName = (string)($matches[1] ?? '');
+            $quote = (string)($matches[2] ?? '"');
+            $value = html_entity_decode((string)($matches[3] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $publicUrl = build_public_image_url_from_src($value);
+            if ($publicUrl === $value) {
+                return (string)$matches[0];
+            }
+
+            return $attrName . '=' . $quote
+                . htmlspecialchars($publicUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                . $quote;
+        },
+        $html
+    );
+
+    return is_string($rewritten) ? $rewritten : $html;
+}
+
 /**
  * Render a user's full name as a link to their profile unless the user is an admin/admin.
  * Accepts either a user id or an array with keys ['id','full_name','role'].

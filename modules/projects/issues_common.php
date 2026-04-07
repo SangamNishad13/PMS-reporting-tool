@@ -354,6 +354,7 @@ include __DIR__ . '/partials/issues_modals.php';
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/assets/js/issues-common.js?v=<?php echo time(); ?>"></script>
 
+<?php if ($_SESSION['role'] !== 'client'): ?>
 <!-- Floating Project Chat -->
 <style>
 .chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1060; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
@@ -394,5 +395,6 @@ include __DIR__ . '/partials/issues_modals.php';
 </button>
 
 <script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>
+<?php endif; ?>
 
 <?php include __DIR__ . '/../../includes/footer.php'; 

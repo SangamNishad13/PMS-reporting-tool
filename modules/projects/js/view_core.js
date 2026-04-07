@@ -329,7 +329,7 @@ var ProjectConfig = window.ProjectConfig || {};
         var modalEl = document.getElementById('editPageModal');
         if (!modalEl) {
             // fallback to prompt if modal missing
-            var fallback = prompt(field === 'notes' ? 'Enter notes:' : 'Enter page name:', current);
+            var fallback = prompt(field === 'notes' ? 'Enter notes:' : (field === 'canonical_url' ? 'Enter unique URL:' : 'Enter page name:'), current);
             if (fallback === null) return false;
             return window.handleEditPageNameFallback(btn, fallback);
         }
@@ -344,7 +344,7 @@ var ProjectConfig = window.ProjectConfig || {};
             modalEl._editFieldHidden = true;
         }
         // update modal title to reflect target field
-        try { modalEl.querySelector('.modal-title').textContent = field === 'notes' ? 'Edit Notes' : 'Edit Page Name'; } catch (e) {}
+        try { modalEl.querySelector('.modal-title').textContent = field === 'notes' ? 'Edit Notes' : (field === 'canonical_url' ? 'Edit Unique URL' : 'Edit Page Name'); } catch (e) {}
         // toggle input types
         if (field === 'notes') {
             document.getElementById('editPage_input_wrap').classList.add('d-none');
@@ -354,7 +354,7 @@ var ProjectConfig = window.ProjectConfig || {};
             document.getElementById('editPage_input_wrap').classList.remove('d-none');
             document.getElementById('editPage_text_wrap').classList.add('d-none');
             document.getElementById('editPage_value').value = current;
-            document.getElementById('editPage_label').textContent = field === 'page_name' ? 'Page Name' : 'Value';
+            document.getElementById('editPage_label').textContent = field === 'page_name' ? 'Page Name' : (field === 'canonical_url' ? 'Unique URL' : 'Value');
         }
 
         // show modal
@@ -381,7 +381,7 @@ var ProjectConfig = window.ProjectConfig || {};
                     // update UI: find the related display element in the same row
                     try {
                         var parentRow = btn.closest('tr') || btn.parentElement;
-                        var targetSelector = f === 'notes' ? '.notes-display' : '.page-name-display';
+                        var targetSelector = f === 'notes' ? '.notes-display' : (f === 'canonical_url' ? '.unique-url-display' : '.page-name-display');
                         var target = parentRow ? parentRow.querySelector(targetSelector) : null;
                         if (target) target.textContent = val;
                         btn.setAttribute('data-current-name', val);
@@ -434,8 +434,9 @@ var ProjectConfig = window.ProjectConfig || {};
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: projectId, unique_page_id: uniqueId, page_id: pageId, field: field, page_name: val }), credentials: 'same-origin'
         }).then(r => r.json()).then(function (j) {
             if (j && j.success) {
-                var parent = btn.parentElement;
-                var target = parent ? parent.querySelector(field === 'notes' ? '.notes-display' : '.page-name-display') : null;
+                var parent = btn.closest('tr') || btn.parentElement;
+                var targetSelector = field === 'notes' ? '.notes-display' : (field === 'canonical_url' ? '.unique-url-display' : '.page-name-display');
+                var target = parent ? parent.querySelector(targetSelector) : null;
                 if (target) target.textContent = val;
                 btn.setAttribute('data-current-name', val);
                 if (field === 'notes' && parent) {

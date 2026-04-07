@@ -474,6 +474,8 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                             $moduleDir = getModuleDirectory($role);
                             $currentRequestPath = (string)($_SERVER['REQUEST_URI'] ?? '');
                             $clientAssignedProjects = [];
+                            $clientAccessibilityProjectId = 0;
+                            $clientAccessibilityReportLink = $baseDir . '/modules/client/issues_overview.php';
                             if ($role === 'client') {
                                 try {
                                     require_once __DIR__ . '/models/ClientAccessControlManager.php';
@@ -482,6 +484,14 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                 } catch (Exception $e) {
                                     error_log('Client nav projects load failed: ' . $e->getMessage());
                                     $clientAssignedProjects = [];
+                                }
+
+                                $clientAccessibilityProjectId = (int) ($_GET['project_id'] ?? ($_GET['id'] ?? 0));
+                                if ($clientAccessibilityProjectId <= 0 && !empty($clientAssignedProjects)) {
+                                    $clientAccessibilityProjectId = (int) ($clientAssignedProjects[0]['id'] ?? 0);
+                                }
+                                if ($clientAccessibilityProjectId > 0) {
+                                    $clientAccessibilityReportLink = $baseDir . '/modules/projects/issues.php?project_id=' . $clientAccessibilityProjectId;
                                 }
                             }
                             ?>
@@ -519,8 +529,8 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                 </a>
                                 <ul class="dropdown-menu shadow-sm" aria-labelledby="clientProjectDetailsDropdown">
                                     <li>
-                                        <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/dashboard?report=wcag_compliance#analytics-report-wcag_compliance">
-                                            <i class="fas fa-shield-alt me-2 text-primary opacity-75"></i> Accessibility Report
+                                        <a class="dropdown-item" href="<?php echo htmlspecialchars($clientAccessibilityReportLink, ENT_QUOTES, 'UTF-8'); ?>">
+                                            Accessibility Report
                                         </a>
                                     </li>
                                     <li><hr class="dropdown-divider"></li>
@@ -558,11 +568,13 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                             <i class="fas fa-comment-dots me-2 text-info opacity-75"></i> Feedback
                                         </a>
                                     </li>
+                                    <?php if ($_SESSION['role'] !== 'client'): ?>
                                     <li>
                                         <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/chat/project_chat.php">
                                             <i class="fas fa-comments me-2 text-warning opacity-75"></i> Chat
                                         </a>
                                     </li>
+                                    <?php endif; ?>
                                     <li>
                                         <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/devices.php">
                                             <i class="fas fa-laptop me-2 text-secondary opacity-75"></i> Devices

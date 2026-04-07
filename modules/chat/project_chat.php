@@ -13,7 +13,15 @@ $baseDir = getBaseDir();
 $viewerRole = strtolower(trim((string)($_SESSION['role'] ?? '')));
 $viewerRole = preg_replace('/[^a-z0-9]+/', '_', $viewerRole);
 $viewerRole = trim($viewerRole, '_');
+$isClientViewer = ($viewerRole === 'client');
 $isAdminChatViewer = in_array($viewerRole, ['admin'], true);
+
+if ($isClientViewer) {
+    http_response_code(403);
+    $_SESSION['error'] = 'Project chat is not available for client accounts.';
+    header('Location: ' . $baseDir . '/client/index.php');
+    exit;
+}
 
 $embed = isset($_GET['embed']) && $_GET['embed'] === '1';
 

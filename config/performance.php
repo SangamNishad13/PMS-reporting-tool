@@ -5,7 +5,7 @@
 
 // OPcache — ensure it's enabled and tuned (php.ini overrides preferred)
 if (function_exists('opcache_get_status')) {
-    // Ye lines live server par crash kar rahi hain, isliye inhein comment kar diya:
+    // These directives caused issues on the live server, so they remain disabled here.
     /*
     @ini_set('opcache.enable',              1);
     @ini_set('opcache.memory_consumption',  128);
@@ -15,4 +15,4 @@ if (function_exists('opcache_get_status')) {
     */
 }
 
-// APCu — baaki sab normal rehne dein
+// Leave APCu at the environment default settings.

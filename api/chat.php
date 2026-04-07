@@ -16,6 +16,13 @@ if (!$auth->isLoggedIn()) {
     exit;
 }
 
+$viewerRole = strtolower(trim((string)($_SESSION['role'] ?? '')));
+$viewerRole = preg_replace('/[^a-z0-9]+/', '_', $viewerRole);
+$viewerRole = trim($viewerRole, '_');
+if ($viewerRole === 'client') {
+    jsonError('Project chat is not available for client accounts.', 403);
+}
+
 // CSRF protection for state-changing requests
 enforceApiCsrf();
 

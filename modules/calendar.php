@@ -178,18 +178,18 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
             $editStatus = $editRequests[$d]['status'];
             switch ($editStatus) {
                 case 'pending':
-                    $titleSuffix .= ' • Edit Pending';
+                    $titleSuffix .= ' - Edit Pending';
                     $colorOverride = '#fd7e14'; // Orange
                     break;
                 case 'approved':
-                    $titleSuffix .= ' • Edit Approved';
+                    $titleSuffix .= ' - Edit Approved';
                     $colorOverride = '#20c997'; // Teal
                     break;
                 case 'rejected':
-                    $titleSuffix .= ' • Edit Rejected';
+                    $titleSuffix .= ' - Edit Rejected';
                     break;
                 case 'used':
-                    $titleSuffix .= ' • Edit Used';
+                    $titleSuffix .= ' - Edit Used';
                     $colorOverride = '#6f42c1'; // Purple
                     break;
             }
@@ -202,7 +202,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
         $displayName = $row['full_name'] ?? ($usersById[$uid]['full_name'] ?? ('User ' . intval($uid)));
 
         $events[] = [
-            'title' => $displayName . ' — ' . $title . $titleSuffix,
+            'title' => $displayName . ' - ' . $title . $titleSuffix,
             'start' => $d,
             'color' => $color,
             'description' => $row['notes'] ?? '',
@@ -217,7 +217,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
         ];
     }
 
-    // Build date range and add 'Not updated' for missing dates per-user
+    // Build date range and add 'Not updated' for missing past/today dates per-user.
+    // Future dates stay empty unless the user has explicitly saved a status.
+    $todayDate = date('Y-m-d');
     $period = new DatePeriod(
         new DateTime($start),
         new DateInterval('P1D'),
@@ -226,6 +228,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
 
     foreach ($period as $dt) {
         $d = $dt->format('Y-m-d');
+
+        if ($d > $todayDate) {
+            continue;
+        }
 
         if ($isAdminUser && $filterUserId === 'all') {
             foreach ($usersList as $u) {

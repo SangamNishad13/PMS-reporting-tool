@@ -174,6 +174,216 @@ include __DIR__ . '/../../includes/header.php';
     margin: 0 !important;
     line-height: 1.5 !important;
 }
+<?php if ($_SESSION['role'] === 'client'): ?>
+#finalIssueModal.client-issue-sidebar-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 1045;
+    pointer-events: none;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-issue-sidebar-panel {
+    position: fixed;
+    top: var(--client-issue-sidebar-top-offset, 64px);
+    bottom: 0;
+    right: 0;
+    width: min(310px, 100vw);
+    height: auto;
+    max-height: calc(100vh - var(--client-issue-sidebar-top-offset, 64px));
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, #f8fbff 0%, #ffffff 14%);
+    border-left: 1px solid #dce8f8;
+    box-shadow: -24px 0 60px rgba(15, 23, 42, .18);
+    transform: translateX(100%);
+    transition: transform .28s ease;
+    pointer-events: auto;
+    overflow: hidden;
+}
+#finalIssueModal.client-issue-sidebar-shell.show .client-issue-sidebar-panel,
+#finalIssueModal.client-issue-sidebar-shell.is-open .client-issue-sidebar-panel {
+    transform: translateX(0);
+}
+#finalIssueModal.client-issue-sidebar-shell .client-issue-sidebar-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .6rem .7rem .4rem;
+    border-bottom: 1px solid #e5edf7;
+    background: rgba(255, 255, 255, .96);
+    backdrop-filter: blur(10px);
+}
+#finalIssueModal.client-issue-sidebar-shell .client-issue-title-stack {
+    min-width: 0;
+}
+#finalIssueModal.client-issue-sidebar-shell #finalEditorTitle {
+    font-size: 1.02rem;
+    line-height: 1.2;
+    color: #0f172a;
+    word-break: break-word;
+}
+#finalIssueModal.client-issue-sidebar-shell #finalIssuePresenceIndicator:empty {
+    display: none;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-issue-sidebar-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    flex-direction: column;
+    padding: .35rem .55rem 0;
+    overflow: hidden;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-issue-status-row {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    background: #f3f7fd;
+    border: 1px solid #dce8f8;
+    border-radius: 14px;
+    padding: .32rem .38rem;
+    margin-bottom: .3rem;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-issue-status-row .form-label {
+    margin-bottom: .1rem !important;
+    font-size: .74rem;
+    line-height: 1.1;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-issue-status-row .form-select {
+    min-height: 32px;
+    padding-top: .18rem;
+    padding-bottom: .18rem;
+    padding-left: .55rem;
+    font-size: .84rem;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-issue-status-row #finalIssueSaveBtn {
+    flex: 0 0 auto;
+    min-width: 68px;
+    height: 32px;
+    border-radius: 999px;
+    padding-inline: .65rem;
+    font-size: .82rem;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-issue-conversation {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid #e6eef8;
+    border-radius: 18px 18px 0 0;
+    border-bottom: 0;
+    background: #fff;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, .05);
+    overflow: hidden;
+}
+#finalIssueModal.client-issue-sidebar-shell #finalIssueCommentsList {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none !important;
+    overflow-y: auto;
+    padding: .65rem !important;
+    background: linear-gradient(180deg, #f8fbff 0%, #f3f7fd 100%) !important;
+    border: 0 !important;
+    border-radius: 18px 18px 0 0 !important;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-issue-sidebar-footer {
+    padding: .28rem .55rem .42rem;
+    background: #fff;
+    border-top: 1px solid #e6eef8;
+    box-shadow: 0 -12px 24px rgba(15, 23, 42, .04);
+}
+#finalIssueModal.client-issue-sidebar-shell .client-chat-composer {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+    background: transparent;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-chat-editor-wrap {
+    border: 1px solid #d7e5f7;
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, .05);
+    overflow: hidden;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-chat-editor-wrap .note-editor {
+    border: 0 !important;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-chat-editor-wrap .note-toolbar {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: .2rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    border-bottom: 1px solid #edf3fb;
+    background: #f8fbff;
+    padding: .25rem .35rem;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-chat-editor-wrap .note-toolbar .note-btn-group {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    margin-right: .2rem;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-chat-editor-wrap .note-editing-area {
+    background: #fff;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-chat-editor-wrap .note-editable {
+    min-height: 54px;
+    max-height: 92px;
+    padding: .55rem .75rem;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-chat-composer #finalIssueAddCommentBtn {
+    min-width: 110px;
+    border-radius: 999px;
+    padding-inline: 1rem;
+}
+#finalIssueModal.client-issue-sidebar-shell .client-chat-composer .mt-2 {
+    margin-top: .45rem !important;
+}
+#finalIssueModal.client-issue-sidebar-shell .message {
+    display: flex;
+    flex-direction: column;
+}
+#finalIssueModal.client-issue-sidebar-shell .message.own-message {
+    align-items: flex-end;
+}
+#finalIssueModal.client-issue-sidebar-shell .message.other-message {
+    align-items: flex-start;
+}
+#finalIssueModal.client-issue-sidebar-shell .message .d-flex.justify-content-between.align-items-start.mb-1,
+#finalIssueModal.client-issue-sidebar-shell .message .d-flex.flex-wrap.gap-2.mb-2 {
+    width: min(100%, 94%);
+}
+#finalIssueModal.client-issue-sidebar-shell .message-content {
+    width: min(100%, 94%);
+    padding: .75rem .9rem !important;
+    border-radius: 18px !important;
+    word-break: break-word;
+}
+#finalIssueModal.client-issue-sidebar-shell .other-message .message-content {
+    background: #ffffff !important;
+    border: 1px solid #dce8f8;
+}
+#finalIssueModal.client-issue-sidebar-shell .own-message .message-content {
+    background: linear-gradient(180deg, #dceeff 0%, #cfe5ff 100%) !important;
+    border: 1px solid #bad8ff;
+}
+#finalIssueModal.client-issue-sidebar-shell .reply-preview {
+    width: min(100%, 94%);
+}
+body.client-issue-sidebar-open {
+    overflow: auto !important;
+    padding-right: 0 !important;
+}
+@media (max-width: 767.98px) {
+    #finalIssueModal.client-issue-sidebar-shell .client-issue-sidebar-panel {
+        width: 100vw;
+    }
+    #finalIssueModal.client-issue-sidebar-shell .client-issue-status-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+<?php endif; ?>
 </style>
 
 <div class="container-fluid mt-4">
@@ -286,7 +496,6 @@ include __DIR__ . '/../../includes/header.php';
                     <span class="text-muted">Total Issues: <strong id="totalCount">0</strong></span>
                     <span class="text-muted ms-3">Showing: <strong id="filteredCount">0</strong></span>
                     <?php if ($_SESSION['role'] === 'client'): ?>
-                    <div class="small mt-1 text-muted">Use the Update button to change status or add a regression comment.</div>
                     <?php endif; ?>
                 </div>
                 <div>
@@ -355,6 +564,24 @@ window.ProjectConfig = {
 
 // Define issueMetadataFields globally for view_issues.js
 window.issueMetadataFields = <?php echo json_encode($metadataFields ?? []); ?>;
+
+<?php if ($normalizedUserRole === 'client'): ?>
+(function () {
+    function syncClientIssueSidebarOffset() {
+        var headerNav = document.querySelector('header .navbar.sticky-top');
+        var headerHeight = headerNav ? Math.ceil(headerNav.getBoundingClientRect().height) : 64;
+        document.documentElement.style.setProperty('--client-issue-sidebar-top-offset', headerHeight + 'px');
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', syncClientIssueSidebarOffset, { once: true });
+    } else {
+        syncClientIssueSidebarOffset();
+    }
+
+    window.addEventListener('resize', syncClientIssueSidebarOffset);
+})();
+<?php endif; ?>
 </script>
 
 <!-- Include issue management JavaScript -->
@@ -365,6 +592,7 @@ window.issueMetadataFields = <?php echo json_encode($metadataFields ?? []); ?>;
 <script src="<?php echo $baseDir; ?>/assets/js/issues-all.js?v=<?php echo time(); ?>"></script>
 
 
+<?php if ($normalizedUserRole !== 'client'): ?>
 <!-- Floating Project Chat -->
 <style>
 .chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1040; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
@@ -407,5 +635,6 @@ body.chat-modal-open .chat-widget { visibility: hidden !important; pointer-event
 </button>
 
 <script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>
+<?php endif; ?>
 
 <?php include __DIR__ . '/../../includes/footer.php'; 

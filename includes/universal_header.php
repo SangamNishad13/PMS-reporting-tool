@@ -14,6 +14,8 @@ if (!isset($baseDir)) {
 $currentPage = basename($_SERVER['PHP_SELF']);
 $currentPath = $_SERVER['REQUEST_URI'];
 $clientHeaderProjects = [];
+$clientAccessibilityProjectId = 0;
+$clientAccessibilityReportLink = $baseDir . '/modules/client/issues_overview.php';
 
 if (($_SESSION['role'] ?? '') === 'client') {
     try {
@@ -23,6 +25,14 @@ if (($_SESSION['role'] ?? '') === 'client') {
     } catch (Exception $e) {
         error_log('Universal header client projects load failed: ' . $e->getMessage());
         $clientHeaderProjects = [];
+    }
+
+    $clientAccessibilityProjectId = (int) ($_GET['project_id'] ?? ($_GET['id'] ?? 0));
+    if ($clientAccessibilityProjectId <= 0 && !empty($clientHeaderProjects)) {
+        $clientAccessibilityProjectId = (int) ($clientHeaderProjects[0]['id'] ?? 0);
+    }
+    if ($clientAccessibilityProjectId > 0) {
+        $clientAccessibilityReportLink = $baseDir . '/modules/projects/issues.php?project_id=' . $clientAccessibilityProjectId;
     }
 }
 
@@ -324,8 +334,7 @@ $isClientProjectDetailPage = strpos($currentPath, '/modules/projects/view.php') 
                         </a>
                         <ul class="dropdown-menu shadow-sm" aria-labelledby="clientAssetDetailsDropdown">
                             <li>
-                                <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/client/dashboard?report=wcag_compliance#analytics-report-wcag_compliance">
-                                    <i class="fas fa-shield-alt me-2 text-primary opacity-75"></i>
+                                <a class="dropdown-item" href="<?php echo htmlspecialchars($clientAccessibilityReportLink, ENT_QUOTES, 'UTF-8'); ?>">
                                     Accessibility Report
                                 </a>
                             </li>

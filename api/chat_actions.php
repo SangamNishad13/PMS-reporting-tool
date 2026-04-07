@@ -19,6 +19,12 @@ enforceApiCsrf();
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 $action = $_GET['action'] ?? '';
+$sessionRole = normalizeRole($_SESSION['role'] ?? '');
+
+if ($sessionRole === 'client') {
+    echo json_encode(['error' => 'Project chat is not available for client accounts.']);
+    exit;
+}
 
 header('Content-Type: application/json');
 

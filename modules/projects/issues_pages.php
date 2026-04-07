@@ -66,6 +66,21 @@ $pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_p
 $pagesStmt->execute([$projectId]);
 $projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
 
+$projectPageById = [];
+$projectPageIdByUrl = [];
+foreach ($projectPages as $projectPageRow) {
+    $pageRowId = (int)($projectPageRow['id'] ?? 0);
+    if ($pageRowId <= 0) {
+        continue;
+    }
+    $projectPageById[$pageRowId] = $projectPageRow;
+
+    $pageUrl = trim((string)($projectPageRow['url'] ?? ''));
+    if ($pageUrl !== '') {
+        $projectPageIdByUrl[$pageUrl] = $pageRowId;
+    }
+}
+
 // Environments list for filters
 $envList = [];
 try {
@@ -85,6 +100,7 @@ try {
             pp.id,
             pp.page_name,
             pp.page_number,
+            pp.status,
             (SELECT GROUP_CONCAT(DISTINCT te.name SEPARATOR ', ') 
              FROM page_environments pe2 
              JOIN testing_environments te ON pe2.environment_id = te.id 
@@ -129,20 +145,34 @@ try {
             up.id AS unique_id,
             up.page_name AS unique_name,
             up.url AS canonical_url,
-            pp.id AS mapped_page_id
+            NULL AS mapped_page_id
         FROM grouped_urls gu 
         LEFT JOIN project_pages up ON gu.unique_page_id = up.id
-        LEFT JOIN project_pages pp ON pp.project_id = gu.project_id AND (pp.url = gu.url OR pp.url = gu.normalized_url OR pp.url = up.url)
         WHERE gu.project_id = ? 
         ORDER BY gu.url
     ");
     $groupedStmt->execute([$projectId]);
     $groupedUrls = $groupedStmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Group by page ID
+    // Group grouped URLs by their resolved project page.
     foreach ($groupedUrls as $g) {
-        if (!empty($g['unique_page_id'])) {
-            $urlsByUniqueId[(int)$g['unique_page_id']][] = $g;
+        $resolvedUniqueId = (int)($g['unique_page_id'] ?? 0);
+        if ($resolvedUniqueId <= 0) {
+            $resolvedUniqueId = (int)($g['mapped_page_id'] ?? 0);
+        }
+
+        if ($resolvedUniqueId <= 0) {
+            $groupUrl = trim((string)($g['url'] ?? ''));
+            $groupNormalizedUrl = trim((string)($g['normalized_url'] ?? ''));
+            if ($groupUrl !== '' && isset($projectPageIdByUrl[$groupUrl])) {
+                $resolvedUniqueId = (int)$projectPageIdByUrl[$groupUrl];
+            } elseif ($groupNormalizedUrl !== '' && isset($projectPageIdByUrl[$groupNormalizedUrl])) {
+                $resolvedUniqueId = (int)$projectPageIdByUrl[$groupNormalizedUrl];
+            }
+        }
+
+        if ($resolvedUniqueId > 0) {
+            $urlsByUniqueId[$resolvedUniqueId][] = $g;
         }
     }
 } catch (Exception $e) {
@@ -157,25 +187,30 @@ try {
             up.id AS unique_id,
             up.page_name AS unique_name,
             up.url AS canonical_url,
-            COUNT(gu.id) AS grouped_count,
-            MIN(pp.id) AS mapped_page_id,
-            MIN(pp.page_number) AS mapped_page_number,
-            MIN(pp.page_name) AS mapped_page_name
+            up.id AS mapped_page_id,
+            up.page_number AS mapped_page_number,
+            up.page_name AS mapped_page_name,
+            COUNT(DISTINCT gu.id) AS grouped_count
         FROM project_pages up
-        LEFT JOIN grouped_urls gu ON gu.project_id = up.project_id AND gu.unique_page_id = up.id
-        LEFT JOIN project_pages pp ON pp.project_id = up.project_id
-            AND (
-                pp.url = gu.url
-                OR pp.url = gu.normalized_url
-                OR pp.url = up.url
-                OR pp.page_name = up.page_name
-                OR pp.page_number = up.page_name
-            )
+        LEFT JOIN grouped_urls gu
+            ON gu.project_id = up.project_id
+           AND (
+                gu.unique_page_id = up.id
+                OR (
+                    up.url IS NOT NULL AND up.url <> ''
+                    AND (gu.url = up.url OR gu.normalized_url = up.url)
+                )
+           )
         WHERE up.project_id = ?
         GROUP BY up.id
         ORDER BY 
-            SUBSTRING_INDEX(MIN(pp.page_number), ' ', 1) ASC,
-            CAST(SUBSTRING_INDEX(MIN(pp.page_number), ' ', -1) AS UNSIGNED) ASC,
+            CASE
+                WHEN up.page_number LIKE 'Global%' THEN 0
+                WHEN up.page_number LIKE 'Page%' THEN 1
+                ELSE 2
+            END ASC,
+            CAST(SUBSTRING_INDEX(up.page_number, ' ', -1) AS UNSIGNED) ASC,
+            up.page_number ASC,
             up.page_name ASC
     ");
     $uniqueIssueStmt->execute([$projectId]);
@@ -184,6 +219,28 @@ try {
     $uniqueIssuePages = []; 
     error_log("Error loading pages: " . $e->getMessage());
 }
+
+$displayPageNumberById = [];
+$displayPageSequence = 1;
+$displayGlobalSequence = 1;
+foreach ($uniqueIssuePages as &$uniqueIssuePageRow) {
+    $displayPageId = (int)($uniqueIssuePageRow['mapped_page_id'] ?? 0) ?: (int)($uniqueIssuePageRow['unique_id'] ?? 0);
+    $rawPageNumber = trim((string)($uniqueIssuePageRow['mapped_page_number'] ?? ''));
+
+    if (stripos($rawPageNumber, 'Global') === 0) {
+        $displayPageNumber = 'Global ' . $displayGlobalSequence++;
+    } elseif (stripos($rawPageNumber, 'Page') === 0 || $rawPageNumber === '') {
+        $displayPageNumber = 'Page ' . $displayPageSequence++;
+    } else {
+        $displayPageNumber = $rawPageNumber;
+    }
+
+    if ($displayPageId > 0) {
+        $displayPageNumberById[$displayPageId] = $displayPageNumber;
+    }
+    $uniqueIssuePageRow['display_page_number'] = $displayPageNumber;
+}
+unset($uniqueIssuePageRow);
 
 // Aggregate totals
 $issuesPagesCount = count($uniqueIssuePages);
@@ -379,10 +436,10 @@ include __DIR__ . '/../../includes/header.php';
     $count = isset($sum['issues_count']) ? (int)$sum['issues_count'] : 0;
     $prodHours = isset($sum['production_hours']) ? (float)$sum['production_hours'] : 0;
     $uniqueLabel = $u['canonical_url'] ?: ($u['unique_name'] ?? "");
-    $pageNoLabel = $u['mapped_page_number'] ?? "";
+    $pageNoLabel = $u['display_page_number'] ?? ($displayPageNumberById[$mappedPageId] ?? ($u['mapped_page_number'] ?? ""));
     $displayName = $u['mapped_page_name'] ?? "";
     if (!$displayName) { $displayName = $u['unique_name'] ?? $uniqueLabel; }
-    $pageUrls = $urlsByUniqueId[$u['unique_id']] ?? [];
+    $pageUrls = $urlsByUniqueId[$mappedPageId] ?? ($urlsByUniqueId[(int)($u['unique_id'] ?? 0)] ?? []);
     $hasUrls = !empty($pageUrls);
     $urlCount = count($pageUrls);
 
@@ -595,7 +652,7 @@ include __DIR__ . '/partials/issues_modals.php';
             var qaText = String($row.data('page-qa') || '').toLowerCase();
             var envText = String($row.data('page-env') || '').toLowerCase();
             var statusText = String($row.data('page-status') || '').toLowerCase();
-            var urlText = $row.find('td').eq(1).find('.text-muted').text().toLowerCase();
+            var urlText = $row.find('td').eq(2).find('.text-muted').text().toLowerCase();
 
             var show = true;
             if (q && name.indexOf(q) === -1 && urlText.indexOf(q) === -1) show = false;
@@ -666,6 +723,7 @@ include __DIR__ . '/partials/issues_modals.php';
 })();
 </script>
 
+<?php if ($_SESSION['role'] !== 'client'): ?>
 <!-- Floating Project Chat (bottom-right) -->
 <style>
 .chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1060; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
@@ -706,5 +764,6 @@ include __DIR__ . '/partials/issues_modals.php';
 </button>
 
 <script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>
+<?php endif; ?>
 
 <?php include __DIR__ . '/../../includes/footer.php'; 

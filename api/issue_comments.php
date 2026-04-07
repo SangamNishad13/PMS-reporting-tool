@@ -167,6 +167,10 @@ try {
             $row['can_delete'] = (!$isDeleted && ($isOwn || $isAdmin));
             $row['can_view_history'] = $isAdmin;
 
+            if ($role === 'client' && function_exists('rewrite_html_public_image_urls')) {
+                $row['comment_html'] = rewrite_html_public_image_urls((string)($row['comment_html'] ?? ''));
+            }
+
             if (!empty($row['reply_to'])) {
                 $replyStmt = $db->prepare("SELECT ic.id, ic.comment_html, u.full_name AS user_name
                                           FROM issue_comments ic
@@ -175,10 +179,14 @@ try {
                 $replyStmt->execute([$row['reply_to']]);
                 $replyData = $replyStmt->fetch(PDO::FETCH_ASSOC);
                 if ($replyData) {
+                    $replyPreviewHtml = (string)($replyData['comment_html'] ?? '');
+                    if ($role === 'client' && function_exists('rewrite_html_public_image_urls')) {
+                        $replyPreviewHtml = rewrite_html_public_image_urls($replyPreviewHtml);
+                    }
                     $row['reply_preview'] = [
                         'id' => $replyData['id'],
                         'user_name' => $replyData['user_name'],
-                        'text' => $replyData['comment_html']
+                        'text' => $replyPreviewHtml
                     ];
                 }
             }

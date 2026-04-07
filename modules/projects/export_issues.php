@@ -614,6 +614,7 @@ document.querySelectorAll('.column-checkbox').forEach(function(item) {
 updateColumnOrderIndicators();
 </script>
 
+<?php if ($_SESSION['role'] !== 'client'): ?>
 <!-- Floating Project Chat (bottom-right) -->
 <style>
 .chat-launcher { position: fixed; bottom: 20px; right: 20px; z-index: 1060; border-radius: 999px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 12px 18px; display: flex; align-items: center; gap: 8px; }
@@ -657,6 +658,7 @@ updateColumnOrderIndicators();
 window.ProjectConfig = window.ProjectConfig || { projectId: <?php echo json_encode($projectId); ?>, baseDir: <?php echo json_encode($baseDir); ?> };
 </script>
 <script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>
+<?php endif; ?>
 
 <script nonce="<?php echo $cspNonce ?? ''; ?>">
 // Accessible, mobile-friendly column reordering controls

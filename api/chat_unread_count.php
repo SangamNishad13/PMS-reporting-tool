@@ -12,6 +12,18 @@ header('Cache-Control: private, max-age=5, stale-while-revalidate=10');
 $auth = new Auth();
 $auth->requireLogin();
 
+$viewerRole = strtolower(trim((string)($_SESSION['role'] ?? '')));
+$viewerRole = preg_replace('/[^a-z0-9]+/', '_', $viewerRole);
+$viewerRole = trim($viewerRole, '_');
+
+if ($viewerRole === 'client') {
+    echo json_encode([
+        'success' => true,
+        'unread_count' => 0
+    ]);
+    exit;
+}
+
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 $projectId = isset($_GET['project_id']) ? intval($_GET['project_id']) : null;

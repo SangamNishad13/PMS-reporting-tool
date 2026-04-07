@@ -308,6 +308,20 @@
         });
     }
 
+    function updateClientIssueSidebarHeader(issue) {
+        if (userRole !== 'client') return;
+
+        var keyEl = document.getElementById('clientIssueSidebarKey');
+        var titleEl = document.getElementById('finalEditorTitle');
+        if (!keyEl || !titleEl) return;
+
+        var issueKey = issue && issue.issue_key ? String(issue.issue_key) : 'New Issue';
+        var issueTitle = issue && issue.title ? String(issue.title) : 'Issue conversation';
+
+        keyEl.textContent = issueKey;
+        titleEl.textContent = issueTitle;
+    }
+
     function applyClientIssueEditingState(enable) {
         if (userRole !== 'client') return;
 
@@ -359,6 +373,166 @@
 
         syncClientIssueStatusOptions();
         syncResolutionStatusOptions();
+    }
+
+    function normalizeClientFinalIssueOverlayState() {
+        if (userRole !== 'client') return;
+
+        var modalEl = document.getElementById('finalIssueModal');
+        if (modalEl) {
+            modalEl.classList.add('show', 'is-open');
+            modalEl.setAttribute('aria-hidden', 'false');
+            modalEl.removeAttribute('aria-modal');
+        }
+
+        document.body.classList.add('client-issue-sidebar-open');
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('overflow');
+        document.body.style.removeProperty('padding-right');
+        document.body.removeAttribute('aria-hidden');
+
+        document.querySelectorAll('.modal-backdrop').forEach(function (el) {
+            el.remove();
+        });
+
+    }
+
+    function syncClientSidebarExpandButton() {
+        if (userRole !== 'client') return;
+        var modalEl = document.getElementById('finalIssueModal');
+        var btn = modalEl ? modalEl.querySelector('.client-sidebar-expand') : null;
+        if (!btn) return;
+        var active = modalEl.classList.contains('is-dialog-expanded');
+        btn.setAttribute('aria-label', active ? 'Collapse dialog' : 'Expand dialog');
+        btn.setAttribute('title', active ? 'Collapse dialog' : 'Expand dialog');
+        var icon = btn.querySelector('i');
+        if (icon) {
+            icon.classList.toggle('fa-expand', !active);
+            icon.classList.toggle('fa-compress', active);
+        }
+    }
+
+    function setClientSidebarDialogExpanded(enabled) {
+        if (userRole !== 'client') return;
+        var modalEl = document.getElementById('finalIssueModal');
+        if (!modalEl) return;
+        modalEl.classList.toggle('is-dialog-expanded', !!enabled);
+        document.body.classList.toggle('client-issue-sidebar-dialog-expanded', !!enabled);
+        syncClientSidebarExpandButton();
+    }
+
+    function toggleClientSidebarDialogExpanded() {
+        if (userRole !== 'client') return;
+        var modalEl = document.getElementById('finalIssueModal');
+        if (!modalEl) return;
+        setClientSidebarDialogExpanded(!modalEl.classList.contains('is-dialog-expanded'));
+    }
+
+    function getFinalIssueModalInstance(modalEl) {
+        if (userRole === 'client') {
+            return null;
+        }
+
+        if (!modalEl || !(window.bootstrap && bootstrap.Modal)) {
+            return null;
+        }
+
+        var instance = bootstrap.Modal.getInstance(modalEl);
+        if (instance) {
+            return instance;
+        }
+
+        return new bootstrap.Modal(modalEl, userRole === 'client'
+            ? { backdrop: false, focus: false, keyboard: true }
+            : {});
+    }
+
+    function showFinalIssueOverlay(modalEl) {
+        if (userRole === 'client') {
+            if (!modalEl) return;
+            normalizeClientFinalIssueOverlayState();
+            setTimeout(function () {
+                modalEl.dispatchEvent(new CustomEvent('shown.bs.modal'));
+            }, 0);
+            return;
+        }
+
+        var instance = getFinalIssueModalInstance(modalEl);
+        if (!instance) return;
+
+        instance.show();
+        if (userRole === 'client') {
+            setTimeout(normalizeClientFinalIssueOverlayState, 0);
+        }
+    }
+
+    function closeClientFinalIssueOverlay() {
+        if (userRole !== 'client') return;
+
+        var modalEl = document.getElementById('finalIssueModal');
+        if (!modalEl) return;
+
+        modalEl.classList.remove('show', 'is-open');
+        modalEl.classList.remove('is-dialog-expanded');
+        modalEl.setAttribute('aria-hidden', 'true');
+        stopIssuePresenceTracking();
+        clearIssueConflictNotice();
+        document.body.classList.remove('client-issue-sidebar-open');
+        document.body.classList.remove('client-issue-sidebar-dialog-expanded');
+        cleanupModalOverlayState();
+        modalEl.dispatchEvent(new CustomEvent('hidden.bs.modal'));
+    }
+
+    function requestClientFinalIssueOverlayClose() {
+        if (userRole !== 'client') return;
+
+        var finalIssueModalEl = document.getElementById('finalIssueModal');
+        if (!finalIssueModalEl) return;
+
+        if (finalIssueBypassCloseConfirm) {
+            finalIssueBypassCloseConfirm = false;
+            stopDraftAutosave();
+            issueData.initialFormState = null;
+            closeClientFinalIssueOverlay();
+            return;
+        }
+
+        var editId = document.getElementById('finalIssueEditId').value;
+        if (hasFormChanges()) {
+            showDraftConfirmation(function (action) {
+                if (action === 'save') {
+                    if (!editId) {
+                        saveDraft().then(function () {
+                            stopDraftAutosave();
+                            issueData.initialFormState = null;
+                            finalIssueBypassCloseConfirm = true;
+                            closeClientFinalIssueOverlay();
+                        });
+                    } else {
+                        document.getElementById('finalIssueSaveBtn').click();
+                    }
+                } else if (action === 'discard') {
+                    if (!editId) {
+                        deleteDraft().then(function () {
+                            stopDraftAutosave();
+                            issueData.initialFormState = null;
+                            finalIssueBypassCloseConfirm = true;
+                            closeClientFinalIssueOverlay();
+                        });
+                    } else {
+                        stopDraftAutosave();
+                        issueData.initialFormState = null;
+                        finalIssueBypassCloseConfirm = true;
+                        closeClientFinalIssueOverlay();
+                    }
+                }
+            }, editId);
+            return;
+        }
+
+        stopDraftAutosave();
+        issueData.initialFormState = null;
+        closeClientFinalIssueOverlay();
     }
 
     function cleanupModalOverlayState() {
@@ -527,6 +701,67 @@
             .replace(/'/g, '&#39;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
+    }
+
+    var finalIssueComposeExpanded = false;
+
+    function getFinalIssueCommentEditorTextLength() {
+        var html = '';
+        if (window.jQuery && jQuery.fn.summernote && jQuery('#finalIssueCommentEditor').length && jQuery('#finalIssueCommentEditor').data('summernote')) {
+            html = jQuery('#finalIssueCommentEditor').summernote('code') || '';
+            return jQuery('<div>').html(html).text().length;
+        }
+        var editorEl = document.getElementById('finalIssueCommentEditor');
+        if (!editorEl) return 0;
+        html = editorEl.value || '';
+        var container = document.createElement('div');
+        container.innerHTML = html;
+        return (container.textContent || container.innerText || '').length;
+    }
+
+    function updateFinalIssueCommentCharCount() {
+        var countEl = document.getElementById('finalIssueCommentCharCount');
+        var count = getFinalIssueCommentEditorTextLength();
+        if (countEl) countEl.textContent = count + '/1000';
+        var editorEl = document.getElementById('finalIssueCommentEditor');
+        if (editorEl) editorEl.classList.toggle('is-invalid', count > 1000);
+    }
+
+    function focusFinalIssueCommentEditor() {
+        if (window.jQuery && jQuery.fn.summernote && jQuery('#finalIssueCommentEditor').length && jQuery('#finalIssueCommentEditor').data('summernote')) {
+            try {
+                jQuery('#finalIssueCommentEditor').summernote('focus');
+                return;
+            } catch (e) { }
+        }
+        var editorEl = document.getElementById('finalIssueCommentEditor');
+        if (editorEl && typeof editorEl.focus === 'function') {
+            try { editorEl.focus(); } catch (e) { }
+        }
+    }
+
+    function syncFinalIssueComposeUi() {
+        var composerEl = document.getElementById('finalIssueCommentComposer');
+        var composeBodyEl = document.getElementById('finalIssueComposeBody');
+        var composeToggleEl = document.getElementById('finalIssueComposeToggle');
+        if (composerEl) composerEl.classList.toggle('collapsed', !finalIssueComposeExpanded);
+        if (composeBodyEl) composeBodyEl.classList.toggle('open', !!finalIssueComposeExpanded);
+        if (composeToggleEl) {
+            composeToggleEl.classList.toggle('expanded', !!finalIssueComposeExpanded);
+            composeToggleEl.innerHTML = finalIssueComposeExpanded
+                ? '<i class="fas fa-chevron-down"></i> Hide Compose'
+                : '<i class="fas fa-comment-dots"></i> Compose';
+            composeToggleEl.setAttribute('aria-expanded', finalIssueComposeExpanded ? 'true' : 'false');
+        }
+        updateFinalIssueCommentCharCount();
+    }
+
+    function setFinalIssueComposeExpanded(expanded, options) {
+        finalIssueComposeExpanded = !!expanded;
+        syncFinalIssueComposeUi();
+        if (finalIssueComposeExpanded && (!options || options.focus !== false)) {
+            setTimeout(focusFinalIssueCommentEditor, 0);
+        }
     }
 
     function normalizeIssueImageSrc(src) {
@@ -1140,14 +1375,15 @@
             uploadPromise
                 .then(function (res) {
                     if (res && res.success && res.url) {
-                        var safeAlt = (altText || 'Issue Screenshot').replace(/"/g, '&quot;');
-                        var imgHtml = '<img src="' + res.url + '" alt="' + safeAlt + '" style="max-width:100%; height:auto; cursor:pointer;" class="editable-issue-image" />';
+                        var normalizedImageUrl = normalizeIssueImageSrc(res.url);
+                        var safeAlt = escapeAttr(altText || 'Issue Screenshot');
+                        var imgHtml = '<img src="' + escapeAttr(normalizedImageUrl) + '" alt="' + safeAlt + '" style="max-width:100%; height:auto; cursor:pointer;" class="editable-issue-image" />';
                         if (issueData.imageUpload.savedRange) {
                             $el.summernote('restoreRange');
                             issueData.imageUpload.savedRange.pasteHTML(imgHtml);
                             issueData.imageUpload.savedRange = null;
                         } else {
-                            $el.summernote('insertNode', $('<img>').attr({ src: res.url, alt: safeAlt, style: 'max-width:100%; height:auto; cursor:pointer;', class: 'editable-issue-image' })[0]);
+                            $el.summernote('insertNode', $('<img>').attr({ src: normalizedImageUrl, alt: altText || 'Issue Screenshot', style: 'max-width:100%; height:auto; cursor:pointer;', class: 'editable-issue-image' })[0]);
                         }
                         bootstrap.Modal.getInstance(jQuery('#imageAltTextModal')[0]).hide();
                     } else if (res && res.error) { issueNotify(res.error, 'danger'); }
@@ -1559,13 +1795,25 @@
             setTimeout(setCodeBlockButtonState, 0);
         }
 
+        var isClientCommentEditor = !!($el && $el.attr && $el.attr('id') === 'finalIssueCommentEditor' && userRole === 'client');
         var editorHeight = 180;
         if ($el && $el.attr && $el.attr('id') === 'reviewIssueDetails') {
             editorHeight = 320;
+        } else if (isClientCommentEditor) {
+            editorHeight = 80;
         }
-        $el.summernote({
-            height: editorHeight,
-            toolbar: [
+        var toolbarConfig = isClientCommentEditor
+            ? [
+                ['style', ['style']],
+                ['font', ['bold', 'italic', 'underline', 'clear']],
+                ['fontname', ['fontname']],
+                ['color', ['color']],
+                ['para', ['ul', 'ol', 'paragraph']],
+                ['table', ['table']],
+                ['insert', ['link', 'picture', 'video']],
+                ['view', ['codeview', 'help']]
+            ]
+            : [
                 ['style', ['style']],
                 ['font', ['bold', 'italic', 'underline', 'strikethrough', 'superscript', 'subscript', 'clear']],
                 ['fontname', ['fontname']],
@@ -1575,7 +1823,11 @@
                 ['table', ['table']],
                 ['insert', ['link', 'picture', 'video', 'hr', 'codeBlockToggle']],
                 ['view', ['modalFullscreen', 'help']]
-            ],
+            ];
+        $el.summernote({
+            height: editorHeight,
+            placeholder: isClientCommentEditor ? 'Type your comment...' : undefined,
+            toolbar: toolbarConfig,
             styleTags: ['p', { title: 'Blockquote', tag: 'blockquote', className: 'blockquote', value: 'blockquote' }, 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
             popover: { image: [['image', ['resizeFull', 'resizeHalf', 'resizeQuarter', 'resizeNone']], ['float', ['floatLeft', 'floatRight', 'floatNone']], ['remove', ['removeMedia']], ['custom', ['imageAltText']]] },
             buttons: {
@@ -1598,9 +1850,13 @@
                         contents: '<i class="fas fa-expand"></i>',
                         className: 'note-btn-modalfullscreen',
                         tooltip: 'Fullscreen',
-                        click: function () { toggleEditorModalFullscreen(); }
+                        click: function () {
+                            toggleEditorModalFullscreen();
+                        }
                     }).render();
-                    syncModalFullscreenButtonState();
+                    if (!isClientCommentEditor) {
+                        syncModalFullscreenButtonState();
+                    }
                     return $btn;
                 },
                 imageAltText: function (context) {
@@ -1622,14 +1878,20 @@
             callbacks: {
                 onInit: function () {
                     setTimeout(setCodeBlockButtonState, 0);
-                    setTimeout(syncModalFullscreenButtonState, 0);
+                    if (!isClientCommentEditor) {
+                        setTimeout(syncModalFullscreenButtonState, 0);
+                    }
                     setTimeout(enableToolbarKeyboardA11y, 0);
                     setTimeout(enableToolbarKeyboardA11y, 200);
+                    if (isClientCommentEditor) updateFinalIssueCommentCharCount();
                 },
                 onFocus: function () { setCodeBlockButtonState(); },
                 onKeyup: function () { setCodeBlockButtonState(); },
                 onMouseup: function () { setCodeBlockButtonState(); },
-                onChange: function () { setCodeBlockButtonState(); },
+                onChange: function () {
+                    setCodeBlockButtonState();
+                    if (isClientCommentEditor) updateFinalIssueCommentCharCount();
+                },
                 onImageUpload: function (files) {
                     // Skip if onPaste already handled this (suppress window active)
                     if (issueData.imageUpload.suppressUntil && Date.now() < issueData.imageUpload.suppressUntil) return;
@@ -2612,6 +2874,11 @@
         ['finalIssueModal', 'commonIssueModal', 'urlSelectionModal', 'draftConfirmModal'].forEach(function (id) {
             var el = document.getElementById(id);
             if (!el) return;
+
+            if (id === 'finalIssueModal' && userRole === 'client') {
+                requestClientFinalIssueOverlayClose();
+                return;
+            }
             
             // Ensure focus is moved out of the modal before hiding to avoid ARIA warnings
             if (el.contains(document.activeElement)) {
@@ -2653,6 +2920,7 @@
 
     function openFinalViewer(issue) {
         if (!issue) return;
+        updateClientIssueSidebarHeader(issue);
         document.getElementById('finalIssueEditId').value = issue.id;
         var expectedUpdatedAtEl = document.getElementById('finalIssueExpectedUpdatedAt');
         if (expectedUpdatedAtEl) expectedUpdatedAtEl.value = issue.updated_at || '';
@@ -2715,8 +2983,7 @@
             chatDiv.querySelectorAll('input, select, textarea, button').forEach(function (el) { el.disabled = false; el.classList.remove('disabled'); });
             if (window.jQuery && jQuery.fn.summernote) jQuery('#finalIssueCommentEditor').summernote('enable');
         }
-        var modal = new bootstrap.Modal(document.getElementById('finalIssueModal'));
-        modal.show();
+        showFinalIssueOverlay(document.getElementById('finalIssueModal'));
         document.getElementById('finalIssueModal').addEventListener('shown.bs.modal', function onViewerShown() {
             document.getElementById('finalIssueModal').removeEventListener('shown.bs.modal', onViewerShown);
             var activeTab = document.querySelector('#finalIssueModal .nav-link.active');
@@ -2728,10 +2995,24 @@
         var opts = options || {};
         var modalEl = document.getElementById('finalIssueModal');
         if (!modalEl) return;
+
+        if (userRole === 'client' && issue && issue.id != null) {
+            var currentIssueIdEl = document.getElementById('finalIssueEditId');
+            var currentIssueId = currentIssueIdEl ? String(currentIssueIdEl.value || '') : '';
+            var requestedIssueId = String(issue.id);
+            var isClientSidebarOpen = modalEl.classList.contains('show') || modalEl.classList.contains('is-open');
+
+            if (isClientSidebarOpen && currentIssueId === requestedIssueId) {
+                requestClientFinalIssueOverlayClose();
+                return;
+            }
+        }
+
         clearIssueConflictNotice();
 
         toggleFinalIssueFields(true);
         document.getElementById('finalEditorTitle').textContent = issue ? 'Edit Final Issue' : 'New Final Issue';
+        updateClientIssueSidebarHeader(issue);
         document.getElementById('finalIssueEditId').value = issue ? issue.id : '';
         var expectedUpdatedAtEl = document.getElementById('finalIssueExpectedUpdatedAt');
         if (expectedUpdatedAtEl) expectedUpdatedAtEl.value = issue && issue.updated_at ? issue.updated_at : '';
@@ -2748,13 +3029,15 @@
         // Don't await draft load — show modal immediately, apply draft after modal opens
         if (!issue) {
             loadDraft().then(function(draft) {
-                if (draft && draft.data && !document.getElementById('customIssueTitle').value) {
+                var existingTitleInput = document.getElementById('customIssueTitle');
+                if (draft && draft.data && (!existingTitleInput || !existingTitleInput.value)) {
                     draftData = draft.data;
                     issueData.isDraftRestored = true;
                     if (window.showToast) showToast('Draft restored from ' + new Date(draft.updated_at).toLocaleString(), 'info');
                     // Apply draft values to already-open modal
                     if (window.injectIssueTitleField) window.injectIssueTitleField(draft.data.title || '');
                     jQuery('#finalIssueDetails').summernote('code', draft.data.details || '');
+                    updateFinalIssueCommentCharCount();
                 }
             }).catch(function() {});
         }
@@ -2835,10 +3118,7 @@
         // Wait for modal to be fully shown before setting Select2 values.
         var modalAlreadyOpen = modalEl.classList.contains('show');
         var skipShow = !!opts.skipShow || modalAlreadyOpen;
-        var modal = bootstrap.Modal.getInstance(modalEl);
-        if (!modal && !skipShow) {
-            modal = new bootstrap.Modal(modalEl);
-        }
+        var modal = getFinalIssueModalInstance(modalEl);
 
         function applySelectValuesNow() {
             // Use microtask + rAF to ensure DOM is ready before applying Select2 values,
@@ -2943,6 +3223,8 @@
         if (!issue) ensureDefaultSections();
         renderIssueComments(issue ? String(issue.id) : 'new');
         if (issue && issue.id) loadIssueComments(String(issue.id));
+        setFinalIssueComposeExpanded(false, { focus: false });
+        updateFinalIssueCommentCharCount();
 
         setTimeout(function () {
             // For new issues only — edit issues capture state inside applySelectValuesNow after Select2 is set
@@ -2952,8 +3234,8 @@
             }
         }, 600);
 
-        if (!skipShow && modal) {
-            modal.show();
+        if (!skipShow) {
+            showFinalIssueOverlay(modalEl);
         }
         // Removed the condition - always ensure metadata fields are properly initialized
         Promise.resolve().then(function () { var at = modalEl.querySelector('.nav-link.active'); if (at) at.dispatchEvent(new Event('shown.bs.tab', { bubbles: true })); });
@@ -5124,8 +5406,8 @@
 
         if (!activeUsers.length) {
             issuePresenceRenderSignature = '';
-            el.className = 'small mt-1 text-muted';
-            el.textContent = 'No active viewers/editors on this issue.';
+            el.className = '';
+            el.textContent = '';
             return;
         }
 
@@ -5418,14 +5700,24 @@
         }
 
         var currentUserId = String(ProjectConfig.userId || '');
+        var displayItems = items.slice().reverse();
 
-        listEl.innerHTML = items.map(function (c, idx) {
+        listEl.innerHTML = displayItems.map(function (c, idx) {
             var isOwn = String(c.user_id) === currentUserId;
             var isRegression = (c.comment_type === 'regression');
             var isDeleted = !!c.deleted_at;
             var canEdit = !!c.can_edit;
             var canDelete = !!c.can_delete;
             var canViewHistory = !!c.can_view_history && isAdminUser;
+            var userName = String(c.user_name || 'User');
+            var userInitials = userName
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map(function (part) { return part.charAt(0); })
+                .join('')
+                .toUpperCase() || 'U';
+            var userChipLabel = isOwn ? 'You' : userInitials;
 
             var commentText = decorateIssueImages(c.text || '');
             commentText = commentText.replace(/@([A-Za-z0-9._-]+)/g, '<span class="badge bg-warning text-dark">@$1</span>');
@@ -5463,7 +5755,7 @@
             }
 
             if (userRole === 'client') {
-                roleHeading = '<div class="small text-muted mb-2">' + (isOwn ? 'Your update' : 'Team response') + '</div>';
+                roleHeading = '';
                 regressionHeading = '';
                 borderStyle += 'border-radius: 14px; box-shadow: 0 8px 20px rgba(13,110,253,0.08);';
             }
@@ -5472,36 +5764,50 @@
             var editedBadge = c.edited_at ? '<small class="text-muted">(edited)</small>' : '';
             var actionButtons = '';
             if (!isDeleted) {
-                actionButtons += '<button class="btn btn-xs btn-link p-0 text-decoration-none issue-comment-reply" ' +
+                actionButtons += '<button type="button" class="message-action-btn issue-comment-reply" ' +
+                    'title="Reply" aria-label="Reply" ' +
                     'data-comment-id="' + (c.id || idx) + '" ' +
-                    'data-user-name="' + escapeAttr(c.user_name || 'User') + '" ' +
+                    'data-user-name="' + escapeAttr(userName) + '" ' +
                     'data-comment-text="' + escapeAttr((c.text || '').replace(/<[^>]*>/g, '').substring(0, 100)) + '">' +
-                    '<i class="fas fa-reply"></i> Reply</button>';
+                    '<i class="fas fa-reply"></i></button>';
             }
             if (canEdit) {
-                actionButtons += ' <button class="btn btn-xs btn-link p-0 text-decoration-none issue-comment-edit" data-comment-id="' + (c.id || idx) + '" data-comment-html="' + escapeAttr(c.text || '') + '"><i class="fas fa-edit"></i> Edit</button>';
+                actionButtons += '<button type="button" class="message-action-btn issue-comment-edit" title="Edit" aria-label="Edit" data-comment-id="' + (c.id || idx) + '" data-comment-html="' + escapeAttr(c.text || '') + '"><i class="fas fa-edit"></i></button>';
             }
             if (canDelete) {
-                actionButtons += ' <button class="btn btn-xs btn-link p-0 text-decoration-none text-danger issue-comment-delete" data-comment-id="' + (c.id || idx) + '"><i class="fas fa-trash"></i> Delete</button>';
+                actionButtons += '<button type="button" class="message-action-btn text-danger issue-comment-delete" title="Delete" aria-label="Delete" data-comment-id="' + (c.id || idx) + '"><i class="fas fa-trash"></i></button>';
             }
             if (canViewHistory) {
-                actionButtons += ' <button class="btn btn-xs btn-link p-0 text-decoration-none issue-comment-history" data-comment-id="' + (c.id || idx) + '"><i class="fas fa-history"></i> History</button>';
+                actionButtons += '<button type="button" class="message-action-btn issue-comment-history" title="History" aria-label="History" data-comment-id="' + (c.id || idx) + '"><i class="fas fa-history"></i></button>';
             }
 
             return '<div class="message ' + (isOwn ? 'own-message' : 'other-message') + ' mb-3" data-comment-id="' + (c.id || idx) + '">' +
-                '<div class="d-flex justify-content-between align-items-start mb-1">' +
-                '<div><span class="fw-semibold text-primary">' + escapeHtml(c.user_name || 'User') + '</span>' + regressionBadge + '</div>' +
-                '<div class="d-flex align-items-center gap-2"><small class="text-muted">' + escapeHtml(c.time || '') + '</small>' + editedBadge + '</div>' +
+                '<div class="message-main">' +
+                '<div class="message-meta-row">' +
+                '<div class="message-meta-left">' +
+                regressionBadge +
                 '</div>' +
-                '<div class="d-flex flex-wrap gap-2 mb-2">' + actionButtons + '</div>' +
+                '<div class="message-meta-right">' +
+                '<small class="text-muted">' + escapeHtml(c.time || '') + '</small>' + editedBadge +
+                '<div class="message-action-row">' + actionButtons + '</div>' +
+                '<span class="message-author-chip" title="' + escapeAttr(isOwn ? 'You' : userName) + '" aria-label="' + escapeAttr(isOwn ? 'You' : userName) + '">' + escapeHtml(userChipLabel) + '</span>' +
+                '</div>' +
+                '</div>' +
                 replyPreview +
                 '<div class="message-content p-2 rounded ' + bgClass + '" style="' + borderStyle + '">' +
                 roleHeading +
                 regressionHeading +
                 commentText +
                 '</div>' +
+                '</div>' +
                 '</div>';
         }).join('');
+
+        requestAnimationFrame(function () {
+            try {
+                listEl.scrollTop = listEl.scrollHeight;
+            } catch (e) { }
+        });
 
         document.querySelectorAll('.issue-comment-reply').forEach(function (btn) {
             btn.addEventListener('click', function (e) {
@@ -5536,6 +5842,64 @@
                 showIssueCommentHistory(commentId);
             });
         });
+    }
+
+    function showIssueCommentDeleteConfirmation(callback) {
+        var modalHtml = `
+            <div class="modal fade" id="issueCommentDeleteConfirmModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header bg-danger-subtle">
+                            <h5 class="modal-title">
+                                <i class="fas fa-trash text-danger me-2"></i>
+                                Delete Comment
+                            </h5>
+                        </div>
+                        <div class="modal-body">
+                            <p class="mb-0">Delete this comment? This action cannot be undone.</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" id="issueCommentDeleteCancel">Cancel</button>
+                            <button type="button" class="btn btn-danger" id="issueCommentDeleteConfirm">
+                                <i class="fas fa-trash me-1"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        var existing = document.getElementById('issueCommentDeleteConfirmModal');
+        if (existing) {
+            try {
+                var existingInst = bootstrap.Modal.getInstance(existing);
+                if (existingInst) existingInst.dispose();
+            } catch (e) { }
+            existing.remove();
+            cleanupModalOverlayState();
+        }
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        var modalEl = document.getElementById('issueCommentDeleteConfirmModal');
+        var modal = new bootstrap.Modal(modalEl);
+
+        document.getElementById('issueCommentDeleteConfirm').addEventListener('click', function () {
+            modal.hide();
+            callback(true);
+        });
+
+        document.getElementById('issueCommentDeleteCancel').addEventListener('click', function () {
+            modal.hide();
+            callback(false);
+        });
+
+        modalEl.addEventListener('hidden.bs.modal', function () {
+            modalEl.remove();
+            cleanupModalOverlayState();
+        });
+
+        modal.show();
     }
 
     function updateIssueCommentCount(items) {
@@ -5622,6 +5986,7 @@
                 if (previewEl) previewEl.style.display = 'none';
                 var replyToEl = document.getElementById('replyToCommentId');
                 if (replyToEl) replyToEl.value = '';
+                updateFinalIssueCommentCharCount();
             }
 
             renderIssueComments(key);
@@ -5777,32 +6142,34 @@
         var issueId = document.getElementById('finalIssueEditId').value || 'new';
         if (!issueId || issueId === 'new') return;
         var key = String(issueId);
-        if (!window.confirm('Delete this comment?')) return;
+        showIssueCommentDeleteConfirmation(function (confirmed) {
+            if (!confirmed) return;
 
-        var fd = new FormData();
-        fd.append('action', 'delete');
-        fd.append('project_id', projectId);
-        fd.append('issue_id', key);
-        fd.append('comment_id', String(commentId));
-        fetch(issueCommentsApi, { method: 'POST', body: fd, credentials: 'same-origin' })
-            .then(function (r) { return r.json(); })
-            .then(function (res) {
-                if (!res || res.error) {
-                    if (typeof showToast === 'function') showToast((res && res.error) ? res.error : 'Failed to delete comment', 'danger');
-                    return;
-                }
-                if (res.comment) {
-                    upsertIssueComment(key, res.comment);
-                } else {
-                    loadIssueComments(key);
-                    return;
-                }
-                renderIssueComments(key);
-                if (typeof showToast === 'function') showToast('Comment deleted', 'success');
-            })
-            .catch(function () {
-                if (typeof showToast === 'function') showToast('Failed to delete comment', 'danger');
-            });
+            var fd = new FormData();
+            fd.append('action', 'delete');
+            fd.append('project_id', projectId);
+            fd.append('issue_id', key);
+            fd.append('comment_id', String(commentId));
+            fetch(issueCommentsApi, { method: 'POST', body: fd, credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res || res.error) {
+                        if (typeof showToast === 'function') showToast((res && res.error) ? res.error : 'Failed to delete comment', 'danger');
+                        return;
+                    }
+                    if (res.comment) {
+                        upsertIssueComment(key, res.comment);
+                    } else {
+                        loadIssueComments(key);
+                        return;
+                    }
+                    renderIssueComments(key);
+                    if (typeof showToast === 'function') showToast('Comment deleted', 'success');
+                })
+                .catch(function () {
+                    if (typeof showToast === 'function') showToast('Failed to delete comment', 'danger');
+                });
+        });
     }
 
     function showIssueCommentHistory(commentId) {
@@ -5867,10 +6234,13 @@
     }
 
     function showReplyPreview(commentId, userName, commentText) {
+        setFinalIssueComposeExpanded(true, { focus: false });
+
         // Create or update reply preview
         var previewEl = document.getElementById('issueCommentReplyPreview');
         if (!previewEl) {
-            var editorWrap = document.querySelector('#finalIssueCommentEditor').closest('.mb-3');
+            var editorEl = document.querySelector('#finalIssueCommentEditor');
+            var editorWrap = editorEl ? (editorEl.closest('.mb-3') || editorEl.closest('.client-chat-editor-wrap') || editorEl.parentElement) : null;
             if (!editorWrap) return;
 
             var previewHtml = '<div id="issueCommentReplyPreview" class="alert alert-info mb-3" style="display:none; background: linear-gradient(135deg, #e7f3ff 0%, #f0f8ff 100%); border: 1px solid #b6d4fe; border-left: 4px solid #0d6efd;">' +
@@ -5910,9 +6280,7 @@
 
         // Focus editor after a short delay
         setTimeout(function () {
-            if (window.jQuery && jQuery.fn.summernote) {
-                jQuery('#finalIssueCommentEditor').summernote('focus');
-            }
+            focusFinalIssueCommentEditor();
         }, 300);
     }
 
@@ -6075,7 +6443,7 @@
                 if (sel) {
                     // Professional Select2 setup with custom template and fallback
                     if (window.jQuery && jQuery.fn.select2) {
-                        // Pehle destroy karo, fir options inject karo, fir select2 init karo
+                        // Rebuild Select2 cleanly after replacing the options.
                         try {
                             if (jQuery(sel).data('select2')) {
                                 jQuery(sel).select2('destroy');
@@ -6250,6 +6618,8 @@
             return; // Already saving
         }
         
+        var saveButtonLabel = (userRole === 'client') ? 'Update' : 'Save Issue';
+
         if (saveBtn) {
             saveBtn.disabled = true;
             saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Saving...';
@@ -6300,7 +6670,7 @@
             // Reset button state
             if (saveBtn) {
                 saveBtn.disabled = false;
-                saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Issue';
+                saveBtn.textContent = saveButtonLabel;
             }
             issueNotify('Issue title is required.', 'warning'); 
             return; 
@@ -6388,7 +6758,7 @@
                 // Reset button state
                 if (saveBtn) {
                     saveBtn.disabled = false;
-                    saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Issue';
+                    saveBtn.textContent = saveButtonLabel;
                 }
 
                 showIssueConflictDialog(conflictMsg, function () {
@@ -6424,7 +6794,7 @@
                     // Reset button state
                     if (saveBtn) {
                         saveBtn.disabled = false;
-                        saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Issue';
+                        saveBtn.textContent = saveButtonLabel;
                     }
                     issueNotify('Issue saved, but comment could not be saved. Please click "Add Comment" and try again.', 'warning');
                     return;
@@ -6442,7 +6812,7 @@
             // Reset save button state
             if (saveBtn) {
                 saveBtn.disabled = false;
-                saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Issue';
+                saveBtn.textContent = saveButtonLabel;
             }
             
             // Show success message after modal closes
@@ -6506,7 +6876,7 @@
             // Reset button state on error
             if (saveBtn) {
                 saveBtn.disabled = false;
-                saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Issue';
+                saveBtn.textContent = saveButtonLabel;
             }
             
             // Handle timeout errors
@@ -6850,10 +7220,14 @@
 
     var finalIssueModalEl = document.getElementById('finalIssueModal');
     if (finalIssueModalEl) {
+        finalIssueModalEl.addEventListener('shown.bs.modal', function () {
+            normalizeClientFinalIssueOverlayState();
+            syncClientSidebarExpandButton();
+        });
         finalIssueModalEl.addEventListener('keydown', function (e) {
             if (!e || !e.altKey) return;
             if (String(e.key || '').toLowerCase() !== 's') return;
-            if (!finalIssueModalEl.classList.contains('show')) return;
+            if (!finalIssueModalEl.classList.contains('show') && !finalIssueModalEl.classList.contains('is-open')) return;
             var saveBtn = document.getElementById('finalIssueSaveBtn');
             if (!saveBtn || saveBtn.disabled || saveBtn.classList.contains('d-none')) return;
             e.preventDefault();
@@ -6861,7 +7235,25 @@
             saveBtn.click();
         });
 
+        if (userRole === 'client') {
+            finalIssueModalEl.addEventListener('click', function (e) {
+                var expandBtn = e.target && e.target.closest ? e.target.closest('.client-sidebar-expand') : null;
+                if (expandBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleClientSidebarDialogExpanded();
+                    return;
+                }
+                var dismissBtn = e.target && e.target.closest ? e.target.closest('.client-sidebar-close') : null;
+                if (!dismissBtn) return;
+                e.preventDefault();
+                e.stopPropagation();
+                requestClientFinalIssueOverlayClose();
+            });
+        }
+
         finalIssueModalEl.addEventListener('click', function (e) {
+            if (userRole === 'client') return;
             var dismissBtn = e.target && e.target.closest ? e.target.closest('[data-bs-dismiss="modal"]') : null;
             if (dismissBtn) {
                 // Try immediate leave when user explicitly closes modal.
@@ -6869,6 +7261,7 @@
             }
         });
         finalIssueModalEl.addEventListener('hide.bs.modal', function (e) {
+            if (userRole === 'client') return;
             if (finalIssueBypassCloseConfirm) {
                 finalIssueBypassCloseConfirm = false;
                 stopDraftAutosave();
@@ -6927,12 +7320,17 @@
         finalIssueModalEl.addEventListener('hidden.bs.modal', function () {
             stopIssuePresenceTracking();
             clearIssueConflictNotice();
+            document.body.classList.remove('client-issue-sidebar-open');
+            document.body.classList.remove('client-issue-sidebar-dialog-expanded');
+            finalIssueModalEl.classList.remove('is-dialog-expanded');
+            setFinalIssueComposeExpanded(false, { focus: false });
             cleanupModalOverlayState();
         });
     }
     document.addEventListener('hidden.bs.modal', function (e) {
         if (e && e.target && e.target.id === 'finalIssueModal') {
             stopIssuePresenceTracking();
+            document.body.classList.remove('client-issue-sidebar-open');
             cleanupModalOverlayState();
         }
     });
@@ -7042,6 +7440,30 @@
             addIssueComment(String(id));
         });
     }
+    var composeToggleBtn = document.getElementById('finalIssueComposeToggle');
+    if (composeToggleBtn) {
+        composeToggleBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            setFinalIssueComposeExpanded(!finalIssueComposeExpanded);
+            setTimeout(function () {
+                try { composeToggleBtn.focus(); } catch (err) { }
+            }, 0);
+        });
+        composeToggleBtn.addEventListener('keydown', function (e) {
+            if (!e) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setFinalIssueComposeExpanded(!finalIssueComposeExpanded);
+                return;
+            }
+            if (!finalIssueComposeExpanded) return;
+            if (e.key === 'Tab' && !e.shiftKey) {
+                e.preventDefault();
+                focusFinalIssueCommentEditor();
+            }
+        });
+    }
+    syncFinalIssueComposeUi();
 
     ['clientIssueSearch', 'clientIssueStatusFilter'].forEach(function (id) {
         var field = document.getElementById(id);

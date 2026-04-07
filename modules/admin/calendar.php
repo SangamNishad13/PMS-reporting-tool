@@ -118,7 +118,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
         $users = $db->query("SELECT id, full_name, role FROM users WHERE is_active = 1 AND role NOT IN ('admin') ORDER BY full_name")->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    // Build date range
+    // Build date range.
+    // Future dates stay empty unless a user has explicitly saved a status for that date.
+    $todayDate = date('Y-m-d');
     $period = new DatePeriod(
         new DateTime($start), 
         new DateInterval('P1D'), 
@@ -153,7 +155,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                     }
                 } else {
                     // Not updated
-                    if ($statusFilterAllows('not_updated')) {
+                    if ($d <= $todayDate && $statusFilterAllows('not_updated')) {
                         $date_users['not_updated'][] = [
                             'name' => $u['full_name'],
                             'id' => $u['id'],
@@ -182,7 +184,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                 
                 $title = $statusLabel . ' (' . $count . ')';
                 if ($totalHours > 0) {
-                    $title .= ' � ' . $totalHours . 'h';
+                    $title .= ' - ' . $totalHours . 'h';
                 }
                 
                 $events[] = [
@@ -208,9 +210,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                 
                 $userHours = $hours_map[$u['id']][$d] ?? 0;
                 if (empty($status_map[$u['id']][$d])) {
-                    if ($statusFilterAllows('not_updated')) {
+                    if ($d <= $todayDate && $statusFilterAllows('not_updated')) {
                         $title = $u['full_name'] . ' (Not updated)';
-                        if ($userHours > 0) $title .= ' � ' . $userHours . 'h';
+                        if ($userHours > 0) $title .= ' - ' . $userHours . 'h';
                         
                         // Truncate long titles for better display
                         $displayTitle = $title;
@@ -243,7 +245,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_events') {
                     }
                     $title = $st['full_name'] . ' (' . $statusLabelFn($stType) . ')';
                     $userHours = $hours_map[$u['id']][$d] ?? 0;
-                    if ($userHours > 0) $title .= ' � ' . $userHours . 'h';
+                    if ($userHours > 0) $title .= ' - ' . $userHours . 'h';
                     
                     // Truncate long titles for better display
                     $displayTitle = $title;

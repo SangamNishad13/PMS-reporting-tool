@@ -471,6 +471,15 @@
                                 $mapped = null; $envs = null; $pageIdForEnv = null;
                                 $mpStmt->execute([$projectId, $projectId, $u['id'], $u['id'], $u['id']]);
                                 $mapped = $mpStmt->fetch(PDO::FETCH_ASSOC);
+                                if (!$mapped) {
+                                    $mapped = [
+                                        'id' => $u['id'],
+                                        'page_number' => $u['page_number'] ?? '',
+                                        'page_name' => $u['name'] ?? '',
+                                        'status' => $u['status'] ?? 'not_started',
+                                        'notes' => $u['notes'] ?? ''
+                                    ];
+                                }
                                 if ($mapped) $pageIdForEnv = $mapped['id'];
                                 if ($pageIdForEnv) { $envStmt->execute([$pageIdForEnv]); $envs = $envStmt->fetch(PDO::FETCH_ASSOC); }
                         ?>
@@ -513,15 +522,22 @@
                                     </div>
                                 </td>
                                 <td>
-                                    <?php
-                                        $uniqueDisplay = $u['canonical_url'] ?? $u['name'] ?? '';
-                                        echo htmlspecialchars($uniqueDisplay);
-                                    ?>
+                                    <?php $uniqueDisplay = $u['canonical_url'] ?? $u['name'] ?? ''; ?>
+                                    <div class="d-flex align-items-center justify-content-between gap-2">
+                                        <span class="unique-url-display flex-grow-1 text-truncate"><?php echo htmlspecialchars($uniqueDisplay); ?></span>
+                                        <button type="button" class="btn btn-sm btn-link flex-shrink-0 edit-page-name" data-field="canonical_url" data-unique-id="<?php echo (int)$u['id']; ?>" data-page-id="<?php echo (int)$u['id']; ?>" data-current-name="<?php echo htmlspecialchars($uniqueDisplay); ?>" onclick="return window.handleEditPageName(this);">Edit</button>
+                                    </div>
                                 </td>
                                 <td>
                                     <?php
                                         $groupForUnique->execute([$projectId, $u['id']]);
                                         $grows = $groupForUnique->fetchAll(PDO::FETCH_COLUMN);
+                                        if (empty($grows)) {
+                                            $fallbackUrl = trim((string)($u['canonical_url'] ?? ''));
+                                            if ($fallbackUrl !== '') {
+                                                $grows = [$fallbackUrl];
+                                            }
+                                        }
                                         if (!empty($grows)) {
                                             $urlCount = count($grows);
                                             $maxVisible = 3; // Show only first 3 URLs initially
@@ -694,8 +710,6 @@
                                 <td>
                                     <?php if ($pageIdForEnv && $canManageAssignmentsInView): ?>
                                         <button class="btn btn-sm btn-outline-primary assign-page-btn me-1" data-bs-toggle="modal" data-bs-target="#assignPageModal-<?php echo $pageIdForEnv; ?>">Assign</button>
-                                    <?php elseif (!$pageIdForEnv): ?>
-                                        <span class="text-muted small">No mapped page</span>
                                     <?php endif; ?>
                                     <button class="btn btn-sm btn-danger delete-unique" data-id="<?php echo (int)$u['id']; ?>">Delete</button>
                                 </td>

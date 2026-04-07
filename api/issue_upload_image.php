@@ -14,7 +14,7 @@ function issue_upload_debug_log($msg) {
 
 issue_upload_debug_log('--- New upload request ---');
 $auth = new Auth();
-$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'admin']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'client']);
 
 header('Content-Type: application/json');
 
@@ -198,6 +198,17 @@ if (function_exists('getBaseDir')) {
 }
 
 $relativePath = 'uploads/issues/' . date('Ymd') . '/' . $filename;
+$previewKey = 'temporary_issue_upload_paths';
+$previewTtl = 2 * 60 * 60;
+if (!isset($_SESSION[$previewKey]) || !is_array($_SESSION[$previewKey])) {
+    $_SESSION[$previewKey] = [];
+}
+foreach ($_SESSION[$previewKey] as $path => $timestamp) {
+    if (!is_string($path) || !is_numeric($timestamp) || ((int)$timestamp + $previewTtl) < time()) {
+        unset($_SESSION[$previewKey][$path]);
+    }
+}
+$_SESSION[$previewKey][$relativePath] = time();
 $url = rtrim((string)$baseDir, '/') . '/api/secure_file.php?path=' . rawurlencode($relativePath);
 
 

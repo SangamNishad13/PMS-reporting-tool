@@ -4,14 +4,6 @@ require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/project_permissions.php';
 require_once __DIR__ . '/../includes/client_issue_snapshots.php';
 
-// Only log errors, not every request
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(403);
-    header('Content-Type: text/plain; charset=utf-8');
-    echo 'Forbidden: Not logged in';
-    exit;
-}
-
 $relPath = trim((string)($_GET['path'] ?? ''));
 if ($relPath === '' || strpos($relPath, "\0") !== false) {
     http_response_code(400);
@@ -37,6 +29,22 @@ foreach ($allowedPrefixes as $prefix) {
 if (!$allowed) {
     http_response_code(403);
     echo 'Forbidden';
+    exit;
+}
+
+$fileExt = strtolower((string)pathinfo($relPath, PATHINFO_EXTENSION));
+$publicImageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'avif'];
+$allowPublicIssueImage = (
+    (strpos($relPath, 'uploads/issues/') === 0 || strpos($relPath, 'assets/uploads/issues/') === 0)
+    && in_array($fileExt, $publicImageExts, true)
+);
+
+// Only log errors, not every request.
+// Direct issue screenshot image URLs are allowed without login, but only for exact image files.
+if (!isset($_SESSION['user_id']) && !$allowPublicIssueImage) {
+    http_response_code(403);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'Forbidden: Not logged in';
     exit;
 }
 
@@ -261,16 +269,39 @@ function userCanAccessFilePath(PDO $db, int $userId, string $role, string $relPa
     return false;
 }
 
-try {
-    $db = Database::getInstance();
-    $userId = (int)$_SESSION['user_id'];
-    $userRole = (string)($_SESSION['role'] ?? '');
+function userCanPreviewTemporaryIssueUpload(string $relPath): bool {
+    $previewKey = 'temporary_issue_upload_paths';
+    $previewTtl = 2 * 60 * 60;
+    if (!isset($_SESSION[$previewKey]) || !is_array($_SESSION[$previewKey])) {
+        return false;
+    }
 
-    if (!userCanAccessFilePath($db, $userId, $userRole, $relPath)) {
-        http_response_code(403);
-        header('Content-Type: text/plain; charset=utf-8');
-        echo 'Forbidden';
-        exit;
+    $allowed = false;
+    foreach ($_SESSION[$previewKey] as $path => $timestamp) {
+        if (!is_string($path) || !is_numeric($timestamp) || ((int)$timestamp + $previewTtl) < time()) {
+            unset($_SESSION[$previewKey][$path]);
+            continue;
+        }
+        if ($path === $relPath) {
+            $allowed = true;
+        }
+    }
+
+    return $allowed;
+}
+
+try {
+    if (!$allowPublicIssueImage) {
+        $db = Database::getInstance();
+        $userId = (int)$_SESSION['user_id'];
+        $userRole = (string)($_SESSION['role'] ?? '');
+
+        if (!userCanPreviewTemporaryIssueUpload($relPath) && !userCanAccessFilePath($db, $userId, $userRole, $relPath)) {
+            http_response_code(403);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Forbidden';
+            exit;
+        }
     }
 } catch (Exception $e) {
     error_log('secure_file.php: permission check failed: ' . $e->getMessage());

@@ -16,6 +16,15 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+$viewerRole = strtolower(trim((string)($_SESSION['role'] ?? '')));
+$viewerRole = preg_replace('/[^a-z0-9]+/', '_', $viewerRole);
+$viewerRole = trim($viewerRole, '_');
+if ($viewerRole === 'client') {
+    http_response_code(403);
+    echo json_encode(['error' => 'Project chat is not available for client accounts.']);
+    exit;
+}
+
 // CSRF protection for file uploads
 enforceApiCsrf();
 

@@ -334,13 +334,18 @@ try {
             // Ensure it's a clean string
             $priority = is_string($priority) ? trim($priority) : 'medium';
             
+            $descriptionHtml = (string)($i['description'] ?? '');
+            if ($userRole === 'client' && function_exists('rewrite_html_public_image_urls')) {
+                $descriptionHtml = rewrite_html_public_image_urls($descriptionHtml);
+            }
+
             $rowOut = [
                 'id' => $iid,
                 'issue_key' => $i['issue_key'] ?? 'ISS-' . $iid, // Fallback if column doesn't exist
                 'project_id' => (int)$i['project_id'],
                 'page_id' => $i['page_id'],
                 'title' => $i['title'],
-                'description' => $i['description'],
+                'description' => $descriptionHtml,
                 'status' => $statusValue,
                 'status_id' => (int)$i['status_id'],
                 'qa_status' => $qaStatusValues, // Return as array for multi-select
@@ -473,11 +478,16 @@ try {
                 }
                 $reporterIds = array_values(array_unique(array_filter($reporterIds)));
 
+                $descriptionHtml = (string)($i['description'] ?? '');
+                if ($userRole === 'client' && function_exists('rewrite_html_public_image_urls')) {
+                    $descriptionHtml = rewrite_html_public_image_urls($descriptionHtml);
+                }
+
                 $out[] = [
                     'id' => $iid,
                     'issue_key' => $i['issue_key'] ?? 'ISS-' . $iid,
                     'title' => $i['title'] ?? '',
-                    'description' => $i['description'] ?? '',
+                    'description' => $descriptionHtml,
                     'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? ($meta['common_title'][0] ?? '') : ($meta['common_title'] ?? ''),
                     'status_id' => (int)($i['status_id'] ?? 0),
                     'status_name' => $i['status_name'] ?? '',
@@ -1432,11 +1442,16 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         $historyStmt->execute([$id]);
         $latestHistoryId = (int)$historyStmt->fetchColumn();
         
+        $descriptionHtml = (string)($issueData['description'] ?? '');
+        if ($userRole === 'client' && function_exists('rewrite_html_public_image_urls')) {
+            $descriptionHtml = rewrite_html_public_image_urls($descriptionHtml);
+        }
+
         $updatedIssue = [
             'id' => (int)$issueData['id'],
             'issue_key' => $issueData['issue_key'] ?? 'ISS-' . $issueData['id'], // Fallback if column doesn't exist
             'title' => $issueData['title'],
-            'description' => $issueData['description'],
+            'description' => $descriptionHtml,
             'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : '',
             'status' => $issueData['status_name'] ?? 'open',
             'status_id' => (int)$issueData['status_id'],
@@ -1642,11 +1657,16 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
             $isOpen = isIssueOpenStatusValue($statusValue);
             $hasQaStatus = isQaStatusMetaFilled($qaStatusValues);
             $canTesterDelete = (!$hasComments && !($isOpen && $hasQaStatus));
+            $descriptionHtml = (string)($r['description'] ?? '');
+            if ($userRole === 'client' && function_exists('rewrite_html_public_image_urls')) {
+                $descriptionHtml = rewrite_html_public_image_urls($descriptionHtml);
+            }
+
             $out[] = [
                 'id' => (int)$r['common_id'],
                 'issue_id' => $iid,
                 'title' => $r['common_title'] ?: $r['title'],
-                'description' => $r['description'],
+                'description' => $descriptionHtml,
                 'pages' => $pages,
                 'status' => $statusValue,
                 'qa_status' => $qaStatusValues,

@@ -9,6 +9,16 @@ require_once __DIR__ . '/../../includes/helpers.php';
 $auth = new Auth();
 $auth->requireLogin();
 $baseDir = getBaseDir();
+$viewerRole = strtolower(trim((string)($_SESSION['role'] ?? '')));
+$viewerRole = preg_replace('/[^a-z0-9]+/', '_', $viewerRole);
+$viewerRole = trim($viewerRole, '_');
+
+if ($viewerRole === 'client') {
+    http_response_code(403);
+    $_SESSION['error'] = 'Project chat is not available for client accounts.';
+    header('Location: ' . $baseDir . '/client/index.php');
+    exit;
+}
 
 // Get page ID
 $pageId = isset($_GET['page_id']) ? intval($_GET['page_id']) : 0;

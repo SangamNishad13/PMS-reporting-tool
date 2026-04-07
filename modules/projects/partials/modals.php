@@ -610,7 +610,12 @@
                                         '<button type="button" class="btn btn-sm btn-link flex-shrink-0 edit-page-name" data-field="page_name" data-unique-id="' + uid + '" data-page-id="' + uid + '" data-current-name="' + _escapeHtml(displayName) + '" onclick="return window.handleEditPageName(this);">Edit</button>'+
                                     '</div>'+
                                 '</td>'+
-                                '<td>' + _escapeHtml(canonical || name || '') + '</td>'+
+                                '<td>'+
+                                    '<div class="d-flex align-items-center justify-content-between gap-2">'+
+                                        '<span class="unique-url-display flex-grow-1 text-truncate">' + _escapeHtml(canonical || name || '') + '</span>'+
+                                        '<button type="button" class="btn btn-sm btn-link flex-shrink-0 edit-page-name" data-field="canonical_url" data-unique-id="' + uid + '" data-page-id="' + uid + '" data-current-name="' + _escapeHtml(canonical || name || '') + '" onclick="return window.handleEditPageName(this);">Edit</button>'+
+                                    '</div>'+
+                                '</td>'+
                                 '<td><div class="unique-grouped-list" data-unique-id="' + uid + '"><span class="text-muted">No grouped URLs</span></div></td>'+
                                 '<td><span class="text-muted">No FT assignments</span></td>'+
                                 '<td><span class="text-muted">No AT assignments</span></td>'+
@@ -672,6 +677,7 @@
                     <label class="form-label">Field</label>
                     <select id="editPage_field" class="form-select form-select-sm">
                         <option value="page_name">Page Name</option>
+                        <option value="canonical_url">Unique URL</option>
                         <option value="notes">Notes</option>
                     </select>
                 </div>

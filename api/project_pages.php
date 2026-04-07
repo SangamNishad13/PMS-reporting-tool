@@ -239,6 +239,7 @@ try {
             $newName = trim($input['page_name'] ?? '');
             $field = trim($input['field'] ?? 'page_name');
             if (!$uniqueId && !$pageId) jsonRes(['error' => 'unique_page_id or page_id required'], 400);
+            if (!in_array($field, ['page_name', 'canonical_url', 'notes'], true)) jsonRes(['error' => 'invalid field'], 400);
             if ($field !== 'notes' && $newName === '') jsonRes(['error' => 'page_name required'], 400);
 
             // determine project id
@@ -266,6 +267,8 @@ try {
             if ($pageId) {
                 if ($field === 'notes') {
                     $upd = $db->prepare('UPDATE project_pages SET notes = ?, updated_at = NOW() WHERE id = ?');
+                } elseif ($field === 'canonical_url') {
+                    $upd = $db->prepare('UPDATE project_pages SET url = ?, updated_at = NOW() WHERE id = ?');
                 } else {
                     $upd = $db->prepare('UPDATE project_pages SET page_name = ?, updated_at = NOW() WHERE id = ?');
                 }
@@ -318,6 +321,8 @@ try {
             // For non-page_name fields on unique (notes/page_name) in project_pages
             if ($field === 'notes') {
                 $upd = $db->prepare('UPDATE project_pages SET notes = ?, updated_at = NOW() WHERE id = ?');
+            } elseif ($field === 'canonical_url') {
+                $upd = $db->prepare('UPDATE project_pages SET url = ?, updated_at = NOW() WHERE id = ?');
             } else {
                 $upd = $db->prepare('UPDATE project_pages SET page_name = ?, updated_at = NOW() WHERE id = ?');
             }
@@ -601,17 +606,8 @@ try {
             $up = $u->fetch(PDO::FETCH_ASSOC);
             if (!$up) jsonRes(['error' => 'unique page not found'], 404);
             $projectId = (int)$up['project_id'];
-            $role = $_SESSION['role'] ?? '';
             $userId = $_SESSION['user_id'] ?? 0;
-            // allow only admins, admin, or project lead
-            if (!in_array($role, ['admin','admin','project_lead'])) jsonRes(['error' => 'Permission denied'], 403);
-            // If project_lead, ensure they are the lead of the project
-            if ($role === 'project_lead') {
-                $p = $db->prepare('SELECT project_lead_id FROM projects WHERE id = ? LIMIT 1');
-                $p->execute([$projectId]);
-                $prow = $p->fetch(PDO::FETCH_ASSOC);
-                if (!$prow || (int)$prow['project_lead_id'] !== (int)$userId) jsonRes(['error' => 'Permission denied'], 403);
-            }
+            if (!hasProjectPermission($db, $userId, $projectId, 'pages_assign')) jsonRes(['error' => 'Permission denied'], 403);
 
             $db->beginTransaction();
             try {
@@ -708,16 +704,8 @@ try {
             if (count($projectIds) !== 1) jsonRes(['error'=>'items belong to multiple projects'], 400);
             $projectId = (int)$projectIds[0];
 
-            // permission: admin/admin/project_lead (and if project_lead must be lead)
-            $role = $_SESSION['role'] ?? '';
             $userId = $_SESSION['user_id'] ?? 0;
-            if (!in_array($role, ['admin','admin','project_lead'])) jsonRes(['error' => 'Permission denied'], 403);
-            if ($role === 'project_lead') {
-                $p = $db->prepare('SELECT project_lead_id FROM projects WHERE id = ? LIMIT 1');
-                $p->execute([$projectId]);
-                $prow = $p->fetch(PDO::FETCH_ASSOC);
-                if (!$prow || (int)$prow['project_lead_id'] !== (int)$userId) jsonRes(['error' => 'Permission denied'], 403);
-            }
+            if (!hasProjectPermission($db, $userId, $projectId, 'pages_assign')) jsonRes(['error' => 'Permission denied'], 403);
 
             $db->beginTransaction();
             try {
