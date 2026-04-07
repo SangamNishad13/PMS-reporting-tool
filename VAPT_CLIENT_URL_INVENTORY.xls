@@ -1,0 +1,83 @@
+<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Title>VAPT Client URL Inventory</Title>
+  <Author>GitHub Copilot</Author>
+    <Created>2026-04-07T00:00:00Z</Created>
+ </DocumentProperties>
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Top" ss:WrapText="1"/>
+   <Borders/>
+   <Font ss:FontName="Calibri" ss:Size="11"/>
+   <Interior/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+  <Style ss:ID="Header">
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/>
+   <Interior ss:Color="#D9EAF7" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="Title">
+   <Font ss:FontName="Calibri" ss:Size="14" ss:Bold="1"/>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="Client URLs">
+    <Table>
+     <Column ss:Width="170"/>
+     <Column ss:Width="380"/>
+     <Column ss:Width="120"/>
+     <Column ss:Width="90"/>
+     <Column ss:Width="430"/>
+     <Row>
+        <Cell ss:StyleID="Title" ss:MergeAcross="4"><Data ss:Type="String">VAPT Client URL Inventory - Production (Updated 2026-04-07)</Data></Cell>
+     </Row>
+     <Row>
+        <Cell><Data ss:Type="String">Base URL</Data></Cell>
+        <Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com</Data></Cell>
+        <Cell><Data ss:Type="String"></Data></Cell>
+        <Cell><Data ss:Type="String"></Data></Cell>
+      <Cell><Data ss:Type="String">Only current authenticated client pages are listed below. Deprecated URLs, auth flows, redirects, APIs, and backend/file endpoints are intentionally excluded.</Data></Cell>
+     </Row>
+     <Row>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Section</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">URL</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Type</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Auth</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Notes</Data></Cell>
+     </Row>
+   <Row><Cell><Data ss:Type="String">Dashboard and Analytics</Data></Cell><Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com/client/dashboard</Data></Cell><Cell><Data ss:Type="String">Page</Data></Cell><Cell><Data ss:Type="String">Yes</Data></Cell><Cell><Data ss:Type="String">Primary client dashboard route</Data></Cell></Row>
+   <Row><Cell><Data ss:Type="String">Dashboard and Analytics</Data></Cell><Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com/client/project/{project-token}</Data></Cell><Cell><Data ss:Type="String">Page</Data></Cell><Cell><Data ss:Type="String">Yes</Data></Cell><Cell><Data ss:Type="String">Canonical project analytics route using tokenized project identifier</Data></Cell></Row>
+   <Row><Cell><Data ss:Type="String">Dashboard and Analytics</Data></Cell><Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com/modules/client/projects.php</Data></Cell><Cell><Data ss:Type="String">Page</Data></Cell><Cell><Data ss:Type="String">Yes</Data></Cell><Cell><Data ss:Type="String">My Digital Assets listing page</Data></Cell></Row>
+   <Row><Cell><Data ss:Type="String">Dashboard and Analytics</Data></Cell><Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com/modules/client/issues_overview.php</Data></Cell><Cell><Data ss:Type="String">Page</Data></Cell><Cell><Data ss:Type="String">Yes</Data></Cell><Cell><Data ss:Type="String">Issue summary across all assigned digital assets</Data></Cell></Row>
+   <Row><Cell><Data ss:Type="String">Dashboard and Analytics</Data></Cell><Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com/modules/client/issues_overview.php?project_id={project-id}</Data></Cell><Cell><Data ss:Type="String">Page</Data></Cell><Cell><Data ss:Type="String">Yes</Data></Cell><Cell><Data ss:Type="String">Project-specific issue summary</Data></Cell></Row>
+   <Row><Cell><Data ss:Type="String">Dashboard and Analytics</Data></Cell><Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com/modules/projects/issues_all.php?project_id={project-id}</Data></Cell><Cell><Data ss:Type="String">Page</Data></Cell><Cell><Data ss:Type="String">Yes</Data></Cell><Cell><Data ss:Type="String">Full client-visible issue list linked from Issue Overview</Data></Cell></Row>
+   <Row><Cell><Data ss:Type="String">Support and Preferences</Data></Cell><Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com/modules/client/preferences.php</Data></Cell><Cell><Data ss:Type="String">Page</Data></Cell><Cell><Data ss:Type="String">Yes</Data></Cell><Cell><Data ss:Type="String">Client notification and email preferences page</Data></Cell></Row>
+
+      <Row><Cell><Data ss:Type="String">Authentication</Data></Cell><Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com/modules/auth/login.php</Data></Cell><Cell><Data ss:Type="String">Page</Data></Cell><Cell><Data ss:Type="String">No</Data></Cell><Cell><Data ss:Type="String">Client login page (entry point for all users)</Data></Cell></Row>
+      <Row><Cell><Data ss:Type="String">Authentication</Data></Cell><Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com/modules/auth/verify_2fa.php</Data></Cell><Cell><Data ss:Type="String">Page</Data></Cell><Cell><Data ss:Type="String">Partial</Data></Cell><Cell><Data ss:Type="String">2FA verification page for enabled client accounts</Data></Cell></Row>
+      <Row><Cell><Data ss:Type="String">Profile</Data></Cell><Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com/modules/profile.php</Data></Cell><Cell><Data ss:Type="String">Page</Data></Cell><Cell><Data ss:Type="String">Yes</Data></Cell><Cell><Data ss:Type="String">Client profile page (view and update your info; no task/project stats shown)</Data></Cell></Row>
+   <Row><Cell><Data ss:Type="String">Support and Preferences</Data></Cell><Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com/modules/client/history.php</Data></Cell><Cell><Data ss:Type="String">Page</Data></Cell><Cell><Data ss:Type="String">Yes</Data></Cell><Cell><Data ss:Type="String">Export history page</Data></Cell></Row>
+   <Row><Cell><Data ss:Type="String">Support and Preferences</Data></Cell><Cell><Data ss:Type="String">https://pms.athenaeumtransformation.com/modules/client/help.php</Data></Cell><Cell><Data ss:Type="String">Page</Data></Cell><Cell><Data ss:Type="String">Yes</Data></Cell><Cell><Data ss:Type="String">Client help and documentation page</Data></Cell></Row>
+    </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>3</SplitHorizontal>
+   <TopRowBottomPane>3</TopRowBottomPane>
+   <ActivePane>2</ActivePane>
+   <Panes>
+    <Pane>
+     <Number>3</Number>
+    </Pane>
+   </Panes>
+   <ProtectObjects>False</ProtectObjects>
+   <ProtectScenarios>False</ProtectScenarios>
+  </WorksheetOptions>
+ </Worksheet>
+</Workbook>

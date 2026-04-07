@@ -358,6 +358,8 @@ if ($canViewUsernameHistory) {
     }
 }
 
+$isClientViewer = isset($_SESSION['role'], $_SESSION['user_id']) && $_SESSION['role'] === 'client' && (int)$_SESSION['user_id'] === $userId;
+
 $flashSuccess = isset($_SESSION['success']) ? (string)$_SESSION['success'] : '';
 $flashError = isset($_SESSION['error']) ? (string)$_SESSION['error'] : '';
 unset($_SESSION['success'], $_SESSION['error']);
@@ -378,12 +380,13 @@ include __DIR__ . '/../includes/header.php';
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
     <?php endif; ?>
-    <div class="row">
-        <!-- User Profile Card -->
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body text-center">
-                    <div class="mb-3">
+    <div id="profilePage" class="container-fluid py-2">
+        <div class="row">
+            <!-- User Profile Card -->
+            <div class="<?php echo $isClientViewer ? 'col-12' : 'col-md-4'; ?>">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <div class="mb-2">
                         <i class="fas fa-user-circle fa-5x text-primary"></i>
                     </div>
                     <h4><?php echo htmlspecialchars($user['full_name']); ?></h4>
@@ -397,10 +400,11 @@ include __DIR__ . '/../includes/header.php';
                         <?php echo ucfirst(str_replace('_', ' ', $user['role'])); ?>
                     </span>
                     <hr>
+                    <?php if (!$isClientViewer): ?>
                     <div class="row text-center">
                         <div class="col-4">
                             <h5 class="text-primary"><?php echo $user['total_projects']; ?></h5>
-                            <small>Projects</small>
+                            <small>Digital Assets</small>
                         </div>
                         <div class="col-4">
                             <h5 class="text-success"><?php echo $user['completed_projects']; ?></h5>
@@ -411,7 +415,10 @@ include __DIR__ . '/../includes/header.php';
                             <small>Pages</small>
                         </div>
                     </div>
-                    <?php if ($user['role'] === 'at_tester' || $user['role'] === 'ft_tester'): ?>
+                    <?php else: ?>
+                    <p class="text-muted small mb-0">This is your client profile. Use the menu to access your digital assets, issue summary, and preferences.</p>
+                    <?php endif; ?>
+                    <?php if (!$isClientViewer && ($user['role'] === 'at_tester' || $user['role'] === 'ft_tester')): ?>
                     <hr>
                     <div class="text-center">
                         <h6>Total Hours Spent</h6>
@@ -422,7 +429,7 @@ include __DIR__ . '/../includes/header.php';
             </div>
 
             <!-- Contact Information -->
-            <div class="card mt-3">
+            <div class="card mt-2">
                 <div class="card-header">
                     <h5 class="mb-0"><i class="fas fa-address-card"></i> Contact Information</h5>
                 </div>
@@ -461,7 +468,7 @@ include __DIR__ . '/../includes/header.php';
 
             <!-- Two-Factor Authentication Settings -->
             <?php if ((int)$userId === (int)($_SESSION['user_id'] ?? 0)): ?>
-            <div class="card mt-3 border-<?php echo !empty($user['two_factor_enabled']) ? 'success' : 'warning'; ?>">
+            <div class="card mt-2 border-<?php echo !empty($user['two_factor_enabled']) ? 'success' : 'warning'; ?>">
                 <div class="card-header bg-<?php echo !empty($user['two_factor_enabled']) ? 'success text-white' : 'light'; ?>">
                     <h5 class="mb-0">
                         <i class="fas fa-shield-alt"></i> Two-Factor Authentication (2FA)
@@ -514,7 +521,7 @@ include __DIR__ . '/../includes/header.php';
             <?php endif; ?>
             <!-- Admin: View Production Hours By Day -->
             <?php if (isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin'])): ?>
-            <div class="card mt-3">
+            <div class="card mt-2">
                 <div class="card-header">
                     <h5 class="mb-0"><i class="fas fa-clock"></i> Production Hours (By Day)</h5>
                 </div>
@@ -526,7 +533,7 @@ include __DIR__ . '/../includes/header.php';
                         <div class="col-auto">
                             <button id="ph_fetch" class="btn btn-primary">View</button>
                         </div>
-                        <div class="col-12 mt-3">
+                        <div class="col-12 mt-2">
                             <div id="ph_result">
                                 <p class="text-muted">Select a date and click <strong>View</strong> to load production hours.</p>
                             </div>
@@ -538,21 +545,23 @@ include __DIR__ . '/../includes/header.php';
         </div>
 
         <!-- User Details -->
+        <?php if (!$isClientViewer): ?>
         <div class="col-md-8">
-            <!-- Recent Projects -->
+            <?php if (!$isClientViewer): ?>
+            <!-- Recent Digital Assets -->
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-project-diagram"></i> Projects (<?php echo count($projects); ?>)</h5>
+                    <h5 class="mb-0"><i class="fas fa-folder-open"></i> Digital Assets (<?php echo count($projects); ?>)</h5>
                 </div>
                 <div class="card-body">
                     <?php if (empty($projects)): ?>
-                        <p class="text-muted">No projects found.</p>
+                        <p class="text-muted">No digital assets found.</p>
                     <?php else: ?>
                         <div class="table-responsive">
                             <table class="table table-hover">
                                 <thead>
                                     <tr>
-                                        <th>Project</th>
+                                        <th>Digital Asset</th>
                                         <th>Role</th>
                                         <th>Status</th>
                                         <th>Priority</th>
@@ -606,6 +615,7 @@ include __DIR__ . '/../includes/header.php';
                     <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
 
             <?php if ($canViewUsernameHistory): ?>
             <div class="card mt-3">
@@ -643,6 +653,7 @@ include __DIR__ . '/../includes/header.php';
             </div>
             <?php endif; ?>
 
+            <?php if (!$isClientViewer): ?>
             <!-- Assigned Tasks -->
             <div class="card mt-3">
                 <div class="card-header">
@@ -656,7 +667,7 @@ include __DIR__ . '/../includes/header.php';
                             <table class="table table-hover">
                                 <thead>
                                     <tr>
-                                        <th>Project</th>
+                                        <th>Digital Asset</th>
                                         <th>Task/Page</th>
                                         <th>Status</th>
                                         <th>Action</th>
@@ -689,7 +700,9 @@ include __DIR__ . '/../includes/header.php';
                     <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
 
+            <?php if (!$isClientViewer): ?>
             <!-- Recent Activity -->
             <div class="card mt-3">
                 <div class="card-header">
@@ -724,7 +737,9 @@ include __DIR__ . '/../includes/header.php';
                     <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
         </div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -774,6 +789,27 @@ include __DIR__ . '/../includes/header.php';
 .recent-activity-scroll {
     max-height: 420px;
     overflow-y: auto;
+}
+#profilePage .card {
+    margin-bottom: 0.9rem;
+}
+#profilePage .card-body {
+    padding: 0.95rem 1rem;
+}
+#profilePage .card-header {
+    padding: 0.6rem 1rem;
+}
+#profilePage .card .table th,
+#profilePage .card .table td {
+    padding: 0.55rem 0.75rem;
+}
+#profilePage .badge {
+    font-size: 0.85rem;
+}
+#profilePage .nav-link,
+#profilePage .form-label,
+#profilePage .text-muted {
+    line-height: 1.2;
 }
 </style>
 
