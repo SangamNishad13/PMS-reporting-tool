@@ -133,10 +133,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_client_user'])
             // Create user
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
             $stmt = $db->prepare("
-                INSERT INTO users (username, full_name, email, password, role, client_id, created_at) 
-                VALUES (?, ?, ?, ?, 'client', ?, NOW())
+                INSERT INTO users (username, full_name, email, password, role, client_id, force_password_reset, temp_password, account_setup_completed, created_at) 
+                VALUES (?, ?, ?, ?, 'client', ?, 1, ?, 0, NOW())
             ");
-            $stmt->execute([$username, $fullName, $email, $hashedPassword, $clientId]);
+            $stmt->execute([$username, $fullName, $email, $hashedPassword, $clientId, $password]);
             $userId = $db->lastInsertId();
             
             // Grant view_project permission if checked

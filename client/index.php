@@ -144,6 +144,17 @@ function requireAuth($path) {
         }
     }
     
+    // Check for force password reset (same as header.php check)
+    if (isset($_SESSION['user_id']) && ($_SESSION['force_reset'] ?? false)) {
+        $currentPage = $_SERVER['PHP_SELF'];
+        if (strpos($currentPage, 'modules/auth/force_reset.php') === false && 
+            strpos($currentPage, 'modules/auth/logout.php') === false) {
+            $baseDir = getBaseDir();
+            header('Location: ' . $baseDir . '/modules/auth/force_reset.php');
+            exit;
+        }
+    }
+    
     // Verify client role
     if ($_SESSION['client_role'] !== 'client') {
         http_response_code(403);

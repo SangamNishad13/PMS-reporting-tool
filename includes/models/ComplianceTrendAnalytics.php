@@ -257,10 +257,28 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
         
         // Calculate metrics for each week
         ksort($weeklyData);
-        $runningIssues = [];
         foreach ($weeklyData as $week => &$data) {
-            $runningIssues = array_merge($runningIssues, $issuesByWeek[$week] ?? []);
-            $data['compliance_score'] = $this->complianceResolver->calculateWcagComplianceFromIssues($runningIssues);
+            // Get week end date to evaluate issues as they were at that point in time
+            $weekEndDate = date('Y-m-d', strtotime($week . '-7'));
+            
+            // Filter issues: only those created before or during week, and resolved (if resolved) by week end
+            $weekEffectiveIssues = [];
+            foreach ($issues as $issue) {
+                $createdDate = $issue['created_at'] ?? '';
+                if ($createdDate <= $weekEndDate . ' 23:59:59') {
+                    // Include resolved status as of this week's end date
+                    $resolvedDate = $issue['resolved_at'] ?? '';
+                    $isResolved = !empty($resolvedDate) && $resolvedDate <= $weekEndDate . ' 23:59:59';
+                    
+                    $effectiveIssue = $issue;
+                    if (!$isResolved) {
+                        $effectiveIssue['status'] = 'Open';
+                    }
+                    $weekEffectiveIssues[] = $effectiveIssue;
+                }
+            }
+            
+            $data['compliance_score'] = $this->complianceResolver->calculateWcagComplianceFromIssues($weekEffectiveIssues);
             $data['avg_resolution_time'] = !empty($data['resolution_times']) ? 
                 round(array_sum($data['resolution_times']) / count($data['resolution_times']), 1) : 0;
             unset($data['resolution_times']); // Remove raw data to save space
@@ -314,11 +332,30 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
         
         // Calculate monthly metrics
         ksort($monthlyData);
-        $runningIssues = [];
         foreach ($monthlyData as $month => &$data) {
             $data['resolution_rate'] = $this->calculatePercentage($data['resolved_issues'], $data['new_issues']);
-            $runningIssues = array_merge($runningIssues, $issuesByMonth[$month] ?? []);
-            $data['compliance_score'] = $this->complianceResolver->calculateWcagComplianceFromIssues($runningIssues);
+            
+            // Get month end date to evaluate issues as they were at that point in time
+            $monthEndDate = date('Y-m-t', strtotime($month . '-01'));
+            
+            // Filter issues: only those created before or during month, and resolved (if resolved) by month end
+            $monthEffectiveIssues = [];
+            foreach ($issues as $issue) {
+                $createdDate = $issue['created_at'] ?? '';
+                if ($createdDate <= $monthEndDate . ' 23:59:59') {
+                    // Include resolved status as of this month's end date
+                    $resolvedDate = $issue['resolved_at'] ?? '';
+                    $isResolved = !empty($resolvedDate) && $resolvedDate <= $monthEndDate . ' 23:59:59';
+                    
+                    $effectiveIssue = $issue;
+                    if (!$isResolved) {
+                        $effectiveIssue['status'] = 'Open';
+                    }
+                    $monthEffectiveIssues[] = $effectiveIssue;
+                }
+            }
+            
+            $data['compliance_score'] = $this->complianceResolver->calculateWcagComplianceFromIssues($monthEffectiveIssues);
         }
         
         return array_values($monthlyData);
@@ -365,11 +402,30 @@ class ComplianceTrendAnalytics extends AnalyticsEngine {
         
         // Calculate yearly metrics
         ksort($yearlyData);
-        $runningIssues = [];
         foreach ($yearlyData as $year => &$data) {
             $data['resolution_rate'] = $this->calculatePercentage($data['resolved_issues'], $data['new_issues']);
-            $runningIssues = array_merge($runningIssues, $issuesByYear[$year] ?? []);
-            $data['compliance_score'] = $this->complianceResolver->calculateWcagComplianceFromIssues($runningIssues);
+            
+            // Get year end date to evaluate issues as they were at that point in time
+            $yearEndDate = date('Y-12-31', strtotime($year . '-01-01'));
+            
+            // Filter issues: only those created before or during year, and resolved (if resolved) by year end
+            $yearEffectiveIssues = [];
+            foreach ($issues as $issue) {
+                $createdDate = $issue['created_at'] ?? '';
+                if ($createdDate <= $yearEndDate . ' 23:59:59') {
+                    // Include resolved status as of this year's end date
+                    $resolvedDate = $issue['resolved_at'] ?? '';
+                    $isResolved = !empty($resolvedDate) && $resolvedDate <= $yearEndDate . ' 23:59:59';
+                    
+                    $effectiveIssue = $issue;
+                    if (!$isResolved) {
+                        $effectiveIssue['status'] = 'Open';
+                    }
+                    $yearEffectiveIssues[] = $effectiveIssue;
+                }
+            }
+            
+            $data['compliance_score'] = $this->complianceResolver->calculateWcagComplianceFromIssues($yearEffectiveIssues);
             $data['avg_resolution_time'] = !empty($data['resolution_times']) ? 
                 round(array_sum($data['resolution_times']) / count($data['resolution_times']), 1) : 0;
             unset($data['resolution_times']);

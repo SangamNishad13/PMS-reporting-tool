@@ -61,7 +61,7 @@ function loadQaBreakdown(userId) {
 
                         if (item.issues && item.issues.length > 0) {
                             item.issues.forEach(function (issue) {
-                                html += '<div class="d-flex justify-content-between align-items-center py-1 px-2 mb-1 bg-light rounded issue-item-new"'
+                                html += '<div class="d-flex justify-content-between align-items-center py-1 px-2 mb-1 issue-item-new border-bottom"'
                                     + ' style="cursor: pointer;" onclick="openIssueDetail(' + issue.id + ', ' + (issue.page_id || 0) + ')">'
                                     + '<div><small class="text-primary fw-bold">' + (issue.issue_key || '#' + issue.id) + '</small>'
                                     + '<div class="small">' + issue.title + '</div></div>'

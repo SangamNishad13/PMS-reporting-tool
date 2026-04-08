@@ -2934,7 +2934,10 @@
         document.getElementById('finalIssueStatus').value = issue.status || 'Open';
         syncResolutionStatusOptions();
         setFinalQaStatusValue(issue.qa_status || []);
-        jQuery('#finalIssuePages').val(issue.pages || [issueData.selectedPageId]).trigger('change');
+        // Set pages - use val() method
+        var pagesToSet = issue.pages || [issueData.selectedPageId];
+        var $pagesEl = jQuery('#finalIssuePages');
+        $pagesEl.val(pagesToSet).trigger('change');
         jQuery('#finalIssueGroupedUrls').val(issue.grouped_urls || []).trigger('change');
         if (window.jQuery && jQuery.fn.summernote) jQuery('#finalIssueDetails').summernote('code', issue.description || '');
         else document.getElementById('finalIssueDetails').value = issue.description || '';
@@ -6601,16 +6604,28 @@
     }
 
     async function addOrUpdateFinalIssue() {
-        var selectedPagesFallback = (window.jQuery ? (jQuery('#finalIssuePages').val() || []) : []);
+        // Get selected pages from the select element
+        var selectedPagesFallback = [];
+        if (window.jQuery) {
+            var $pagesEl = jQuery('#finalIssuePages');
+            if ($pagesEl.length) {
+                selectedPagesFallback = $pagesEl.val() || [];
+                // Ensure it's an array
+                if (!Array.isArray(selectedPagesFallback)) {
+                    selectedPagesFallback = [selectedPagesFallback].filter(Boolean);
+                }
+            }
+        }
         var normalizedSelectedPages = normalizeProjectPageIds(selectedPagesFallback);
         var selectedPageId = resolveValidSelectedPageId(issueData.selectedPageId, normalizedSelectedPages);
         if (selectedPageId) {
             issueData.selectedPageId = selectedPageId;
         }
-        if (!selectedPageId) {
-            issueNotify('Please select at least one page before saving the issue.', 'warning');
-            return;
-        }
+        // Allow saving with no pages selected (user can remove all page associations)
+        // if (!selectedPageId) {
+        //     issueNotify('Please select at least one page before saving the issue.', 'warning');
+        //     return;
+        // }
         
         // Prevent multiple clicks and show loading state
         var saveBtn = document.getElementById('finalIssueSaveBtn');
@@ -6649,7 +6664,7 @@
             status: document.getElementById('finalIssueStatus').value,
             qa_status: qaStatusValue,
             priority: document.getElementById('finalIssueField_priority') ? document.getElementById('finalIssueField_priority').value : 'medium',
-            pages: normalizedSelectedPages.length ? normalizedSelectedPages : [selectedPageId],
+            pages: normalizedSelectedPages, // Allow empty array if user removes all pages
             grouped_urls: normalizeGroupedUrlsSelection(jQuery('#finalIssueGroupedUrls').val() || []),
             reporters: jQuery('#finalIssueReporters').val() || [],
             reporter_qa_status_map: reporterQaMap,
@@ -6703,7 +6718,7 @@
             if (editId) fd.append('id', editId);
             if (editId && expectedUpdatedAt) fd.append('expected_updated_at', expectedUpdatedAt);
             if (editId) fd.append('expected_history_id', (document.getElementById('finalIssueModal') || {}).dataset.expectedHistoryId || '0');
-            fd.append('page_id', selectedPageId);
+            fd.append('page_id', normalizedSelectedPages.length ? normalizedSelectedPages[0] : 0);
             fd.append('metadata', JSON.stringify(metadata));
             fd.append('client_ready', clientReady);
 

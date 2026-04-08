@@ -360,16 +360,39 @@ function clearDataRows(string &$xml): void {
 
 function stripHtml(string $html): string {
     if (!$html) return '';
-    // Replace block-level tags with newlines/bullets BEFORE stripping
-    $text = preg_replace('/<br\s*\/?>/i', "\n", $html);
-    $text = preg_replace('/<\/p>/i', "\n", $text);
+
+    // Preserve literal code blocks before stripping other HTML tags.
+    $text = preg_replace_callback(
+        '/<(?:pre|code)\b[^>]*>(.*?)<\/\s*(?:pre|code)>/is',
+        function ($matches) {
+            return '###CODEBLOCK###' . htmlspecialchars($matches[1], ENT_QUOTES | ENT_HTML5, 'UTF-8') . '###ENDCODE###';
+        },
+        $html
+    );
+
+    // Convert block-level formatting tags to newlines or bullets.
+    $text = preg_replace('/<br\s*\/?>/i', "\n", $text);
     $text = preg_replace('/<li\b[^>]*>/i', '• ', $text);
-    // Strip all HTML tags
+    $text = preg_replace('/<\/li>/i', "\n", $text);
+    $text = preg_replace('/<\/p>/i', "\n", $text);
+    $text = preg_replace('/<\/h[1-6]>/i', "\n", $text);
+    $text = preg_replace('/<\/div>/i', "\n", $text);
+    $text = preg_replace('/<\/ul>/i', "\n", $text);
+    $text = preg_replace('/<\/ol>/i', "\n", $text);
+    // Remove opening tags for headings and block containers now that we have newlines.
+    $text = preg_replace('/<\/?(?:div|p|h[1-6]|ul|ol)[^>]*>/i', '', $text);
+    // Strip any remaining tags.
     $text = strip_tags($text);
-    // Decode HTML entities (e.g. &amp; → &, &lt; → <, &#10; → newline)
+    // Decode HTML entities after stripping tags so encoded markup remains literal.
     $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-    // Collapse multiple spaces/tabs (but preserve newlines for xstr to encode as &#10;)
+    // Restore preserved code content.
+    $text = preg_replace_callback('/###CODEBLOCK###(.*?)###ENDCODE###/s', function ($matches) {
+        return html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }, $text);
+    // Normalize whitespace/newlines.
+    $text = str_replace(["\r\n", "\r"], "\n", $text);
     $text = preg_replace('/[ \t]+/', ' ', $text);
+    $text = preg_replace('/\n[ \t]*/', "\n", $text);
     $text = preg_replace('/\n{3,}/', "\n\n", $text);
     return trim($text);
 }
