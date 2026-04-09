@@ -39,7 +39,11 @@
     var isAdminUser = userRole === 'admin' || userRole === 'admin' || userRole === 'superadmin';
     var isTesterRole = userRole === 'at_tester' || userRole === 'ft_tester';
     var canUpdateIssueQaStatus = !!ProjectConfig.canUpdateIssueQaStatus;
-    var clientEditableIssueStatuses = ['open', 'in_progress', 'reopened'];
+    var clientEditableIssueStatuses = (ProjectConfig.issueStatuses || []).map(function (status) {
+        return normalizeIssueStatusSlug(status.status_label || status.name || status.label || '');
+    }).filter(function (status, index, list) {
+        return !!status && list.indexOf(status) === index;
+    });
     var resolutionAuthorityRoles = ['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester'];
     if (isTesterRole) {
         canUpdateIssueQaStatus = false;
@@ -110,7 +114,12 @@
     }
 
     function isClientIssueStatusAllowed(value) {
-        return clientEditableIssueStatuses.indexOf(normalizeIssueStatusSlug(value)) !== -1;
+        var normalizedValue = normalizeIssueStatusSlug(value);
+        if (!normalizedValue) return false;
+        if (clientEditableIssueStatuses.length) {
+            return clientEditableIssueStatuses.indexOf(normalizedValue) !== -1;
+        }
+        return ['open', 'in_progress', 'reopened'].indexOf(normalizedValue) !== -1;
     }
 
     function isResolutionStatus(value) {
@@ -3316,8 +3325,37 @@
     function toggleCommonTitle() {
         var sel = jQuery('#finalIssuePages').val() || [];
         var wrap = document.getElementById('finalIssueCommonTitleWrap');
+        var input = document.getElementById('finalIssueCommonTitle');
         if (!wrap) return;
-        if (sel.length > 1) wrap.classList.remove('d-none'); else wrap.classList.add('d-none');
+        if (sel.length > 1) {
+            wrap.classList.remove('d-none');
+            if (input) {
+                input.required = true;
+                input.setAttribute('aria-required', 'true');
+            }
+        } else {
+            wrap.classList.add('d-none');
+            if (input) {
+                input.required = false;
+                input.removeAttribute('aria-required');
+            }
+        }
+    }
+
+    function validateCommonTitleRequirement() {
+        var wrap = document.getElementById('finalIssueCommonTitleWrap');
+        var input = document.getElementById('finalIssueCommonTitle');
+        if (!wrap || !input || wrap.classList.contains('d-none')) {
+            return true;
+        }
+
+        if (input.value.trim()) {
+            return true;
+        }
+
+        input.focus();
+        issueNotify('Common Issue Title is required when multiple pages are selected.', 'warning');
+        return false;
     }
 
     function groupedUrlsByPages(pageIds) {
@@ -3642,22 +3680,26 @@
             var found = ProjectConfig.issueStatuses.find(function (s) {
                 // Try matching by ID first (numeric comparison)
                 if (s.id == statusId) return true;
-                // Fallback to matching by name (case-insensitive)
-                if (s.name && String(s.name).toLowerCase() === String(statusId).toLowerCase()) return true;
+                // Fallback to matching by slug/key/label (case-insensitive)
+                var candidate = String(statusId).toLowerCase();
+                if (s.name && String(s.name).toLowerCase() === candidate) return true;
+                if (s.status_key && String(s.status_key).toLowerCase() === candidate) return true;
+                if (s.status_label && String(s.status_label).toLowerCase() === candidate) return true;
+                if (s.label && String(s.label).toLowerCase() === candidate) return true;
                 return false;
             });
             if (found) {
-                var color = found.color || '#6c757d';
-                var name = statusLabel || found.name || 'Unknown';
+                var color = found.badge_color || found.color || '#6c757d';
+                var name = statusLabel || found.status_label || found.name || found.label || found.status_key || 'Unknown';
                 // If color is a hex code, use inline style; otherwise use Bootstrap class
-                if (color.startsWith('#')) {
+                if (String(color).startsWith('#')) {
                     return '<span class="badge" style="background-color: ' + color + '; color: white;">' + escapeHtml(name) + '</span>';
                 } else {
                     return '<span class="badge bg-' + color + '">' + escapeHtml(name) + '</span>';
                 }
             }
         }
-        return '<span class="badge bg-secondary">' + escapeHtml(String(statusId)) + '</span>';
+        return '<span class="badge bg-secondary">' + escapeHtml(String(statusLabel || statusId)) + '</span>';
     }
 
     function getQaBadge(q) {
@@ -3776,7 +3818,7 @@
                 priority = priority[0] || 'N/A';
             }
 
-            var status = issue.status || 'open';
+            var status = issue.status_name || issue.status || 'open';
             var statusId = issue.status_id || null;
             var qaStatusHtml = getReporterQaStatusHtml(issue);
 
@@ -3843,7 +3885,7 @@
                 '</div>' +
                 '</div>' +
                 '</td>' +
-                '<td>' + getStatusBadge(statusId) + '</td>';
+                '<td>' + getStatusBadge(statusId, status) + '</td>';
             
             // QA Status, Reporter, QA Name, Client Ready columns - hide for client
             if (userRole !== 'client') {
@@ -3905,7 +3947,7 @@
                 '<div class="mb-2"><strong>Issue Key:</strong><br>' +
                 '<span class="badge bg-primary">' + escapeHtml(issueKey) + '</span>' +
                 '</div>' +
-                '<div class="mb-2"><strong>Status:</strong><br>' + getStatusBadge(statusId) + '</div>' +
+                '<div class="mb-2"><strong>Status:</strong><br>' + getStatusBadge(statusId, status) + '</div>' +
                 (userRole !== 'client' ? '<div class="mb-2"><strong>QA Status:</strong><br>' + qaStatusHtml + '</div>' : '') +
                 '<div class="mb-2"><strong>Severity:</strong><br>' +
                 '<span class="badge bg-warning text-dark">' + escapeHtml((severity || 'N/A').toUpperCase()) + '</span>' +
@@ -4552,7 +4594,7 @@
                 priority = priority[0] || 'N/A';
             }
 
-            var status = issue.status || 'open';
+            var status = issue.status_name || issue.status || 'open';
             var statusId = issue.status_id || null;
             var qaStatusHtml = getReporterQaStatusHtml(issue);
 
@@ -4620,7 +4662,7 @@
                 '</td>' +
                 '<td>' + getSeverityBadge(severity) + '</td>' +
                 '<td>' + getPriorityBadge(priority) + '</td>' +
-                '<td>' + getStatusBadge(statusId) + '</td>';
+                '<td>' + getStatusBadge(statusId, status) + '</td>';
 
             // QA Status, Reporter, QA Name, Client Ready columns - hide for client
             if (userRole !== 'client') {
@@ -4685,7 +4727,7 @@
                 '<div class="mb-2"><strong>Issue Key:</strong><br>' +
                 '<span class="badge bg-primary">' + escapeHtml(issueKey) + '</span>' +
                 '</div>' +
-                '<div class="mb-2"><strong>Status:</strong><br>' + getStatusBadge(statusId) + '</div>' +
+                '<div class="mb-2"><strong>Status:</strong><br>' + getStatusBadge(statusId, status) + '</div>' +
                 (userRole !== 'client' ? '<div class="mb-2"><strong>QA Status:</strong><br>' + qaStatusHtml + '</div>' : '') +
                 '<div class="mb-2"><strong>Severity:</strong><br>' +
                 '<span class="badge bg-warning text-dark">' + escapeHtml((severity || 'N/A').toUpperCase()) + '</span>' +
@@ -5107,7 +5149,7 @@
             if (actualIssue) {
                 var severity = actualIssue.severity || 'N/A';
                 var priority = actualIssue.priority || 'N/A';
-                var status = actualIssue.status || 'open';
+                var status = actualIssue.status_name || actualIssue.status || 'open';
                 var statusId = actualIssue.status_id || null;
                 var qaStatusHtml = getReporterQaStatusHtml(actualIssue);
 
@@ -5178,7 +5220,7 @@
                 metadataHtml += '<div class="mb-2"><strong>Issue Key:</strong><br>' +
                     '<span class="badge bg-primary">' + escapeHtml(actualIssue.issue_key || 'N/A') + '</span>' +
                     '</div>' +
-                    '<div class="mb-2"><strong>Status:</strong><br>' + getStatusBadge(statusId) + '</div>' +
+                    '<div class="mb-2"><strong>Status:</strong><br>' + getStatusBadge(statusId, status) + '</div>' +
                     '<div class="mb-2"><strong>Severity:</strong><br>' +
                     '<span class="badge bg-warning text-dark">' + escapeHtml((severity || 'N/A').toUpperCase()) + '</span>' +
                     '</div>' +
@@ -6689,6 +6731,14 @@
             }
             issueNotify('Issue title is required.', 'warning'); 
             return; 
+        }
+
+        if (!validateCommonTitleRequirement()) {
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = saveButtonLabel;
+            }
+            return;
         }
 
         // Get client_ready checkbox value

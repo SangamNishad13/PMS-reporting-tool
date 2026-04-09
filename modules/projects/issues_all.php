@@ -498,7 +498,12 @@ body.client-issue-sidebar-open {
                     <?php if ($_SESSION['role'] === 'client'): ?>
                     <?php endif; ?>
                 </div>
-                <div>
+                <div class="d-flex align-items-center gap-2">
+                    <?php if ($_SESSION['role'] !== 'client'): ?>
+                    <button class="btn btn-sm btn-outline-success" id="allIssuesMarkClientReadyBtn" disabled>
+                        <i class="fas fa-check me-1"></i> Mark Client Ready
+                    </button>
+                    <?php endif; ?>
                     <button class="btn btn-sm btn-outline-primary" id="refreshBtn">
                         <i class="fas fa-sync-alt"></i> Refresh
                     </button>
@@ -509,11 +514,15 @@ body.client-issue-sidebar-open {
                 <table class="table table-hover" id="issuesTable">
                     <thead class="table-light">
                         <tr>
+                            <?php if ($_SESSION['role'] !== 'client'): ?>
+                            <th style="width: 48px;"><input type="checkbox" id="issuesSelectAll" aria-label="Select all issues"></th>
+                            <?php endif; ?>
                             <th style="width: 100px;">Issue Key</th>
                             <th>Title</th>
                             <th style="width: 150px;">Page(s)</th>
                             <th style="width: 120px;">Status</th>
                             <?php if ($_SESSION['role'] !== 'client'): ?>
+                            <th style="width: 110px;">Client Ready</th>
                             <th style="width: 150px;">QA Status</th>
                             <th style="width: 120px;">Reporter</th>
                             <?php endif; ?>

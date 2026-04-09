@@ -453,13 +453,7 @@ class UnifiedDashboardController {
             'icon' => 'fas fa-list-ul',
             'reportType' => 'common_issues',
             'drillDownUrl' => $this->getDashboardReportUrl('common_issues', $projectIds),
-            'summary' => array_map(function($issue, $index) {
-                return [
-                    'label' => '#' . ($index + 1) . ' Issue',
-                    'value' => $issue['frequency'] ?? $issue['count'] ?? 0
-                ];
-            }, $topIssues, array_keys($topIssues))
-            ,
+            'summary' => [],
             'detailList' => [
                 'title' => 'Common issue patterns',
                 'emptyMessage' => 'No repeated issue patterns are available for this selection yet.',
@@ -546,8 +540,11 @@ class UnifiedDashboardController {
     private function createPageIssuesWidget($report, $projectIds) {
         $data = $report->getData();
         $summary = $data['summary'] ?? [];
-        $topPages = array_slice($data['top_pages'] ?? [], 0, 8);
-        $topPageLabel = (string) (($topPages[0]['display_url'] ?? $topPages[0]['url'] ?? '') ?: 0);
+        $topPages = $data['top_pages'] ?? [];
+        $topPageLabel = 'None';
+        if (!empty($topPages) && (int) ($topPages[0]['issue_count'] ?? 0) > 0) {
+            $topPageLabel = (string) (($topPages[0]['display_url'] ?? $topPages[0]['url'] ?? '') ?: 'None');
+        }
         
         return [
             'type' => 'analytics',
@@ -570,27 +567,30 @@ class UnifiedDashboardController {
                 ]
             ],
             'detailList' => [
-                'title' => 'Pages with highest impact',
+                'title' => 'All project pages',
                 'emptyMessage' => 'No page issue distribution is available for this selection yet.',
                 'sections' => [[
-                    'title' => 'Top affected pages',
+                    'title' => 'Project pages',
                     'items' => array_map(function($page) {
                         $displayUrl = (string) ($page['display_url'] ?? $page['url'] ?? 'Unknown page');
-                        $rawUrl = (string) ($page['raw_url'] ?? '');
-                        $pageUrlLabel = $rawUrl !== '' && $rawUrl !== $displayUrl ? ('URL: ' . $rawUrl) : '';
+                        $pageNumber = trim((string) ($page['page_number'] ?? ''));
                         $pageLink = $this->buildIssueDetailUrl([
                             'project_id' => (int) ($page['project_id'] ?? 0),
                             'page_id' => (int) ($page['page_id'] ?? 0),
                             'id' => (int) ($page['sample_issue_id'] ?? 0),
                         ]);
+                        $issueCount = (int) ($page['issue_count'] ?? 0);
+                        $meta = $issueCount > 0
+                            ? ('Resolution ' . round((float) ($page['resolution_rate'] ?? 0), 1) . '%')
+                            : 'No issues reported yet';
 
                         return [
                             'title' => $displayUrl,
                             'url' => $pageLink,
-                            'meta' => 'Resolution ' . round((float) ($page['resolution_rate'] ?? 0), 1) . '%',
-                            'submeta' => $pageUrlLabel,
+                            'meta' => $meta,
+                            'submeta' => $pageNumber,
                             'badges' => [
-                                ['label' => (string) ((int) ($page['issue_count'] ?? 0)) . ' issues', 'className' => 'issue-link-badge'],
+                                ['label' => (string) $issueCount . ' issues', 'className' => 'issue-link-badge'],
                             ],
                         ];
                     }, $topPages),

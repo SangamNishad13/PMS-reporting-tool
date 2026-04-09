@@ -61,6 +61,34 @@ function getIssueStatusNameById($db, $statusId) {
     return $cache[$statusId];
 }
 
+function resolveIssueStatusDisplayValue($db, $metaStatusValue, $statusName = '', $statusId = 0) {
+    $rawValue = trim((string)$metaStatusValue);
+
+    if ($rawValue !== '') {
+        if (ctype_digit($rawValue)) {
+            $resolvedName = getIssueStatusNameById($db, (int)$rawValue);
+            if ($resolvedName !== '') {
+                return $resolvedName;
+            }
+        }
+        return $rawValue;
+    }
+
+    $statusName = trim((string)$statusName);
+    if ($statusName !== '') {
+        return $statusName;
+    }
+
+    if ((int)$statusId > 0) {
+        $resolvedName = getIssueStatusNameById($db, (int)$statusId);
+        if ($resolvedName !== '') {
+            return $resolvedName;
+        }
+    }
+
+    return 'open';
+}
+
 function isClientEditableIssueStatusValue($value) {
     global $db;
     static $allowed = null;
@@ -280,7 +308,7 @@ try {
             $meta = $metaMap[$iid] ?? [];
             $pages = $meta['page_ids'] ?? [];
             if (empty($pages) && !empty($i['page_id'])) $pages = [(string)$i['page_id']];
-            $statusValue = ($meta['issue_status'][0] ?? strtolower(str_replace(' ', '_', $i['status_name'] ?? '')));
+            $statusValue = resolveIssueStatusDisplayValue($db, $meta['issue_status'][0] ?? '', $i['status_name'] ?? '', (int)($i['status_id'] ?? 0));
             $qaStatusValues = ($meta['qa_status'] ?? []);
             $reporterQaStatusMap = $reporterQaStatusByIssue[$iid] ?? [];
             if (empty($reporterQaStatusMap) && isset($meta['reporter_qa_status_map'])) {
@@ -933,6 +961,10 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         $assigneeIdsRaw = parseArrayInput($_POST['assignee_ids'] ?? ($_POST['assignee_id'] ?? []));
         $assigneeIds = array_values(array_filter(array_map('intval', $assigneeIdsRaw), function($v){ return $v > 0; }));
         $assigneeId = !empty($assigneeIds) ? $assigneeIds[0] : null;
+
+        if (count($pageIds) > 1 && $commonTitle === '') {
+            jsonError('Common Issue Title is required when multiple pages are selected.', 400);
+        }
 
         $hasResolvedAtColumn = columnExists($db, 'issues', 'resolved_at');
         $requestedStatusValue = normalizeIssueStatusValue(is_numeric($statusInput)
@@ -1651,7 +1683,7 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
             $iid = (int)$r['id'];
             $meta = $metaMap[$iid] ?? [];
             $pages = $meta['page_ids'] ?? [];
-            $statusValue = ($meta['issue_status'][0] ?? strtolower(str_replace(' ', '_', $r['status_name'] ?? '')));
+            $statusValue = resolveIssueStatusDisplayValue($db, $meta['issue_status'][0] ?? '', $r['status_name'] ?? '', (int)($r['status_id'] ?? 0));
             $qaStatusValues = ($meta['qa_status'] ?? []);
             $hasComments = (($commentCountMap[$iid] ?? 0) > 0);
             $isOpen = isIssueOpenStatusValue($statusValue);

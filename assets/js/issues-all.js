@@ -10,6 +10,28 @@ var allIssues = [];
 var filteredIssues = [];
 var loadIssuesDebounceTimer = null;
 
+function getIssuesAllSelectedIds() {
+    return Array.from(document.querySelectorAll('.issues-all-select:checked')).map(function (checkbox) {
+        return String(checkbox.value || '');
+    }).filter(Boolean);
+}
+
+function updateIssuesAllSelectionState() {
+    var markBtn = document.getElementById('allIssuesMarkClientReadyBtn');
+    var selectAll = document.getElementById('issuesSelectAll');
+    var checkboxes = Array.from(document.querySelectorAll('.issues-all-select'));
+    var checked = checkboxes.filter(function (checkbox) { return checkbox.checked; });
+
+    if (markBtn) {
+        markBtn.disabled = checked.length === 0;
+    }
+
+    if (selectAll) {
+        selectAll.checked = checkboxes.length > 0 && checked.length === checkboxes.length;
+        selectAll.indeterminate = checked.length > 0 && checked.length < checkboxes.length;
+    }
+}
+
 function escapeAttr(text) {
     return String(text == null ? '' : text)
         .replace(/&/g, '&amp;')
@@ -172,7 +194,7 @@ function renderIssues() {
     var tbody    = document.getElementById('issuesTableBody');
     var userRole = window.ProjectConfig ? window.ProjectConfig.userRole : '';
     var isClient = (userRole === 'client');
-    var colspan  = isClient ? 5 : 7;
+    var colspan  = isClient ? 5 : 8;
 
     if (filteredIssues.length === 0) {
         tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="text-center py-5"><i class="fas fa-inbox fa-3x text-muted mb-3"></i><p class="text-muted">No issues found</p></td></tr>';
@@ -180,7 +202,13 @@ function renderIssues() {
     }
 
     tbody.innerHTML = filteredIssues.map(function (issue) {
-        var mainRow = '<tr class="issue-row" data-issue-id="' + issue.id + '" style="cursor: pointer;">' +
+        var mainRow = '<tr class="issue-row" data-issue-id="' + issue.id + '" style="cursor: pointer;">';
+
+        if (!isClient) {
+            mainRow += '<td class="text-center"><input type="checkbox" class="issues-all-select" value="' + escapeAttr(issue.id) + '" aria-label="Select issue ' + escapeAttr(issue.issue_key || issue.id) + '"></td>';
+        }
+
+        mainRow +=
             '<td><button class="btn btn-link p-0 me-2 text-muted chevron-toggle" style="border:none;background:none;"><i class="fas fa-chevron-right chevron-icon" id="chevron-' + issue.id + '"></i></button>' +
             '<span class="badge bg-primary">' + escapeHtml(issue.issue_key) + '</span></td>' +
             '<td>' + (issue.common_title ? '<div>' + escapeHtml(issue.common_title) + '</div><small class="text-muted">' + escapeHtml(issue.title) + '</small>' : '<div>' + escapeHtml(issue.title) + '</div>') + '</td>' +
@@ -194,7 +222,8 @@ function renderIssues() {
                     return '<span class="qa-status-badge" style="background-color:' + bg + '!important;color:' + getContrastColor(bg) + '!important;">' + escapeHtml(qs.label) + '</span>';
                 }).join(' ')
                 : '<span class="text-muted">-</span>';
-            mainRow += '<td>' + qaHtml + '</td>' +
+            mainRow += '<td>' + getClientReadyBadge(issue.client_ready) + '</td>' +
+                '<td>' + qaHtml + '</td>' +
                 '<td><small>' + (issue.reporters ? escapeHtml(issue.reporters) : '<span class="text-muted">-</span>') + '</small></td>' +
                 '<td><button class="btn btn-sm btn-outline-primary edit-btn me-1" data-issue-id="' + issue.id + '" title="Edit"><i class="fas fa-edit"></i></button>' +
                 '<button class="btn btn-sm btn-outline-danger delete-btn" data-issue-id="' + issue.id + '" title="Delete"><i class="fas fa-trash"></i></button></td>';
@@ -220,7 +249,8 @@ function renderIssues() {
                     return '<span class="qa-status-badge" style="background-color:' + bg + '!important;color:' + getContrastColor(bg) + '!important;">' + escapeHtml(qs.label) + '</span>';
                 }).join(' ')
                 : '<span class="text-muted">N/A</span>';
-            mainRow += '<div class="mb-2"><strong>QA Status:</strong><br>' + qaMetaHtml + '</div>' +
+            mainRow += '<div class="mb-2"><strong>Client Ready:</strong><br>' + getClientReadyBadge(issue.client_ready) + '</div>' +
+                '<div class="mb-2"><strong>QA Status:</strong><br>' + qaMetaHtml + '</div>' +
                 '<div class="mb-2"><strong>Reporter(s):</strong><br>' + (issue.reporters ? escapeHtml(issue.reporters) : '<span class="text-muted">N/A</span>') + '</div>';
         }
 
@@ -256,6 +286,7 @@ function renderIssues() {
     }).join('');
 
     attachEventListeners();
+    updateIssuesAllSelectionState();
 }
 
 function updateCounts() {
@@ -299,6 +330,10 @@ function applyFilters() {
 }
 
 function attachEventListeners() {
+    document.querySelectorAll('.issues-all-select').forEach(function (checkbox) {
+        checkbox.addEventListener('click', function (e) { e.stopPropagation(); });
+        checkbox.addEventListener('change', updateIssuesAllSelectionState);
+    });
     document.querySelectorAll('.edit-btn').forEach(function (btn) {
         btn.addEventListener('click', function (e) { e.stopPropagation(); editIssue(this.dataset.issueId); });
     });
@@ -310,7 +345,7 @@ function attachEventListeners() {
     });
     document.querySelectorAll('.issue-row').forEach(function (row) {
         row.addEventListener('click', function (e) {
-            if (e.target.closest('.edit-btn') || e.target.closest('.delete-btn')) return;
+            if (e.target.closest('.edit-btn') || e.target.closest('.delete-btn') || e.target.closest('.issues-all-select')) return;
             var issueId    = this.dataset.issueId;
             var detailsRow = document.getElementById('issue-details-' + issueId);
             var chevron    = document.getElementById('chevron-' + issueId);
@@ -487,6 +522,13 @@ function getBootstrapColor(colorName) {
     return map[colorName] || map['secondary'];
 }
 
+function getClientReadyBadge(clientReady) {
+    if (clientReady == 1 || clientReady === '1' || clientReady === true) {
+        return '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Yes</span>';
+    }
+    return '<span class="badge bg-secondary"><i class="fas fa-times me-1"></i>No</span>';
+}
+
 function showSuccess(msg) { if (typeof showToast === 'function') showToast(msg, 'success'); }
 function showError(msg)   { if (typeof showToast === 'function') showToast(msg, 'danger'); }
 
@@ -509,6 +551,57 @@ document.getElementById('clearFilters').addEventListener('click', function () {
 });
 
 document.getElementById('refreshBtn').addEventListener('click', function () { loadIssues({ preserveFilters: true }); });
+
+var _issuesSelectAll = document.getElementById('issuesSelectAll');
+if (_issuesSelectAll) {
+    _issuesSelectAll.addEventListener('click', function (e) { e.stopPropagation(); });
+    _issuesSelectAll.addEventListener('change', function () {
+        var isChecked = !!this.checked;
+        document.querySelectorAll('.issues-all-select').forEach(function (checkbox) {
+            checkbox.checked = isChecked;
+        });
+        updateIssuesAllSelectionState();
+    });
+}
+
+var _markClientReadyBtn = document.getElementById('allIssuesMarkClientReadyBtn');
+if (_markClientReadyBtn) {
+    _markClientReadyBtn.addEventListener('click', function () {
+        var selectedIds = getIssuesAllSelectedIds();
+        if (!selectedIds.length) return;
+
+        var proceed = function () {
+            fetch(baseDir + '/api/issues.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'action=bulk_client_ready&issue_ids=' + encodeURIComponent(selectedIds.join(',')) + '&client_ready=1&project_id=' + encodeURIComponent(projectId)
+            })
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                if (!data.success) {
+                    throw new Error(data.message || data.error || 'Failed to mark issues as Client Ready');
+                }
+
+                showSuccess((data.updated || selectedIds.length) + ' issue(s) marked as Client Ready');
+                if (_issuesSelectAll) {
+                    _issuesSelectAll.checked = false;
+                    _issuesSelectAll.indeterminate = false;
+                }
+                loadIssues({ preserveFilters: true, silentErrors: true, immediate: true });
+            })
+            .catch(function (error) {
+                showError(error && error.message ? error.message : 'Failed to mark issues as Client Ready');
+            });
+        };
+
+        var confirmMessage = 'Mark ' + selectedIds.length + ' issue(s) as Client Ready?';
+        if (typeof confirmModal === 'function') {
+            confirmModal(confirmMessage, proceed);
+        } else if (window.confirm(confirmMessage)) {
+            proceed();
+        }
+    });
+}
 
 document.addEventListener('pms:issues-changed', function (e) {
     var detail  = e.detail || {};

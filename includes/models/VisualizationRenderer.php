@@ -767,6 +767,7 @@ class VisualizationRenderer implements VisualizationInterface {
         $issueListTitle = htmlspecialchars($data['issueListTitle'] ?? 'Issue list');
         $issueListEmptyMessage = htmlspecialchars($data['issueListEmptyMessage'] ?? 'No issues available right now.');
         $detailList = is_array($data['detailList'] ?? null) ? $data['detailList'] : [];
+        $isCompactIssueList = $reportType === 'blocker_issues' && count($issueList) > 8;
         
         $html = '<div class="dashboard-widget analytics-widget" id="' . $widgetId . '"';
         if ($reportType !== '') {
@@ -778,6 +779,8 @@ class VisualizationRenderer implements VisualizationInterface {
         $html .= '</div>';
         $html .= '<div class="widget-content">';
         
+        $hasDetailContent = (!empty($issueList) || !empty($detailList));
+
         // Summary metrics
         if (!empty($summary)) {
             $html .= '<div class="analytics-summary">';
@@ -799,7 +802,7 @@ class VisualizationRenderer implements VisualizationInterface {
                 $html .= '</div>';
             }
             $html .= '</div>';
-        } else {
+        } elseif (!$hasDetailContent) {
             $html .= '<div class="analytics-empty-state text-center py-4">';
             $html .= '<div class="metric-value">0</div>';
             $html .= '<div class="metric-label">' . $title . '</div>';
@@ -827,7 +830,7 @@ class VisualizationRenderer implements VisualizationInterface {
                 }
             }
 
-            $html .= '<div class="analytics-issue-list">';
+            $html .= '<div class="analytics-issue-list' . ($isCompactIssueList ? ' is-compact' : '') . '">';
             $html .= '<div class="analytics-issue-list-header">';
             $html .= '<h4 class="analytics-issue-list-title">' . $issueListTitle . '</h4>';
             $html .= '<span class="analytics-issue-list-count">' . count($issueList) . '</span>';
@@ -847,7 +850,7 @@ class VisualizationRenderer implements VisualizationInterface {
                     $html .= '<span class="issue-link-section-title">' . htmlspecialchars($sectionTitle) . '</span>';
                     $html .= '<span class="issue-link-section-count">' . count($sectionIssues) . '</span>';
                     $html .= '</div>';
-                    $html .= '<div class="issue-link-list">';
+                    $html .= '<div class="issue-link-list' . ($isCompactIssueList ? ' is-scrollable' : '') . '"' . ($isCompactIssueList ? ' style="max-height:min(52vh,420px);overflow-y:auto;overscroll-behavior:contain;padding-right:6px;"' : '') . '>';
 
                     foreach ($sectionIssues as $issue) {
                         $itemTitle = htmlspecialchars($issue['title'] ?? 'Untitled Issue');
@@ -912,8 +915,9 @@ class VisualizationRenderer implements VisualizationInterface {
             foreach ($detailSections as $detailSection) {
                 $detailCount += count($detailSection['items'] ?? []);
             }
+            $isCompactDetailList = $reportType === 'page_issues' && $detailCount > 8;
 
-            $html .= '<div class="analytics-issue-list analytics-detail-list">';
+            $html .= '<div class="analytics-issue-list analytics-detail-list' . ($isCompactDetailList ? ' is-compact' : '') . '">';
             $html .= '<div class="analytics-issue-list-header">';
             $html .= '<h4 class="analytics-issue-list-title">' . $detailTitle . '</h4>';
             $html .= '<span class="analytics-issue-list-count">' . $detailCount . '</span>';
@@ -932,7 +936,7 @@ class VisualizationRenderer implements VisualizationInterface {
                     $html .= '<span class="issue-link-section-title">' . $sectionTitle . '</span>';
                     $html .= '<span class="issue-link-section-count">' . count($sectionItems) . '</span>';
                     $html .= '</div>';
-                    $html .= '<div class="issue-link-list">';
+                    $html .= '<div class="issue-link-list' . ($isCompactDetailList ? ' is-scrollable' : '') . '"' . ($isCompactDetailList ? ' style="max-height:min(52vh,420px);overflow-y:auto;overscroll-behavior:contain;padding-right:6px;"' : '') . '>';
 
                     foreach ($sectionItems as $item) {
                         $itemTitle = htmlspecialchars($item['title'] ?? 'Untitled');
@@ -1695,6 +1699,48 @@ class VisualizationRenderer implements VisualizationInterface {
             font-weight: bold;
             color: #495057;
         }
+
+        .analytics-issue-list.is-compact {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .analytics-issue-list.is-compact .issue-link-section {
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 16px;
+            background: rgba(248, 250, 252, 0.88);
+            padding: 14px;
+        }
+
+        .analytics-issue-list.is-compact .issue-link-list.is-scrollable {
+            max-height: min(52vh, 420px);
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+            padding-right: 6px;
+        }
+
+        .analytics-issue-list.is-compact .issue-link-list.is-scrollable::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .analytics-issue-list.is-compact .issue-link-list.is-scrollable::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.75);
+            border-radius: 999px;
+        }
+
+        .analytics-issue-list.is-compact .issue-link-item {
+            padding: 12px 0;
+        }
+
+        .analytics-issue-list.is-compact .issue-link-section-title {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: rgba(248, 250, 252, 0.96);
+            padding-bottom: 10px;
+        }
         
         /* Empty State */
         .empty-state {
@@ -1801,6 +1847,10 @@ class VisualizationRenderer implements VisualizationInterface {
             
             .summary-widget .metric-value {
                 font-size: 2rem;
+            }
+
+            .analytics-issue-list.is-compact .issue-link-list.is-scrollable {
+                max-height: 360px;
             }
         }
         

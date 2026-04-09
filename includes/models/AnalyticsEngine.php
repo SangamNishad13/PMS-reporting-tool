@@ -73,6 +73,12 @@ abstract class AnalyticsEngine {
                     if (!isset($issue['page_url'])) {
                         $issue['page_url'] = (string) (($pages[0]['url'] ?? '') ?: '');
                     }
+                    if (!isset($issue['page_name'])) {
+                        $issue['page_name'] = (string) (($pages[0]['page_name'] ?? '') ?: '');
+                    }
+                    if (!isset($issue['page_number'])) {
+                        $issue['page_number'] = (string) (($pages[0]['page_number'] ?? '') ?: '');
+                    }
                     if (!isset($issue['status'])) {
                         $issue['status'] = (string) ($issue['status_name'] ?? '');
                     }

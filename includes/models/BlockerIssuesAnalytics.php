@@ -144,45 +144,8 @@ class BlockerIssuesAnalytics extends AnalyticsEngine {
      * @return bool
      */
     private function isBlockerIssue($issue) {
-        $title = $this->normalizeLowerText($issue['title'] ?? '');
-        $description = $this->normalizeLowerText($issue['description'] ?? '');
         $severity = $this->normalizeLowerText($issue['severity'] ?? '');
-        $priority = $this->normalizeLowerText($issue['priority'] ?? '');
-        
-        // Check explicit blocker indicators
-        $blockerKeywords = [
-            'blocker', 'blocking', 'blocks', 'critical', 'showstopper',
-            'prevents', 'cannot', 'unable', 'broken', 'fails', 'error',
-            'inaccessible', 'unusable', 'non-functional'
-        ];
-        
-        $content = $title . ' ' . $description . ' ' . $severity . ' ' . $priority;
-        
-        foreach ($blockerKeywords as $keyword) {
-            if (strpos($content, $keyword) !== false) {
-                return true;
-            }
-        }
-        
-        // Check severity-based criteria
-        if (in_array($severity, ['critical', 'blocker'])) {
-            return true;
-        }
-        
-        // Check for accessibility blockers
-        $accessibilityBlockers = [
-            'keyboard trap', 'cannot navigate', 'screen reader',
-            'completely inaccessible', 'no alternative', 'missing alt',
-            'no focus', 'cannot access', 'broken navigation'
-        ];
-        
-        foreach ($accessibilityBlockers as $blocker) {
-            if (strpos($content, $blocker) !== false) {
-                return true;
-            }
-        }
-        
-        return false;
+        return $severity === 'blocker';
     }
     
     /**

@@ -71,10 +71,20 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
      * @return array
      */
     private function analyzeCommonIssues($projectId = null, $clientId = null) {
-        $issues = $this->getFilteredIssues($projectId, $clientId);
-        
-        // Group issues by similarity
-        $issueGroups = $this->groupSimilarIssues($issues);
+        $issueGroups = $this->loadAuthoritativeCommonIssueGroups($projectId, $clientId);
+        $totalIssues = 0;
+
+        if (!empty($issueGroups)) {
+            foreach ($issueGroups as $group) {
+                $totalIssues += count($group['issues'] ?? []);
+            }
+        } else {
+            $issues = $this->getFilteredIssues($projectId, $clientId);
+
+            // Fallback to heuristic grouping only when no saved common issues exist.
+            $issueGroups = $this->groupSimilarIssues($issues);
+            $totalIssues = count($issues);
+        }
         
         // Calculate frequency and impact metrics
         $commonIssues = $this->calculateFrequencyMetrics($issueGroups);
@@ -85,7 +95,6 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
         // Calculate impact reduction potential
         $impactAnalysis = $this->calculateImpactReduction($commonIssues);
         
-        $totalIssues = count($issues);
         $uniquePatterns = count($issueGroups);
         
         return [
@@ -103,6 +112,147 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
             'severity_distribution' => $this->analyzeSeverityDistribution($commonIssues),
             'recommendations' => $this->generateCommonIssuesRecommendations($commonIssues, $patternAnalysis)
         ];
+    }
+
+    private function loadAuthoritativeCommonIssueGroups($projectId = null, $clientId = null) {
+        try {
+            $sql = "SELECT ci.id AS common_id, ci.project_id, ci.title AS common_title, i.id AS issue_id, i.severity, i.common_issue_title
+                    FROM common_issues ci
+                    INNER JOIN issues i ON i.id = ci.issue_id
+                    WHERE 1=1";
+            $params = [];
+
+            if ($projectId !== null) {
+                if (is_array($projectId)) {
+                    $projectIds = array_values(array_filter(array_map('intval', $projectId), function ($value) {
+                        return $value > 0;
+                    }));
+                    if (empty($projectIds)) {
+                        return [];
+                    }
+                    $placeholders = implode(',', array_fill(0, count($projectIds), '?'));
+                    $sql .= " AND ci.project_id IN ($placeholders)";
+                    $params = array_merge($params, $projectIds);
+                } else {
+                    $sql .= " AND ci.project_id = ?";
+                    $params[] = (int) $projectId;
+                }
+            }
+
+            if ($clientId !== null) {
+                $sql .= " AND i.client_ready = 1";
+            }
+
+            $sql .= " ORDER BY ci.id ASC";
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (empty($rows)) {
+                return [];
+            }
+
+            $issueIds = array_values(array_unique(array_map(function ($row) {
+                return (int) ($row['issue_id'] ?? 0);
+            }, $rows)));
+
+            $pageIdsByIssue = [];
+            if (!empty($issueIds)) {
+                $placeholders = implode(',', array_fill(0, count($issueIds), '?'));
+                $metaStmt = $this->pdo->prepare("SELECT issue_id, meta_value FROM issue_metadata WHERE meta_key = 'page_ids' AND issue_id IN ($placeholders)");
+                $metaStmt->execute($issueIds);
+                while ($metaRow = $metaStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $issueId = (int) ($metaRow['issue_id'] ?? 0);
+                    $rawValue = trim((string) ($metaRow['meta_value'] ?? ''));
+                    if ($issueId <= 0 || $rawValue === '') {
+                        continue;
+                    }
+
+                    $decodedValues = [];
+                    if ($rawValue[0] === '[') {
+                        $decoded = json_decode($rawValue, true);
+                        if (is_array($decoded)) {
+                            $decodedValues = $decoded;
+                        }
+                    }
+                    if (empty($decodedValues)) {
+                        $decodedValues = [$rawValue];
+                    }
+
+                    foreach ($decodedValues as $value) {
+                        $pageIdValue = (int) $value;
+                        if ($pageIdValue <= 0) {
+                            continue;
+                        }
+                        if (!isset($pageIdsByIssue[$issueId])) {
+                            $pageIdsByIssue[$issueId] = [];
+                        }
+                        if (!in_array($pageIdValue, $pageIdsByIssue[$issueId], true)) {
+                            $pageIdsByIssue[$issueId][] = $pageIdValue;
+                        }
+                    }
+                }
+            }
+
+            $allPageIds = [];
+            foreach ($pageIdsByIssue as $issuePageIds) {
+                foreach ($issuePageIds as $pageIdValue) {
+                    if (!in_array($pageIdValue, $allPageIds, true)) {
+                        $allPageIds[] = $pageIdValue;
+                    }
+                }
+            }
+
+            $pageLabelsById = [];
+            if (!empty($allPageIds)) {
+                $placeholders = implode(',', array_fill(0, count($allPageIds), '?'));
+                $pageStmt = $this->pdo->prepare("SELECT id, page_name, page_number FROM project_pages WHERE id IN ($placeholders)");
+                $pageStmt->execute($allPageIds);
+                while ($pageRow = $pageStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $pageIdValue = (int) ($pageRow['id'] ?? 0);
+                    $pageName = trim((string) ($pageRow['page_name'] ?? ''));
+                    $pageNumber = trim((string) ($pageRow['page_number'] ?? ''));
+                    $pageLabelsById[$pageIdValue] = $pageName !== ''
+                        ? ($pageNumber !== '' ? ($pageNumber . ' - ' . $pageName) : $pageName)
+                        : ($pageNumber !== '' ? $pageNumber : 'Unknown');
+                }
+            }
+
+            $groups = [];
+            foreach ($rows as $row) {
+                $issueId = (int) ($row['issue_id'] ?? 0);
+                $title = trim((string) ($row['common_title'] ?? $row['common_issue_title'] ?? ''));
+                if ($title === '') {
+                    continue;
+                }
+
+                $pageLabels = array_values(array_unique(array_filter(array_map(function ($pageIdValue) use ($pageLabelsById) {
+                    return $pageLabelsById[$pageIdValue] ?? '';
+                }, $pageIdsByIssue[$issueId] ?? []))));
+
+                if (empty($pageLabels)) {
+                    $pageLabels = ['Unknown'];
+                }
+
+                $groupKey = 'common:' . (int) ($row['common_id'] ?? 0);
+                $issueCount = max(1, count($pageLabels));
+                $severity = (string) ($row['severity'] ?? 'Medium');
+
+                $groups[$groupKey] = [
+                    'signature' => $groupKey,
+                    'pattern' => $title,
+                    'category' => 'Cross-Page Issues',
+                    'issues' => array_fill(0, $issueCount, ['issue_id' => $issueId, 'title' => $title]),
+                    'pages' => $pageLabels,
+                    'severities' => array_fill(0, $issueCount, $severity),
+                ];
+            }
+
+            return $groups;
+        } catch (Exception $e) {
+            error_log('CommonIssuesAnalytics authoritative load failed: ' . $e->getMessage());
+            return [];
+        }
     }
     
     /**
@@ -132,7 +282,7 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
             }
             
             $groups[$groupKey]['issues'][] = $issue;
-            $groups[$groupKey]['pages'][] = $issue['page_url'] ?? 'Unknown';
+            $groups[$groupKey]['pages'][] = $this->resolveIssuePageLabel($issue);
             $groups[$groupKey]['severities'][] = $issue['severity'] ?? 'Medium';
         }
         
@@ -146,6 +296,11 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
      * @return string
      */
     private function generateIssueSignature($issue) {
+        $explicitCommonTitle = $this->getExplicitCommonIssueTitle($issue);
+        if ($explicitCommonTitle !== '') {
+            return 'common:' . md5($this->normalizeLowerText($explicitCommonTitle));
+        }
+
         $title = $this->normalizeLowerText($issue['title'] ?? '');
         $description = $this->normalizeLowerText($issue['description'] ?? '');
         
@@ -204,6 +359,11 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
      * @return string
      */
     private function extractPattern($issue) {
+        $explicitCommonTitle = $this->getExplicitCommonIssueTitle($issue);
+        if ($explicitCommonTitle !== '') {
+            return $explicitCommonTitle;
+        }
+
         $title = $issue['title'] ?? '';
         $description = $issue['description'] ?? '';
         
@@ -230,6 +390,35 @@ class CommonIssuesAnalytics extends AnalyticsEngine {
         // Fallback: use first few words of title
         $words = explode(' ', $title);
         return implode(' ', array_slice($words, 0, 4));
+    }
+
+    private function getExplicitCommonIssueTitle($issue) {
+        $commonTitle = trim((string)($issue['common_title'] ?? ''));
+        if ($commonTitle !== '') {
+            return $commonTitle;
+        }
+
+        $commonIssueTitle = trim((string)($issue['common_issue_title'] ?? ''));
+        if ($commonIssueTitle !== '') {
+            return $commonIssueTitle;
+        }
+
+        return '';
+    }
+
+    private function resolveIssuePageLabel($issue) {
+        $pageUrl = trim((string)($issue['page_url'] ?? ''));
+        if ($pageUrl !== '' && strcasecmp($pageUrl, 'Unknown') !== 0) {
+            return $pageUrl;
+        }
+
+        $pageName = trim((string)($issue['page_name'] ?? ''));
+        $pageNumber = trim((string)($issue['page_number'] ?? ''));
+        if ($pageName !== '') {
+            return $pageNumber !== '' ? ($pageNumber . ' - ' . $pageName) : $pageName;
+        }
+
+        return 'Unknown';
     }
     
     /**
