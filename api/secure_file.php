@@ -229,6 +229,22 @@ function userCanAccessReferencedChat(PDO $db, int $userId, string $role, string 
     return false;
 }
 
+function userCanAccessIssuePageScreenshot(PDO $db, int $userId, string $relPath): bool {
+    $stmt = $db->prepare("SELECT pp.project_id
+        FROM issue_page_screenshots ips
+        JOIN project_pages pp ON pp.id = ips.page_id
+        WHERE ips.file_path = ?
+        LIMIT 1");
+    $stmt->execute([$relPath]);
+    $projectId = (int)$stmt->fetchColumn();
+
+    if ($projectId <= 0) {
+        return false;
+    }
+
+    return hasProjectAccess($db, $userId, $projectId);
+}
+
 function userCanAccessFilePath(PDO $db, int $userId, string $role, string $relPath): bool {
     $assetStmt = $db->prepare("SELECT project_id FROM project_assets WHERE file_path = ? LIMIT 1");
     $assetStmt->execute([$relPath]);
@@ -247,6 +263,10 @@ function userCanAccessFilePath(PDO $db, int $userId, string $role, string $relPa
     }
 
     if (strpos($relPath, 'assets/uploads/') === 0) {
+        if (strpos($relPath, 'assets/uploads/issue_screenshots/') === 0) {
+            return userCanAccessIssuePageScreenshot($db, $userId, $relPath);
+        }
+
         if (strpos($relPath, 'assets/uploads/issues/') === 0) {
             return userCanAccessReferencedIssueProject($db, $userId, $role, $relPath);
         }

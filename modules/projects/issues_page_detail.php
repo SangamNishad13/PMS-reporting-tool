@@ -527,6 +527,91 @@ include __DIR__ . '/../../includes/header.php';
     padding: 2px 8px;
     user-select: none;
 }
+
+.screenshot-header-actions .btn {
+    white-space: nowrap;
+}
+
+.page-header-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: nowrap;
+}
+
+.page-header-main {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.page-header-center {
+    flex: 0 0 auto;
+}
+
+.page-header-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 16px;
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.page-header-metrics {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    white-space: nowrap;
+    flex-wrap: nowrap;
+}
+
+.page-header-metric {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.page-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+}
+
+.page-header-actions .btn {
+    white-space: nowrap;
+}
+
+@media (max-width: 991.98px) {
+    .page-header-toolbar {
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+
+    .page-header-right {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+    }
+
+    .page-header-actions {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+
+    .page-header-metrics {
+        flex-wrap: wrap;
+    }
+
+    .screenshot-header-actions {
+        justify-content: flex-start !important;
+        overflow-x: auto;
+        padding-bottom: 4px;
+    }
+}
 </style>
 
 <div class="container-fluid mt-4">
@@ -551,8 +636,8 @@ include __DIR__ . '/../../includes/header.php';
     <!-- Compact Page Header -->
     <div class="card mb-2">
         <div class="card-body py-2">
-            <div class="row align-items-center">
-                <div class="col-md-6">
+            <div class="page-header-toolbar">
+                <div class="page-header-main">
                     <h5 class="mb-0">
                         <i class="fas fa-file-alt text-primary me-2"></i>
                         <?php echo htmlspecialchars($page['page_name']); ?>
@@ -562,39 +647,49 @@ include __DIR__ . '/../../includes/header.php';
                         <?php echo htmlspecialchars($page['url'] ?? '-'); ?>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="d-flex gap-3 small">
-                        <div>
+                <div class="page-header-center">
+                    <div class="d-flex gap-2 justify-content-md-center flex-nowrap screenshot-header-actions">
+                        <button class="btn btn-outline-primary btn-sm btn-upload-page-screenshots" data-page-id="<?php echo $pageId; ?>" title="Upload page screenshots">
+                            <i class="fas fa-upload me-1"></i> Upload Screenshots
+                        </button>
+                        <button class="btn btn-outline-info btn-sm btn-open-page-screenshots" data-page-id="<?php echo $pageId; ?>" title="View page screenshots">
+                            <i class="fas fa-images me-1"></i> View Screenshots
+                        </button>
+                    </div>
+                </div>
+                <div class="page-header-right">
+                    <div class="page-header-metrics small">
+                        <div class="page-header-metric">
                             <span class="text-muted">Issues:</span>
                             <span class="badge <?php echo ($issuePageSummary['issues_count'] ?? 0) > 0 ? 'bg-warning' : 'bg-secondary'; ?>">
                                 <?php echo (int)($issuePageSummary['issues_count'] ?? 0); ?>
                             </span>
                         </div>
                         <?php if ($userRole !== 'client'): ?>
-                        <div>
+                        <div class="page-header-metric">
                             <span class="text-muted">Prod Hours:</span>
                             <strong><?php echo number_format((float)($issuePageSummary['production_hours'] ?? 0), 2); ?></strong>
                         </div>
                         <?php endif; ?>
                         <?php if (!empty($groupedUrls)): ?>
-                        <div>
+                        <div class="page-header-metric">
                             <button class="btn btn-xs btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#pageUrlsList">
                                 <i class="fas fa-link me-1"></i><?php echo count($groupedUrls); ?> URLs
                             </button>
                         </div>
                         <?php endif; ?>
                     </div>
-                </div>
-                <div class="col-md-3 text-md-end">
-                    <a href="<?php echo $baseDir; ?>/modules/projects/issues_all.php?project_id=<?php echo $projectId; ?>" class="btn btn-primary btn-sm me-1">
-                        <i class="fas fa-list"></i> All Issues
-                    </a>
-                    <a href="<?php echo $baseDir; ?>/modules/projects/issues_common.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-primary btn-sm me-1">
-                        <i class="fas fa-layer-group"></i> Common
-                    </a>
-                    <a href="<?php echo $baseDir; ?>/modules/projects/issues_pages.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-arrow-left"></i> Back
-                    </a>
+                    <div class="page-header-actions">
+                        <a href="<?php echo $baseDir; ?>/modules/projects/issues_all.php?project_id=<?php echo $projectId; ?>" class="btn btn-primary btn-sm">
+                            <i class="fas fa-list"></i> All Issues
+                        </a>
+                        <a href="<?php echo $baseDir; ?>/modules/projects/issues_common.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-layer-group"></i> Common
+                        </a>
+                        <a href="<?php echo $baseDir; ?>/modules/projects/issues_pages.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-arrow-left"></i> Back
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1050,6 +1145,130 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 
+<!-- Issue Page Screenshots Upload Modal -->
+<div class="modal fade" id="issueScreenshotUploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-upload me-2"></i>Upload Screenshots</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Upload Form -->
+                <div id="screenshotUploadStatus" class="d-none"></div>
+                <form id="screenshotUploadForm" class="mb-4">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label for="screenshotFileInput" class="form-label">Select Images</label>
+                            <input type="file" class="form-control" id="screenshotFileInput" name="screenshots" multiple accept="image/*" required>
+                            <small class="text-muted d-block mt-1">Supported: JPG, PNG, GIF, WebP (Max 10MB each)</small>
+                        </div>
+                        <div class="col-12">
+                            <label for="screenshotGroupedUrlSelect" class="form-label">Associated URL (Optional)</label>
+                            <select class="form-select" id="screenshotGroupedUrlSelect" name="grouped_url_id" data-placeholder="Search and select a URL">
+                                <option value="">-- Select a URL --</option>
+                            </select>
+                            <small class="text-muted d-block mt-1">Select which URL this screenshot is from</small>
+                        </div>
+                        <div class="col-12">
+                            <label for="screenshotDescription" class="form-label">Description (Optional)</label>
+                            <textarea class="form-control" id="screenshotDescription" name="description" rows="2" placeholder="Add a note about this screenshot..."></textarea>
+                        </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-upload me-2"></i>Upload Screenshots
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="pageScreenshotsViewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-images me-2"></i>View Page Screenshots</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3 mb-3 align-items-end">
+                    <div class="col-md-4">
+                        <label for="pageScreenshotsSearchInput" class="form-label">Search</label>
+                        <input type="search" class="form-control" id="pageScreenshotsSearchInput" placeholder="Search by file name, URL, component">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="pageScreenshotsUrlFilter" class="form-label">URL / Component</label>
+                        <select class="form-select" id="pageScreenshotsUrlFilter">
+                            <option value="">All</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="pageScreenshotsPageSize" class="form-label">Rows</label>
+                        <select class="form-select" id="pageScreenshotsPageSize">
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 text-md-end">
+                        <button type="button" class="btn btn-outline-secondary w-100" id="pageScreenshotsResetFiltersBtn">
+                            <i class="fas fa-rotate-left me-1"></i>Reset
+                        </button>
+                    </div>
+                </div>
+                <div id="pageScreenshotsTableWrap" class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 70px;">Sr. No.</th>
+                                <th style="width: 180px;">Screenshot Thumbnail</th>
+                                <th>URLs/Components</th>
+                                <th>Description</th>
+                                <th style="width: 180px;">Timestamp</th>
+                                <th style="width: 150px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pageScreenshotsTableBody">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">Loading screenshots...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mt-3">
+                    <div class="small text-muted" id="pageScreenshotsPaginationInfo">Showing 0 of 0 screenshots</div>
+                    <div class="btn-group" role="group" aria-label="Screenshot pagination">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="pageScreenshotsPrevBtn">Previous</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="pageScreenshotsNextBtn">Next</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="deleteScreenshotConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Delete Screenshot</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to delete this screenshot?
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteScreenshotBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php include __DIR__ . '/partials/issues_modals.php'; ?>
 
 <!-- Summernote JS -->
@@ -1080,6 +1299,7 @@ include __DIR__ . '/../../includes/header.php';
 
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js?v=20260210180000"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
+<script src="<?php echo $baseDir; ?>/assets/js/issue-screenshot-manager.js?v=<?php echo time(); ?>"></script>
 <script nonce="<?php echo $cspNonce ?? ''; ?>">
 document.addEventListener('pms:issues-changed', function (e) {
     var detail = e.detail || {};
