@@ -457,17 +457,34 @@ $userStatusQuery = "
         uds.notes,
         asm.status_label,
         asm.badge_color,
-        asm.display_order
+        asm.display_order,
+        login_today.latest_login_at,
+        COALESCE(off_prod.off_production_hours, 0) AS off_production_hours
     FROM users u
     LEFT JOIN user_daily_status uds ON u.id = uds.user_id AND uds.status_date = ?
     LEFT JOIN availability_status_master asm ON (uds.status COLLATE utf8mb4_unicode_ci) = asm.status_key
-    WHERE u.is_active = 1 AND u.role NOT IN ('client')
+    LEFT JOIN (
+        SELECT user_id, MAX(created_at) AS latest_login_at
+        FROM activity_log
+        WHERE action IN ('login', 'login_2fa')
+          AND DATE(created_at) = ?
+        GROUP BY user_id
+    ) login_today ON login_today.user_id = u.id
+    LEFT JOIN (
+        SELECT ptl.user_id, SUM(ptl.hours_spent) AS off_production_hours
+        FROM project_time_logs ptl
+        INNER JOIN projects p ON p.id = ptl.project_id
+        WHERE ptl.log_date = ?
+          AND (p.project_code = 'OFF-PROD-001' OR p.title LIKE 'Off-Production / Bench%')
+        GROUP BY ptl.user_id
+    ) off_prod ON off_prod.user_id = u.id
+    WHERE u.is_active = 1 AND u.role NOT IN ('client', 'admin')
     ORDER BY CASE WHEN uds.status IS NULL OR uds.status = 'not_updated' THEN 1 ELSE 0 END, asm.display_order ASC, u.full_name ASC
 ";
 $availUserStatusList = [];
 try {
     $stmt = $db->prepare($userStatusQuery);
-    $stmt->execute([$todayDate]);
+    $stmt->execute([$todayDate, $todayDate, $todayDate]);
     $availUserStatusList = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     error_log('dashboard user status query failed: ' . $e->getMessage());
@@ -476,11 +493,71 @@ try {
 // Fetch all available status options for the filter
 $availableStatusOptions = [];
 try {
-    $stmt = $db->query("SELECT status_key, status_label FROM availability_status_master WHERE is_active = 1 ORDER BY display_order ASC");
+    $stmt = $db->query("SELECT status_key, status_label, badge_color FROM availability_status_master WHERE is_active = 1 ORDER BY display_order ASC");
     $availableStatusOptions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $availableStatusOptions = [];
 }
+
+$availabilityStatusMeta = [];
+foreach ($availableStatusOptions as $statusOption) {
+    $statusKey = trim((string) ($statusOption['status_key'] ?? ''));
+    if ($statusKey === '') {
+        continue;
+    }
+    $availabilityStatusMeta[$statusKey] = [
+        'status_label' => (string) ($statusOption['status_label'] ?? ucwords(str_replace('_', ' ', $statusKey))),
+        'badge_color' => (string) ($statusOption['badge_color'] ?? 'secondary'),
+    ];
+}
+if (!isset($availabilityStatusMeta['not_updated'])) {
+    $availabilityStatusMeta['not_updated'] = [
+        'status_label' => 'Not Updated',
+        'badge_color' => 'secondary',
+    ];
+}
+
+$statusSummaryCounts = [];
+$loggedInTodayCount = 0;
+$notUpdatedLoggedInCount = 0;
+$offProductionCount = 0;
+
+foreach ($availUserStatusList as &$statusRow) {
+    $statusKey = trim((string) ($statusRow['status_key'] ?? ''));
+    if ($statusKey === '' || $statusKey === 'not_updated') {
+        $statusKey = 'not_updated';
+    }
+
+    $statusRow['status_key'] = $statusKey;
+    $statusRow['status_label'] = (string) ($availabilityStatusMeta[$statusKey]['status_label'] ?? 'Not Updated');
+    $statusRow['badge_color'] = (string) ($availabilityStatusMeta[$statusKey]['badge_color'] ?? 'secondary');
+
+    $statusSummaryCounts[$statusKey] = ($statusSummaryCounts[$statusKey] ?? 0) + 1;
+
+    $activityParts = [];
+    $notesText = trim((string) ($statusRow['notes'] ?? ''));
+    if ($notesText !== '') {
+        $activityParts[] = $notesText;
+    }
+
+    $offProductionHours = (float) ($statusRow['off_production_hours'] ?? 0);
+    if ($offProductionHours > 0) {
+        $offProductionCount++;
+        $activityParts[] = 'Off-production logged today: ' . number_format($offProductionHours, 1) . 'h';
+    }
+
+    $latestLoginAt = trim((string) ($statusRow['latest_login_at'] ?? ''));
+    if ($latestLoginAt !== '') {
+        $loggedInTodayCount++;
+        $activityParts[] = 'Logged in today at ' . date('g:i A', strtotime($latestLoginAt));
+        if ($statusKey === 'not_updated') {
+            $notUpdatedLoggedInCount++;
+        }
+    }
+
+    $statusRow['activity_note'] = implode("\n", $activityParts);
+}
+unset($statusRow);
 
 
 include __DIR__ . '/../../includes/header.php';
@@ -618,6 +695,21 @@ include __DIR__ . '/../../includes/header.php';
             </div>
         </div>
         <div class="card-body p-0">
+            <div class="px-3 pt-3 pb-2 border-bottom bg-light">
+                <div class="d-flex flex-wrap gap-2 align-items-center" style="font-size: 0.76rem;">
+                    <?php foreach ($statusSummaryCounts as $summaryStatusKey => $summaryCount): ?>
+                        <?php $summaryMeta = $availabilityStatusMeta[$summaryStatusKey] ?? ['status_label' => ucwords(str_replace('_', ' ', $summaryStatusKey)), 'badge_color' => 'secondary']; ?>
+                        <span class="badge bg-<?php echo htmlspecialchars((string) ($summaryMeta['badge_color'] ?? 'secondary')); ?> px-2 py-1">
+                            <?php echo htmlspecialchars((string) ($summaryMeta['status_label'] ?? $summaryStatusKey)); ?>: <?php echo (int) $summaryCount; ?>
+                        </span>
+                    <?php endforeach; ?>
+                    <span class="badge bg-dark-subtle text-dark border px-2 py-1">Logged in today: <?php echo (int) $loggedInTodayCount; ?></span>
+                    <span class="badge bg-warning text-dark px-2 py-1">Off-Production: <?php echo (int) $offProductionCount; ?></span>
+                    <?php if ($notUpdatedLoggedInCount > 0): ?>
+                        <span class="badge bg-secondary px-2 py-1">Not Updated after login: <?php echo (int) $notUpdatedLoggedInCount; ?></span>
+                    <?php endif; ?>
+                </div>
+            </div>
             <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                 <table class="table table-sm table-hover mb-0" id="availStatusTable" style="font-size: 0.88rem;">
                     <thead class="table-light sticky-top">
@@ -658,10 +750,10 @@ include __DIR__ . '/../../includes/header.php';
                                         </span>
                                     </td>
                                     <td class="py-2">
-                                        <?php if (!empty($us['notes'])): ?>
+                                        <?php if (!empty($us['activity_note'])): ?>
                                             <div class="text-secondary text-wrap"
                                                 style="max-width: 450px; line-height: 1.3; font-size: 0.82rem;">
-                                                <?php echo nl2br(htmlspecialchars($us['notes'])); ?></div>
+                                                <?php echo nl2br(htmlspecialchars((string) $us['activity_note'])); ?></div>
                                         <?php else: ?>
                                             <span class="text-muted fst-italic small">No notes</span>
                                         <?php endif; ?>
@@ -717,6 +809,13 @@ include __DIR__ . '/../../includes/header.php';
                 <button id="btnExportInsights" class="btn btn-sm btn-light py-0 fw-bold shadow-sm" style="font-size: 0.7rem; height: 26px;">
                     <i class="fas fa-download me-1"></i>Export
                 </button>
+            </div>
+        </div>
+        <div class="card-body border-bottom bg-light py-2 px-3">
+            <div class="small text-muted d-flex flex-wrap gap-3 align-items-center">
+                <span><i class="fas fa-robot me-1 text-primary"></i>Insights auto-queue in background.</span>
+                <span><i class="fas fa-shield-alt me-1 text-success"></i>Processing is throttled and runs one resource at a time.</span>
+                <span><i class="fas fa-eye me-1 text-info"></i>Admin only gets View Report actions.</span>
             </div>
         </div>
         <div class="card-body p-0">
@@ -1357,7 +1456,7 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
                 <div id="aiInsightContent" style="display: none;">
                     <div class="row mb-3">
-                        <div class="col-md-6">
+                        <div class="col-md-3">
                             <div class="card bg-light border-0">
                                 <div class="card-body p-3">
                                     <div class="text-muted small">Accessibility Accuracy</div>
@@ -1365,7 +1464,7 @@ include __DIR__ . '/../../includes/header.php';
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-3">
                             <div class="card bg-light border-0">
                                 <div class="card-body p-3">
                                     <div class="text-muted small">Total Actions</div>
@@ -1373,7 +1472,25 @@ include __DIR__ . '/../../includes/header.php';
                                 </div>
                             </div>
                         </div>
+                        <div class="col-md-3">
+                            <div class="card bg-light border-0">
+                                <div class="card-body p-3">
+                                    <div class="text-muted small">Hours Logged</div>
+                                    <div class="h4 mb-0" id="aiStatHours">--</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-light border-0">
+                                <div class="card-body p-3">
+                                    <div class="text-muted small">Projects Touched</div>
+                                    <div class="h4 mb-0" id="aiStatProjects">--</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
+                    <div class="small text-muted mb-3" id="aiGeneratedAt">Report status: --</div>
 
                     <h6>Overall Summary</h6>
                     <p id="aiSummaryText" class="text-dark bg-light p-3 rounded border-start border-4 border-primary">
@@ -1390,12 +1507,20 @@ include __DIR__ . '/../../includes/header.php';
                             <ul id="aiNegativeList" class="list-group list-group-flush mb-3"></ul>
                         </div>
                     </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-info"><i class="fas fa-route me-2"></i>Login & Navigation</h6>
+                            <ul id="aiWorkPatternList" class="list-group list-group-flush mb-3"></ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-primary"><i class="fas fa-folder-open me-2"></i>Project & Hours Focus</h6>
+                            <ul id="aiProjectFocusList" class="list-group list-group-flush mb-3"></ul>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="modal-footer border-top-0 d-flex justify-content-between">
-                <button type="button" class="btn btn-outline-secondary" id="btnRefreshAI">
-                    <i class="fas fa-sync-alt me-1"></i> Re-analyze Now
-                </button>
+            <div class="modal-footer border-top-0 d-flex justify-content-end">
                 <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
@@ -1470,9 +1595,69 @@ include __DIR__ . '/../../includes/header.php';
         
         var currentUserId = null;
 
+        function escapeHtml(value) {
+            return String(value || '').replace(/[&<>"']/g, function (char) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char;
+            });
+        }
+
+        function getStatusBadge(status) {
+            if (status === 'ready') {
+                return '<span class="badge bg-success-subtle text-success border">Ready</span>';
+            }
+            if (status === 'processing') {
+                return '<span class="badge bg-info-subtle text-info border">Processing</span>';
+            }
+            if (status === 'failed') {
+                return '<span class="badge bg-danger-subtle text-danger border">Retry Queued</span>';
+            }
+            return '<span class="badge bg-secondary-subtle text-secondary border">Queued</span>';
+        }
+
+        function buildInsightAction(item) {
+            var status = item.report_status || 'queued';
+            if (status === 'ready') {
+                return '<button class="btn btn-sm btn-primary py-0 btn-ai-insight" style="font-size: 0.75rem; height: 24px;" data-user-id="' + item.user_id + '" data-user-name="' + escapeHtml(item.name) + '"><i class="fas fa-eye me-1"></i> View Report</button>';
+            }
+
+            var label = status === 'processing' ? 'Processing' : (status === 'failed' ? 'Retry Queued' : 'Queued');
+            return '<button class="btn btn-sm btn-outline-secondary py-0" style="font-size: 0.75rem; height: 24px;" disabled><i class="fas fa-clock me-1"></i> ' + label + '</button>';
+        }
+
+        function setListStatusMessage(message, isError) {
+            if (!tableBody) {
+                return;
+            }
+            var cssClass = isError ? 'text-danger' : 'text-muted';
+            tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4 ' + cssClass + '">' + message + '</td></tr>';
+        }
+
+        function fillList(listId, items, iconClass, emptyText) {
+            var listEl = document.getElementById(listId);
+            if (!listEl) {
+                return;
+            }
+
+            listEl.innerHTML = '';
+            if (!Array.isArray(items) || items.length === 0) {
+                var emptyLi = document.createElement('li');
+                emptyLi.className = 'list-group-item bg-transparent px-0 border-0 text-muted';
+                emptyLi.textContent = emptyText;
+                listEl.appendChild(emptyLi);
+                return;
+            }
+
+            items.forEach(function (text) {
+                var li = document.createElement('li');
+                li.className = 'list-group-item bg-transparent px-0 border-0';
+                li.innerHTML = '<i class="' + iconClass + ' me-2"></i>' + escapeHtml(text);
+                listEl.appendChild(li);
+            });
+        }
+
         // Fetch metrics and re-render table
         function refreshMetrics() {
-            if (tableBody) tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Loading metrics...</td></tr>';
+            setListStatusMessage('<i class="fas fa-spinner fa-spin me-2"></i>Loading metrics...', false);
             
             var pId = projectFilter ? projectFilter.value : '';
             var sd = startDateInput ? startDateInput.value : '';
@@ -1491,19 +1676,24 @@ include __DIR__ . '/../../includes/header.php';
                     if (data.success && tableBody) {
                         tableBody.innerHTML = '';
                         if (data.data.length === 0) {
-                            tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">No resources found for this selection.</td></tr>';
+                            setListStatusMessage('No resources found for this selection.', false);
                             return;
                         }
 
                         data.data.forEach(item => {
-                            var pct = item.stats.accuracy.accuracy_percentage;
+                            var pct = Number(item.stats && item.stats.accuracy ? item.stats.accuracy.accuracy_percentage : 0);
                             var color = pct > 80 ? 'bg-success' : (pct > 50 ? 'bg-info' : 'bg-warning');
+                            var totalHours = Number(item.stats && item.stats.hours ? item.stats.hours.total_hours : 0);
+                            var projectCount = Number(item.stats && item.stats.hours ? item.stats.hours.project_count : 0);
+                            var totalActions = Number(item.stats && item.stats.activity ? item.stats.activity.total_actions : 0);
+                            var status = item.report_status || 'queued';
+                            var generatedAt = item.report_generated_at ? 'Updated ' + item.report_generated_at : 'Waiting for background report';
                             var tr = document.createElement('tr');
                             tr.className = 'align-middle insight-row';
                             tr.innerHTML = `
                                 <td class="ps-3 py-2">
-                                    <div class="fw-bold">${item.name}</div>
-                                    <div class="text-muted" style="font-size: 0.7rem;">${(item.role || 'user').replace('_', ' ')}</div>
+                                    <div class="fw-bold">${escapeHtml(item.name)}</div>
+                                    <div class="text-muted" style="font-size: 0.7rem;">${escapeHtml((item.role || 'user').replace('_', ' '))}</div>
                                 </td>
                                 <td class="py-2">
                                     <div class="d-flex align-items-center gap-2">
@@ -1513,14 +1703,14 @@ include __DIR__ . '/../../includes/header.php';
                                         <span class="fw-bold" style="font-size: 0.75rem;">${pct}%</span>
                                     </div>
                                 </td>
-                                <td class="py-2 text-muted small">${item.stats.activity.total_actions}</td>
+                                <td class="py-2 text-muted small">
+                                    <div>${totalHours.toFixed(1)}h across ${projectCount} project(s)</div>
+                                    <div>${totalActions} tracked actions</div>
+                                    <div class="mt-1">${getStatusBadge(status)}</div>
+                                    <div class="text-muted mt-1" style="font-size: 0.68rem;">${escapeHtml(generatedAt)}</div>
+                                </td>
                                 <td class="py-2 text-center">
-                                    <button class="btn btn-sm btn-primary py-0 btn-ai-insight" 
-                                            style="font-size: 0.75rem; height: 24px;"
-                                            data-user-id="${item.user_id}" 
-                                            data-user-name="${item.name}">
-                                        <i class="fas fa-brain me-1"></i> Analyze
-                                    </button>
+                                    ${buildInsightAction(item)}
                                 </td>
                             `;
                             tableBody.appendChild(tr);
@@ -1532,12 +1722,13 @@ include __DIR__ . '/../../includes/header.php';
                 .catch(err => {
                     clearTimeout(timeoutId);
                     console.error('Metric load failed:', err);
-                    if (tableBody) tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-danger">Server timed out or returned an error.</td></tr>';
+                    setListStatusMessage('Server timed out or returned an error.', true);
                 });
         }
 
         // Initial load
         refreshMetrics();
+        window.setInterval(refreshMetrics, 60000);
 
         // Listen for filter changes
         [projectFilter, startDateInput, endDateInput].forEach(el => {
@@ -1572,17 +1763,13 @@ include __DIR__ . '/../../includes/header.php';
                 var userId = btn.getAttribute('data-user-id');
                 var userName = btn.getAttribute('data-user-name');
                 currentUserId = userId;
-                document.getElementById('aiInsightModalLabel').innerHTML = '<i class="fas fa-brain me-2"></i>Insights: ' + userName;
+                document.getElementById('aiInsightModalLabel').innerHTML = '<i class="fas fa-brain me-2"></i>Insights: ' + escapeHtml(userName);
                 fetchInsight(userId);
                 modal.show();
             }
         });
 
-        document.getElementById('btnRefreshAI').addEventListener('click', function () {
-            if (currentUserId) fetchInsight(currentUserId, true);
-        });
-
-        function fetchInsight(userId, refresh = false) {
+        function fetchInsight(userId) {
             loading.style.display = 'block';
             content.style.display = 'none';
 
@@ -1591,7 +1778,6 @@ include __DIR__ . '/../../includes/header.php';
             var ed = endDateInput ? endDateInput.value : '';
             
             var url = window.AdminDashboardConfig.performanceApiUrl + '?user_id=' + userId + '&project_id=' + pId + '&start_date=' + sd + '&end_date=' + ed;
-            if (refresh) url += '&refresh=true';
 
             fetch(url)
                 .then(response => response.json())
@@ -1599,14 +1785,13 @@ include __DIR__ . '/../../includes/header.php';
                     if (data.success && data.data.length > 0) {
                         var insight = data.data[0];
                         displayInsight(insight);
-                        refreshMetrics(); 
                     } else {
-                        alert('Failed to fetch AI insights.');
+                        alert('Failed to fetch cached report.');
                     }
                 })
                 .catch(err => {
                     console.error(err);
-                    alert('An error occurred while calling the AI API.');
+                    alert('An error occurred while fetching the background report.');
                 })
                 .finally(() => {
                     loading.style.display = 'none';
@@ -1615,27 +1800,19 @@ include __DIR__ . '/../../includes/header.php';
         }
 
         function displayInsight(item) {
-            document.getElementById('aiStatAccuracy').textContent = item.stats.accuracy.accuracy_percentage + '%';
-            document.getElementById('aiStatActivity').textContent = item.stats.activity.total_actions;
-            document.getElementById('aiSummaryText').textContent = item.summary.overall_summary;
+            var stats = item.stats || {};
+            var summary = item.summary || {};
+            document.getElementById('aiStatAccuracy').textContent = ((stats.accuracy && stats.accuracy.accuracy_percentage) || 0) + '%';
+            document.getElementById('aiStatActivity').textContent = (stats.activity && stats.activity.total_actions) || 0;
+            document.getElementById('aiStatHours').textContent = (((stats.hours && stats.hours.total_hours) || 0)).toFixed(1) + 'h';
+            document.getElementById('aiStatProjects').textContent = (stats.hours && stats.hours.project_count) || 0;
+            document.getElementById('aiGeneratedAt').textContent = 'Report status: ' + (item.report_status || 'queued') + ((item.report_generated_at ? ' • Generated ' + item.report_generated_at : ''));
+            document.getElementById('aiSummaryText').textContent = summary.overall_summary || 'Background analysis has been queued.';
 
-            var posList = document.getElementById('aiPositiveList');
-            posList.innerHTML = '';
-            item.summary.positive.forEach(txt => {
-                var li = document.createElement('li');
-                li.className = 'list-group-item bg-transparent px-0 border-0';
-                li.innerHTML = '<i class="fas fa-check text-success me-2"></i>' + txt;
-                posList.appendChild(li);
-            });
-
-            var negList = document.getElementById('aiNegativeList');
-            negList.innerHTML = '';
-            item.summary.negative.forEach(txt => {
-                var li = document.createElement('li');
-                li.className = 'list-group-item bg-transparent px-0 border-0';
-                li.innerHTML = '<i class="fas fa-arrow-right text-muted me-2"></i>' + txt;
-                negList.appendChild(li);
-            });
+            fillList('aiPositiveList', summary.positive || [], 'fas fa-check text-success', 'No positive highlights captured yet.');
+            fillList('aiNegativeList', summary.negative || [], 'fas fa-arrow-right text-muted', 'No improvement points captured yet.');
+            fillList('aiWorkPatternList', summary.work_patterns || [], 'fas fa-route text-info', 'Login/navigation highlights will appear after processing.');
+            fillList('aiProjectFocusList', summary.project_focus || [], 'fas fa-folder-open text-primary', 'Project-hour focus will appear after processing.');
         }
     })();
 
