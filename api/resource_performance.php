@@ -25,38 +25,24 @@ try {
         $helper->dispatchBackgroundInsightWorker();
     }
 
-    $recordMap = $userId > 0
-        ? [$userId => $helper->getInsightRecord($userId, $projectId, $startDate, $endDate)]
-        : $helper->getInsightRecordsForScope($projectId, $startDate, $endDate);
+    $dailyRecordMap = $helper->getDailyInsightRecordsForUsers($userIds, $projectId, $startDate, $endDate);
 
     $results = [];
 
     foreach ($rawStats as $userStats) {
         $resolvedUserId = (int) ($userStats['user_id'] ?? 0);
-        $record = $recordMap[$resolvedUserId] ?? null;
-        $snapshotStats = $userStats['stats'] ?? [];
+        $report = $helper->buildRangeInsightReport(
+            $userStats,
+            $dailyRecordMap[$resolvedUserId] ?? [],
+            $startDate,
+            $endDate
+        );
 
-        if (!empty($record['stats_snapshot_json'])) {
-            $cachedStats = json_decode((string) $record['stats_snapshot_json'], true);
-            if (is_array($cachedStats) && !empty($cachedStats)) {
-                $snapshotStats = array_replace_recursive($snapshotStats, $cachedStats);
-            }
-        }
-
-        $summaryInput = $userStats;
-        $summaryInput['stats'] = $snapshotStats;
-        $status = (string) ($record['analysis_status'] ?? 'queued');
-
-        $results[] = [
+        $results[] = array_merge([
             'user_id' => $resolvedUserId,
             'name' => (string) ($userStats['name'] ?? ''),
             'role' => (string) ($userStats['role'] ?? ''),
-            'cached' => $record !== null && $status === 'ready',
-            'report_status' => $status,
-            'report_generated_at' => (string) ($record['generated_at'] ?? ''),
-            'summary' => $helper->buildInsightPayload($record, $summaryInput),
-            'stats' => $snapshotStats,
-        ];
+        ], $report);
     }
 
     echo json_encode([

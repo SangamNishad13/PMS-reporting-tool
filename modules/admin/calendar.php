@@ -798,6 +798,18 @@ $allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND 
                     <?php endforeach; ?>
                     
                     <div class="vr mx-2"></div>
+
+                    <input type="checkbox" class="btn-check hours-filter-check" id="filterUnder8Hours" value="under_8_hours" checked autocomplete="off">
+                    <label class="btn btn-outline-warning" for="filterUnder8Hours">
+                        <i class="fas fa-hourglass-half me-2"></i>Under 8 Hours
+                    </label>
+
+                    <input type="checkbox" class="btn-check hours-filter-check" id="filterCompliantHours" value="compliant" checked autocomplete="off">
+                    <label class="btn btn-outline-success" for="filterCompliantHours">
+                        <i class="fas fa-check-circle me-2"></i>Compliant
+                    </label>
+
+                    <div class="vr mx-2"></div>
                     
                     <input type="checkbox" class="btn-check" id="filterEditRequests" checked autocomplete="off" onchange="if(window.__adminCalendarToggleEditRequests){window.__adminCalendarToggleEditRequests();}">
                     <label class="btn btn-outline-info" for="filterEditRequests">

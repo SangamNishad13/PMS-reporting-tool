@@ -559,6 +559,8 @@ foreach ($availUserStatusList as &$statusRow) {
 }
 unset($statusRow);
 
+$hasOffProductionStatusSummary = isset($statusSummaryCounts['off_production']);
+
 
 include __DIR__ . '/../../includes/header.php';
 ?>
@@ -704,7 +706,9 @@ include __DIR__ . '/../../includes/header.php';
                         </span>
                     <?php endforeach; ?>
                     <span class="badge bg-dark-subtle text-dark border px-2 py-1">Logged in today: <?php echo (int) $loggedInTodayCount; ?></span>
-                    <span class="badge bg-warning text-dark px-2 py-1">Off-Production: <?php echo (int) $offProductionCount; ?></span>
+                    <?php if (!$hasOffProductionStatusSummary && $offProductionCount > 0): ?>
+                        <span class="badge bg-warning text-dark px-2 py-1">Logged off-production hours: <?php echo (int) $offProductionCount; ?></span>
+                    <?php endif; ?>
                     <?php if ($notUpdatedLoggedInCount > 0): ?>
                         <span class="badge bg-secondary px-2 py-1">Not Updated after login: <?php echo (int) $notUpdatedLoggedInCount; ?></span>
                     <?php endif; ?>
@@ -793,12 +797,14 @@ include __DIR__ . '/../../includes/header.php';
             <div class="d-flex align-items-center gap-2 flex-wrap">
                 <div class="d-flex align-items-center gap-1">
                     <span class="small text-white-50">Project:</span>
-                    <select id="insightProjectFilter" class="form-select form-select-sm py-0 bg-white" style="font-size: 0.75rem; width: 130px; height: 26px;">
-                        <option value="">Overall</option>
+                    <input type="hidden" id="insightProjectFilter" value="">
+                    <input type="text" id="insightProjectSearch" class="form-control form-control-sm py-0 bg-white" list="insightProjectOptions" placeholder="Overall / search project" style="font-size: 0.75rem; width: 200px; height: 26px;" value="Overall" autocomplete="off">
+                    <datalist id="insightProjectOptions">
+                        <option value="Overall" data-project-id=""></option>
                         <?php foreach ($repoProjects as $p): ?>
-                            <option value="<?php echo $p['id']; ?>"><?php echo htmlspecialchars($p['title']); ?></option>
+                            <option value="<?php echo htmlspecialchars((string) $p['title'], ENT_QUOTES, 'UTF-8'); ?>" data-project-id="<?php echo (int) $p['id']; ?>"></option>
                         <?php endforeach; ?>
-                    </select>
+                    </datalist>
                 </div>
                 <div class="d-flex align-items-center gap-1">
                     <input type="date" id="insightStartDate" class="form-control form-control-sm py-0 bg-white" style="font-size: 0.75rem; width: 110px; height: 26px;" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>">
@@ -1492,6 +1498,11 @@ include __DIR__ . '/../../includes/header.php';
 
                     <div class="small text-muted mb-3" id="aiGeneratedAt">Report status: --</div>
 
+                    <div class="mb-3">
+                        <h6 class="text-secondary"><i class="fas fa-calendar-day me-2"></i>Daily Progress</h6>
+                        <ul id="aiDailyProgressList" class="list-group list-group-flush mb-0"></ul>
+                    </div>
+
                     <h6>Overall Summary</h6>
                     <p id="aiSummaryText" class="text-dark bg-light p-3 rounded border-start border-4 border-primary">
                     </p>
@@ -1588,6 +1599,8 @@ include __DIR__ . '/../../includes/header.php';
         var tableBody = document.getElementById('insightTableBody');
         
         var projectFilter = document.getElementById('insightProjectFilter');
+        var projectSearchInput = document.getElementById('insightProjectSearch');
+        var projectOptions = document.querySelectorAll('#insightProjectOptions option');
         var startDateInput = document.getElementById('insightStartDate');
         var endDateInput = document.getElementById('insightEndDate');
         var insightSearch = document.getElementById('insightSearch');
@@ -1616,8 +1629,9 @@ include __DIR__ . '/../../includes/header.php';
 
         function buildInsightAction(item) {
             var status = item.report_status || 'queued';
-            if (status === 'ready') {
-                return '<button class="btn btn-sm btn-primary py-0 btn-ai-insight" style="font-size: 0.75rem; height: 24px;" data-user-id="' + item.user_id + '" data-user-name="' + escapeHtml(item.name) + '"><i class="fas fa-eye me-1"></i> View Report</button>';
+            if (status === 'ready' || item.has_report_content) {
+                var label = status === 'ready' ? 'View Report' : 'View Progress';
+                return '<button class="btn btn-sm btn-primary py-0 btn-ai-insight" style="font-size: 0.75rem; height: 24px;" data-user-id="' + item.user_id + '" data-user-name="' + escapeHtml(item.name) + '"><i class="fas fa-eye me-1"></i> ' + label + '</button>';
             }
 
             var label = status === 'processing' ? 'Processing' : (status === 'failed' ? 'Retry Queued' : 'Queued');
@@ -1655,11 +1669,41 @@ include __DIR__ . '/../../includes/header.php';
             });
         }
 
+        function resolveProjectFilterValue() {
+            if (!projectFilter || !projectSearchInput) {
+                return '';
+            }
+
+            var typedValue = String(projectSearchInput.value || '').trim();
+            if (typedValue === '' || typedValue.toLowerCase() === 'overall') {
+                projectFilter.value = '';
+                if (typedValue === '') {
+                    projectSearchInput.value = 'Overall';
+                }
+                return '';
+            }
+
+            var resolvedId = '';
+            var normalizedTypedValue = typedValue.toLowerCase();
+
+            projectOptions.forEach(function (option) {
+                if (resolvedId !== '') {
+                    return;
+                }
+                if (String(option.value || '').trim().toLowerCase() === normalizedTypedValue) {
+                    resolvedId = option.getAttribute('data-project-id') || '';
+                }
+            });
+
+            projectFilter.value = resolvedId;
+            return resolvedId;
+        }
+
         // Fetch metrics and re-render table
         function refreshMetrics() {
             setListStatusMessage('<i class="fas fa-spinner fa-spin me-2"></i>Loading metrics...', false);
             
-            var pId = projectFilter ? projectFilter.value : '';
+            var pId = resolveProjectFilterValue();
             var sd = startDateInput ? startDateInput.value : '';
             var ed = endDateInput ? endDateInput.value : '';
             
@@ -1731,9 +1775,22 @@ include __DIR__ . '/../../includes/header.php';
         window.setInterval(refreshMetrics, 60000);
 
         // Listen for filter changes
-        [projectFilter, startDateInput, endDateInput].forEach(el => {
+        [startDateInput, endDateInput].forEach(el => {
             if (el) el.addEventListener('change', refreshMetrics);
         });
+
+        if (projectSearchInput) {
+            projectSearchInput.addEventListener('change', refreshMetrics);
+            projectSearchInput.addEventListener('blur', function () {
+                resolveProjectFilterValue();
+            });
+            projectSearchInput.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    refreshMetrics();
+                }
+            });
+        }
 
         // Search Filter
         if (insightSearch) {
@@ -1749,7 +1806,7 @@ include __DIR__ . '/../../includes/header.php';
         // Export Logic
         if (btnExport) {
             btnExport.addEventListener('click', function() {
-                var pId = projectFilter ? projectFilter.value : '';
+                var pId = resolveProjectFilterValue();
                 var sd = startDateInput ? startDateInput.value : '';
                 var ed = endDateInput ? endDateInput.value : '';
                 var url = window.AdminDashboardConfig.baseDir + '/api/export_performance.php?project_id=' + pId + '&start_date=' + sd + '&end_date=' + ed;
@@ -1773,7 +1830,7 @@ include __DIR__ . '/../../includes/header.php';
             loading.style.display = 'block';
             content.style.display = 'none';
 
-            var pId = projectFilter ? projectFilter.value : '';
+            var pId = resolveProjectFilterValue();
             var sd = startDateInput ? startDateInput.value : '';
             var ed = endDateInput ? endDateInput.value : '';
             
@@ -1802,17 +1859,23 @@ include __DIR__ . '/../../includes/header.php';
         function displayInsight(item) {
             var stats = item.stats || {};
             var summary = item.summary || {};
+            var coverage = item.coverage || {};
+            var coverageText = '';
+            if (typeof coverage.ready_days !== 'undefined' && typeof coverage.total_days !== 'undefined') {
+                coverageText = ' • Daily coverage ' + coverage.ready_days + '/' + coverage.total_days;
+            }
             document.getElementById('aiStatAccuracy').textContent = ((stats.accuracy && stats.accuracy.accuracy_percentage) || 0) + '%';
             document.getElementById('aiStatActivity').textContent = (stats.activity && stats.activity.total_actions) || 0;
             document.getElementById('aiStatHours').textContent = (((stats.hours && stats.hours.total_hours) || 0)).toFixed(1) + 'h';
             document.getElementById('aiStatProjects').textContent = (stats.hours && stats.hours.project_count) || 0;
-            document.getElementById('aiGeneratedAt').textContent = 'Report status: ' + (item.report_status || 'queued') + ((item.report_generated_at ? ' • Generated ' + item.report_generated_at : ''));
+            document.getElementById('aiGeneratedAt').textContent = 'Report status: ' + (item.report_status || 'queued') + coverageText + (item.report_generated_at ? ' • Last daily insight ' + item.report_generated_at : '');
             document.getElementById('aiSummaryText').textContent = summary.overall_summary || 'Background analysis has been queued.';
 
             fillList('aiPositiveList', summary.positive || [], 'fas fa-check text-success', 'No positive highlights captured yet.');
             fillList('aiNegativeList', summary.negative || [], 'fas fa-arrow-right text-muted', 'No improvement points captured yet.');
             fillList('aiWorkPatternList', summary.work_patterns || [], 'fas fa-route text-info', 'Login/navigation highlights will appear after processing.');
             fillList('aiProjectFocusList', summary.project_focus || [], 'fas fa-folder-open text-primary', 'Project-hour focus will appear after processing.');
+            fillList('aiDailyProgressList', summary.daily_progress || [], 'fas fa-calendar-check text-secondary', 'Daily additions will appear here as background summaries are generated.');
         }
     })();
 

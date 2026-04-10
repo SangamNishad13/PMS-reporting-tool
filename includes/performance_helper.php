@@ -229,50 +229,127 @@ class PerformanceHelper {
         return $records;
     }
 
+    public function getDailyInsightRecordsForUsers(array $userIds, $projectId = null, $startDate = null, $endDate = null) {
+        [$startDate, $endDate] = $this->normalizeDateRange($startDate, $endDate);
+        $normalizedUserIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        if (empty($normalizedUserIds)) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($normalizedUserIds), '?'));
+        $sql = "SELECT *
+                FROM resource_performance_feedback
+                WHERE user_id IN ($placeholders)
+                  AND report_scope_start_date = report_scope_end_date
+                  AND report_scope_start_date BETWEEN ? AND ?";
+        $params = $normalizedUserIds;
+        $params[] = $startDate;
+        $params[] = $endDate;
+
+        if ($projectId === null) {
+            $sql .= " AND project_id IS NULL";
+        } else {
+            $sql .= " AND project_id = ?";
+            $params[] = (int) $projectId;
+        }
+
+        $sql .= " ORDER BY user_id ASC, report_scope_start_date ASC, generated_at DESC, id DESC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        $records = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $resolvedUserId = (int) ($row['user_id'] ?? 0);
+            $dayKey = (string) ($row['report_scope_start_date'] ?? '');
+            if ($resolvedUserId <= 0 || $dayKey === '') {
+                continue;
+            }
+            if (!isset($records[$resolvedUserId])) {
+                $records[$resolvedUserId] = [];
+            }
+            if (!isset($records[$resolvedUserId][$dayKey])) {
+                $records[$resolvedUserId][$dayKey] = $row;
+            }
+        }
+
+        return $records;
+    }
+
+    public function buildRangeInsightReport(array $userStats, array $dailyRecords, $startDate = null, $endDate = null) {
+        [$startDate, $endDate] = $this->normalizeDateRange($startDate, $endDate);
+        $statusSummary = $this->resolveRangeInsightStatus($dailyRecords, $startDate, $endDate);
+        $summaryInput = $userStats;
+        $summaryInput['date_range'] = [
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+        ];
+
+        return [
+            'cached' => $statusSummary['status'] === 'ready',
+            'has_report_content' => $statusSummary['ready_days'] > 0,
+            'report_status' => $statusSummary['status'],
+            'report_generated_at' => $statusSummary['generated_at'],
+            'summary' => $this->buildRangeInsightPayload($dailyRecords, $summaryInput, $statusSummary),
+            'stats' => $userStats['stats'] ?? [],
+            'coverage' => [
+                'ready_days' => $statusSummary['ready_days'],
+                'total_days' => $statusSummary['total_days'],
+                'missing_days' => $statusSummary['missing_days'],
+            ],
+        ];
+    }
+
     public function queueInsightGeneration($projectId = null, $startDate = null, $endDate = null, array $userIds = []) {
         [$startDate, $endDate] = $this->normalizeDateRange($startDate, $endDate);
         $queued = 0;
 
-        foreach (array_unique(array_map('intval', $userIds)) as $userId) {
-            if ($userId <= 0) {
-                continue;
-            }
+        $normalizedUserIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        if (empty($normalizedUserIds)) {
+            return 0;
+        }
 
-            $record = $this->getInsightRecord($userId, $projectId, $startDate, $endDate);
-            if ($record) {
-                $status = (string) ($record['analysis_status'] ?? 'queued');
-                if ($status === 'processing') {
+        $dateKeys = $this->buildDateKeys($startDate, $endDate);
+        $existingMap = $this->getDailyInsightRecordsForUsers($normalizedUserIds, $projectId, $startDate, $endDate);
+
+        foreach ($normalizedUserIds as $userId) {
+            foreach ($dateKeys as $dayKey) {
+                $record = $existingMap[$userId][$dayKey] ?? null;
+                if ($record) {
+                    $status = (string) ($record['analysis_status'] ?? 'queued');
+                    if ($status === 'processing') {
+                        continue;
+                    }
+
+                    if ($status === 'ready' && !$this->isDailyInsightStale($record, $dayKey)) {
+                        continue;
+                    }
+
+                    $update = $this->db->prepare("UPDATE resource_performance_feedback
+                                                 SET analysis_status = 'queued',
+                                                     last_error = NULL,
+                                                     report_scope_start_date = ?,
+                                                     report_scope_end_date = ?,
+                                                     last_updated_at = NOW()
+                                                 WHERE id = ?");
+                    $update->execute([$dayKey, $dayKey, (int) $record['id']]);
+                    $queued++;
                     continue;
                 }
 
-                if ($status === 'ready' && !$this->isInsightStale($record)) {
-                    continue;
-                }
-
-                $update = $this->db->prepare("UPDATE resource_performance_feedback
-                                             SET analysis_status = 'queued',
-                                                 last_error = NULL,
-                                                 report_scope_start_date = ?,
-                                                 report_scope_end_date = ?,
-                                                 last_updated_at = NOW()
-                                             WHERE id = ?");
-                $update->execute([$startDate, $endDate, (int) $record['id']]);
+                $insertSql = "INSERT INTO resource_performance_feedback
+                    (user_id, project_id, report_scope_start_date, report_scope_end_date, accuracy_score, activity_score,
+                     positive_feedback, negative_feedback, ai_summary, stats_snapshot_json, analysis_status, generated_at, last_error)
+                    VALUES (?, ?, ?, ?, 0, 0, '', '', NULL, NULL, 'queued', NULL, NULL)";
+                $insert = $this->db->prepare($insertSql);
+                $insert->execute([
+                    $userId,
+                    $projectId !== null ? (int) $projectId : null,
+                    $dayKey,
+                    $dayKey,
+                ]);
                 $queued++;
-                continue;
             }
-
-            $insertSql = "INSERT INTO resource_performance_feedback
-                (user_id, project_id, report_scope_start_date, report_scope_end_date, accuracy_score, activity_score,
-                 positive_feedback, negative_feedback, ai_summary, stats_snapshot_json, analysis_status, generated_at, last_error)
-                VALUES (?, ?, ?, ?, 0, 0, '', '', NULL, NULL, 'queued', NULL, NULL)";
-            $insert = $this->db->prepare($insertSql);
-            $insert->execute([
-                $userId,
-                $projectId !== null ? (int) $projectId : null,
-                $startDate,
-                $endDate,
-            ]);
-            $queued++;
         }
 
         return $queued;
@@ -409,6 +486,57 @@ class PerformanceHelper {
             'negative' => array_values(array_filter((array) ($parsed['negative'] ?? []))),
             'work_patterns' => array_values(array_filter((array) ($parsed['work_patterns'] ?? []))),
             'project_focus' => array_values(array_filter((array) ($parsed['project_focus'] ?? []))),
+        ];
+    }
+
+    public function buildRangeInsightPayload(array $dailyRecords, array $stats = [], array $statusSummary = []) {
+        $status = (string) ($statusSummary['status'] ?? 'queued');
+        $readyRecords = [];
+        foreach ($dailyRecords as $dayKey => $record) {
+            if ((string) ($record['analysis_status'] ?? '') === 'ready') {
+                $readyRecords[$dayKey] = $record;
+            }
+        }
+
+        $baseSummary = !empty($stats) ? $this->generateFallbackInsight($stats) : [
+            'overall_summary' => 'Background analysis has been queued. The report will appear automatically once ready.',
+            'positive' => [],
+            'negative' => [],
+            'work_patterns' => [],
+            'project_focus' => [],
+        ];
+
+        $positive = $this->mergeSummaryListItems($readyRecords, 'positive', $baseSummary['positive'] ?? []);
+        $negative = $this->mergeSummaryListItems($readyRecords, 'negative', $baseSummary['negative'] ?? []);
+        $workPatterns = $this->mergeSummaryListItems($readyRecords, 'work_patterns', $baseSummary['work_patterns'] ?? []);
+        $projectFocus = $this->mergeSummaryListItems($readyRecords, 'project_focus', $baseSummary['project_focus'] ?? []);
+        $dailyProgress = $this->buildDailyProgressEntries($dailyRecords);
+
+        $readyDays = (int) ($statusSummary['ready_days'] ?? count($readyRecords));
+        $totalDays = (int) ($statusSummary['total_days'] ?? max(1, count($dailyRecords)));
+        $coverageSuffix = 'Daily coverage: ' . $readyDays . '/' . $totalDays . ' day(s).';
+        $overallSummary = trim((string) ($baseSummary['overall_summary'] ?? ''));
+        if ($overallSummary !== '') {
+            $overallSummary .= ' ' . $coverageSuffix;
+        } else {
+            $overallSummary = $coverageSuffix;
+        }
+
+        if ($status === 'processing') {
+            $overallSummary = 'Daily insight generation is currently running. ' . $coverageSuffix;
+        } elseif ($status === 'queued') {
+            $overallSummary = 'Daily insight records are being queued in the background. ' . $coverageSuffix;
+        } elseif ($status === 'failed') {
+            $overallSummary = 'Some daily insight runs failed and have been marked for retry. ' . $coverageSuffix;
+        }
+
+        return [
+            'overall_summary' => $overallSummary,
+            'positive' => $positive,
+            'negative' => $negative,
+            'work_patterns' => $workPatterns,
+            'project_focus' => $projectFocus,
+            'daily_progress' => $dailyProgress,
         ];
     }
 
@@ -935,6 +1063,156 @@ class PerformanceHelper {
         return (string) ($stmt->fetchColumn() ?: '');
     }
 
+    private function buildDateKeys($startDate, $endDate) {
+        $dateKeys = [];
+        $cursor = strtotime($startDate ?: date('Y-m-d'));
+        $endTs = strtotime($endDate ?: date('Y-m-d'));
+
+        while ($cursor !== false && $cursor <= $endTs) {
+            $dateKeys[] = date('Y-m-d', $cursor);
+            $cursor = strtotime('+1 day', $cursor);
+        }
+
+        return $dateKeys;
+    }
+
+    private function resolveRangeInsightStatus(array $dailyRecords, $startDate, $endDate) {
+        $dateKeys = $this->buildDateKeys($startDate, $endDate);
+        $readyDays = 0;
+        $processingFound = false;
+        $failedFound = false;
+        $queuedFound = false;
+        $generatedAtCandidates = [];
+        $missingDays = [];
+
+        foreach ($dateKeys as $dayKey) {
+            $record = $dailyRecords[$dayKey] ?? null;
+            if (!$record) {
+                $queuedFound = true;
+                $missingDays[] = $dayKey;
+                continue;
+            }
+
+            $status = (string) ($record['analysis_status'] ?? 'queued');
+            if ($status === 'ready') {
+                $readyDays++;
+                if (!empty($record['generated_at'])) {
+                    $generatedAtCandidates[] = (string) $record['generated_at'];
+                }
+                continue;
+            }
+
+            if ($status === 'processing') {
+                $processingFound = true;
+            } elseif ($status === 'failed') {
+                $failedFound = true;
+            } else {
+                $queuedFound = true;
+            }
+        }
+
+        $status = 'ready';
+        if ($processingFound) {
+            $status = 'processing';
+        } elseif ($queuedFound || !empty($missingDays)) {
+            $status = 'queued';
+        } elseif ($failedFound) {
+            $status = 'failed';
+        }
+
+        return [
+            'status' => $status,
+            'ready_days' => $readyDays,
+            'total_days' => count($dateKeys),
+            'missing_days' => $missingDays,
+            'generated_at' => empty($generatedAtCandidates) ? '' : max($generatedAtCandidates),
+        ];
+    }
+
+    private function parseInsightSummary(array $record) {
+        if (empty($record['ai_summary'])) {
+            return [];
+        }
+
+        $parsed = json_decode((string) $record['ai_summary'], true);
+        return is_array($parsed) ? $parsed : [];
+    }
+
+    private function mergeSummaryListItems(array $dailyRecords, $key, array $fallbackItems = [], $limit = 5) {
+        $merged = [];
+
+        foreach ($dailyRecords as $record) {
+            $parsed = $this->parseInsightSummary($record);
+            foreach ((array) ($parsed[$key] ?? []) as $item) {
+                $item = trim((string) $item);
+                if ($item === '') {
+                    continue;
+                }
+                $merged[$item] = true;
+            }
+        }
+
+        foreach ($fallbackItems as $item) {
+            $item = trim((string) $item);
+            if ($item === '') {
+                continue;
+            }
+            $merged[$item] = true;
+        }
+
+        return array_slice(array_keys($merged), 0, max(1, (int) $limit));
+    }
+
+    private function buildDailyProgressEntries(array $dailyRecords, $limit = 10) {
+        ksort($dailyRecords);
+        $entries = [];
+
+        foreach ($dailyRecords as $dayKey => $record) {
+            $stats = [];
+            if (!empty($record['stats_snapshot_json'])) {
+                $decoded = json_decode((string) $record['stats_snapshot_json'], true);
+                if (is_array($decoded)) {
+                    $stats = $decoded;
+                }
+            }
+
+            $parts = [];
+            $hours = (float) ($stats['hours']['total_hours'] ?? 0);
+            $actions = (int) ($stats['activity']['total_actions'] ?? 0);
+            $comments = (int) ($stats['communication']['total_comments'] ?? 0);
+            $projects = (int) ($stats['hours']['project_count'] ?? 0);
+
+            if ($hours > 0) {
+                $parts[] = '+' . number_format($hours, 1) . 'h logged';
+            }
+            if ($projects > 0) {
+                $parts[] = $projects . ' project(s) touched';
+            }
+            if ($actions > 0) {
+                $parts[] = $actions . ' actions';
+            }
+            if ($comments > 0) {
+                $parts[] = $comments . ' comments';
+            }
+
+            $parsed = $this->parseInsightSummary($record);
+            $headline = trim((string) ($parsed['overall_summary'] ?? ''));
+            $dateLabel = date('M j, Y', strtotime($dayKey));
+
+            if (empty($parts) && $headline === '') {
+                $entries[] = $dateLabel . ': No tracked contribution was recorded.';
+            } else {
+                $line = $dateLabel . ': ' . implode(', ', $parts);
+                if ($headline !== '') {
+                    $line .= ' - ' . $headline;
+                }
+                $entries[] = trim($line);
+            }
+        }
+
+        return array_slice(array_reverse($entries), 0, max(1, (int) $limit));
+    }
+
     private function isInsightStale(array $record) {
         $generatedAt = strtotime((string) ($record['generated_at'] ?? $record['last_updated_at'] ?? ''));
         if ($generatedAt <= 0) {
@@ -942,6 +1220,15 @@ class PerformanceHelper {
         }
 
         return (time() - $generatedAt) >= self::STALE_AFTER_SECONDS;
+    }
+
+    private function isDailyInsightStale(array $record, $dayKey) {
+        $dayKey = (string) $dayKey;
+        if ($dayKey === date('Y-m-d')) {
+            return $this->isInsightStale($record);
+        }
+
+        return false;
     }
 
     private function normalizeDateValue($value, $fallback) {
@@ -1007,8 +1294,9 @@ class PerformanceHelper {
     }
 
     private function acquireWorkerLock() {
+        $lockName = $this->getWorkerLockName();
         try {
-            $stmt = $this->db->query("SELECT GET_LOCK('" . self::WORKER_LOCK_NAME . "', 0)");
+            $stmt = $this->db->query("SELECT GET_LOCK('" . $lockName . "', 0)");
             return (int) $stmt->fetchColumn() === 1;
         } catch (Throwable $e) {
             error_log('resource performance worker lock failed: ' . $e->getMessage());
@@ -1017,10 +1305,16 @@ class PerformanceHelper {
     }
 
     private function releaseWorkerLock() {
+        $lockName = $this->getWorkerLockName();
         try {
-            $this->db->query("DO RELEASE_LOCK('" . self::WORKER_LOCK_NAME . "')");
+            $this->db->query("DO RELEASE_LOCK('" . $lockName . "')");
         } catch (Throwable $e) {
             error_log('resource performance worker unlock failed: ' . $e->getMessage());
         }
+    }
+
+    private function getWorkerLockName() {
+        $dbName = defined('DB_NAME') ? (string) DB_NAME : 'default';
+        return self::WORKER_LOCK_NAME . '_' . preg_replace('/[^a-zA-Z0-9_]+/', '_', $dbName);
     }
 }

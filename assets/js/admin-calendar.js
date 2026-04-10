@@ -39,6 +39,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var eventsUrl = cfg.eventsUrl || '';
     var editRequestsUrl = cfg.editRequestsUrl || '';
     var statusFilterStorageKey = 'admin_calendar_status_filters_v1';
+    var hoursFilterStorageKey = 'admin_calendar_hours_filters_v1';
     var calendarEl = document.getElementById('calendar');
 
     function getSelectedFilters() {
@@ -55,6 +56,14 @@ document.addEventListener('DOMContentLoaded', function() {
         );
     }
 
+    function getSelectedHourFilterSet() {
+        return new Set(
+            Array.from(document.querySelectorAll('.hours-filter-check:checked')).map(function(cb) {
+                return String(cb.value || '').toLowerCase();
+            })
+        );
+    }
+
     function isStatusVisibleByFilter(statusType, selectedSet) {
         var key = String(statusType || '').toLowerCase();
         if (!selectedSet || selectedSet.size === 0) return false;
@@ -63,12 +72,23 @@ document.addEventListener('DOMContentLoaded', function() {
         return false;
     }
 
-    function applyStatusFilterToRenderedEvents() {
+    function isHoursVisibleByFilter(hoursCategory, selectedSet) {
+        var key = String(hoursCategory || '').toLowerCase();
+        if (!selectedSet || selectedSet.size === 0) return true;
+        if (selectedSet.has('under_8_hours') && selectedSet.has('compliant')) return true;
+        return selectedSet.has(key);
+    }
+
+    function applyCombinedFiltersToRenderedEvents() {
         var selectedSet = getSelectedFilterSet();
+        var selectedHourSet = getSelectedHourFilterSet();
         var eventEls = calendarEl.querySelectorAll('.fc-event[data-status-type], .fc-daygrid-event[data-status-type]');
         eventEls.forEach(function(el) {
             var statusType = String(el.getAttribute('data-status-type') || '').toLowerCase();
-            el.style.display = isStatusVisibleByFilter(statusType, selectedSet) ? '' : 'none';
+            var hoursCategory = String(el.getAttribute('data-hours-category') || '').toLowerCase();
+            var statusVisible = isStatusVisibleByFilter(statusType, selectedSet);
+            var hoursVisible = isHoursVisibleByFilter(hoursCategory, selectedHourSet);
+            el.style.display = (statusVisible && hoursVisible) ? '' : 'none';
         });
     }
 
@@ -88,6 +108,25 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             var selected = Array.from(document.querySelectorAll('.status-filter-check:checked')).map(function(cb){ return cb.value; });
             localStorage.setItem(statusFilterStorageKey, JSON.stringify(selected));
+        } catch (e) {}
+    }
+
+    function applySavedHourFilters() {
+        try {
+            var raw = localStorage.getItem(hoursFilterStorageKey);
+            if (!raw) return;
+            var saved = JSON.parse(raw);
+            if (!Array.isArray(saved)) return;
+            document.querySelectorAll('.hours-filter-check').forEach(function(cb) {
+                cb.checked = saved.indexOf(cb.value) !== -1;
+            });
+        } catch (e) {}
+    }
+
+    function saveHourFilters() {
+        try {
+            var selected = Array.from(document.querySelectorAll('.hours-filter-check:checked')).map(function(cb){ return cb.value; });
+            localStorage.setItem(hoursFilterStorageKey, JSON.stringify(selected));
         } catch (e) {}
     }
 
@@ -196,7 +235,9 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             failure: function() {
                 document.getElementById('calendar-loading').style.display = 'none';
-                if (typeof showToast === 'function') showToast('Failed to load calendar events. Please try again.', 'danger');
+                if (typeof showToast === 'function') {
+                    showToast('Failed to load calendar events. Please try again.', 'danger');
+                }
             }
         });
     }
@@ -205,12 +246,12 @@ document.addEventListener('DOMContentLoaded', function() {
         var toggleEl = document.getElementById('filterEditRequests');
         var showEditRequests = toggleEl ? !!toggleEl.checked : false;
         var source = window.calendar.getEventSourceById('editRequests');
-        calendarEl.querySelectorAll('.fc-edit-request-event').forEach(function(el){
+        calendarEl.querySelectorAll('.fc-edit-request-event').forEach(function(el) {
             el.style.display = showEditRequests ? '' : 'none';
         });
         if (!showEditRequests) {
             if (source) source.remove();
-            window.calendar.getEvents().forEach(function(ev){ if (isEditRequestEvent(ev)) ev.remove(); });
+            window.calendar.getEvents().forEach(function(ev) { if (isEditRequestEvent(ev)) ev.remove(); });
             if (typeof window.calendar.updateSize === 'function') window.calendar.updateSize();
             return;
         }
@@ -304,13 +345,26 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (props.statusType) {
                         el.setAttribute('data-status-type', props.statusType);
                         var selectedSet = getSelectedFilterSet();
-                        if (!isStatusVisibleByFilter(props.statusType, selectedSet)) el.style.display = 'none';
+                        var actualHours = 0;
+                        if (typeof props.total_hours !== 'undefined' && props.total_hours !== null) {
+                            actualHours = parseFloat(props.total_hours || 0);
+                        } else if (typeof props.totalHours !== 'undefined' && props.totalHours !== null) {
+                            actualHours = parseFloat(props.totalHours || 0);
+                        }
+                        var expectedHours = 8;
+                        if (props.consolidated && typeof props.userCount !== 'undefined') {
+                            expectedHours = Math.max(1, parseInt(props.userCount, 10) || 1) * 8;
+                        }
+                        var hoursCategory = actualHours >= expectedHours ? 'compliant' : 'under_8_hours';
+                        el.setAttribute('data-hours-category', hoursCategory);
+                        var selectedHourSet = getSelectedHourFilterSet();
+                        if (!isStatusVisibleByFilter(props.statusType, selectedSet) || !isHoursVisibleByFilter(hoursCategory, selectedHourSet)) el.style.display = 'none';
                     }
                     if (typeof info.event.startStr !== 'undefined') el.setAttribute('data-date', info.event.startStr);
                 }
             } catch (e) {}
         },
-        eventsSet: function(){ applyStatusFilterToRenderedEvents(); },
+        eventsSet: function(){ applyCombinedFiltersToRenderedEvents(); },
         viewDidMount: function(info) {
             var container = document.querySelector('.calendar-container');
             if (container) {
@@ -380,7 +434,14 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.status-filter-check').forEach(function(checkbox) {
         checkbox.addEventListener('change', function() {
             saveStatusFilters();
-            applyStatusFilterToRenderedEvents();
+            applyCombinedFiltersToRenderedEvents();
+        });
+    });
+
+    document.querySelectorAll('.hours-filter-check').forEach(function(checkbox) {
+        checkbox.addEventListener('change', function() {
+            saveHourFilters();
+            applyCombinedFiltersToRenderedEvents();
         });
     });
 
@@ -403,7 +464,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     applySavedStatusFilters();
-    applyStatusFilterToRenderedEvents();
+    applySavedHourFilters();
+    applyCombinedFiltersToRenderedEvents();
 });
 
 /* ---- Summernote toolbar a11y helpers ---- */
@@ -454,7 +516,7 @@ function enableAdminToolbarKeyboardA11y($el) {
         e.preventDefault();
         if (e.stopPropagation) e.stopPropagation();
         if (key === 'Home') idx = 0;
-        else if (key === 'End') idx = $items.length - 1;
+                        eventsSet: function(){ applyCombinedFiltersToRenderedEvents(); },
         else if (key === 'ArrowRight') idx = (idx + 1) % $items.length;
         else if (key === 'ArrowLeft') idx = (idx - 1 + $items.length) % $items.length;
         setActiveIndex(idx);
@@ -485,7 +547,7 @@ function enableAdminToolbarKeyboardA11y($el) {
     $toolbar.data('kbdA11yTimer', fixTimer);
     ensureOneTabStop();
     $toolbar.data('kbdA11yBound', true);
-}
+                            applyCombinedFiltersToRenderedEvents();
 
 function focusAdminEditorToolbar($el) {
     if (!window.jQuery || !$el || !$el.length) return;
@@ -497,7 +559,8 @@ function focusAdminEditorToolbar($el) {
     });
     if (!$items.length) return;
     $items.attr('tabindex', '-1');
-    $items.eq(0).attr('tabindex', '0').focus();
+                    applySavedHourFilters();
+                    applyCombinedFiltersToRenderedEvents();
 }
 
 /* ---- Admin Edit Modal ---- */
