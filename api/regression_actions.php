@@ -40,6 +40,25 @@ function ensureRegressionRoundsTable(PDO $db): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
 }
 
+function ensureRegressionRoundIssueVersionsTable(PDO $db): void {
+    $db->exec("CREATE TABLE IF NOT EXISTS regression_round_issue_versions (
+        id INT NOT NULL AUTO_INCREMENT,
+        round_id INT NOT NULL,
+        project_id INT NOT NULL,
+        issue_id INT NOT NULL,
+        original_payload LONGTEXT NULL,
+        latest_payload LONGTEXT NULL,
+        first_modified_by INT DEFAULT NULL,
+        last_modified_by INT DEFAULT NULL,
+        first_modified_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_modified_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_rriv_round_issue (round_id, issue_id),
+        KEY idx_rriv_project_round (project_id, round_id),
+        KEY idx_rriv_issue (issue_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+}
+
 if ($projectId <= 0) {
     echo json_encode(['success' => false, 'error' => 'Invalid project_id']);
     exit;
@@ -52,8 +71,11 @@ if (!hasProjectAccess($db, $userId, $projectId)) {
 }
 
 try {
-    if (in_array($action, ['get_stats', 'list_rounds', 'create_round', 'complete_round'], true)) {
+    if (in_array($action, ['get_stats', 'list_rounds', 'create_round', 'complete_round', 'get_round_details'], true)) {
         ensureRegressionRoundsTable($db);
+    }
+    if ($action === 'get_round_details') {
+        ensureRegressionRoundIssueVersionsTable($db);
     }
 
     if ($action === 'get_project_issues') {
@@ -190,6 +212,105 @@ try {
         $db->prepare("\n            UPDATE regression_rounds\n            SET status = 'completed', is_active = 0, ended_at = NOW(), end_date = CURDATE()\n            WHERE id = ?\n        ")->execute([$roundId]);
 
         echo json_encode(['success' => true]);
+        exit;
+    }
+
+    if ($action === 'get_round_details') {
+        $roundId = (int)($_GET['round_id'] ?? $_POST['round_id'] ?? 0);
+        if ($roundId <= 0) {
+            echo json_encode(['success' => false, 'error' => 'Invalid round_id']);
+            exit;
+        }
+
+        $roundStmt = $db->prepare("\n            SELECT rr.id, rr.round_number, rr.status, rr.start_date, rr.end_date, rr.started_at, rr.ended_at,\n                   rr.started_by, u.full_name AS started_by_name\n            FROM regression_rounds rr\n            LEFT JOIN users u ON rr.started_by = u.id\n            WHERE rr.id = ? AND rr.project_id = ?\n            LIMIT 1\n        ");
+        $roundStmt->execute([$roundId, $projectId]);
+        $round = $roundStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$round) {
+            echo json_encode(['success' => false, 'error' => 'Round not found']);
+            exit;
+        }
+
+        $versionStmt = $db->prepare("\n            SELECT v.id, v.issue_id, v.original_payload, v.latest_payload,\n                   v.first_modified_at, v.last_modified_at,\n                   v.first_modified_by, v.last_modified_by,\n                   u1.full_name AS first_modified_by_name,\n                   u2.full_name AS last_modified_by_name\n            FROM regression_round_issue_versions v\n            LEFT JOIN users u1 ON u1.id = v.first_modified_by\n            LEFT JOIN users u2 ON u2.id = v.last_modified_by\n            WHERE v.project_id = ? AND v.round_id = ?\n            ORDER BY v.last_modified_at DESC, v.id DESC\n        ");
+        $versionStmt->execute([$projectId, $roundId]);
+        $versionRows = $versionStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $issueIds = [];
+        foreach ($versionRows as $row) {
+            $iid = (int)($row['issue_id'] ?? 0);
+            if ($iid > 0) $issueIds[] = $iid;
+        }
+        $issueIds = array_values(array_unique($issueIds));
+
+        $issueCommentsByIssue = [];
+        if (!empty($issueIds)) {
+            $startAt = !empty($round['started_at']) ? (string)$round['started_at'] : ((string)$round['start_date'] . ' 00:00:00');
+            $endAt = !empty($round['ended_at']) ? (string)$round['ended_at'] : date('Y-m-d H:i:s');
+
+            $placeholders = implode(',', array_fill(0, count($issueIds), '?'));
+            $commentSql = "\n                SELECT ic.id, ic.issue_id, ic.comment_type, ic.comment_html, ic.created_at,\n                       u.full_name AS user_name\n                FROM issue_comments ic\n                LEFT JOIN users u ON u.id = ic.user_id\n                WHERE ic.issue_id IN ($placeholders)\n                  AND ic.created_at >= ?\n                  AND ic.created_at <= ?\n                ORDER BY ic.created_at ASC, ic.id ASC\n            ";
+            $commentStmt = $db->prepare($commentSql);
+            $commentStmt->execute(array_merge($issueIds, [$startAt, $endAt]));
+            while ($comment = $commentStmt->fetch(PDO::FETCH_ASSOC)) {
+                $iid = (int)($comment['issue_id'] ?? 0);
+                if (!isset($issueCommentsByIssue[$iid])) {
+                    $issueCommentsByIssue[$iid] = [];
+                }
+                $issueCommentsByIssue[$iid][] = [
+                    'id' => (int)($comment['id'] ?? 0),
+                    'comment_type' => (string)($comment['comment_type'] ?? 'normal'),
+                    'comment_html' => (string)($comment['comment_html'] ?? ''),
+                    'created_at' => $comment['created_at'] ?? null,
+                    'user_name' => (string)($comment['user_name'] ?? 'User')
+                ];
+            }
+        }
+
+        $issues = [];
+        foreach ($versionRows as $row) {
+            $issueId = (int)($row['issue_id'] ?? 0);
+            $originalPayload = null;
+            $latestPayload = null;
+
+            if (!empty($row['original_payload'])) {
+                $decoded = json_decode((string)$row['original_payload'], true);
+                if (is_array($decoded)) {
+                    $originalPayload = $decoded;
+                }
+            }
+
+            if (!empty($row['latest_payload'])) {
+                $decoded = json_decode((string)$row['latest_payload'], true);
+                if (is_array($decoded)) {
+                    $latestPayload = $decoded;
+                }
+            }
+
+            $issues[] = [
+                'issue_id' => $issueId,
+                'original' => $originalPayload,
+                'current' => $latestPayload,
+                'first_modified_at' => $row['first_modified_at'] ?? null,
+                'last_modified_at' => $row['last_modified_at'] ?? null,
+                'first_modified_by_name' => $row['first_modified_by_name'] ?? null,
+                'last_modified_by_name' => $row['last_modified_by_name'] ?? null,
+                'comments' => $issueCommentsByIssue[$issueId] ?? []
+            ];
+        }
+
+        echo json_encode([
+            'success' => true,
+            'round' => [
+                'id' => (int)($round['id'] ?? 0),
+                'round_number' => (int)($round['round_number'] ?? 0),
+                'status' => (string)($round['status'] ?? ''),
+                'start_date' => $round['start_date'] ?? null,
+                'end_date' => $round['end_date'] ?? null,
+                'started_at' => $round['started_at'] ?? null,
+                'ended_at' => $round['ended_at'] ?? null,
+                'started_by_name' => $round['started_by_name'] ?? null,
+            ],
+            'issues' => $issues,
+        ]);
         exit;
     }
 

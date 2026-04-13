@@ -29,11 +29,20 @@
         })
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                var badgeEl = document.getElementById('regressionActiveRoundBadge');
                 if (!data || !data.success) {
                     container.innerHTML = '<span class="text-muted small">Could not load regression stats.</span>';
+                    if (badgeEl) badgeEl.innerHTML = '';
                     return;
                 }
                 setNewRoundButtonState(data.active_round || null);
+                if (badgeEl) {
+                    var activeRound = data.active_round || null;
+                    var activeNumber = activeRound ? parseInt(activeRound.round_number || 0, 10) : 0;
+                    badgeEl.innerHTML = activeNumber > 0
+                        ? '<span class="badge bg-warning text-dark"><i class="fas fa-circle-notch fa-spin me-1"></i>Round ' + escHtml(String(activeNumber)) + ' in progress</span>'
+                        : '<span class="badge bg-secondary"><i class="fas fa-check me-1"></i>No active round</span>';
+                }
                 var total = parseInt(data.issues_total || 0, 10);
                 var attempted = parseInt(data.regression_issues_total || data.attempted_issues_total || 0, 10);
                 var newInRound = parseInt(data.new_issues_in_round_total || 0, 10);
@@ -130,7 +139,7 @@
                     '<th>Start Date</th>' +
                     '<th>End Date</th>' +
                     '<th>Status</th>' +
-                    (canManageRounds ? '<th></th>' : '') +
+                    '<th></th>' +
                     '</tr>' +
                     '</thead>' +
                     '<tbody>';
@@ -140,9 +149,10 @@
                         ? '<span class="badge bg-success">Completed</span>'
                         : '<span class="badge bg-warning text-dark"><i class="fas fa-circle-notch fa-spin me-1"></i>In Progress</span>';
 
-                    var actionCell = '';
+                    var actionCell = '<button type="button" class="btn btn-xs btn-outline-primary py-0 me-1 regression-view-round" data-round-id="' +
+                        escAttr(String(r.id)) + '" data-round-number="' + escAttr(String(r.round_number)) + '">View</button>';
                     if (canManageRounds && r.status === 'in_progress') {
-                        actionCell = '<button type="button" class="btn btn-xs btn-outline-danger py-0 regression-complete-round" data-round-id="' +
+                        actionCell += '<button type="button" class="btn btn-xs btn-outline-danger py-0 regression-complete-round" data-round-id="' +
                             escAttr(String(r.id)) + '" data-round-number="' + escAttr(String(r.round_number)) + '">Complete</button>';
                     }
 
@@ -158,6 +168,14 @@
 
                 html += '</tbody></table></div>';
                 container.innerHTML = html;
+
+                container.querySelectorAll('.regression-view-round').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var roundId = this.getAttribute('data-round-id');
+                        var roundNumber = this.getAttribute('data-round-number');
+                        openRoundDetails(roundId, roundNumber);
+                    });
+                });
 
                 container.querySelectorAll('.regression-complete-round').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -421,6 +439,176 @@
 
         var modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
         modalInstance.show();
+    }
+
+    function openRoundDetails(roundId, roundNumber) {
+        var modalEl = document.getElementById('regressionRoundDetailModal');
+        var titleEl = document.getElementById('regressionRoundDetailModalLabel');
+        var bodyEl = document.getElementById('regressionRoundDetailModalBody');
+        if (!modalEl || !titleEl || !bodyEl) return;
+
+        titleEl.textContent = 'Regression Round ' + String(roundNumber || 'Details');
+        bodyEl.innerHTML = '<div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i>Loading round details…</div>';
+
+        if (window.bootstrap) {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+
+        fetch(regressionApi + '?action=get_round_details&project_id=' + encodeURIComponent(projectId) + '&round_id=' + encodeURIComponent(roundId), {
+            credentials: 'same-origin'
+        })
+            .then(readJsonResponse)
+            .then(function (data) {
+                if (!data || !data.success) {
+                    bodyEl.innerHTML = '<div class="alert alert-warning mb-0">Could not load round details.</div>';
+                    return;
+                }
+                renderRoundDetails(bodyEl, data);
+            })
+            .catch(function (err) {
+                bodyEl.innerHTML = '<div class="alert alert-danger mb-0">' + escHtml((err && err.message) ? err.message : 'Failed to load round details') + '</div>';
+            });
+    }
+
+    function renderRoundDetails(container, data) {
+        var round = data.round || {};
+        var issues = Array.isArray(data.issues) ? data.issues : [];
+
+        var summaryHtml =
+            '<div class="mb-3 p-3 border rounded bg-light">' +
+            '<div class="d-flex flex-wrap gap-3 small">' +
+            '<div><strong>Round:</strong> RR ' + escHtml(String(round.round_number || '')) + '</div>' +
+            '<div><strong>Status:</strong> ' + escHtml(String(round.status || '')) + '</div>' +
+            '<div><strong>Started:</strong> ' + escHtml(String(round.started_at || round.start_date || '—')) + '</div>' +
+            '<div><strong>Ended:</strong> ' + escHtml(String(round.ended_at || round.end_date || '—')) + '</div>' +
+            '<div><strong>Started by:</strong> ' + escHtml(String(round.started_by_name || '—')) + '</div>' +
+            '</div>' +
+            '</div>';
+
+        if (!issues.length) {
+            container.innerHTML = summaryHtml + '<div class="text-muted small">No tracked issue changes in this round yet.</div>';
+            return;
+        }
+
+        var cards = issues.map(function (item, idx) {
+            return buildRoundIssueCard(item, idx + 1);
+        }).join('');
+
+        container.innerHTML = summaryHtml + cards;
+
+        container.querySelectorAll('.regression-version-toggle').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var cardId = this.getAttribute('data-card-id');
+                var version = this.getAttribute('data-version');
+                var originalEl = document.getElementById('regressionVersionOriginal_' + cardId);
+                var currentEl = document.getElementById('regressionVersionCurrent_' + cardId);
+                var controls = container.querySelectorAll('.regression-version-toggle[data-card-id="' + cardId + '"]');
+                controls.forEach(function (c) {
+                    c.classList.remove('btn-primary');
+                    c.classList.add('btn-outline-primary');
+                });
+                this.classList.remove('btn-outline-primary');
+                this.classList.add('btn-primary');
+
+                if (!originalEl || !currentEl) return;
+                if (version === 'original') {
+                    originalEl.classList.remove('d-none');
+                    currentEl.classList.add('d-none');
+                } else {
+                    originalEl.classList.add('d-none');
+                    currentEl.classList.remove('d-none');
+                }
+            });
+        });
+    }
+
+    function buildRoundIssueCard(item, cardId) {
+        var original = item && item.original ? item.original : null;
+        var current = item && item.current ? item.current : null;
+        var issueInfo = (current && current.issue) ? current.issue : ((original && original.issue) ? original.issue : {});
+        var title = issueInfo && issueInfo.title ? String(issueInfo.title) : 'Issue #' + String(item.issue_id || '');
+        var issueKey = issueInfo && issueInfo.issue_key ? String(issueInfo.issue_key) : ('#' + String(item.issue_id || ''));
+        var comments = Array.isArray(item.comments) ? item.comments : [];
+
+        var commentsHtml = comments.length
+            ? comments.map(function (c) {
+                return '<div class="border rounded p-2 mb-2 bg-white">' +
+                    '<div class="small text-muted mb-1">' +
+                    escHtml(String(c.user_name || 'User')) + ' • ' +
+                    escHtml(String(c.created_at || '')) + ' • ' +
+                    escHtml(String(c.comment_type || 'normal')) +
+                    '</div>' +
+                    '<div class="small">' + escHtml(stripTags(String(c.comment_html || ''))) + '</div>' +
+                    '</div>';
+            }).join('')
+            : '<div class="text-muted small">No comments during this round window.</div>';
+
+        return '<div class="card mb-3">' +
+            '<div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">' +
+            '<div><strong>' + escHtml(issueKey) + '</strong> <span class="text-muted">' + escHtml(title) + '</span></div>' +
+            '<div class="small text-muted">Last modified: ' + escHtml(String(item.last_modified_at || '—')) + '</div>' +
+            '</div>' +
+            '<div class="card-body">' +
+            '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">' +
+            '<div class="btn-group btn-group-sm" role="group" aria-label="Version switch">' +
+            '<button type="button" class="btn btn-outline-primary regression-version-toggle" data-card-id="' + escAttr(String(cardId)) + '" data-version="original">Original</button>' +
+            '<button type="button" class="btn btn-primary regression-version-toggle" data-card-id="' + escAttr(String(cardId)) + '" data-version="current">Round Version</button>' +
+            '</div>' +
+            '<div class="small text-muted">Control: switch between original and round version</div>' +
+            '</div>' +
+            '<div id="regressionVersionOriginal_' + escAttr(String(cardId)) + '" class="d-none">' + renderVersionPayload(original) + '</div>' +
+            '<div id="regressionVersionCurrent_' + escAttr(String(cardId)) + '">' + renderVersionPayload(current) + '</div>' +
+            '<hr>' +
+            '<div><h6 class="mb-2">Round Comments</h6>' + commentsHtml + '</div>' +
+            '</div>' +
+            '</div>';
+    }
+
+    function renderVersionPayload(payload) {
+        if (!payload || !payload.issue) {
+            return '<div class="text-muted small">Version snapshot unavailable.</div>';
+        }
+        var issue = payload.issue || {};
+        var metadata = payload.metadata || {};
+        var pageIds = Array.isArray(payload.page_ids) ? payload.page_ids : [];
+        var groupedUrls = metadata.grouped_urls || [];
+        var environments = metadata.environments || [];
+
+        return '<div class="row g-3">' +
+            '<div class="col-md-6">' +
+            '<div class="small"><strong>Title:</strong> ' + escHtml(String(issue.title || '')) + '</div>' +
+            '<div class="small"><strong>Status ID:</strong> ' + escHtml(String(issue.status_id || '')) + '</div>' +
+            '<div class="small"><strong>Priority ID:</strong> ' + escHtml(String(issue.priority_id || '')) + '</div>' +
+            '<div class="small"><strong>Severity:</strong> ' + escHtml(String(issue.severity || '')) + '</div>' +
+            '<div class="small"><strong>Client Ready:</strong> ' + escHtml(String(issue.client_ready || '0')) + '</div>' +
+            '</div>' +
+            '<div class="col-md-6">' +
+            '<div class="small"><strong>Pages:</strong> ' + formatArrayValue(pageIds) + '</div>' +
+            '<div class="small"><strong>Grouped URLs:</strong> ' + formatArrayValue(groupedUrls) + '</div>' +
+            '<div class="small"><strong>Environments:</strong> ' + formatArrayValue(environments) + '</div>' +
+            '<div class="small"><strong>Reporters:</strong> ' + formatArrayValue(metadata.reporter_ids || []) + '</div>' +
+            '<div class="small"><strong>Assignees:</strong> ' + formatArrayValue(metadata.assignee_ids || []) + '</div>' +
+            '</div>' +
+            '<div class="col-12">' +
+            '<div class="small"><strong>Description:</strong></div>' +
+            '<div class="small text-muted border rounded p-2 bg-light">' + escHtml(stripTags(String(issue.description || ''))) + '</div>' +
+            '</div>' +
+            '</div>';
+    }
+
+    function stripTags(html) {
+        return String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    function formatArrayValue(value) {
+        if (value == null) return '—';
+        var list = Array.isArray(value) ? value : [value];
+        list = list.map(function (v) {
+            if (Array.isArray(v)) return v.join(', ');
+            if (typeof v === 'object' && v !== null) return JSON.stringify(v);
+            return String(v || '');
+        }).filter(function (v) { return String(v).trim() !== ''; });
+        return list.length ? escHtml(list.join(', ')) : '—';
     }
 
     if (document.readyState === 'loading') {

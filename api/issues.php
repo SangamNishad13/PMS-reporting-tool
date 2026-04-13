@@ -47,7 +47,8 @@ if (!$projectId) {
 
 $userId = $_SESSION['user_id'] ?? 0;
 $userRole = $_SESSION['role'] ?? '';
-$isTesterRole = in_array($userRole, ['at_tester', 'ft_tester'], true);
+$normalizedUserRole = strtolower(trim((string)$userRole));
+$isTesterRole = in_array($normalizedUserRole, ['at_tester', 'ft_tester'], true) || (strpos($normalizedUserRole, 'tester') !== false);
 
 function getIssueStatusNameById($db, $statusId) {
     static $cache = [];
@@ -120,6 +121,107 @@ function hasActiveRegressionRound($db, $projectId) {
         // If regression_rounds table is unavailable, do not block normal issue updates.
         return false;
     }
+}
+
+function getActiveRegressionRoundInfo($db, $projectId) {
+    try {
+        $stmt = $db->prepare("\n            SELECT id, round_number, started_at, ended_at\n            FROM regression_rounds\n            WHERE project_id = ?\n              AND status = 'in_progress'\n              AND is_active = 1\n            ORDER BY round_number DESC\n            LIMIT 1\n        ");
+        $stmt->execute([(int)$projectId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    } catch (Exception $e) {
+        return null;
+    }
+}
+
+function ensureRegressionRoundIssueVersionsTable(PDO $db): void {
+    $db->exec("CREATE TABLE IF NOT EXISTS regression_round_issue_versions (
+        id INT NOT NULL AUTO_INCREMENT,
+        round_id INT NOT NULL,
+        project_id INT NOT NULL,
+        issue_id INT NOT NULL,
+        original_payload LONGTEXT NULL,
+        latest_payload LONGTEXT NULL,
+        first_modified_by INT DEFAULT NULL,
+        last_modified_by INT DEFAULT NULL,
+        first_modified_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_modified_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_rriv_round_issue (round_id, issue_id),
+        KEY idx_rriv_project_round (project_id, round_id),
+        KEY idx_rriv_issue (issue_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+}
+
+function decodeIssueSnapshotMetaValue($value) {
+    $raw = trim((string)$value);
+    if ($raw === '') return '';
+    $startsWithJson = ($raw[0] === '[' || $raw[0] === '{');
+    if ($startsWithJson) {
+        $decoded = json_decode($raw, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            return $decoded;
+        }
+    }
+    return $raw;
+}
+
+function fetchIssueRegressionSnapshotPayload($db, $issueId, $projectId) {
+    $issueStmt = $db->prepare("\n        SELECT id, issue_key, title, description, status_id, priority_id, reporter_id, assignee_id,\n               page_id, severity, common_issue_title, client_ready, created_at, updated_at\n        FROM issues\n        WHERE id = ? AND project_id = ?\n        LIMIT 1\n    ");
+    $issueStmt->execute([(int)$issueId, (int)$projectId]);
+    $issue = $issueStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$issue) return null;
+
+    $metaStmt = $db->prepare("SELECT meta_key, meta_value FROM issue_metadata WHERE issue_id = ? ORDER BY id ASC");
+    $metaStmt->execute([(int)$issueId]);
+    $meta = [];
+    while ($m = $metaStmt->fetch(PDO::FETCH_ASSOC)) {
+        $key = (string)$m['meta_key'];
+        if (!isset($meta[$key])) $meta[$key] = [];
+        $meta[$key][] = decodeIssueSnapshotMetaValue((string)$m['meta_value']);
+    }
+
+    $pageStmt = $db->prepare("SELECT page_id FROM issue_pages WHERE issue_id = ? ORDER BY page_id ASC");
+    $pageStmt->execute([(int)$issueId]);
+    $pageIds = array_map('intval', $pageStmt->fetchAll(PDO::FETCH_COLUMN));
+    if (empty($pageIds) && isset($meta['page_ids'])) {
+        $fallback = [];
+        foreach ((array)$meta['page_ids'] as $entry) {
+            if (is_array($entry)) {
+                foreach ($entry as $pid) $fallback[] = (int)$pid;
+            } else {
+                $fallback[] = (int)$entry;
+            }
+        }
+        $pageIds = array_values(array_unique(array_filter($fallback, static function($v) { return $v > 0; })));
+    }
+
+    return [
+        'issue' => $issue,
+        'metadata' => $meta,
+        'page_ids' => $pageIds,
+    ];
+}
+
+function upsertRegressionIssueVersion($db, $roundId, $projectId, $issueId, $userId, $originalPayload, $latestPayload) {
+    if ((int)$roundId <= 0 || (int)$issueId <= 0) return;
+    $originalJson = $originalPayload !== null
+        ? json_encode($originalPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        : null;
+    $latestJson = $latestPayload !== null
+        ? json_encode($latestPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        : null;
+
+    $stmt = $db->prepare("\n        INSERT INTO regression_round_issue_versions\n            (round_id, project_id, issue_id, original_payload, latest_payload, first_modified_by, last_modified_by)\n        VALUES\n            (?, ?, ?, ?, ?, ?, ?)\n        ON DUPLICATE KEY UPDATE\n            latest_payload = VALUES(latest_payload),\n            last_modified_by = VALUES(last_modified_by),\n            last_modified_at = NOW(),\n            original_payload = COALESCE(regression_round_issue_versions.original_payload, VALUES(original_payload))\n    ");
+    $stmt->execute([
+        (int)$roundId,
+        (int)$projectId,
+        (int)$issueId,
+        $originalJson,
+        $latestJson,
+        (int)$userId,
+        (int)$userId,
+    ]);
 }
 
 function parseMetaIntValues($values) {
@@ -994,6 +1096,12 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                 $db->beginTransaction();
             }
 
+            $activeRegressionRound = getActiveRegressionRoundInfo($db, $projectId);
+            if ($activeRegressionRound) {
+                ensureRegressionRoundIssueVersionsTable($db);
+            }
+            $regressionBeforePayload = null;
+
             if ($action === 'create') {
                 if ($hasResolvedAtColumn) {
                     $resolvedAtValue = isResolvedIssueStatusValue($requestedStatusValue) ? date('Y-m-d H:i:s') : null;
@@ -1080,6 +1188,10 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                     $k = (string)$m['meta_key'];
                     if (!isset($oldMeta[$k])) $oldMeta[$k] = [];
                     $oldMeta[$k][] = (string)$m['meta_value'];
+                }
+
+                if ($activeRegressionRound) {
+                    $regressionBeforePayload = fetchIssueRegressionSnapshotPayload($db, $id, $projectId);
                 }
 
                 $currentStatusValue = normalizeIssueStatusValue(getIssueStatusNameById($db, (int)($oldIssue['status_id'] ?? 0)));
@@ -1328,6 +1440,19 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
             } else {
                 $db->prepare("DELETE FROM common_issues WHERE issue_id = ?")->execute([$id]);
             }
+        }
+
+        if ($activeRegressionRound && (int)$id > 0) {
+            $regressionAfterPayload = fetchIssueRegressionSnapshotPayload($db, $id, $projectId);
+            upsertRegressionIssueVersion(
+                $db,
+                (int)($activeRegressionRound['id'] ?? 0),
+                (int)$projectId,
+                (int)$id,
+                (int)$userId,
+                $regressionBeforePayload,
+                $regressionAfterPayload
+            );
         }
 
         $db->commit();
@@ -1725,6 +1850,9 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
 
     if ($method === 'POST' && ($action === 'common_create' || $action === 'common_update')) {
         $commonId = (int)($_POST['id'] ?? 0);
+        if ($action === 'common_update' && $isTesterRole && hasActiveRegressionRound($db, $projectId)) {
+            jsonError('Issue details are locked for testers while a regression round is in progress.', 403);
+        }
         $title = trim($_POST['title'] ?? '');
         if (!$title) jsonError('title is required', 400);
         $description = $_POST['description'] ?? '';

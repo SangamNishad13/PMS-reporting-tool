@@ -77,6 +77,20 @@ $isRegressionNonClient = in_array($userRole ?? '', $regressionPanelNonClientRole
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="regressionRoundDetailModal" tabindex="-1" aria-labelledby="regressionRoundDetailModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="regressionRoundDetailModalLabel">Regression Round Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="regressionRoundDetailModalBody">
+                    <div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i>Loading round details…</div>
+                </div>
+            </div>
+        </div>
+    </div>
     <?php endif; ?>
 </div>
 <!-- ===== /Regression Testing Panel ===== -->

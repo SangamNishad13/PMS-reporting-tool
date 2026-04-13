@@ -30,6 +30,7 @@
     var projectId = ProjectConfig.projectId;
     var projectType = ProjectConfig.projectType || 'web';
     var issuesApiBase = ProjectConfig.baseDir + '/api/issues.php';
+    var regressionApiBase = ProjectConfig.baseDir + '/api/regression_actions.php';
     var issueImageUploadUrl = ProjectConfig.baseDir + '/api/issue_upload_image.php';
     var issueTemplatesApi = ProjectConfig.baseDir + '/api/issue_templates.php';
     var issueCommentsApi = ProjectConfig.baseDir + '/api/issue_comments.php';
@@ -103,6 +104,11 @@
     var reviewIssueInitialFormState = null;
     var reviewIssueBypassCloseConfirm = false;
     var finalIssueBypassCloseConfirm = false;
+    var testerRegressionLock = {
+        active: false,
+        roundNumber: 0,
+        loaded: false
+    };
 
     // Utility functions hoisted to top so they're available everywhere in this scope
     function escapeHtml(str) { if (str === null || str === undefined) return ''; return String(str).replace(/[&<>"']/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[m]); }); }
@@ -691,6 +697,93 @@
 
     function canEdit() {
         return true;
+    }
+
+    function getTesterRegressionLockMessage() {
+        var roundNumber = parseInt(testerRegressionLock.roundNumber || 0, 10);
+        if (roundNumber > 0) {
+            return 'RR ' + roundNumber + ' in progress. Tester issue details are read-only until this round is completed.';
+        }
+        return 'Regression round is in progress. Tester issue details are read-only until round completion.';
+    }
+
+    function isTesterEditLockedByRegression() {
+        var editIdEl = document.getElementById('finalIssueEditId');
+        var isExistingIssue = !!(editIdEl && String(editIdEl.value || '').trim());
+        return !!(isTesterRole && testerRegressionLock.active && isExistingIssue);
+    }
+
+    async function refreshTesterRegressionLock() {
+        if (!isTesterRole || !projectId) {
+            testerRegressionLock.active = false;
+            testerRegressionLock.roundNumber = 0;
+            testerRegressionLock.loaded = true;
+            return false;
+        }
+
+        try {
+            var res = await fetch(regressionApiBase + '?action=get_stats&project_id=' + encodeURIComponent(projectId), {
+                credentials: 'same-origin'
+            });
+            if (!res.ok) {
+                testerRegressionLock.loaded = true;
+                return testerRegressionLock.active;
+            }
+            var json = await res.json();
+            var activeRound = (json && json.success) ? (json.active_round || null) : null;
+            var roundNumber = activeRound ? parseInt(activeRound.round_number || 0, 10) : 0;
+            testerRegressionLock.active = roundNumber > 0;
+            testerRegressionLock.roundNumber = roundNumber > 0 ? roundNumber : 0;
+            testerRegressionLock.loaded = true;
+            return testerRegressionLock.active;
+        } catch (e) {
+            testerRegressionLock.loaded = true;
+            return testerRegressionLock.active;
+        }
+    }
+
+    function applyTesterRegressionReadonlyState() {
+        if (!isTesterRole) return;
+
+        var locked = isTesterEditLockedByRegression();
+        var lockMessage = getTesterRegressionLockMessage();
+
+        var saveBtn = document.getElementById('finalIssueSaveBtn');
+        if (saveBtn) {
+            saveBtn.disabled = locked;
+            if (locked) saveBtn.title = lockMessage;
+            else saveBtn.removeAttribute('title');
+        }
+
+        var editBtn = document.getElementById('finalIssueEditBtn');
+        if (editBtn) {
+            editBtn.disabled = locked;
+            if (locked) editBtn.title = lockMessage;
+            else editBtn.removeAttribute('title');
+        }
+
+        if (!locked) return;
+
+        ['customIssueTitle', 'finalIssueTitle', 'finalIssueStatus', 'finalIssueCommonTitle', 'finalIssueClientReady', 'finalIssueCommentType'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.disabled = true;
+        });
+
+        ['btnResetToTemplate', 'btnOpenUrlSelectionModal', 'btnApplyUrlSelection', 'btnCopyGroupedUrls'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.disabled = true;
+        });
+
+        if (window.jQuery && jQuery.fn.select2) {
+            jQuery('#finalIssuePages, #finalIssueGroupedUrls, #finalIssueReporters, #finalIssueAssignee, #finalIssueQaStatus').prop('disabled', true).trigger('change.select2');
+        }
+
+        if (window.jQuery && jQuery.fn.summernote) {
+            jQuery('#finalIssueDetails').summernote('disable');
+        } else {
+            var detailsEl = document.getElementById('finalIssueDetails');
+            if (detailsEl) detailsEl.disabled = true;
+        }
     }
 
     function updateEditingState() {
@@ -2925,6 +3018,7 @@
         }
         applyIssueQaPermissionState();
         applyClientIssueEditingState(enable);
+        applyTesterRegressionReadonlyState();
     }
 
     function openFinalViewer(issue) {
@@ -2979,6 +3073,10 @@
             editBtn.type = 'button'; editBtn.id = 'finalIssueEditBtn'; editBtn.className = 'btn btn-primary';
             editBtn.textContent = 'Edit Issue';
             editBtn.addEventListener('click', function () {
+                if (isTesterEditLockedByRegression()) {
+                    issueNotify(getTesterRegressionLockMessage(), 'warning');
+                    return;
+                }
                 toggleFinalIssueFields(true);
                 this.classList.add('d-none');
                 document.getElementById('finalIssueSaveBtn').classList.remove('d-none');
@@ -3021,6 +3119,8 @@
         }
 
         clearIssueConflictNotice();
+
+        await refreshTesterRegressionLock();
 
         toggleFinalIssueFields(true);
         document.getElementById('finalEditorTitle').textContent = issue ? 'Edit Final Issue' : 'New Final Issue';
@@ -6683,6 +6783,18 @@
         }
         
         var editId = document.getElementById('finalIssueEditId').value;
+        if (isTesterRole && editId) {
+            await refreshTesterRegressionLock();
+            if (isTesterEditLockedByRegression()) {
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = saveButtonLabel;
+                }
+                issueNotify(getTesterRegressionLockMessage(), 'warning');
+                applyTesterRegressionReadonlyState();
+                return;
+            }
+        }
         var expectedUpdatedAt = '';
         var expectedUpdatedAtEl = document.getElementById('finalIssueExpectedUpdatedAt');
         if (expectedUpdatedAtEl) expectedUpdatedAt = (expectedUpdatedAtEl.value || '').trim();
@@ -8216,9 +8328,11 @@
     });
 
     if (finalIssueModalEl) {
-        finalIssueModalEl.addEventListener('shown.bs.modal', function () {
+        finalIssueModalEl.addEventListener('shown.bs.modal', async function () {
             // No auto-focus - let modal container handle focus
             applyIssueQaPermissionState();
+            await refreshTesterRegressionLock();
+            applyTesterRegressionReadonlyState();
             var currentIssueId = (document.getElementById('finalIssueEditId') || {}).value;
             if (currentIssueId) {
                 startIssuePresenceTracking(currentIssueId);
@@ -8227,9 +8341,9 @@
             // Legacy code for old select field (if it exists)
             var sel = document.getElementById('finalIssueTitle');
             if (sel) {
-                sel.disabled = false;
+                sel.disabled = isTesterEditLockedByRegression();
                 if (window.jQuery && jQuery.fn.select2) {
-                    jQuery('#finalIssueTitle').prop('disabled', false).trigger('change.select2');
+                    jQuery('#finalIssueTitle').prop('disabled', isTesterEditLockedByRegression()).trigger('change.select2');
                 }
             }
             
