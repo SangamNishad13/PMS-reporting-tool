@@ -181,6 +181,24 @@ endif; ?>
                 </div>
             </div>
         </div>
+
+        <div class="col-md-6">
+            <div class="card h-100 border-dark">
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="fas fa-sync-alt fa-4x text-dark"></i>
+                    </div>
+                    <h4 class="card-title">Regression Testing</h4>
+                    <p class="card-text text-muted">
+                        Track regression coverage, manage rounds, and review regression activity across issues
+                    </p>
+                    <a href="<?php echo $baseDir; ?>/modules/projects/issues_all.php?project_id=<?php echo $projectId; ?>"
+                       class="btn btn-dark btn-lg">
+                        <i class="fas fa-sync-alt me-1"></i> Open Regression View
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 

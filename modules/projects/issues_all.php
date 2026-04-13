@@ -431,6 +431,8 @@ body.client-issue-sidebar-open {
         </div>
     </div>
 
+    <?php include __DIR__ . '/partials/regression_panel.php'; ?>
+
     <!-- Filters Section -->
     <div class="filter-section">
         <div class="row align-items-end g-3">
@@ -597,6 +599,7 @@ window.issueMetadataFields = <?php echo json_encode($metadataFields ?? []); ?>;
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_core.js"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
+<script src="<?php echo $baseDir; ?>/modules/projects/js/regression-panel.js?v=<?php echo time(); ?>"></script>
 
 <script src="<?php echo $baseDir; ?>/assets/js/issues-all.js?v=<?php echo time(); ?>"></script>
 
