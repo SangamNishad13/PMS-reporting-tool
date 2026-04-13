@@ -140,10 +140,18 @@ include __DIR__ . '/../../includes/header.php';
                                     </div>
                                 </td>
                                 <td>
-                                    <a href="<?php echo $baseDir; ?>/modules/qa/qa_tasks.php?project_id=<?php echo $project['id']; ?>" 
-                                       class="btn btn-sm btn-primary">
-                                        <i class="fas fa-tasks"></i> View Tasks
-                                    </a>
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo (int)$project['id']; ?>" 
+                                           class="btn btn-sm btn-primary">
+                                            <i class="fas fa-eye"></i> View Project
+                                        </a>
+                                        <?php if ((int)$project['assigned_pages'] > 0): ?>
+                                            <a href="<?php echo $baseDir; ?>/modules/qa/qa_tasks.php?project_id=<?php echo (int)$project['id']; ?>" 
+                                               class="btn btn-sm btn-outline-secondary">
+                                                <i class="fas fa-tasks"></i> QA Tasks
+                                            </a>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
