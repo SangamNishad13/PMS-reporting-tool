@@ -575,7 +575,7 @@ if ($clientReadyOnly) {
             $metaMap[(int)$m['issue_id']][$m['meta_key']][] = $m['meta_value'];
         }
 
-        $ps = $db->prepare("SELECT ip.issue_id, pp.page_number, pp.page_name, pp.url FROM issue_pages ip JOIN project_pages pp ON ip.page_id = pp.id WHERE ip.issue_id IN ($ph)");
+        $ps = $db->prepare("SELECT ip.issue_id, pp.id AS page_id, pp.page_number, pp.page_name, pp.url FROM issue_pages ip JOIN project_pages pp ON ip.page_id = pp.id WHERE ip.issue_id IN ($ph)");
         $ps->execute($issueIds);
         while ($p = $ps->fetch(PDO::FETCH_ASSOC)) {
             $pagesByIssue[(int)$p['issue_id']][] = $p;
@@ -999,7 +999,33 @@ foreach ($filteredIssues as $iss) {
 
     $pageNums  = implode(', ', array_column($pages, 'page_number'));
     $pageNames = implode(', ', array_column($pages, 'page_name'));
-    $pageUrls  = implode(', ', array_filter(array_column($pages, 'url')));
+
+    // Final Report Page URL must prefer grouped URLs; fallback to the unique page URL.
+    $pageUrlValues = [];
+    foreach ($pages as $page) {
+        $pageId = (int)($page['page_id'] ?? $page['id'] ?? 0);
+        $groupedForPage = [];
+        if ($pageId > 0) {
+            $guPerPageStmt->execute([$projectId, $pageId]);
+            $groupedForPage = $guPerPageStmt->fetchAll(PDO::FETCH_COLUMN);
+        }
+
+        if (!empty($groupedForPage)) {
+            foreach ($groupedForPage as $gurl) {
+                $gurl = trim((string)$gurl);
+                if ($gurl !== '') {
+                    $pageUrlValues[] = $gurl;
+                }
+            }
+            continue;
+        }
+
+        $fallbackUrl = trim((string)($page['url'] ?? ''));
+        if ($fallbackUrl !== '') {
+            $pageUrlValues[] = $fallbackUrl;
+        }
+    }
+    $pageUrls = implode(', ', array_values(array_unique($pageUrlValues)));
 
     $wcagNums  = implode(', ', metaArray($meta, 'wcagsuccesscriteria'));
     $wcagNames = implode(', ', metaArray($meta, 'wcagsuccesscriterianame'));
