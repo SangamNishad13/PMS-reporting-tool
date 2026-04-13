@@ -14,6 +14,8 @@
 
     var canManageRounds = (userRole === 'admin' || userRole === 'project_lead' || userRole === 'qa');
     var csrfToken = resolveCsrfToken();
+    var newRoundDefaultHtml = '<i class="fas fa-plus me-1"></i>New Round';
+    var pendingConfirmAction = null;
 
     // -------------------------------------------------------
     // Stats
@@ -31,6 +33,7 @@
                     container.innerHTML = '<span class="text-muted small">Could not load regression stats.</span>';
                     return;
                 }
+                setNewRoundButtonState(data.active_round || null);
                 var total = parseInt(data.issues_total || 0, 10);
                 var attempted = parseInt(data.regression_issues_total || data.attempted_issues_total || 0, 10);
                 var newInRound = parseInt(data.new_issues_in_round_total || 0, 10);
@@ -111,6 +114,7 @@
                 var activeRound = data.rounds.find(function (r) {
                     return r.status === 'in_progress' && r.is_active == 1;
                 });
+                setNewRoundButtonState(activeRound || null);
                 if (badgeEl) {
                     badgeEl.innerHTML = activeRound
                         ? '<span class="badge bg-warning text-dark"><i class="fas fa-circle-notch fa-spin me-1"></i>Round ' + escHtml(String(activeRound.round_number)) + ' in progress</span>'
@@ -159,8 +163,15 @@
                     btn.addEventListener('click', function () {
                         var roundId     = this.getAttribute('data-round-id');
                         var roundNumber = this.getAttribute('data-round-number');
-                        if (!confirm('Mark Round ' + roundNumber + ' as completed? This cannot be undone.')) return;
-                        completeRound(roundId);
+                        openConfirmModal({
+                            title: 'Complete Regression Round',
+                            body: 'Mark RR ' + roundNumber + ' as completed? This cannot be undone.',
+                            confirmLabel: 'Complete',
+                            confirmClass: 'btn-danger',
+                            onConfirm: function () {
+                                completeRound(roundId);
+                            }
+                        });
                     });
                 });
             })
@@ -174,6 +185,7 @@
         if (!projectId) return;
         var btn = document.getElementById('btnNewRegressionRound');
         if (btn) { btn.disabled = true; }
+        var createdSuccessfully = false;
 
         var fd = new FormData();
         fd.append('action', 'create_round');
@@ -191,6 +203,7 @@
             .then(readJsonResponse)
             .then(function (data) {
                 if (data && data.success) {
+                    createdSuccessfully = true;
                     loadRegressionStats();
                     loadRegressionRounds();
                     if (typeof window.showToast === 'function') {
@@ -214,7 +227,10 @@
                 else alert(message);
             })
             .finally(function () {
-                if (btn) btn.disabled = false;
+                if (btn && !createdSuccessfully) {
+                    btn.disabled = false;
+                }
+                loadRegressionStats();
             });
     }
 
@@ -267,6 +283,27 @@
         });
     }
 
+    function setNewRoundButtonState(activeRound) {
+        var btn = document.getElementById('btnNewRegressionRound');
+        if (!btn) return;
+
+        var roundNumber = activeRound ? parseInt(activeRound.round_number || 0, 10) : 0;
+        if (roundNumber > 0) {
+            btn.disabled = true;
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-warning');
+            btn.innerHTML = '<i class="fas fa-circle-notch me-1"></i>RR ' + roundNumber + ' in progress';
+            btn.title = 'Complete active round to create a new round';
+            return;
+        }
+
+        btn.disabled = false;
+        btn.classList.remove('btn-warning');
+        btn.classList.add('btn-primary');
+        btn.innerHTML = newRoundDefaultHtml;
+        btn.removeAttribute('title');
+    }
+
     function resolveCsrfToken() {
         if (window._csrfToken) {
             return String(window._csrfToken);
@@ -303,9 +340,21 @@
     function init() {
         loadRegressionStats();
 
+        wireConfirmModal();
+
         var newRoundBtn = document.getElementById('btnNewRegressionRound');
         if (newRoundBtn) {
-            newRoundBtn.addEventListener('click', createNewRound);
+            newRoundBtn.addEventListener('click', function () {
+                openConfirmModal({
+                    title: 'Start New Regression Round',
+                    body: 'Start a new regression round for this project?',
+                    confirmLabel: 'Start Round',
+                    confirmClass: 'btn-primary',
+                    onConfirm: function () {
+                        createNewRound();
+                    }
+                });
+            });
         }
 
         // Load rounds when the collapse panel is first opened
@@ -318,6 +367,60 @@
                 roundsCollapse.addEventListener('show.bs.collapse', loadRegressionRounds);
             });
         }
+    }
+
+    function wireConfirmModal() {
+        var confirmBtn = document.getElementById('regressionConfirmModalYes');
+        if (!confirmBtn) return;
+
+        confirmBtn.addEventListener('click', function () {
+            if (typeof pendingConfirmAction === 'function') {
+                var action = pendingConfirmAction;
+                pendingConfirmAction = null;
+                action();
+            }
+
+            var modalEl = document.getElementById('regressionConfirmModal');
+            if (modalEl && window.bootstrap) {
+                var modalInstance = bootstrap.Modal.getInstance(modalEl);
+                if (modalInstance) modalInstance.hide();
+            }
+        });
+    }
+
+    function openConfirmModal(options) {
+        if (!options || typeof options.onConfirm !== 'function') {
+            return;
+        }
+
+        if (!window.bootstrap) {
+            if (confirm(options.body || 'Are you sure?')) {
+                options.onConfirm();
+            }
+            return;
+        }
+
+        var modalEl = document.getElementById('regressionConfirmModal');
+        var titleEl = document.getElementById('regressionConfirmModalLabel');
+        var bodyEl = document.getElementById('regressionConfirmModalBody');
+        var confirmBtn = document.getElementById('regressionConfirmModalYes');
+
+        if (!modalEl || !titleEl || !bodyEl || !confirmBtn) {
+            if (confirm(options.body || 'Are you sure?')) {
+                options.onConfirm();
+            }
+            return;
+        }
+
+        titleEl.textContent = options.title || 'Confirm Action';
+        bodyEl.textContent = options.body || 'Are you sure?';
+        confirmBtn.textContent = options.confirmLabel || 'Confirm';
+        confirmBtn.className = 'btn ' + (options.confirmClass || 'btn-primary');
+
+        pendingConfirmAction = options.onConfirm;
+
+        var modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modalInstance.show();
     }
 
     if (document.readyState === 'loading') {

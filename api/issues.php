@@ -111,6 +111,17 @@ function canUserMarkIssueResolved($userRole) {
     return in_array((string)$userRole, ['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester'], true);
 }
 
+function hasActiveRegressionRound($db, $projectId) {
+    try {
+        $stmt = $db->prepare("SELECT 1 FROM regression_rounds WHERE project_id = ? AND status = 'in_progress' AND is_active = 1 LIMIT 1");
+        $stmt->execute([(int)$projectId]);
+        return (bool)$stmt->fetchColumn();
+    } catch (Exception $e) {
+        // If regression_rounds table is unavailable, do not block normal issue updates.
+        return false;
+    }
+}
+
 function parseMetaIntValues($values) {
     $out = [];
     foreach ((array)$values as $value) {
@@ -905,6 +916,9 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         error_log("Issue API: Starting $action action. Project ID: $projectId, User ID: $userId");
         
         $id = (int)($_POST['id'] ?? 0);
+    if ($action === 'update' && $isTesterRole && hasActiveRegressionRound($db, $projectId)) {
+        jsonError('Issue details are locked for testers while a regression round is in progress.', 403);
+    }
     if ($userRole === 'client' && $action === 'create') {
         jsonError('Clients cannot create new issues.', 403);
     }
