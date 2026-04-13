@@ -86,7 +86,16 @@ deploy_log('Deploy triggered for branch: ' . BRANCH);
 foreach ($dirs as $dir) {
     $safeDir = escapeshellarg($dir);
     $safeBranch = escapeshellarg(BRANCH);
-    $cmd = "cd $safeDir && git fetch origin $safeBranch 2>&1 && git checkout FETCH_HEAD -- . 2>&1";
+    $cmd = "cd $safeDir"
+        . " && git fetch origin $safeBranch 2>&1"
+        . " && git diff --name-only --diff-filter=AMT HEAD FETCH_HEAD"
+        . " | grep -Ev '^(uploads/|storage/|tmp/)'"
+        . " | while IFS= read -r f; do"
+        . " [ -z \"$f\" ] && continue;"
+        . " mkdir -p \"$(dirname \"$f\")\";"
+        . " git show \"FETCH_HEAD:$f\" > \"$f\";"
+        . " chown www-data:www-data \"$f\" 2>/dev/null || true;"
+        . " done 2>&1";
     $output = shell_exec($cmd);
     deploy_log("[$dir]\n" . (string)$output);
 }
