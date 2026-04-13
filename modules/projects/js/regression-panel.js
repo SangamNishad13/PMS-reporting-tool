@@ -13,6 +13,7 @@
     var regressionApi = baseDir + '/api/regression_actions.php';
 
     var canManageRounds = (userRole === 'admin' || userRole === 'project_lead' || userRole === 'qa');
+    var canRestoreOriginalVersion = canManageRounds;
     var csrfToken = resolveCsrfToken();
     var newRoundDefaultHtml = '<i class="fas fa-plus me-1"></i>New Round';
     var pendingConfirmAction = null;
@@ -448,6 +449,8 @@
         if (!modalEl || !titleEl || !bodyEl) return;
 
         titleEl.textContent = 'Regression Round ' + String(roundNumber || 'Details');
+        modalEl.setAttribute('data-round-id', String(roundId || ''));
+        modalEl.setAttribute('data-round-number', String(roundNumber || ''));
         bodyEl.innerHTML = '<div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i>Loading round details…</div>';
 
         if (window.bootstrap) {
@@ -491,7 +494,7 @@
         }
 
         var cards = issues.map(function (item, idx) {
-            return buildRoundIssueCard(item, idx + 1);
+            return buildRoundIssueCard(item, idx + 1, round.id || 0);
         }).join('');
 
         container.innerHTML = summaryHtml + cards;
@@ -520,9 +523,25 @@
                 }
             });
         });
+
+        container.querySelectorAll('.regression-restore-original').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var restoreRoundId = this.getAttribute('data-round-id');
+                var restoreIssueId = this.getAttribute('data-issue-id');
+                openConfirmModal({
+                    title: 'Restore Original Version',
+                    body: 'Restore this issue to its original snapshot for this round?',
+                    confirmLabel: 'Restore',
+                    confirmClass: 'btn-warning',
+                    onConfirm: function () {
+                        restoreRoundIssueOriginal(restoreRoundId, restoreIssueId);
+                    }
+                });
+            });
+        });
     }
 
-    function buildRoundIssueCard(item, cardId) {
+    function buildRoundIssueCard(item, cardId, roundId) {
         var original = item && item.original ? item.original : null;
         var current = item && item.current ? item.current : null;
         var issueInfo = (current && current.issue) ? current.issue : ((original && original.issue) ? original.issue : {});
@@ -543,6 +562,11 @@
             }).join('')
             : '<div class="text-muted small">No comments during this round window.</div>';
 
+        var restoreControlHtml = '';
+        if (canRestoreOriginalVersion && original) {
+            restoreControlHtml = '<button type="button" class="btn btn-sm btn-outline-warning regression-restore-original" data-round-id="' + escAttr(String(roundId || 0)) + '" data-issue-id="' + escAttr(String(item.issue_id || 0)) + '"><i class="fas fa-undo me-1"></i>Restore Original</button>';
+        }
+
         return '<div class="card mb-3">' +
             '<div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">' +
             '<div><strong>' + escHtml(issueKey) + '</strong> <span class="text-muted">' + escHtml(title) + '</span></div>' +
@@ -554,7 +578,7 @@
             '<button type="button" class="btn btn-outline-primary regression-version-toggle" data-card-id="' + escAttr(String(cardId)) + '" data-version="original">Original</button>' +
             '<button type="button" class="btn btn-primary regression-version-toggle" data-card-id="' + escAttr(String(cardId)) + '" data-version="current">Round Version</button>' +
             '</div>' +
-            '<div class="small text-muted">Control: switch between original and round version</div>' +
+            '<div class="d-flex align-items-center gap-2">' + restoreControlHtml + '<div class="small text-muted">Control: switch between original and round version</div></div>' +
             '</div>' +
             '<div id="regressionVersionOriginal_' + escAttr(String(cardId)) + '" class="d-none">' + renderVersionPayload(original) + '</div>' +
             '<div id="regressionVersionCurrent_' + escAttr(String(cardId)) + '">' + renderVersionPayload(current) + '</div>' +
@@ -609,6 +633,50 @@
             return String(v || '');
         }).filter(function (v) { return String(v).trim() !== ''; });
         return list.length ? escHtml(list.join(', ')) : '—';
+    }
+
+    function restoreRoundIssueOriginal(roundId, issueId) {
+        if (!projectId || !roundId || !issueId) return;
+
+        var fd = new FormData();
+        fd.append('action', 'restore_round_issue_original');
+        fd.append('project_id', String(projectId));
+        fd.append('round_id', String(roundId));
+        fd.append('issue_id', String(issueId));
+        if (csrfToken) {
+            fd.append('csrf_token', csrfToken);
+        }
+
+        fetch(regressionApi, {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin',
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {}
+        })
+            .then(readJsonResponse)
+            .then(function (data) {
+                if (!data || !data.success) {
+                    var msg = (data && data.error) ? data.error : 'Failed to restore original version';
+                    if (typeof window.showToast === 'function') showToast(msg, 'danger');
+                    else alert(msg);
+                    return;
+                }
+
+                if (typeof window.showToast === 'function') {
+                    showToast(data.message || 'Original version restored', 'success');
+                }
+
+                var modalEl = document.getElementById('regressionRoundDetailModal');
+                var roundNumber = modalEl ? (modalEl.getAttribute('data-round-number') || '') : '';
+                openRoundDetails(roundId, roundNumber);
+                loadRegressionStats();
+                loadRegressionRounds();
+            })
+            .catch(function (err) {
+                var message = (err && err.message) ? err.message : 'Failed to restore original version';
+                if (typeof window.showToast === 'function') showToast(message, 'danger');
+                else alert(message);
+            });
     }
 
     if (document.readyState === 'loading') {

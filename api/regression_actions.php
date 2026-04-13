@@ -59,6 +59,53 @@ function ensureRegressionRoundIssueVersionsTable(PDO $db): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
 }
 
+function encodeSnapshotMetaValueForStore($value): string {
+    if (is_array($value) || is_object($value)) {
+        return json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+    if (is_bool($value)) {
+        return $value ? '1' : '0';
+    }
+    if ($value === null) {
+        return '';
+    }
+    return (string)$value;
+}
+
+function fetchIssueSnapshotPayload(PDO $db, int $issueId, int $projectId): ?array {
+    $issueStmt = $db->prepare("\n        SELECT id, issue_key, title, description, status_id, priority_id, reporter_id, assignee_id,\n               page_id, severity, common_issue_title, client_ready, created_at, updated_at\n        FROM issues\n        WHERE id = ? AND project_id = ?\n        LIMIT 1\n    ");
+    $issueStmt->execute([$issueId, $projectId]);
+    $issue = $issueStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$issue) {
+        return null;
+    }
+
+    $metaStmt = $db->prepare("SELECT meta_key, meta_value FROM issue_metadata WHERE issue_id = ? ORDER BY id ASC");
+    $metaStmt->execute([$issueId]);
+    $meta = [];
+    while ($m = $metaStmt->fetch(PDO::FETCH_ASSOC)) {
+        $key = (string)$m['meta_key'];
+        if (!isset($meta[$key])) $meta[$key] = [];
+        $raw = (string)$m['meta_value'];
+        if ($raw !== '' && ($raw[0] === '[' || $raw[0] === '{')) {
+            $decoded = json_decode($raw, true);
+            $meta[$key][] = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $raw;
+        } else {
+            $meta[$key][] = $raw;
+        }
+    }
+
+    $pageStmt = $db->prepare("SELECT page_id FROM issue_pages WHERE issue_id = ? ORDER BY page_id ASC");
+    $pageStmt->execute([$issueId]);
+    $pageIds = array_map('intval', $pageStmt->fetchAll(PDO::FETCH_COLUMN));
+
+    return [
+        'issue' => $issue,
+        'metadata' => $meta,
+        'page_ids' => $pageIds,
+    ];
+}
+
 if ($projectId <= 0) {
     echo json_encode(['success' => false, 'error' => 'Invalid project_id']);
     exit;
@@ -71,10 +118,10 @@ if (!hasProjectAccess($db, $userId, $projectId)) {
 }
 
 try {
-    if (in_array($action, ['get_stats', 'list_rounds', 'create_round', 'complete_round', 'get_round_details'], true)) {
+    if (in_array($action, ['get_stats', 'list_rounds', 'create_round', 'complete_round', 'get_round_details', 'restore_round_issue_original'], true)) {
         ensureRegressionRoundsTable($db);
     }
-    if ($action === 'get_round_details') {
+    if (in_array($action, ['get_round_details', 'restore_round_issue_original'], true)) {
         ensureRegressionRoundIssueVersionsTable($db);
     }
 
@@ -310,6 +357,106 @@ try {
                 'started_by_name' => $round['started_by_name'] ?? null,
             ],
             'issues' => $issues,
+        ]);
+        exit;
+    }
+
+    if ($action === 'restore_round_issue_original') {
+        $allowedRoles = ['admin', 'project_lead', 'qa'];
+        if (!in_array($userRole, $allowedRoles, true)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Only admin, project_lead, or qa can restore original version']);
+            exit;
+        }
+
+        $roundId = (int)($_POST['round_id'] ?? 0);
+        $issueId = (int)($_POST['issue_id'] ?? 0);
+        if ($roundId <= 0 || $issueId <= 0) {
+            echo json_encode(['success' => false, 'error' => 'Invalid round_id or issue_id']);
+            exit;
+        }
+
+        $versionStmt = $db->prepare("\n            SELECT v.id, v.original_payload, rr.round_number\n            FROM regression_round_issue_versions v\n            INNER JOIN regression_rounds rr ON rr.id = v.round_id AND rr.project_id = v.project_id\n            WHERE v.project_id = ? AND v.round_id = ? AND v.issue_id = ?\n            LIMIT 1\n        ");
+        $versionStmt->execute([$projectId, $roundId, $issueId]);
+        $versionRow = $versionStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$versionRow) {
+            echo json_encode(['success' => false, 'error' => 'Round snapshot not found for this issue']);
+            exit;
+        }
+
+        $originalPayload = json_decode((string)($versionRow['original_payload'] ?? ''), true);
+        if (!is_array($originalPayload) || empty($originalPayload['issue'])) {
+            echo json_encode(['success' => false, 'error' => 'Original snapshot unavailable for this issue']);
+            exit;
+        }
+
+        $issue = $originalPayload['issue'];
+        $metadata = isset($originalPayload['metadata']) && is_array($originalPayload['metadata']) ? $originalPayload['metadata'] : [];
+        $pageIdsRaw = isset($originalPayload['page_ids']) && is_array($originalPayload['page_ids']) ? $originalPayload['page_ids'] : [];
+        $pageIds = array_values(array_unique(array_filter(array_map('intval', $pageIdsRaw), static function($v) { return $v > 0; })));
+        $primaryPageId = !empty($pageIds) ? (int)$pageIds[0] : null;
+
+        $db->beginTransaction();
+        try {
+            $updateStmt = $db->prepare("\n                UPDATE issues\n                SET title = ?,\n                    description = ?,\n                    status_id = ?,\n                    priority_id = ?,\n                    reporter_id = ?,\n                    assignee_id = ?,\n                    page_id = ?,\n                    severity = ?,\n                    common_issue_title = ?,\n                    client_ready = ?,\n                    updated_at = NOW()\n                WHERE id = ? AND project_id = ?\n            ");
+            $updateStmt->execute([
+                (string)($issue['title'] ?? ''),
+                (string)($issue['description'] ?? ''),
+                (int)($issue['status_id'] ?? 0),
+                (int)($issue['priority_id'] ?? 0),
+                (int)($issue['reporter_id'] ?? 0),
+                !empty($issue['assignee_id']) ? (int)$issue['assignee_id'] : null,
+                $primaryPageId,
+                (string)($issue['severity'] ?? 'Medium'),
+                isset($issue['common_issue_title']) ? (string)$issue['common_issue_title'] : null,
+                (int)($issue['client_ready'] ?? 0),
+                $issueId,
+                $projectId,
+            ]);
+
+            if ($updateStmt->rowCount() < 1) {
+                throw new RuntimeException('Issue not found for restore');
+            }
+
+            $db->prepare("DELETE FROM issue_metadata WHERE issue_id = ?")->execute([$issueId]);
+            if (!empty($metadata)) {
+                $insMeta = $db->prepare("INSERT INTO issue_metadata (issue_id, meta_key, meta_value, created_at) VALUES (?, ?, ?, NOW())");
+                foreach ($metadata as $key => $values) {
+                    $metaValues = is_array($values) ? $values : [$values];
+                    foreach ($metaValues as $metaValue) {
+                        $insMeta->execute([$issueId, (string)$key, encodeSnapshotMetaValueForStore($metaValue)]);
+                    }
+                }
+            }
+
+            $db->prepare("DELETE FROM issue_pages WHERE issue_id = ?")->execute([$issueId]);
+            if (!empty($pageIds)) {
+                $insPage = $db->prepare("INSERT INTO issue_pages (issue_id, page_id) VALUES (?, ?)");
+                foreach ($pageIds as $pid) {
+                    $insPage->execute([$issueId, (int)$pid]);
+                }
+            }
+
+            $latestPayload = fetchIssueSnapshotPayload($db, $issueId, $projectId);
+            $latestPayloadJson = $latestPayload
+                ? json_encode($latestPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                : null;
+
+            $db->prepare("\n                UPDATE regression_round_issue_versions\n                SET latest_payload = ?,\n                    last_modified_by = ?,\n                    last_modified_at = NOW()\n                WHERE project_id = ? AND round_id = ? AND issue_id = ?\n            ")->execute([$latestPayloadJson, $userId, $projectId, $roundId, $issueId]);
+
+            $db->commit();
+        } catch (Throwable $restoreError) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $restoreError;
+        }
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Issue restored to original snapshot from round ' . (int)($versionRow['round_number'] ?? 0),
+            'issue_id' => $issueId,
+            'round_id' => $roundId,
         ]);
         exit;
     }
