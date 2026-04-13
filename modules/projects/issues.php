@@ -142,6 +142,25 @@ endif; ?>
                 </div>
             </div>
         </div>
+
+        <!-- Import URLs Card -->
+        <div class="col-md-6">
+            <div class="card h-100 border-secondary">
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="fas fa-upload fa-4x text-secondary"></i>
+                    </div>
+                    <h4 class="card-title">Import URLs</h4>
+                    <p class="card-text text-muted">
+                        Import project URLs from CSV/Excel from the Pages/Screens section
+                    </p>
+                    <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $projectId; ?>"
+                       class="btn btn-secondary btn-lg">
+                        <i class="fas fa-link me-1"></i> Open URL Import
+                    </a>
+                </div>
+            </div>
+        </div>
         <?php
 endif; ?>
         <!-- All Issues Card -->
