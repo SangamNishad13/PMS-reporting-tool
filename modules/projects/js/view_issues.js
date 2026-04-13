@@ -710,6 +710,16 @@
     function isTesterEditLockedByRegression() {
         var editIdEl = document.getElementById('finalIssueEditId');
         var isExistingIssue = !!(editIdEl && String(editIdEl.value || '').trim());
+        // If not existing issue, never lock (new issue)
+        if (!isExistingIssue) return false;
+
+        // If current user is creator, never lock
+        var creatorId = null;
+        var currentUserId = String(ProjectConfig.userId || '');
+        var creatorInput = document.getElementById('finalIssueCreatorId');
+        if (creatorInput) creatorId = String(creatorInput.value || '');
+        if (creatorId && currentUserId && creatorId === currentUserId) return false;
+
         return !!(isTesterRole && testerRegressionLock.active && isExistingIssue);
     }
 
@@ -749,12 +759,15 @@
         var lockMessage = getTesterRegressionLockMessage();
 
         var detailsEl = document.getElementById('finalIssueDetails');
+        // Only lock the details field for testers during regression
         if (window.jQuery && jQuery.fn.summernote) {
             if (locked) {
                 jQuery('#finalIssueDetails').summernote('disable');
+            } else {
+                jQuery('#finalIssueDetails').summernote('enable');
             }
         } else if (detailsEl) {
-            detailsEl.disabled = locked;
+            detailsEl.disabled = locked ? true : false;
         }
 
         if (detailsEl) {
@@ -765,6 +778,13 @@
                 detailsEl.removeAttribute('data-regression-readonly');
                 detailsEl.removeAttribute('title');
             }
+        }
+
+        // Ensure comment type and metadata fields are always enabled for testers
+        var commentTypeEl = document.getElementById('finalIssueCommentType');
+        if (commentTypeEl) commentTypeEl.disabled = false;
+        if (window.jQuery && jQuery.fn.select2) {
+            jQuery('#finalIssuePages, #finalIssueGroupedUrls, #finalIssueReporters, #finalIssueAssignee').prop('disabled', false).trigger('change.select2');
         }
     }
 
