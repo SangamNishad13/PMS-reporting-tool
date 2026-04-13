@@ -243,6 +243,7 @@ endif; ?>
 </button>
 
 <script>
+window._csrfToken = window._csrfToken || <?php echo json_encode(generateCsrfToken()); ?>;
 window.ProjectConfig = window.ProjectConfig || { projectId: <?php echo json_encode($projectId); ?>, baseDir: <?php echo json_encode($baseDir); ?> };
 </script>
 <script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>

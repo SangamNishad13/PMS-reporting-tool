@@ -13,6 +13,7 @@
     var regressionApi = baseDir + '/api/regression_actions.php';
 
     var canManageRounds = (userRole === 'admin' || userRole === 'project_lead' || userRole === 'qa');
+    var csrfToken = resolveCsrfToken();
 
     // -------------------------------------------------------
     // Stats
@@ -177,13 +178,17 @@
         var fd = new FormData();
         fd.append('action', 'create_round');
         fd.append('project_id', String(projectId));
+        if (csrfToken) {
+            fd.append('csrf_token', csrfToken);
+        }
 
         fetch(regressionApi, {
             method: 'POST',
             body: fd,
-            credentials: 'same-origin'
+            credentials: 'same-origin',
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {}
         })
-            .then(function (r) { return r.json(); })
+            .then(readJsonResponse)
             .then(function (data) {
                 if (data && data.success) {
                     loadRegressionStats();
@@ -203,8 +208,10 @@
                     else alert(msg);
                 }
             })
-            .catch(function () {
-                if (typeof window.showToast === 'function') showToast('Request failed', 'danger');
+            .catch(function (err) {
+                var message = (err && err.message) ? err.message : 'Request failed';
+                if (typeof window.showToast === 'function') showToast(message, 'danger');
+                else alert(message);
             })
             .finally(function () {
                 if (btn) btn.disabled = false;
@@ -216,13 +223,17 @@
         fd.append('action', 'complete_round');
         fd.append('project_id', String(projectId));
         fd.append('round_id', String(roundId));
+        if (csrfToken) {
+            fd.append('csrf_token', csrfToken);
+        }
 
         fetch(regressionApi, {
             method: 'POST',
             body: fd,
-            credentials: 'same-origin'
+            credentials: 'same-origin',
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {}
         })
-            .then(function (r) { return r.json(); })
+            .then(readJsonResponse)
             .then(function (data) {
                 if (data && data.success) {
                     loadRegressionStats();
@@ -234,8 +245,10 @@
                     else alert(msg);
                 }
             })
-            .catch(function () {
-                if (typeof window.showToast === 'function') showToast('Request failed', 'danger');
+            .catch(function (err) {
+                var message = (err && err.message) ? err.message : 'Request failed';
+                if (typeof window.showToast === 'function') showToast(message, 'danger');
+                else alert(message);
             });
     }
 
@@ -251,6 +264,36 @@
     function escAttr(str) {
         return String(str || '').replace(/[&<>"']/g, function (c) {
             return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
+    }
+
+    function resolveCsrfToken() {
+        if (window._csrfToken) {
+            return String(window._csrfToken);
+        }
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta && meta.getAttribute('content')) {
+            return String(meta.getAttribute('content'));
+        }
+        return '';
+    }
+
+    function readJsonResponse(response) {
+        return response.text().then(function (text) {
+            var data;
+            try {
+                data = text ? JSON.parse(text) : {};
+            } catch (e) {
+                throw new Error('Invalid JSON response');
+            }
+
+            if (!response.ok && data && data.error) {
+                throw new Error(String(data.error));
+            }
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            return data;
         });
     }
 

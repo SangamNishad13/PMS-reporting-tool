@@ -13,11 +13,32 @@ $auth->requireLogin();
 enforceApiCsrf();
 
 $db = Database::getInstance();
-$action = $_GET['action'] ?? '';
-$projectId = (int)($_GET['project_id'] ?? 0);
+$action = $_GET['action'] ?? $_POST['action'] ?? '';
+$projectId = (int)($_GET['project_id'] ?? $_POST['project_id'] ?? 0);
 $pageId = (int)($_GET['page_id'] ?? 0);
 $userId = (int)($_SESSION['user_id'] ?? 0);
 $userRole = $_SESSION['role'] ?? '';
+
+function ensureRegressionRoundsTable(PDO $db): void {
+    $db->exec("CREATE TABLE IF NOT EXISTS regression_rounds (
+        id INT NOT NULL AUTO_INCREMENT,
+        project_id INT DEFAULT NULL,
+        started_by INT DEFAULT NULL,
+        round_number INT NOT NULL,
+        start_date DATE DEFAULT NULL,
+        end_date DATE DEFAULT NULL,
+        status ENUM('in_progress','completed') DEFAULT 'in_progress',
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        ended_at TIMESTAMP NULL DEFAULT NULL,
+        admin_confirmed TINYINT(1) DEFAULT 0,
+        confirmed_by INT DEFAULT NULL,
+        confirmed_at DATETIME DEFAULT NULL,
+        PRIMARY KEY (id),
+        KEY idx_rr_project_active (project_id, is_active),
+        KEY idx_rr_started_by (started_by)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+}
 
 if ($projectId <= 0) {
     echo json_encode(['success' => false, 'error' => 'Invalid project_id']);
@@ -31,6 +52,10 @@ if (!hasProjectAccess($db, $userId, $projectId)) {
 }
 
 try {
+    if (in_array($action, ['get_stats', 'list_rounds', 'create_round', 'complete_round'], true)) {
+        ensureRegressionRoundsTable($db);
+    }
+
     if ($action === 'get_project_issues') {
         if ($pageId > 0) {
             $stmt = $db->prepare("\n                SELECT DISTINCT i.id, i.issue_key, i.title\n                FROM issues i\n                LEFT JOIN issue_pages ip ON ip.issue_id = i.id\n                WHERE i.project_id = ?\n                  AND (i.page_id = ? OR ip.page_id = ?)\n                ORDER BY i.issue_key ASC, i.id ASC\n            ");
@@ -115,6 +140,17 @@ try {
             exit;
         }
 
+        $activeCheckStmt = $db->prepare("\n            SELECT id, round_number\n            FROM regression_rounds\n            WHERE project_id = ?\n              AND status = 'in_progress'\n              AND is_active = 1\n            ORDER BY round_number DESC\n            LIMIT 1\n        ");
+        $activeCheckStmt->execute([$projectId]);
+        $existingActiveRound = $activeCheckStmt->fetch(PDO::FETCH_ASSOC);
+        if ($existingActiveRound) {
+            echo json_encode([
+                'success' => false,
+                'error' => 'Round ' . (int)$existingActiveRound['round_number'] . ' is already in progress. Complete it first.'
+            ]);
+            exit;
+        }
+
         $numStmt = $db->prepare("SELECT COALESCE(MAX(round_number), 0) + 1 FROM regression_rounds WHERE project_id = ?");
         $numStmt->execute([$projectId]);
         $nextRound = (int)$numStmt->fetchColumn();
@@ -131,7 +167,7 @@ try {
     }
 
     if ($action === 'complete_round') {
-        $allowedRoles = ['admin', 'project_lead'];
+        $allowedRoles = ['admin', 'project_lead', 'qa'];
         if (!in_array($userRole, $allowedRoles, true)) {
             http_response_code(403);
             echo json_encode(['success' => false, 'error' => 'Unauthorized']);
@@ -160,5 +196,7 @@ try {
     echo json_encode(['success' => false, 'error' => 'Invalid action']);
 } catch (Throwable $e) {
     error_log('regression_actions.php error: ' . $e->getMessage());
-    echo json_encode(['success' => false, 'error' => 'Server error']);
+    $canSeeDetails = in_array($userRole, ['admin', 'project_lead'], true);
+    $message = $canSeeDetails ? ('Server error: ' . $e->getMessage()) : 'Server error';
+    echo json_encode(['success' => false, 'error' => $message]);
 }

@@ -1279,6 +1279,8 @@ include __DIR__ . '/../../includes/header.php';
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <script nonce="<?php echo $cspNonce ?? ''; ?>">
+    window._csrfToken = <?php echo json_encode(generateCsrfToken()); ?>;
+    
     window.ProjectConfig = {
         projectId: <?php echo json_encode($projectId); ?>,
         userId: <?php echo json_encode($userId); ?>,

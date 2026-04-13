@@ -557,6 +557,8 @@ body.client-issue-sidebar-open {
 
 <!-- Project Configuration for view_issues.js -->
 <script nonce="<?php echo $cspNonce ?? ''; ?>">
+window._csrfToken = <?php echo json_encode(generateCsrfToken()); ?>;
+
 // Global configuration object required by view_issues.js
 window.ProjectConfig = {
     projectId: <?php echo $projectId; ?>,
