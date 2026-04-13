@@ -688,16 +688,28 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
 
                             <!-- Users with Client Permissions -->
                             <?php
+                            $hasCreateProjectAccess = false;
                             // Check if user has client permissions (non-admin users)
                             if (!in_array($_SESSION['role'], ['admin'])) {
                                 try {
                                     require_once __DIR__ . '/../includes/client_permissions.php';
                                     $db = Database::getInstance();
                                     $hasClientPerms = hasAnyProjectPermissions($db, $_SESSION['user_id']);
+                                    $hasCreateProjectAccess = canCreateProject($db, (int)$_SESSION['user_id']);
                                 } catch (Exception $e) {
                                     error_log("Error checking client permissions in header: " . $e->getMessage());
                                 }
                             }
+
+                            if (!in_array($_SESSION['role'], ['admin']) && $hasCreateProjectAccess):
+                            ?>
+                                <li class="nav-item">
+                                    <a class="nav-link text-white <?php echo (strpos($currentRequestPath, '/modules/projects/create.php') !== false) ? 'active' : ''; ?>" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/projects/create.php">
+                                        <i class="fas fa-plus-circle me-1 opacity-50"></i> Create Project
+                                    </a>
+                                </li>
+                            <?php
+                            endif;
                             
                             // Client Dashboard Link (for client role or users with client_id)
                             if (isset($_SESSION['role']) && $_SESSION['role'] !== 'client' && (isset($_SESSION['client_id']) && $_SESSION['client_id'])) {

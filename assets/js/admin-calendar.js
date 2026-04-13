@@ -516,7 +516,6 @@ function enableAdminToolbarKeyboardA11y($el) {
         e.preventDefault();
         if (e.stopPropagation) e.stopPropagation();
         if (key === 'Home') idx = 0;
-                        eventsSet: function(){ applyCombinedFiltersToRenderedEvents(); },
         else if (key === 'ArrowRight') idx = (idx + 1) % $items.length;
         else if (key === 'ArrowLeft') idx = (idx - 1 + $items.length) % $items.length;
         setActiveIndex(idx);
@@ -547,7 +546,7 @@ function enableAdminToolbarKeyboardA11y($el) {
     $toolbar.data('kbdA11yTimer', fixTimer);
     ensureOneTabStop();
     $toolbar.data('kbdA11yBound', true);
-                            applyCombinedFiltersToRenderedEvents();
+}
 
 function focusAdminEditorToolbar($el) {
     if (!window.jQuery || !$el || !$el.length) return;
@@ -559,8 +558,7 @@ function focusAdminEditorToolbar($el) {
     });
     if (!$items.length) return;
     $items.attr('tabindex', '-1');
-                    applySavedHourFilters();
-                    applyCombinedFiltersToRenderedEvents();
+    $items.eq(0).attr('tabindex', '0').focus();
 }
 
 /* ---- Admin Edit Modal ---- */

@@ -195,11 +195,39 @@ include __DIR__ . '/../../includes/header.php';
                         <input type="number" step="0.01" class="form-control" id="minimumHours" name="minimum_hours" required>
                         <small class="text-muted">Minimum hours users must log per day</small>
                     </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">On-Time Login Cutoff</label>
+                            <input type="time" class="form-control" id="loginCutoffTime" name="login_cutoff_time" required>
+                            <small class="text-muted">Login before this time counts as on-time</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Status Update Cutoff</label>
+                            <input type="time" class="form-control" id="statusCutoffTime" name="status_cutoff_time" required>
+                            <small class="text-muted">Availability update before this time counts as on-time</small>
+                        </div>
+                    </div>
                     
                     <div class="mb-3">
                         <label class="form-label">Notification Message</label>
                         <textarea class="form-control" id="notificationMessage" name="notification_message" rows="3" required></textarea>
                         <small class="text-muted">Message shown to users in reminder notification</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="excludeWeekends" name="exclude_weekends">
+                            <label class="form-check-label" for="excludeWeekends">
+                                Exclude Weekends From Compliance
+                            </label>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="excludeLeaveDays" name="exclude_leave_days">
+                            <label class="form-check-label" for="excludeLeaveDays">
+                                Exclude Leave Days From Compliance
+                            </label>
+                        </div>
                     </div>
                     
                     <div class="mb-3">

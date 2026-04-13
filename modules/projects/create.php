@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/client_permissions.php';
+require_once __DIR__ . '/../../config/redis.php';
 
 $auth = new Auth();
 $auth->requireLogin();
@@ -85,13 +86,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_project'])) {
     ];
     
     if ($projectManager->createProject($projectData)) {
-        $projectId = $db->lastInsertId();
+        $projectId = (int)$db->lastInsertId();
         
         // Add default phases
         $phases = ['po_received', 'scoping_confirmation', 'testing', 'regression'];
         foreach ($phases as $phase) {
             $stmt = $db->prepare("INSERT INTO project_phases (project_id, phase_name) VALUES (?, ?)");
             $stmt->execute([$projectId, $phase]);
+        }
+
+        // If a non-admin user creates a project, auto-grant project-level view/edit access.
+        if (!$isAdmin && $projectId > 0) {
+            $autoPermissions = ['view_project', 'edit_project'];
+            foreach ($autoPermissions as $permissionType) {
+                $checkStmt = $db->prepare("
+                    SELECT id FROM client_permissions
+                    WHERE client_id = ? AND project_id = ? AND user_id = ? AND permission_type = ?
+                    LIMIT 1
+                ");
+                $checkStmt->execute([$clientId, $projectId, $userId, $permissionType]);
+                $existingId = (int)($checkStmt->fetchColumn() ?: 0);
+
+                if ($existingId > 0) {
+                    $updateStmt = $db->prepare("
+                        UPDATE client_permissions
+                        SET is_active = 1, granted_by = ?, expires_at = NULL, updated_at = NOW()
+                        WHERE id = ?
+                    ");
+                    $updateStmt->execute([$userId, $existingId]);
+                } else {
+                    $insertStmt = $db->prepare("
+                        INSERT INTO client_permissions (client_id, project_id, user_id, permission_type, granted_by, expires_at, notes)
+                        VALUES (?, ?, ?, ?, ?, NULL, ?)
+                    ");
+                    $insertStmt->execute([$clientId, $projectId, $userId, $permissionType, $userId, 'Auto-granted on project creation']);
+                }
+            }
+        }
+
+        // Invalidate cached assigned-project list for immediate visibility.
+        try {
+            $redis = RedisConfig::getInstance();
+            if ($redis && $redis->isAvailable()) {
+                $redis->delete('client_projects_' . $userId);
+            }
+        } catch (Throwable $e) {
+            // Non-fatal cache cleanup failure
         }
         
         $_SESSION['success'] = "Project created successfully!";

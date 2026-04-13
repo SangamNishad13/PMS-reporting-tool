@@ -1461,8 +1461,8 @@ include __DIR__ . '/../../includes/header.php';
                     <p class="mt-2 text-muted">AI is analyzing performance data, please wait...</p>
                 </div>
                 <div id="aiInsightContent" style="display: none;">
-                    <div class="row mb-3">
-                        <div class="col-md-3">
+                    <div class="row mb-3 g-3">
+                        <div class="col-lg-2 col-md-4 col-6">
                             <div class="card bg-light border-0">
                                 <div class="card-body p-3">
                                     <div class="text-muted small">Accessibility Accuracy</div>
@@ -1470,7 +1470,7 @@ include __DIR__ . '/../../includes/header.php';
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-lg-2 col-md-4 col-6">
                             <div class="card bg-light border-0">
                                 <div class="card-body p-3">
                                     <div class="text-muted small">Total Actions</div>
@@ -1478,7 +1478,7 @@ include __DIR__ . '/../../includes/header.php';
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-lg-2 col-md-4 col-6">
                             <div class="card bg-light border-0">
                                 <div class="card-body p-3">
                                     <div class="text-muted small">Hours Logged</div>
@@ -1486,11 +1486,27 @@ include __DIR__ . '/../../includes/header.php';
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-lg-2 col-md-4 col-6">
                             <div class="card bg-light border-0">
                                 <div class="card-body p-3">
                                     <div class="text-muted small">Projects Touched</div>
                                     <div class="h4 mb-0" id="aiStatProjects">--</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-2 col-md-4 col-6">
+                            <div class="card bg-light border-0">
+                                <div class="card-body p-3">
+                                    <div class="text-muted small">Avg Test Hours / Page</div>
+                                    <div class="h4 mb-0" id="aiStatHoursPerPage">--</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-2 col-md-4 col-6">
+                            <div class="card bg-light border-0">
+                                <div class="card-body p-3">
+                                    <div class="text-muted small">Issues / Test Hour</div>
+                                    <div class="h4 mb-0" id="aiStatIssuesPerHour">--</div>
                                 </div>
                             </div>
                         </div>
@@ -1614,6 +1630,44 @@ include __DIR__ . '/../../includes/header.php';
             });
         }
 
+        function formatAccuracy(stats) {
+            var accuracy = stats && stats.accuracy ? stats.accuracy : {};
+            var hasAccuracy = Boolean(accuracy.accuracy_available) && Number(accuracy.total_findings || 0) > 0;
+            var pct = hasAccuracy ? Number(accuracy.accuracy_percentage || 0) : null;
+
+            return {
+                hasAccuracy: hasAccuracy,
+                percentage: pct,
+                label: hasAccuracy ? (pct.toFixed(2).replace(/\.00$/, '') + '%') : 'N/A'
+            };
+        }
+
+        function formatRatio(value, suffix) {
+            if (value === null || typeof value === 'undefined' || value === '') {
+                return 'N/A';
+            }
+
+            var numeric = Number(value);
+            return Number.isFinite(numeric) ? numeric.toFixed(2) + suffix : 'N/A';
+        }
+
+        function getAccuracySubtext(stats) {
+            var accuracy = stats && stats.accuracy ? stats.accuracy : {};
+            var hours = stats && stats.hours ? stats.hours : {};
+            var totalFindings = Number(accuracy.total_findings || 0);
+            var reportedIssueCount = Number(hours.reported_issue_count || 0);
+
+            if (Boolean(accuracy.accuracy_available) && totalFindings > 0) {
+                return 'Based on accessibility findings';
+            }
+
+            if (reportedIssueCount > 0) {
+                return 'No accessibility finding sample; ' + reportedIssueCount + ' manual issue(s) reported in selected range';
+            }
+
+            return 'No accessibility finding sample in selected range';
+        }
+
         function getStatusBadge(status) {
             if (status === 'ready') {
                 return '<span class="badge bg-success-subtle text-success border">Ready</span>';
@@ -1725,10 +1779,17 @@ include __DIR__ . '/../../includes/header.php';
                         }
 
                         data.data.forEach(item => {
-                            var pct = Number(item.stats && item.stats.accuracy ? item.stats.accuracy.accuracy_percentage : 0);
-                            var color = pct > 80 ? 'bg-success' : (pct > 50 ? 'bg-info' : 'bg-warning');
+                            var accuracyInfo = formatAccuracy(item.stats || {});
+                            var pct = accuracyInfo.percentage;
+                            var color = pct === null ? 'bg-secondary' : (pct > 80 ? 'bg-success' : (pct > 50 ? 'bg-info' : 'bg-warning'));
                             var totalHours = Number(item.stats && item.stats.hours ? item.stats.hours.total_hours : 0);
                             var projectCount = Number(item.stats && item.stats.hours ? item.stats.hours.project_count : 0);
+                            var pageCount = Number(item.stats && item.stats.hours ? item.stats.hours.page_count : 0);
+                            var assignedPageTestingCount = Number(item.stats && item.stats.hours ? item.stats.hours.assigned_page_testing_count : 0);
+                            var pageTestingHours = Number(item.stats && item.stats.hours ? item.stats.hours.page_testing_hours : 0);
+                            var avgHoursPerPage = item.stats && item.stats.hours ? item.stats.hours.avg_hours_per_page : null;
+                            var issuesPerHour = item.stats && item.stats.hours ? item.stats.hours.issues_per_hour : null;
+                            var reportedIssueCount = Number(item.stats && item.stats.hours ? item.stats.hours.reported_issue_count : 0);
                             var totalActions = Number(item.stats && item.stats.activity ? item.stats.activity.total_actions : 0);
                             var status = item.report_status || 'queued';
                             var generatedAt = item.report_generated_at ? 'Updated ' + item.report_generated_at : 'Waiting for background report';
@@ -1742,13 +1803,16 @@ include __DIR__ . '/../../includes/header.php';
                                 <td class="py-2">
                                     <div class="d-flex align-items-center gap-2">
                                         <div class="progress" style="height: 6px; width: 60px;">
-                                            <div class="progress-bar ${color}" style="width: ${pct}%"></div>
+                                            <div class="progress-bar ${color}" style="width: ${pct === null ? 100 : pct}%"></div>
                                         </div>
-                                        <span class="fw-bold" style="font-size: 0.75rem;">${pct}%</span>
+                                        <span class="fw-bold" style="font-size: 0.75rem;">${accuracyInfo.label}</span>
                                     </div>
+                                    <div class="text-muted mt-1" style="font-size: 0.68rem;">${escapeHtml(getAccuracySubtext(item.stats || {}))}</div>
                                 </td>
                                 <td class="py-2 text-muted small">
                                     <div>${totalHours.toFixed(1)}h across ${projectCount} project(s)</div>
+                                    <div>${pageTestingHours.toFixed(1)}h page testing on ${assignedPageTestingCount} assigned page(s)</div>
+                                    <div>${reportedIssueCount} issues reported • ${formatRatio(issuesPerHour, ' /test h')}</div>
                                     <div>${totalActions} tracked actions</div>
                                     <div class="mt-1">${getStatusBadge(status)}</div>
                                     <div class="text-muted mt-1" style="font-size: 0.68rem;">${escapeHtml(generatedAt)}</div>
@@ -1860,14 +1924,17 @@ include __DIR__ . '/../../includes/header.php';
             var stats = item.stats || {};
             var summary = item.summary || {};
             var coverage = item.coverage || {};
+            var accuracyInfo = formatAccuracy(stats || {});
             var coverageText = '';
             if (typeof coverage.ready_days !== 'undefined' && typeof coverage.total_days !== 'undefined') {
                 coverageText = ' • Daily coverage ' + coverage.ready_days + '/' + coverage.total_days;
             }
-            document.getElementById('aiStatAccuracy').textContent = ((stats.accuracy && stats.accuracy.accuracy_percentage) || 0) + '%';
+            document.getElementById('aiStatAccuracy').textContent = accuracyInfo.label;
             document.getElementById('aiStatActivity').textContent = (stats.activity && stats.activity.total_actions) || 0;
             document.getElementById('aiStatHours').textContent = (((stats.hours && stats.hours.total_hours) || 0)).toFixed(1) + 'h';
             document.getElementById('aiStatProjects').textContent = (stats.hours && stats.hours.project_count) || 0;
+            document.getElementById('aiStatHoursPerPage').textContent = formatRatio(stats.hours && stats.hours.avg_hours_per_page, 'h');
+            document.getElementById('aiStatIssuesPerHour').textContent = formatRatio(stats.hours && stats.hours.issues_per_hour, '');
             document.getElementById('aiGeneratedAt').textContent = 'Report status: ' + (item.report_status || 'queued') + coverageText + (item.report_generated_at ? ' • Last daily insight ' + item.report_generated_at : '');
             document.getElementById('aiSummaryText').textContent = summary.overall_summary || 'Background analysis has been queued.';
 

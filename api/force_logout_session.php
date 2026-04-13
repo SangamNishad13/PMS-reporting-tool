@@ -69,7 +69,17 @@ try {
             // Non-fatal
         }
         
-        echo json_encode(['success' => true, 'message' => 'Session terminated successfully']);
+        $resultStmt = $db->prepare("SELECT logout_at, logout_type, active FROM user_sessions WHERE session_id = ? LIMIT 1");
+        $resultStmt->execute([$sessionId]);
+        $updatedSession = $resultStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Session terminated successfully',
+            'logout_at' => $updatedSession['logout_at'] ?? null,
+            'logout_type' => $updatedSession['logout_type'] ?? 'forced_by_admin',
+            'active' => isset($updatedSession['active']) ? (int)$updatedSession['active'] : 0
+        ]);
     } else {
         http_response_code(500);
         echo json_encode(['success' => false, 'error' => 'Failed to terminate session']);

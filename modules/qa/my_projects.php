@@ -10,22 +10,32 @@ $baseDir = getBaseDir();
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
 
-// Get ALL QA's assigned projects (including completed)
+// Get QA-visible projects (assignments + created projects + explicit permissions)
 $assignedProjectsQuery = "
     SELECT DISTINCT p.id, p.title, p.po_number, p.status, p.project_type,
            COUNT(DISTINCT pp.id) as total_pages,
            COUNT(DISTINCT CASE WHEN pp.qa_id = ? THEN pp.id END) as assigned_pages,
            COUNT(DISTINCT CASE WHEN pp.status = 'completed' AND pp.qa_id = ? THEN pp.id END) as completed_pages
     FROM projects p
-    JOIN user_assignments ua ON p.id = ua.project_id
+    LEFT JOIN user_assignments ua ON p.id = ua.project_id
+    LEFT JOIN client_permissions cp ON cp.project_id = p.id
+        AND cp.user_id = ?
+        AND cp.is_active = 1
+        AND (cp.expires_at IS NULL OR cp.expires_at > NOW())
+        AND cp.permission_type IN ('view_project', 'edit_project')
     LEFT JOIN project_pages pp ON p.id = pp.project_id
-    WHERE ua.user_id = ? AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+    WHERE (
+        (ua.user_id = ? AND (ua.is_removed IS NULL OR ua.is_removed = 0))
+        OR pp.qa_id = ?
+        OR p.created_by = ?
+        OR cp.id IS NOT NULL
+    )
     GROUP BY p.id, p.title, p.po_number, p.status, p.project_type
     ORDER BY p.created_at DESC
 ";
 
 $assignedProjects = $db->prepare($assignedProjectsQuery);
-$assignedProjects->execute([$userId, $userId, $userId]);
+$assignedProjects->execute([$userId, $userId, $userId, $userId, $userId, $userId]);
 $projects = $assignedProjects->fetchAll();
 
 include __DIR__ . '/../../includes/header.php';

@@ -5,30 +5,59 @@
  */
 (function () {
     var baseDir = (window._activeSessionsConfig && window._activeSessionsConfig.baseDir) ? window._activeSessionsConfig.baseDir : '';
+    var csrfToken = (window._activeSessionsConfig && window._activeSessionsConfig.csrfToken) ? window._activeSessionsConfig.csrfToken : (window._csrfToken || '');
+
+    function updateSessionRowState(row, data) {
+        if (!row) {
+            return;
+        }
+
+        var logoutAtCell = row.querySelector('.session-logout-at');
+        var logoutTypeCell = row.querySelector('.session-logout-type');
+        var statusCell = row.querySelector('.session-status');
+        var actionCell = row.querySelector('.session-action');
+
+        if (logoutAtCell) {
+            logoutAtCell.textContent = (data && data.logout_at) ? data.logout_at : 'Just now';
+        }
+        if (logoutTypeCell) {
+            logoutTypeCell.textContent = (data && data.logout_type) ? data.logout_type : 'forced_by_admin';
+        }
+        if (statusCell) {
+            statusCell.innerHTML = '<span class="badge bg-secondary">Logged Out</span>';
+        }
+        if (actionCell) {
+            actionCell.innerHTML = '<span class="text-muted">-</span>';
+        }
+
+        row.classList.remove('table-warning');
+        row.classList.add('table-light');
+    }
 
     document.querySelectorAll('.force-logout').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var self = this;
             var sid = self.dataset.session;
             confirmModal('Force logout session ' + sid + ' ?', function () {
+                self.disabled = true;
                 fetch(baseDir + '/api/force_logout_session.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ session_id: sid })
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    body: JSON.stringify({ session_id: sid, csrf_token: csrfToken })
                 }).then(function (r) { return r.json(); }).then(function (j) {
                     if (j && j.success) {
                         var row = document.getElementById('sess-' + sid);
-                        if (row) {
-                            var activeCell = row.querySelector('td:nth-child(11)');
-                            if (activeCell) activeCell.innerHTML = '<span class="badge bg-secondary">Logged Out</span>';
-                            var actionCell = row.querySelector('td:nth-child(12)');
-                            if (actionCell) actionCell.innerHTML = '<span class="text-muted">-</span>';
-                        }
+                        updateSessionRowState(row, j);
                         showToast('Session terminated successfully.', 'success');
                     } else {
+                        self.disabled = false;
                         showToast('Failed: ' + (j && j.error ? j.error : 'unknown'), 'danger');
                     }
                 }).catch(function (e) {
+                    self.disabled = false;
                     console.error('Force logout error:', e);
                     showToast('Request failed', 'danger');
                 });

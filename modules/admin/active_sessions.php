@@ -213,6 +213,33 @@ $stmt->execute($paramsWithLimit);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $totalPages = max(1, (int)ceil($total / $perPage));
+$visiblePages = [];
+if ($totalPages <= 9) {
+    $visiblePages = range(1, $totalPages);
+} else {
+    $windowStart = max(2, $page - 1);
+    $windowEnd = min($totalPages - 1, $page + 1);
+
+    if ($page <= 3) {
+        $windowStart = 2;
+        $windowEnd = 4;
+    } elseif ($page >= $totalPages - 2) {
+        $windowStart = $totalPages - 3;
+        $windowEnd = $totalPages - 1;
+    }
+
+    $visiblePages[] = 1;
+    if ($windowStart > 2) {
+        $visiblePages[] = 'ellipsis';
+    }
+    for ($pageNo = $windowStart; $pageNo <= $windowEnd; $pageNo++) {
+        $visiblePages[] = $pageNo;
+    }
+    if ($windowEnd < $totalPages - 1) {
+        $visiblePages[] = 'ellipsis';
+    }
+    $visiblePages[] = $totalPages;
+}
 $allUsers = $db->query("SELECT id, full_name, email FROM users ORDER BY full_name ASC")->fetchAll(PDO::FETCH_ASSOC);
 $allProjects = $db->query("SELECT id, title FROM projects ORDER BY title ASC")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -409,9 +436,9 @@ require_once __DIR__ . '/../../includes/header.php';
                 </td>
                 <td><?php echo htmlspecialchars($r['created_at'] ?? ''); ?></td>
                 <td><?php echo htmlspecialchars($r['last_activity'] ?? ''); ?></td>
-                <td><?php echo htmlspecialchars($r['logout_at'] ?? ''); ?></td>
-                <td><?php echo htmlspecialchars($r['logout_type'] ?? ''); ?></td>
-                <td>
+                <td class="session-logout-at"><?php echo htmlspecialchars($r['logout_at'] ?? ''); ?></td>
+                <td class="session-logout-type"><?php echo htmlspecialchars($r['logout_type'] ?? ''); ?></td>
+                <td class="session-status">
                     <?php 
                     $isActive = (bool)$r['active'];
                     // Use database to calculate time difference to avoid timezone issues
@@ -429,7 +456,7 @@ require_once __DIR__ . '/../../includes/header.php';
                     }
                     ?>
                 </td>
-                <td>
+                <td class="session-action">
                     <?php if ($r['active']): ?>
                         <button class="btn btn-sm btn-danger force-logout" data-session="<?php echo htmlspecialchars($r['session_id']); ?>">Force Logout</button>
                     <?php else: ?>
@@ -444,22 +471,35 @@ require_once __DIR__ . '/../../includes/header.php';
     </form>
 
     <nav aria-label="Page navigation">
-        <ul class="pagination pagination-sm">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
+            <div class="small text-muted">Page <?php echo $page; ?> of <?php echo $totalPages; ?>, total <?php echo $total; ?> session record(s).</div>
+            <ul class="pagination pagination-sm flex-wrap mb-0">
             <?php
             // build base query string for pagination links
             $qs = $_GET; unset($qs['page']);
             $baseQs = http_build_query($qs);
             $baseUrl = strtok($_SERVER['REQUEST_URI'], '?');
-            for ($p=1;$p<=$totalPages;$p++) {
-                $activeClass = ($p==$page) ? ' active' : '';
-                $link = $baseUrl . '?' . ($baseQs ? ($baseQs . '&') : '') . 'page=' . $p . '&per_page=' . $perPage;
-                echo '<li class="page-item' . $activeClass . '"><a class="page-link" href="' . htmlspecialchars($link) . '">' . $p . '</a></li>';
+            $previousPage = max(1, $page - 1);
+            $nextPage = min($totalPages, $page + 1);
+            $previousLink = $baseUrl . '?' . ($baseQs ? ($baseQs . '&') : '') . 'page=' . $previousPage . '&per_page=' . $perPage;
+            $nextLink = $baseUrl . '?' . ($baseQs ? ($baseQs . '&') : '') . 'page=' . $nextPage . '&per_page=' . $perPage;
+            echo '<li class="page-item' . ($page <= 1 ? ' disabled' : '') . '"><a class="page-link" href="' . htmlspecialchars($previousLink) . '"' . ($page <= 1 ? ' tabindex="-1" aria-disabled="true"' : '') . '>Previous</a></li>';
+            foreach ($visiblePages as $pageToken) {
+                if ($pageToken === 'ellipsis') {
+                    echo '<li class="page-item disabled"><span class="page-link">...</span></li>';
+                    continue;
+                }
+                $activeClass = ((int)$pageToken === $page) ? ' active' : '';
+                $link = $baseUrl . '?' . ($baseQs ? ($baseQs . '&') : '') . 'page=' . (int)$pageToken . '&per_page=' . $perPage;
+                echo '<li class="page-item' . $activeClass . '"><a class="page-link" href="' . htmlspecialchars($link) . '">' . (int)$pageToken . '</a></li>';
             }
+            echo '<li class="page-item' . ($page >= $totalPages ? ' disabled' : '') . '"><a class="page-link" href="' . htmlspecialchars($nextLink) . '"' . ($page >= $totalPages ? ' tabindex="-1" aria-disabled="true"' : '') . '>Next</a></li>';
             ?>
-        </ul>
+            </ul>
+        </div>
     </nav>
 
-    <script>window._activeSessionsConfig = { baseDir: "<?php echo getBaseDir(); ?>" };</script>
+    <script>window._activeSessionsConfig = { baseDir: "<?php echo getBaseDir(); ?>", csrfToken: "<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>" };</script>
     <script src="<?php echo getBaseDir(); ?>/assets/js/active-sessions.js?v=<?php echo time(); ?>"></script>
 
 <?php require_once __DIR__ . '/../../includes/footer.php'; 

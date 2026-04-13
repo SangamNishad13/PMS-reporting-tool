@@ -4,14 +4,70 @@ require_once __DIR__ . '/../config/database.php';
 class PerformanceHelper {
     private $db;
     private static $schemaEnsured = false;
+    private static $hoursReminderSchemaEnsured = false;
 
     private const WORKER_LOCK_NAME = 'resource_performance_feedback_worker';
     private const STALE_AFTER_SECONDS = 21600;
     private const DISPATCH_THROTTLE_SECONDS = 90;
+    private const DEFAULT_ON_TIME_LOGIN_CUTOFF = '10:30:00';
+    private const DEFAULT_ON_TIME_STATUS_CUTOFF = '11:00:00';
 
     public function __construct() {
         $this->db = Database::getInstance();
         $this->ensureResourcePerformanceFeedbackSchema();
+        $this->ensureHoursReminderSettingsSchema();
+    }
+
+    private function getAssignedPageMatchSql($userExpression = 'ptl.user_id', $pageAlias = 'pp') {
+        return "({$pageAlias}.at_tester_id = {$userExpression}
+                OR {$pageAlias}.ft_tester_id = {$userExpression}
+                OR {$pageAlias}.qa_id = {$userExpression}
+                OR ({$pageAlias}.at_tester_ids IS NOT NULL AND JSON_VALID({$pageAlias}.at_tester_ids) AND JSON_CONTAINS({$pageAlias}.at_tester_ids, JSON_ARRAY({$userExpression})))
+                OR ({$pageAlias}.ft_tester_ids IS NOT NULL AND JSON_VALID({$pageAlias}.ft_tester_ids) AND JSON_CONTAINS({$pageAlias}.ft_tester_ids, JSON_ARRAY({$userExpression}))))";
+    }
+
+    private function ensureHoursReminderSettingsSchema() {
+        if (self::$hoursReminderSchemaEnsured) {
+            return;
+        }
+
+        try {
+            $columns = [
+                "ADD COLUMN login_cutoff_time TIME DEFAULT '10:30:00' AFTER minimum_hours",
+                "ADD COLUMN status_cutoff_time TIME DEFAULT '11:00:00' AFTER login_cutoff_time",
+                "ADD COLUMN exclude_weekends TINYINT(1) DEFAULT 1 AFTER status_cutoff_time",
+                "ADD COLUMN exclude_leave_days TINYINT(1) DEFAULT 1 AFTER exclude_weekends",
+            ];
+
+            foreach ($columns as $definition) {
+                try {
+                    $this->db->exec("ALTER TABLE hours_reminder_settings {$definition}");
+                } catch (Exception $e) {
+                }
+            }
+        } catch (Exception $e) {
+        }
+
+        self::$hoursReminderSchemaEnsured = true;
+    }
+
+    private function getHoursReminderSettings() {
+        $this->ensureHoursReminderSettingsSchema();
+
+        try {
+            $stmt = $this->db->query("SELECT minimum_hours, login_cutoff_time, status_cutoff_time, exclude_weekends, exclude_leave_days FROM hours_reminder_settings LIMIT 1");
+            $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : [];
+        } catch (Exception $e) {
+            $row = [];
+        }
+
+        return [
+            'minimum_hours' => isset($row['minimum_hours']) ? (float) $row['minimum_hours'] : 8.0,
+            'login_cutoff_time' => (string) ($row['login_cutoff_time'] ?? self::DEFAULT_ON_TIME_LOGIN_CUTOFF),
+            'status_cutoff_time' => (string) ($row['status_cutoff_time'] ?? self::DEFAULT_ON_TIME_STATUS_CUTOFF),
+            'exclude_weekends' => array_key_exists('exclude_weekends', $row) ? (bool) $row['exclude_weekends'] : true,
+            'exclude_leave_days' => array_key_exists('exclude_leave_days', $row) ? (bool) $row['exclude_leave_days'] : true,
+        ];
     }
 
     public function normalizeDateRange($startDate = null, $endDate = null) {
@@ -116,11 +172,16 @@ class PerformanceHelper {
         $comLookup = $comStmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
         // 4. Batch hours / projects touched
-        $hoursSql = "SELECT user_id,
-                            COALESCE(SUM(hours_spent), 0) AS total_hours,
-                            COUNT(DISTINCT project_id) AS project_count
-                     FROM project_time_logs
-                     WHERE user_id IN ($idPlaceholder)";
+        $pageTestingMatch = $this->getAssignedPageMatchSql('ptl.user_id', 'pp');
+        $hoursSql = "SELECT ptl.user_id,
+                COALESCE(SUM(ptl.hours_spent), 0) AS total_hours,
+                COUNT(DISTINCT ptl.project_id) AS project_count,
+                COUNT(DISTINCT ptl.page_id) AS page_count,
+                COALESCE(SUM(CASE WHEN ptl.task_type = 'page_testing' AND ptl.page_id IS NOT NULL AND {$pageTestingMatch} THEN ptl.hours_spent ELSE 0 END), 0) AS page_testing_hours,
+                COUNT(DISTINCT CASE WHEN ptl.task_type = 'page_testing' AND ptl.page_id IS NOT NULL AND {$pageTestingMatch} THEN ptl.page_id END) AS assigned_page_testing_count
+                 FROM project_time_logs ptl
+                 LEFT JOIN project_pages pp ON pp.id = ptl.page_id
+                 WHERE ptl.user_id IN ($idPlaceholder)";
         $hoursParams = $userIds;
         if ($projectId) {
             $hoursSql .= " AND project_id = ?";
@@ -134,14 +195,36 @@ class PerformanceHelper {
         $hoursStmt->execute($hoursParams);
         $hoursLookup = $hoursStmt->fetchAll(PDO::FETCH_UNIQUE | PDO::FETCH_ASSOC);
 
+        // 5. Batch issue throughput
+        $issueSql = "SELECT reporter_id AS user_id, COUNT(*) AS reported_issue_count
+                     FROM issues
+                     WHERE reporter_id IN ($idPlaceholder)";
+        $issueParams = $userIds;
+        if ($projectId) {
+            $issueSql .= " AND project_id = ?";
+            $issueParams[] = $projectId;
+        }
+        $issueSql .= " AND DATE(created_at) BETWEEN ? AND ? GROUP BY reporter_id";
+        $issueParams[] = $startDate;
+        $issueParams[] = $endDate;
+
+        $issueStmt = $this->db->prepare($issueSql);
+        $issueStmt->execute($issueParams);
+        $issueLookup = $issueStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
         // Merge Everything
         foreach ($users as $user) {
             $uId = $user['id'];
             $a = $accLookup[$uId] ?? ['total' => 0, 'corrected' => 0];
             $accTotal = (int)$a['total'];
             $accCorrected = (int)$a['corrected'];
-            $accuracy = $accTotal > 0 ? round((($accTotal - $accCorrected) / $accTotal) * 100, 2) : 100;
-            $hoursRow = $hoursLookup[$uId] ?? ['total_hours' => 0, 'project_count' => 0];
+            $accuracy = $accTotal > 0 ? round((($accTotal - $accCorrected) / $accTotal) * 100, 2) : null;
+            $pageCount = (int) ($hoursLookup[$uId]['page_count'] ?? 0);
+            $totalHours = (float) ($hoursLookup[$uId]['total_hours'] ?? 0);
+            $pageTestingHours = (float) ($hoursLookup[$uId]['page_testing_hours'] ?? 0);
+            $assignedPageTestingCount = (int) ($hoursLookup[$uId]['assigned_page_testing_count'] ?? 0);
+            $reportedIssueCount = (int) ($issueLookup[$uId] ?? 0);
+            $hoursRow = $hoursLookup[$uId] ?? ['total_hours' => 0, 'project_count' => 0, 'page_count' => 0, 'page_testing_hours' => 0, 'assigned_page_testing_count' => 0];
 
             $stats[] = [
                 'user_id' => $uId,
@@ -151,7 +234,8 @@ class PerformanceHelper {
                     'accuracy' => [
                         'total_findings' => $accTotal,
                         'corrected_count' => $accCorrected,
-                        'accuracy_percentage' => $accuracy
+                        'accuracy_percentage' => $accuracy,
+                        'accuracy_available' => $accTotal > 0
                     ],
                     'communication' => [
                         'total_comments' => (int)($comLookup[$uId] ?? 0),
@@ -161,8 +245,14 @@ class PerformanceHelper {
                         'total_actions' => (int)($actLookup[$uId] ?? 0)
                     ],
                     'hours' => [
-                        'total_hours' => (float)($hoursRow['total_hours'] ?? 0),
-                        'project_count' => (int)($hoursRow['project_count'] ?? 0)
+                        'total_hours' => $totalHours,
+                        'project_count' => (int)($hoursRow['project_count'] ?? 0),
+                        'page_count' => $pageCount,
+                        'page_testing_hours' => $pageTestingHours,
+                        'assigned_page_testing_count' => $assignedPageTestingCount,
+                        'reported_issue_count' => $reportedIssueCount,
+                        'avg_hours_per_page' => $assignedPageTestingCount > 0 ? round($pageTestingHours / $assignedPageTestingCount, 2) : null,
+                        'issues_per_hour' => $pageTestingHours > 0 ? round($reportedIssueCount / $pageTestingHours, 2) : null
                     ]
                 ]
             ];
@@ -565,15 +655,40 @@ class PerformanceHelper {
             $res = $stmt->fetch(PDO::FETCH_ASSOC);
             $total = (int)($res['total'] ?? 0);
             $corrected = (int)($res['corrected'] ?? 0);
-            $accuracy = $total > 0 ? round((($total - $corrected) / $total) * 100, 2) : 100;
+            $accuracy = $total > 0 ? round((($total - $corrected) / $total) * 100, 2) : null;
             
             return [
                 'total_findings' => $total,
                 'corrected_count' => $corrected,
-                'accuracy_percentage' => $accuracy
+                'accuracy_percentage' => $accuracy,
+                'accuracy_available' => $total > 0
             ];
         } catch (Exception $e) {
-            return ['total_findings' => 0, 'corrected_count' => 0, 'accuracy_percentage' => 100];
+            return ['total_findings' => 0, 'corrected_count' => 0, 'accuracy_percentage' => null, 'accuracy_available' => false];
+        }
+    }
+
+    private function getReportedIssueCount($userId, $projectId = null, $startDate = null, $endDate = null) {
+        $sql = "SELECT COUNT(*) FROM issues WHERE reporter_id = :user_id";
+        $params = [':user_id' => $userId];
+
+        if ($projectId) {
+            $sql .= " AND project_id = :project_id";
+            $params[':project_id'] = $projectId;
+        }
+
+        if ($startDate && $endDate) {
+            $sql .= " AND DATE(created_at) BETWEEN :start_date AND :end_date";
+            $params[':start_date'] = $startDate;
+            $params[':end_date'] = $endDate;
+        }
+
+        try {
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            return (int) $stmt->fetchColumn();
+        } catch (Exception $e) {
+            return 0;
         }
     }
 
@@ -638,6 +753,7 @@ class PerformanceHelper {
         $navigation = $this->getNavigationSummary($userId, $projectId, $startDate, $endDate);
         $recentJourney = $this->getRecentJourney($userId, $projectId, $startDate, $endDate);
         $activityBreakdown = $this->getActivityBreakdown($userId, $projectId, $startDate, $endDate);
+        $discipline = $this->getDailyDisciplineSummary($userId, $startDate, $endDate);
 
         return [
             'user_id' => $userId,
@@ -660,6 +776,7 @@ class PerformanceHelper {
                 ],
                 'hours' => $hours,
                 'sessions' => $sessions,
+                'discipline' => $discipline,
                 'navigation' => [
                     'top_pages' => $navigation,
                     'recent_journey' => $recentJourney,
@@ -668,17 +785,27 @@ class PerformanceHelper {
         ];
     }
 
+    private function getMinimumHoursRequirement() {
+        $settings = $this->getHoursReminderSettings();
+        return (float) ($settings['minimum_hours'] ?? 8.0);
+    }
+
     private function getHoursSummary($userId, $projectId = null, $startDate = null, $endDate = null) {
-        $sql = "SELECT
-                    COALESCE(SUM(ptl.hours_spent), 0) AS total_hours,
-                    COALESCE(SUM(CASE WHEN ptl.is_utilized = 1 THEN ptl.hours_spent ELSE 0 END), 0) AS utilized_hours,
-                    COALESCE(SUM(CASE WHEN p.project_code = 'OFF-PROD-001' OR p.title LIKE 'Off-Production / Bench%' THEN ptl.hours_spent ELSE 0 END), 0) AS off_production_hours,
-                    COUNT(DISTINCT ptl.project_id) AS project_count,
-                    COUNT(DISTINCT ptl.log_date) AS active_days
-                FROM project_time_logs ptl
-                LEFT JOIN projects p ON p.id = ptl.project_id
-                WHERE ptl.user_id = ?
-                  AND ptl.log_date BETWEEN ? AND ?";
+                $pageTestingMatch = $this->getAssignedPageMatchSql('ptl.user_id', 'pp');
+                $sql = "SELECT
+                                        COALESCE(SUM(ptl.hours_spent), 0) AS total_hours,
+                                        COALESCE(SUM(CASE WHEN ptl.is_utilized = 1 THEN ptl.hours_spent ELSE 0 END), 0) AS utilized_hours,
+                                        COALESCE(SUM(CASE WHEN p.project_code = 'OFF-PROD-001' OR p.title LIKE 'Off-Production / Bench%' THEN ptl.hours_spent ELSE 0 END), 0) AS off_production_hours,
+                                        COUNT(DISTINCT ptl.project_id) AS project_count,
+                                        COUNT(DISTINCT ptl.page_id) AS page_count,
+                                        COALESCE(SUM(CASE WHEN ptl.task_type = 'page_testing' AND ptl.page_id IS NOT NULL AND {$pageTestingMatch} THEN ptl.hours_spent ELSE 0 END), 0) AS page_testing_hours,
+                                        COUNT(DISTINCT CASE WHEN ptl.task_type = 'page_testing' AND ptl.page_id IS NOT NULL AND {$pageTestingMatch} THEN ptl.page_id END) AS assigned_page_testing_count,
+                                        COUNT(DISTINCT ptl.log_date) AS active_days
+                                FROM project_time_logs ptl
+                                LEFT JOIN projects p ON p.id = ptl.project_id
+                                LEFT JOIN project_pages pp ON pp.id = ptl.page_id
+                                WHERE ptl.user_id = ?
+                                    AND ptl.log_date BETWEEN ? AND ?";
         $params = [$userId, $startDate, $endDate];
 
         if ($projectId) {
@@ -717,14 +844,25 @@ class PerformanceHelper {
         $topProjects = $projectStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         $activeDays = max(1, (int) ($row['active_days'] ?? 0));
+        $pageCount = (int) ($row['page_count'] ?? 0);
+        $totalHours = round((float) ($row['total_hours'] ?? 0), 2);
+        $pageTestingHours = round((float) ($row['page_testing_hours'] ?? 0), 2);
+        $assignedPageTestingCount = (int) ($row['assigned_page_testing_count'] ?? 0);
+        $reportedIssueCount = $this->getReportedIssueCount($userId, $projectId, $startDate, $endDate);
 
         return [
-            'total_hours' => round((float) ($row['total_hours'] ?? 0), 2),
+            'total_hours' => $totalHours,
             'utilized_hours' => round((float) ($row['utilized_hours'] ?? 0), 2),
             'off_production_hours' => round((float) ($row['off_production_hours'] ?? 0), 2),
             'project_count' => (int) ($row['project_count'] ?? 0),
+            'page_count' => $pageCount,
+            'page_testing_hours' => $pageTestingHours,
+            'assigned_page_testing_count' => $assignedPageTestingCount,
             'active_days' => (int) ($row['active_days'] ?? 0),
             'daily_average_hours' => round(((float) ($row['total_hours'] ?? 0)) / $activeDays, 2),
+            'reported_issue_count' => $reportedIssueCount,
+            'avg_hours_per_page' => $assignedPageTestingCount > 0 ? round($pageTestingHours / $assignedPageTestingCount, 2) : null,
+            'issues_per_hour' => $pageTestingHours > 0 ? round($reportedIssueCount / $pageTestingHours, 2) : null,
             'top_projects' => array_map(function ($projectRow) {
                 return [
                     'project_id' => (int) ($projectRow['project_id'] ?? 0),
@@ -765,6 +903,155 @@ class PerformanceHelper {
             'session_count' => (int) ($sessionRow['session_count'] ?? 0),
             'total_session_minutes' => (int) ($sessionRow['total_session_minutes'] ?? 0),
             'latest_activity_at' => (string) ($sessionRow['latest_activity_at'] ?? ''),
+        ];
+    }
+
+    private function getDailyDisciplineSummary($userId, $startDate, $endDate) {
+        $dateKeys = $this->buildDateKeys($startDate, $endDate);
+        $settings = $this->getHoursReminderSettings();
+        $minimumHours = (float) ($settings['minimum_hours'] ?? 8.0);
+        $loginCutoff = (string) ($settings['login_cutoff_time'] ?? self::DEFAULT_ON_TIME_LOGIN_CUTOFF);
+        $statusCutoff = (string) ($settings['status_cutoff_time'] ?? self::DEFAULT_ON_TIME_STATUS_CUTOFF);
+        $excludeWeekends = !empty($settings['exclude_weekends']);
+        $excludeLeaveDays = !empty($settings['exclude_leave_days']);
+
+        $loginStmt = $this->db->prepare("SELECT DATE(created_at) AS activity_date,
+                                                MIN(created_at) AS first_login_at
+                                         FROM activity_log
+                                         WHERE user_id = ?
+                                           AND action IN ('login', 'login_2fa')
+                                           AND DATE(created_at) BETWEEN ? AND ?
+                                         GROUP BY DATE(created_at)");
+        $loginStmt->execute([$userId, $startDate, $endDate]);
+        $loginRows = $loginStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $loginMap = [];
+        foreach ($loginRows as $row) {
+            $dayKey = (string) ($row['activity_date'] ?? '');
+            if ($dayKey !== '') {
+                $loginMap[$dayKey] = (string) ($row['first_login_at'] ?? '');
+            }
+        }
+
+        $statusStmt = $this->db->prepare("SELECT status_date, status, updated_at
+                                          FROM user_daily_status
+                                          WHERE user_id = ?
+                                            AND status_date BETWEEN ? AND ?");
+        $statusStmt->execute([$userId, $startDate, $endDate]);
+        $statusRows = $statusStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $statusMap = [];
+        foreach ($statusRows as $row) {
+            $dayKey = (string) ($row['status_date'] ?? '');
+            if ($dayKey !== '') {
+                $statusMap[$dayKey] = [
+                    'status' => (string) ($row['status'] ?? 'not_updated'),
+                    'updated_at' => (string) ($row['updated_at'] ?? ''),
+                ];
+            }
+        }
+
+        $hoursStmt = $this->db->prepare("SELECT log_date,
+                                                COALESCE(SUM(hours_spent), 0) AS total_hours
+                                         FROM project_time_logs
+                                         WHERE user_id = ?
+                                           AND log_date BETWEEN ? AND ?
+                                         GROUP BY log_date");
+        $hoursStmt->execute([$userId, $startDate, $endDate]);
+        $hoursRows = $hoursStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $hoursMap = [];
+        foreach ($hoursRows as $row) {
+            $dayKey = (string) ($row['log_date'] ?? '');
+            if ($dayKey !== '') {
+                $hoursMap[$dayKey] = (float) ($row['total_hours'] ?? 0);
+            }
+        }
+
+        $observedDays = 0;
+        $loginDays = 0;
+        $onTimeLoginDays = 0;
+        $lateLoginDays = 0;
+        $statusUpdatedDays = 0;
+        $onTimeStatusDays = 0;
+        $lateStatusDays = 0;
+        $compliantDays = 0;
+        $sameDayCompliantDays = 0;
+        $onTimeLoginDates = [];
+        $lateLoginDates = [];
+        $onTimeStatusDates = [];
+        $lateStatusDates = [];
+        $sameDayCompliantDates = [];
+
+        foreach ($dateKeys as $dayKey) {
+            $weekday = (int) date('N', strtotime($dayKey));
+            $loginAt = $loginMap[$dayKey] ?? '';
+            $statusRow = $statusMap[$dayKey] ?? null;
+            $totalHours = (float) ($hoursMap[$dayKey] ?? 0);
+            $statusKey = (string) ($statusRow['status'] ?? 'not_updated');
+            $isWeekend = $weekday >= 6;
+            $isLeaveDay = in_array($statusKey, ['on_leave', 'sick_leave'], true);
+            if (($excludeWeekends && $isWeekend) || ($excludeLeaveDays && $isLeaveDay)) {
+                continue;
+            }
+
+            $hasStatusUpdate = $statusRow && $statusKey !== 'not_updated';
+            $hasAnySignal = ($loginAt !== '') || $hasStatusUpdate || $totalHours > 0;
+
+            if ($hasAnySignal) {
+                $observedDays++;
+            }
+
+            if ($loginAt !== '') {
+                $loginDays++;
+                $loginTime = date('H:i:s', strtotime($loginAt));
+                if ($loginTime <= $loginCutoff) {
+                    $onTimeLoginDays++;
+                    $onTimeLoginDates[] = $dayKey;
+                } else {
+                    $lateLoginDays++;
+                    $lateLoginDates[] = $dayKey;
+                }
+            }
+
+            if ($hasStatusUpdate) {
+                $statusUpdatedDays++;
+                $statusTime = date('H:i:s', strtotime((string) ($statusRow['updated_at'] ?? '')));
+                if ($statusTime <= $statusCutoff) {
+                    $onTimeStatusDays++;
+                    $onTimeStatusDates[] = $dayKey;
+                } else {
+                    $lateStatusDays++;
+                    $lateStatusDates[] = $dayKey;
+                }
+            }
+
+            if ($totalHours >= $minimumHours) {
+                $compliantDays++;
+                if ($hasStatusUpdate) {
+                    $sameDayCompliantDays++;
+                    $sameDayCompliantDates[] = $dayKey;
+                }
+            }
+        }
+
+        return [
+            'observed_days' => $observedDays,
+            'login_days' => $loginDays,
+            'on_time_login_days' => $onTimeLoginDays,
+            'late_login_days' => $lateLoginDays,
+            'status_updated_days' => $statusUpdatedDays,
+            'on_time_status_days' => $onTimeStatusDays,
+            'late_status_days' => $lateStatusDays,
+            'compliant_days' => $compliantDays,
+            'same_day_compliant_days' => $sameDayCompliantDays,
+            'minimum_hours' => $minimumHours,
+            'login_cutoff_time' => $loginCutoff,
+            'status_cutoff_time' => $statusCutoff,
+            'exclude_weekends' => $excludeWeekends,
+            'exclude_leave_days' => $excludeLeaveDays,
+            'on_time_login_dates' => array_slice($onTimeLoginDates, 0, 7),
+            'late_login_dates' => array_slice($lateLoginDates, 0, 7),
+            'on_time_status_dates' => array_slice($onTimeStatusDates, 0, 7),
+            'late_status_dates' => array_slice($lateStatusDates, 0, 7),
+            'same_day_compliant_dates' => array_slice($sameDayCompliantDates, 0, 7),
         ];
     }
 
@@ -944,7 +1231,7 @@ class PerformanceHelper {
         ];
 
         $prompt = "Analyze the following PMS resource performance snapshot and return balanced, actionable feedback.\n"
-            . "Focus on login discipline, navigation consistency, project contribution, hours, issue quality, and communication.\n"
+            . "Focus on login discipline, on-time availability status updates, same-day hours compliance, navigation consistency, project contribution, hours, issue quality, and communication.\n"
             . "Return strict JSON with keys overall_summary, positive, negative, work_patterns, project_focus.\n\n"
             . json_encode($payload, JSON_PRETTY_PRINT);
 
@@ -989,29 +1276,68 @@ class PerformanceHelper {
     }
 
     private function generateFallbackInsight(array $stats) {
-        $accuracy = (float) ($stats['stats']['accuracy']['accuracy_percentage'] ?? 0);
+        $accuracyAvailable = !empty($stats['stats']['accuracy']['accuracy_available']);
+        $accuracy = $accuracyAvailable ? (float) ($stats['stats']['accuracy']['accuracy_percentage'] ?? 0) : null;
         $actions = (int) ($stats['stats']['activity']['total_actions'] ?? 0);
         $hours = (float) ($stats['stats']['hours']['total_hours'] ?? 0);
         $projects = (int) ($stats['stats']['hours']['project_count'] ?? 0);
+        $pages = (int) ($stats['stats']['hours']['page_count'] ?? 0);
+        $assignedPageTestingCount = (int) ($stats['stats']['hours']['assigned_page_testing_count'] ?? 0);
+        $pageTestingHours = (float) ($stats['stats']['hours']['page_testing_hours'] ?? 0);
+        $reportedIssues = (int) ($stats['stats']['hours']['reported_issue_count'] ?? 0);
+        $avgHoursPerPage = $stats['stats']['hours']['avg_hours_per_page'] ?? null;
+        $issuesPerHour = $stats['stats']['hours']['issues_per_hour'] ?? null;
         $comments = (int) ($stats['stats']['communication']['total_comments'] ?? 0);
         $loginCount = (int) ($stats['stats']['sessions']['login_count'] ?? 0);
+        $discipline = (array) ($stats['stats']['discipline'] ?? []);
         $topProjects = (array) ($stats['stats']['hours']['top_projects'] ?? []);
         $topPages = (array) ($stats['stats']['navigation']['top_pages'] ?? []);
+        $observedDays = (int) ($discipline['observed_days'] ?? 0);
+        $loginDays = (int) ($discipline['login_days'] ?? 0);
+        $onTimeLoginDays = (int) ($discipline['on_time_login_days'] ?? 0);
+        $statusUpdatedDays = (int) ($discipline['status_updated_days'] ?? 0);
+        $onTimeStatusDays = (int) ($discipline['on_time_status_days'] ?? 0);
+        $sameDayCompliantDays = (int) ($discipline['same_day_compliant_days'] ?? 0);
+        $minimumHours = (float) ($discipline['minimum_hours'] ?? 8);
+        $loginCutoff = (string) ($discipline['login_cutoff_time'] ?? self::DEFAULT_ON_TIME_LOGIN_CUTOFF);
+        $statusCutoff = (string) ($discipline['status_cutoff_time'] ?? self::DEFAULT_ON_TIME_STATUS_CUTOFF);
+        $excludeWeekends = !empty($discipline['exclude_weekends']);
+        $excludeLeaveDays = !empty($discipline['exclude_leave_days']);
 
         $positive = [];
         $negative = [];
         $workPatterns = [];
         $projectFocus = [];
+        $formatDates = function (array $dateKeys) {
+            return implode(', ', array_map(static function ($dayKey) {
+                $ts = strtotime((string) $dayKey);
+                return $ts ? date('M j', $ts) : (string) $dayKey;
+            }, $dateKeys));
+        };
 
-        $positive[] = $accuracy >= 85
-            ? 'Accessibility finding accuracy stayed strong during the selected period.'
-            : 'The resource maintained measurable issue contribution across the selected period.';
+        $positive[] = $accuracyAvailable
+            ? ($accuracy >= 85
+                ? 'Accessibility finding accuracy stayed strong during the selected period.'
+                : 'The resource maintained measurable issue contribution across the selected period.')
+            : 'Manual accessibility accuracy sample was not available, so behavioural and throughput metrics were used instead.';
         $positive[] = $hours > 0
             ? 'Logged ' . number_format($hours, 1) . 'h across ' . max(1, $projects) . ' project(s).'
             : 'No delivery hours were logged in the selected window.';
+        if ($avgHoursPerPage !== null) {
+            $positive[] = 'Average page-testing effort was ' . number_format((float) $avgHoursPerPage, 2) . 'h across ' . $assignedPageTestingCount . ' assigned tested page(s).';
+        }
+        if ($loginDays > 0 && $onTimeLoginDays > 0) {
+            $positive[] = 'Logged in on time on ' . $onTimeLoginDays . ' of ' . $loginDays . ' observed login day(s).';
+        }
+        if ($sameDayCompliantDays > 0) {
+            $positive[] = 'Closed the day as compliant on ' . $sameDayCompliantDays . ' day(s) after updating availability and meeting the ' . number_format($minimumHours, 0) . 'h target.';
+        }
 
         if ($actions < 5) {
             $negative[] = 'System activity was low, so the report has less behavioural evidence than usual.';
+        }
+        if (!$accuracyAvailable) {
+            $negative[] = 'No accessibility findings were created in this window, so an accuracy percentage cannot be scored yet.';
         }
         if ($comments === 0) {
             $negative[] = 'Communication trail is thin; add comments/context more consistently when progressing work.';
@@ -1019,15 +1345,49 @@ class PerformanceHelper {
         if ($hours === 0) {
             $negative[] = 'No project hours were logged, which makes throughput and workload evaluation incomplete.';
         }
+        if ($loginDays > 0 && $onTimeLoginDays < $loginDays) {
+            $negative[] = 'Login discipline slipped on ' . ($loginDays - $onTimeLoginDays) . ' observed day(s).';
+        }
+        if ($statusUpdatedDays < max(1, $observedDays)) {
+            $negative[] = 'Availability status was not updated consistently on all observed workdays.';
+        }
+        if ($sameDayCompliantDays < $statusUpdatedDays) {
+            $negative[] = 'Some days had availability updates but did not finish compliant with the required same-day counts/hours.';
+        }
 
         $workPatterns[] = $loginCount > 0
             ? 'Login events recorded: ' . $loginCount . ' during the selected period.'
             : 'No login event was captured in the selected period.';
+        if ($loginDays > 0) {
+            $workPatterns[] = 'On-time login days: ' . $onTimeLoginDays . '/' . $loginDays . ' before ' . $loginCutoff . '.';
+        }
+        if ($statusUpdatedDays > 0) {
+            $workPatterns[] = 'Availability status updated on ' . $statusUpdatedDays . ' day(s); on-time updates: ' . $onTimeStatusDays . '/' . $statusUpdatedDays . ' before ' . $statusCutoff . '.';
+        }
+        if ($excludeWeekends || $excludeLeaveDays) {
+            $scopeLabels = [];
+            if ($excludeWeekends) {
+                $scopeLabels[] = 'weekends';
+            }
+            if ($excludeLeaveDays) {
+                $scopeLabels[] = 'leave days';
+            }
+            $workPatterns[] = 'Compliance denominator excludes ' . implode(' and ', $scopeLabels) . '.';
+        }
+        if (!empty($discipline['on_time_login_dates'])) {
+            $workPatterns[] = 'Timely login days: ' . $formatDates((array) $discipline['on_time_login_dates']) . '.';
+        }
+        if (!empty($discipline['on_time_status_dates'])) {
+            $workPatterns[] = 'Timely availability-update days: ' . $formatDates((array) $discipline['on_time_status_dates']) . '.';
+        }
         if (!empty($topPages)) {
             $pageHighlights = array_map(function ($page) {
                 return ($page['page_name'] ?? 'Page') . ' (' . number_format((float) ($page['total_hours'] ?? 0), 1) . 'h)';
             }, array_slice($topPages, 0, 3));
             $workPatterns[] = 'Most-touched pages: ' . implode(', ', $pageHighlights) . '.';
+        }
+        if ($avgHoursPerPage !== null) {
+            $workPatterns[] = 'Page testing time logged: ' . number_format($pageTestingHours, 2) . 'h across ' . $assignedPageTestingCount . ' assigned page(s), averaging ' . number_format((float) $avgHoursPerPage, 2) . 'h per page.';
         }
 
         if (!empty($topProjects)) {
@@ -1036,16 +1396,40 @@ class PerformanceHelper {
             }, array_slice($topProjects, 0, 3));
             $projectFocus[] = 'Primary project focus: ' . implode(', ', $projectHighlights) . '.';
         }
+        if ($issuesPerHour !== null) {
+            $projectFocus[] = 'Reported ' . $reportedIssues . ' issue(s), averaging ' . number_format((float) $issuesPerHour, 2) . ' issues per page-testing hour.';
+        } else {
+            $projectFocus[] = 'Reported ' . $reportedIssues . ' issue(s); issues-per-hour will appear once assigned page-testing hours are available.';
+        }
+        if ($observedDays > 0) {
+            $projectFocus[] = 'Same-day compliant days: ' . $sameDayCompliantDays . '/' . $observedDays . ' with availability updated and minimum ' . number_format($minimumHours, 0) . 'h completed.';
+        }
+        if (!empty($discipline['same_day_compliant_dates'])) {
+            $projectFocus[] = 'Compliant same-day closure was achieved on: ' . $formatDates((array) $discipline['same_day_compliant_dates']) . '.';
+        }
         $projectFocus[] = 'Total logged actions: ' . $actions . '; comments posted: ' . $comments . '.';
 
         return [
-            'overall_summary' => sprintf(
-                '%s worked across %d project(s), logged %.1f hours, and maintained %.2f%% finding accuracy in the selected range.',
-                (string) ($stats['name'] ?? 'This resource'),
-                max(0, $projects),
-                $hours,
-                $accuracy
-            ),
+            'overall_summary' => $accuracyAvailable
+                ? sprintf(
+                    '%s worked across %d project(s), logged %.1f hours, spent %.1f page-testing hours, averaged %s per assigned tested page, and maintained %.2f%% finding accuracy in the selected range.',
+                    (string) ($stats['name'] ?? 'This resource'),
+                    max(0, $projects),
+                    $hours,
+                    $pageTestingHours,
+                    $avgHoursPerPage !== null ? number_format((float) $avgHoursPerPage, 2) . 'h' : 'N/A',
+                    (float) $accuracy
+                )
+                : sprintf(
+                    '%s worked across %d project(s), logged %.1f hours, spent %.1f page-testing hours, averaged %s per assigned tested page, and reported %d issue(s) at %s in the selected range. Finding accuracy is unavailable because no accessibility findings were created in this window.',
+                    (string) ($stats['name'] ?? 'This resource'),
+                    max(0, $projects),
+                    $hours,
+                    $pageTestingHours,
+                    $avgHoursPerPage !== null ? number_format((float) $avgHoursPerPage, 2) . 'h' : 'N/A',
+                    $reportedIssues,
+                    $issuesPerHour !== null ? number_format((float) $issuesPerHour, 2) . ' issues/page-testing hour' : 'N/A'
+                ),
             'positive' => array_values(array_unique(array_filter($positive))),
             'negative' => array_values(array_unique(array_filter($negative))),
             'work_patterns' => array_values(array_unique(array_filter($workPatterns))),
@@ -1181,6 +1565,7 @@ class PerformanceHelper {
             $actions = (int) ($stats['activity']['total_actions'] ?? 0);
             $comments = (int) ($stats['communication']['total_comments'] ?? 0);
             $projects = (int) ($stats['hours']['project_count'] ?? 0);
+            $discipline = (array) ($stats['discipline'] ?? []);
 
             if ($hours > 0) {
                 $parts[] = '+' . number_format($hours, 1) . 'h logged';
@@ -1193,6 +1578,15 @@ class PerformanceHelper {
             }
             if ($comments > 0) {
                 $parts[] = $comments . ' comments';
+            }
+            if (!empty($discipline['on_time_login_days'])) {
+                $parts[] = 'on-time login';
+            }
+            if (!empty($discipline['on_time_status_days'])) {
+                $parts[] = 'status updated';
+            }
+            if (!empty($discipline['same_day_compliant_days'])) {
+                $parts[] = 'same-day compliant';
             }
 
             $parsed = $this->parseInsightSummary($record);

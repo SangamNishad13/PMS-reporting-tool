@@ -117,7 +117,11 @@
                 var s = response.settings;
                 $('#reminderTime').val(s.reminder_time);
                 $('#minimumHours').val(s.minimum_hours);
+                $('#loginCutoffTime').val(s.login_cutoff_time || '10:30');
+                $('#statusCutoffTime').val(s.status_cutoff_time || '11:00');
                 $('#notificationMessage').val(s.notification_message);
+                $('#excludeWeekends').prop('checked', Number(s.exclude_weekends) === 1);
+                $('#excludeLeaveDays').prop('checked', Number(s.exclude_leave_days) === 1);
                 $('#enabled').prop('checked', s.enabled == 1);
                 $('#settingsModal').modal('show');
             }
@@ -127,14 +131,24 @@
     window.saveSettings = function () {
         var formData = new FormData($('#settingsForm')[0]);
         formData.append('action', 'update_settings');
-        $.post(apiUrl, formData, function (response) {
-            if (response.success) {
-                showToast('Settings updated successfully', 'success');
-                $('#settingsModal').modal('hide');
-                loadSettings();
-                loadReport();
-            } else {
-                showToast('Error: ' + response.message, 'danger');
+        $.ajax({
+            url: apiUrl,
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function (response) {
+                if (response.success) {
+                    showToast('Settings updated successfully', 'success');
+                    $('#settingsModal').modal('hide');
+                    loadSettings();
+                    loadReport();
+                } else {
+                    showToast('Error: ' + response.message, 'danger');
+                }
+            },
+            error: function () {
+                showToast('Error: Failed to save settings', 'danger');
             }
         });
     };

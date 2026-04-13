@@ -98,6 +98,26 @@ class ClientAccessControlManager {
                     error_log('ClientAccessControlManager hasProjectAccess (cp) error: ' . $e->getMessage());
                 }
             }
+
+            // Creator of the project should always retain access.
+            if (!$hasAccess) {
+                try {
+                    $creatorStmt = $this->db->prepare("
+                        SELECT 1
+                        FROM projects p
+                        WHERE p.id = ?
+                          AND p.created_by = ?
+                          AND p.status NOT IN ('cancelled', 'archived')
+                        LIMIT 1
+                    ");
+                    $creatorStmt->execute([$projectId, $clientUserId]);
+                    if ($creatorStmt->fetchColumn() !== false) {
+                        $hasAccess = true;
+                    }
+                } catch (Exception $e) {
+                    error_log('ClientAccessControlManager hasProjectAccess (creator) error: ' . $e->getMessage());
+                }
+            }
             
             // Cache result for 5 minutes
             if ($this->redis->isAvailable()) {
@@ -236,6 +256,51 @@ class ClientAccessControlManager {
             } catch (Exception $legacyEx) {
                 // client_permissions table may not have expected columns - ignore
                 error_log('ClientAccessControlManager legacy permissions lookup error: ' . $legacyEx->getMessage());
+            }
+
+            // Include projects created by this user even if assignment row is missing.
+            try {
+                $creatorStmt = $this->db->prepare("
+                    SELECT
+                        p.id,
+                        p.po_number,
+                        p.project_code,
+                        p.title,
+                        p.description,
+                        p.project_type,
+                        p.priority,
+                        p.status,
+                        p.created_at,
+                        p.completed_at,
+                        p.client_id,
+                        c.name as client_name,
+                        p.created_at as assigned_at,
+                        NULL as expires_at,
+                        'Auto-visible for creator' as assignment_notes,
+                        creator.full_name as assigned_by_name,
+                        (SELECT COUNT(*) FROM issues i
+                         WHERE i.project_id = p.id AND i.client_ready = 1) as client_ready_issues_count,
+                        (SELECT COUNT(*) FROM issues i
+                         WHERE i.project_id = p.id) as total_issues_count
+                    FROM projects p
+                    LEFT JOIN clients c ON p.client_id = c.id
+                    LEFT JOIN users creator ON p.created_by = creator.id
+                    WHERE p.created_by = ?
+                      AND p.status NOT IN ('cancelled', 'archived')
+                    ORDER BY p.created_at DESC, p.title ASC
+                ");
+                $creatorStmt->execute([$clientUserId]);
+                $creatorProjects = $creatorStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                $existingIds = array_column($projects, 'id');
+                foreach ($creatorProjects as $creatorProject) {
+                    if (!in_array($creatorProject['id'], $existingIds)) {
+                        $projects[] = $creatorProject;
+                        $existingIds[] = $creatorProject['id'];
+                    }
+                }
+            } catch (Exception $creatorEx) {
+                error_log('ClientAccessControlManager creator projects lookup error: ' . $creatorEx->getMessage());
             }
 
             $visibleCountByProject = [];

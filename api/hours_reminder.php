@@ -19,7 +19,62 @@ $action = $_POST['action'] ?? $_GET['action'] ?? '';
 $user_id = $_SESSION['user_id'];
 $user_role = $_SESSION['role'];
 
+function ensureHoursReminderSettingsSchema(PDO $pdo): void {
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+
+    $columns = [
+        "ADD COLUMN login_cutoff_time TIME DEFAULT '10:30:00' AFTER minimum_hours",
+        "ADD COLUMN status_cutoff_time TIME DEFAULT '11:00:00' AFTER login_cutoff_time",
+        "ADD COLUMN exclude_weekends TINYINT(1) DEFAULT 1 AFTER status_cutoff_time",
+        "ADD COLUMN exclude_leave_days TINYINT(1) DEFAULT 1 AFTER exclude_weekends",
+    ];
+
+    foreach ($columns as $definition) {
+        try {
+            $pdo->exec("ALTER TABLE hours_reminder_settings {$definition}");
+        } catch (Exception $e) {
+        }
+    }
+
+    $ensured = true;
+}
+
+function getHoursReminderSettings(PDO $pdo): array {
+    ensureHoursReminderSettingsSchema($pdo);
+    $stmt = $pdo->query("SELECT * FROM hours_reminder_settings LIMIT 1");
+    $settings = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : [];
+
+    return [
+        'id' => $settings['id'] ?? 1,
+        'reminder_time' => $settings['reminder_time'] ?? '18:30:00',
+        'minimum_hours' => isset($settings['minimum_hours']) ? (float) $settings['minimum_hours'] : 8.0,
+        'login_cutoff_time' => $settings['login_cutoff_time'] ?? '10:30:00',
+        'status_cutoff_time' => $settings['status_cutoff_time'] ?? '11:00:00',
+        'exclude_weekends' => array_key_exists('exclude_weekends', $settings) ? (int) $settings['exclude_weekends'] : 1,
+        'exclude_leave_days' => array_key_exists('exclude_leave_days', $settings) ? (int) $settings['exclude_leave_days'] : 1,
+        'enabled' => array_key_exists('enabled', $settings) ? (int) $settings['enabled'] : 1,
+        'notification_message' => $settings['notification_message'] ?? '',
+    ];
+}
+
+function isExcludedComplianceDay(string $date, ?string $statusKey, array $settings): bool {
+    $weekday = (int) date('N', strtotime($date));
+    if (!empty($settings['exclude_weekends']) && $weekday >= 6) {
+        return true;
+    }
+
+    if (!empty($settings['exclude_leave_days']) && in_array((string) $statusKey, ['on_leave', 'sick_leave'], true)) {
+        return true;
+    }
+
+    return false;
+}
+
 try {
+    ensureHoursReminderSettingsSchema($pdo);
     switch ($action) {
         case 'check_reminder_time':
             if (in_array($user_role, ['admin', 'client'], true)) {
@@ -28,10 +83,9 @@ try {
             }
 
             // Check if it's time to show reminder
-            $stmt = $pdo->query("SELECT * FROM hours_reminder_settings WHERE enabled = TRUE LIMIT 1");
-            $settings = $stmt->fetch();
+            $settings = getHoursReminderSettings($pdo);
             
-            if (!$settings) {
+            if (empty($settings['enabled'])) {
                 echo json_encode(['success' => true, 'show_reminder' => false]);
                 break;
             }
@@ -59,6 +113,22 @@ try {
                 $stmt->execute([$user_id, $today]);
                 $result = $stmt->fetch();
                 $totalHours = $result['total_hours'];
+
+                $statusStmt = $pdo->prepare("SELECT status FROM user_daily_status WHERE user_id = ? AND status_date = ? LIMIT 1");
+                $statusStmt->execute([$user_id, $today]);
+                $statusKey = $statusStmt->fetchColumn() ?: null;
+
+                if (isExcludedComplianceDay($today, $statusKey, $settings)) {
+                    echo json_encode([
+                        'success' => true,
+                        'show_reminder' => false,
+                        'message' => '',
+                        'current_hours' => $totalHours ?? 0,
+                        'minimum_hours' => $minimumHours,
+                        'excluded_day' => true
+                    ]);
+                    break;
+                }
                 
                 if ($totalHours < $minimumHours) {
                     // Check if reminder already sent today
@@ -132,15 +202,24 @@ try {
             $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Get settings
-            $stmt = $pdo->query("SELECT minimum_hours FROM hours_reminder_settings LIMIT 1");
-            $settings = $stmt->fetch();
+            $settings = getHoursReminderSettings($pdo);
             $minimumHours = $settings['minimum_hours'] ?? 8;
             
             // Categorize users
             $nonCompliant = [];
             $compliant = [];
+            $excluded = [];
             
             foreach ($users as $user) {
+                $statusStmt = $pdo->prepare("SELECT status FROM user_daily_status WHERE user_id = ? AND status_date = ? LIMIT 1");
+                $statusStmt->execute([$user['id'], $date]);
+                $statusKey = $statusStmt->fetchColumn() ?: null;
+                if (isExcludedComplianceDay($date, $statusKey, $settings)) {
+                    $user['status_key'] = $statusKey;
+                    $excluded[] = $user;
+                    continue;
+                }
+
                 $user['is_compliant'] = $user['total_hours'] >= $minimumHours;
                 if ($user['is_compliant']) {
                     $compliant[] = $user;
@@ -153,13 +232,15 @@ try {
                 'success' => true,
                 'date' => $date,
                 'minimum_hours' => $minimumHours,
+                'excluded' => $excluded,
                 'non_compliant' => $nonCompliant,
                 'compliant' => $compliant,
                 'summary' => [
-                    'total_users' => count($users),
+                    'total_users' => count($compliant) + count($nonCompliant),
+                    'excluded_count' => count($excluded),
                     'compliant_count' => count($compliant),
                     'non_compliant_count' => count($nonCompliant),
-                    'compliance_rate' => count($users) > 0 ? round((count($compliant) / count($users)) * 100, 2) : 0
+                    'compliance_rate' => (count($compliant) + count($nonCompliant)) > 0 ? round((count($compliant) / (count($compliant) + count($nonCompliant))) * 100, 2) : 0
                 ]
             ]);
             break;
@@ -173,6 +254,10 @@ try {
                 UPDATE hours_reminder_settings 
                 SET reminder_time = ?, 
                     minimum_hours = ?, 
+                    login_cutoff_time = ?,
+                    status_cutoff_time = ?,
+                    exclude_weekends = ?,
+                    exclude_leave_days = ?,
                     enabled = ?,
                     notification_message = ?
                 WHERE id = 1
@@ -180,6 +265,10 @@ try {
             $stmt->execute([
                 $_POST['reminder_time'],
                 $_POST['minimum_hours'],
+                $_POST['login_cutoff_time'],
+                $_POST['status_cutoff_time'],
+                !empty($_POST['exclude_weekends']) ? 1 : 0,
+                !empty($_POST['exclude_leave_days']) ? 1 : 0,
                 $_POST['enabled'] ? 1 : 0,
                 $_POST['notification_message']
             ]);
@@ -192,9 +281,7 @@ try {
                 throw new Exception('Only admins can view settings');
             }
             
-            $stmt = $pdo->query("SELECT * FROM hours_reminder_settings LIMIT 1");
-            $settings = $stmt->fetch();
-            
+            $settings = getHoursReminderSettings($pdo);
             echo json_encode(['success' => true, 'settings' => $settings]);
             break;
 
@@ -221,8 +308,7 @@ try {
             $stmt->execute([$user_id, $today]);
             $result = $stmt->fetch();
             
-            $stmt = $pdo->query("SELECT minimum_hours FROM hours_reminder_settings LIMIT 1");
-            $settings = $stmt->fetch();
+            $settings = getHoursReminderSettings($pdo);
             
             echo json_encode([
                 'success' => true,

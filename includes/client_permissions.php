@@ -49,12 +49,12 @@ function canEditProjectById($db, $userId, $projectId) {
     }
     
     try {
-        // Check if user is project lead
-        $stmt = $db->prepare("SELECT project_lead_id FROM projects WHERE id = ?");
+        // Check if user is project lead or creator
+        $stmt = $db->prepare("SELECT project_lead_id, created_by FROM projects WHERE id = ?");
         $stmt->execute([$projectId]);
         $project = $stmt->fetch();
         
-        if ($project && $project['project_lead_id'] == $userId) {
+        if ($project && ($project['project_lead_id'] == $userId || $project['created_by'] == $userId)) {
             return true;
         }
         
@@ -129,8 +129,8 @@ function canEditProject($db, $userId, $projectId) {
     }
     
     try {
-        // Get project's lead
-        $stmt = $db->prepare("SELECT project_lead_id FROM projects WHERE id = ?");
+        // Get project's lead/creator
+        $stmt = $db->prepare("SELECT project_lead_id, created_by FROM projects WHERE id = ?");
         $stmt->execute([$projectId]);
         $project = $stmt->fetch();
         
@@ -138,8 +138,8 @@ function canEditProject($db, $userId, $projectId) {
             return false;
         }
         
-        // Project lead can always edit their own project
-        if ($project['project_lead_id'] == $userId) {
+        // Project lead/creator can always edit their own project
+        if ($project['project_lead_id'] == $userId || $project['created_by'] == $userId) {
             return true;
         }
         
