@@ -316,6 +316,8 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
 
+    <?php include __DIR__ . '/partials/regression_panel.php'; ?>
+
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <div>
@@ -607,6 +609,7 @@ include __DIR__ . '/partials/issues_modals.php';
 
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
+<script src="<?php echo $baseDir; ?>/modules/projects/js/regression-panel.js?v=<?php echo time(); ?>"></script>
 
 <script nonce="<?php echo $cspNonce ?? ''; ?>">
 // Row clicks and Filters for issues_pages.php
