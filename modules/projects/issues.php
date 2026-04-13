@@ -143,20 +143,20 @@ endif; ?>
             </div>
         </div>
 
-        <!-- Import URLs Card -->
+        <!-- Import Issues Card -->
         <div class="col-md-6">
             <div class="card h-100 border-secondary">
                 <div class="card-body text-center">
                     <div class="mb-3">
-                        <i class="fas fa-upload fa-4x text-secondary"></i>
+                        <i class="fas fa-file-import fa-4x text-secondary"></i>
                     </div>
-                    <h4 class="card-title">Import URLs</h4>
+                    <h4 class="card-title">Import Issues</h4>
                     <p class="card-text text-muted">
-                        Import project URLs from CSV/Excel from the Pages/Screens section
+                        Import accessibility issues from Excel/CSV (Final Report, URL Details, All URLs sheets)
                     </p>
-                    <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $projectId; ?>"
+                    <a href="<?php echo $baseDir; ?>/modules/projects/import_issues.php?project_id=<?php echo $projectId; ?>"
                        class="btn btn-secondary btn-lg">
-                        <i class="fas fa-link me-1"></i> Open URL Import
+                        <i class="fas fa-file-import me-1"></i> Import Issues
                     </a>
                 </div>
             </div>
