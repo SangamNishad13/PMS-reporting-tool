@@ -748,41 +748,23 @@
         var locked = isTesterEditLockedByRegression();
         var lockMessage = getTesterRegressionLockMessage();
 
-        var saveBtn = document.getElementById('finalIssueSaveBtn');
-        if (saveBtn) {
-            saveBtn.disabled = locked;
-            if (locked) saveBtn.title = lockMessage;
-            else saveBtn.removeAttribute('title');
-        }
-
-        var editBtn = document.getElementById('finalIssueEditBtn');
-        if (editBtn) {
-            editBtn.disabled = locked;
-            if (locked) editBtn.title = lockMessage;
-            else editBtn.removeAttribute('title');
-        }
-
-        if (!locked) return;
-
-        ['customIssueTitle', 'finalIssueTitle', 'finalIssueStatus', 'finalIssueCommonTitle', 'finalIssueClientReady', 'finalIssueCommentType'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (el) el.disabled = true;
-        });
-
-        ['btnResetToTemplate', 'btnOpenUrlSelectionModal', 'btnApplyUrlSelection', 'btnCopyGroupedUrls'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (el) el.disabled = true;
-        });
-
-        if (window.jQuery && jQuery.fn.select2) {
-            jQuery('#finalIssuePages, #finalIssueGroupedUrls, #finalIssueReporters, #finalIssueAssignee, #finalIssueQaStatus').prop('disabled', true).trigger('change.select2');
-        }
-
+        var detailsEl = document.getElementById('finalIssueDetails');
         if (window.jQuery && jQuery.fn.summernote) {
-            jQuery('#finalIssueDetails').summernote('disable');
-        } else {
-            var detailsEl = document.getElementById('finalIssueDetails');
-            if (detailsEl) detailsEl.disabled = true;
+            if (locked) {
+                jQuery('#finalIssueDetails').summernote('disable');
+            }
+        } else if (detailsEl) {
+            detailsEl.disabled = locked;
+        }
+
+        if (detailsEl) {
+            if (locked) {
+                detailsEl.setAttribute('data-regression-readonly', '1');
+                detailsEl.setAttribute('title', lockMessage);
+            } else {
+                detailsEl.removeAttribute('data-regression-readonly');
+                detailsEl.removeAttribute('title');
+            }
         }
     }
 
@@ -2092,8 +2074,23 @@
         if (!initEditors._imgClickBound) {
             initEditors._imgClickBound = true;
             jQuery(document).on('click', '.note-editable img', function (e) {
-                e.preventDefault();
                 var $img = jQuery(this);
+                var $editor = $img.closest('.note-editor');
+                var $source = $editor.prev('textarea');
+                var isFinalIssueDetailsEditor = $source.length && $source.attr('id') === 'finalIssueDetails';
+
+                if (isFinalIssueDetailsEditor && isTesterEditLockedByRegression()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var src = $img.attr('src') || '';
+                    var alt = $img.attr('alt') || '';
+                    if (src) {
+                        openIssueImageModal(src, alt);
+                    }
+                    return;
+                }
+
+                e.preventDefault();
                 issueData.imageUpload.isEditing = true;
                 issueData.imageUpload.editingImg = $img;
                 showImageAltModal($img.attr('alt') || '');
@@ -3073,10 +3070,6 @@
             editBtn.type = 'button'; editBtn.id = 'finalIssueEditBtn'; editBtn.className = 'btn btn-primary';
             editBtn.textContent = 'Edit Issue';
             editBtn.addEventListener('click', function () {
-                if (isTesterEditLockedByRegression()) {
-                    issueNotify(getTesterRegressionLockMessage(), 'warning');
-                    return;
-                }
                 toggleFinalIssueFields(true);
                 this.classList.add('d-none');
                 document.getElementById('finalIssueSaveBtn').classList.remove('d-none');
@@ -6783,18 +6776,6 @@
         }
         
         var editId = document.getElementById('finalIssueEditId').value;
-        if (isTesterRole && editId) {
-            await refreshTesterRegressionLock();
-            if (isTesterEditLockedByRegression()) {
-                if (saveBtn) {
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = saveButtonLabel;
-                }
-                issueNotify(getTesterRegressionLockMessage(), 'warning');
-                applyTesterRegressionReadonlyState();
-                return;
-            }
-        }
         var expectedUpdatedAt = '';
         var expectedUpdatedAtEl = document.getElementById('finalIssueExpectedUpdatedAt');
         if (expectedUpdatedAtEl) expectedUpdatedAt = (expectedUpdatedAtEl.value || '').trim();

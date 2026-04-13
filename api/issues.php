@@ -1018,9 +1018,7 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         error_log("Issue API: Starting $action action. Project ID: $projectId, User ID: $userId");
         
         $id = (int)($_POST['id'] ?? 0);
-    if ($action === 'update' && $isTesterRole && hasActiveRegressionRound($db, $projectId)) {
-        jsonError('Issue details are locked for testers while a regression round is in progress.', 403);
-    }
+    $testerDetailsReadonlyDuringRegression = ($action === 'update' && $isTesterRole && hasActiveRegressionRound($db, $projectId));
     if ($userRole === 'client' && $action === 'create') {
         jsonError('Clients cannot create new issues.', 403);
     }
@@ -1247,6 +1245,11 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                     if (empty($pageIds) && $pageId > 0) {
                         $pageIds = [$pageId];
                     }
+                }
+
+                if ($testerDetailsReadonlyDuringRegression) {
+                    // During active regression rounds testers can edit metadata/status but not issue details body.
+                    $description = (string)$oldIssue['description'];
                 }
 
                 $pageSelection = normalizeIssuePageSelection($db, $projectId, $pageId, $pageIds);
