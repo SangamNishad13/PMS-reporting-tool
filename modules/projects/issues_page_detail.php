@@ -695,6 +695,8 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
 
+    <?php include __DIR__ . '/partials/regression_panel.php'; ?>
+
     <?php if (!empty($groupedUrls)): ?>
     <!-- Collapsible Grouped URLs -->
     <div class="collapse mb-2" id="pageUrlsList">
@@ -1299,6 +1301,7 @@ include __DIR__ . '/../../includes/header.php';
 
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js?v=20260210180000"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
+<script src="<?php echo $baseDir; ?>/modules/projects/js/regression-panel.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/assets/js/issue-screenshot-manager.js?v=<?php echo time(); ?>"></script>
 <script nonce="<?php echo $cspNonce ?? ''; ?>">
 document.addEventListener('pms:issues-changed', function (e) {
