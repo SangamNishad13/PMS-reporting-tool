@@ -941,10 +941,11 @@ if ($wb !== false) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SHEET 2: URL Details — A=Page No, B=Page Name, C=Unique URL, D=Grouped URLs
+// SHEET 2: URL Details — A=Page Number, B=Page Name, C=Unique URL, D=Grouped URLs
 // ══════════════════════════════════════════════════════════════════════════════
 $sh2 = $zip->getFromName('xl/worksheets/sheet2.xml');
 clearDataRows($sh2);
+setCell($sh2, 'A1', 'Page Number');
 
 $rows2 = '';
 foreach ($projectPages as $idx => $page) {
