@@ -135,6 +135,11 @@ function getActiveRegressionRoundInfo($db, $projectId) {
 }
 
 function ensureRegressionRoundIssueVersionsTable(PDO $db): void {
+    $stmt = $db->query("SHOW TABLES LIKE 'regression_round_issue_versions'");
+    if ($stmt && $stmt->rowCount() > 0) {
+        return; // Table exists, avoid running DDL which causes implicit commit in MySQL
+    }
+
     $db->exec("CREATE TABLE IF NOT EXISTS regression_round_issue_versions (
         id INT NOT NULL AUTO_INCREMENT,
         round_id INT NOT NULL,

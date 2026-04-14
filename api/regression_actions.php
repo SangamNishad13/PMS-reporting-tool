@@ -20,6 +20,11 @@ $userId = (int)($_SESSION['user_id'] ?? 0);
 $userRole = $_SESSION['role'] ?? '';
 
 function ensureRegressionRoundsTable(PDO $db): void {
+    $stmt = $db->query("SHOW TABLES LIKE 'regression_rounds'");
+    if ($stmt && $stmt->rowCount() > 0) {
+        return; // Table exists, avoid running DDL which causes implicit commit in MySQL
+    }
+
     $db->exec("CREATE TABLE IF NOT EXISTS regression_rounds (
         id INT NOT NULL AUTO_INCREMENT,
         project_id INT DEFAULT NULL,
@@ -41,6 +46,11 @@ function ensureRegressionRoundsTable(PDO $db): void {
 }
 
 function ensureRegressionRoundIssueVersionsTable(PDO $db): void {
+    $stmt = $db->query("SHOW TABLES LIKE 'regression_round_issue_versions'");
+    if ($stmt && $stmt->rowCount() > 0) {
+        return; // Table exists, avoid running DDL which causes implicit commit in MySQL
+    }
+
     $db->exec("CREATE TABLE IF NOT EXISTS regression_round_issue_versions (
         id INT NOT NULL AUTO_INCREMENT,
         round_id INT NOT NULL,
