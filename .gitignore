@@ -17,3 +17,17 @@ api/*.log
 .env
 .env.*
 !.env.example
+
+node_modules/
+
+# User Uploads & dynamic assets
+uploads/*
+!uploads/.gitkeep
+assets/uploads/*
+!assets/uploads/.gitkeep
+storage/*
+!storage/.gitkeep
+
+# Temporary / Runtime Files
+tmp/*
+!tmp/.gitkeep
