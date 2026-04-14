@@ -274,6 +274,9 @@
             }
 
             renderFinalIssues();
+            if (typeof showToast === 'function') {
+                var statusLabel = (ProjectConfig.issueStatuses || []).find(function (status) { return String(status.id) === String(statusId); });
+                var label = statusLabel ? (statusLabel.status_label || statusLabel.name || 'Status updated') : 'Status updated';
                 showToast('Issue moved to ' + label, 'success');
             }
 
