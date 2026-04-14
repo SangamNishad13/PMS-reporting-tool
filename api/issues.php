@@ -1469,8 +1469,10 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
 
         $db->commit();
 
-        if ((int) $id > 0 && (int) $clientReady === 1) {
-            publishIssueClientSnapshot($db, (int) $id);
+        if ((int) $id > 0) {
+            if ((int) $clientReady === 1 || $userRole === 'client' || isIssueVisibleToClientThroughSnapshot($db, $id, $projectId)) {
+                publishIssueClientSnapshot($db, (int) $id);
+            }
         }
         
         // Debug logging
