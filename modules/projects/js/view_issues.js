@@ -274,10 +274,12 @@
             }
 
             renderFinalIssues();
-            if (typeof showToast === 'function') {
-                var statusLabel = (ProjectConfig.issueStatuses || []).find(function (status) { return String(status.id) === String(statusId); });
-                var label = statusLabel ? (statusLabel.status_label || statusLabel.name || 'Status updated') : 'Status updated';
                 showToast('Issue moved to ' + label, 'success');
+            }
+
+            // Refresh regression stats if the panel exists
+            if (typeof window.loadRegressionStats === 'function') {
+                window.loadRegressionStats();
             }
         } catch (error) {
             if (typeof showToast === 'function') {
@@ -7057,6 +7059,11 @@
                 page_id: String(selectedPageId || ''),
                 issue: json.issue || null  // pass full updated issue for instant row update
             });
+
+            // Refresh regression stats if the panel exists
+            if (typeof window.loadRegressionStats === 'function') {
+                window.loadRegressionStats();
+            }
         } catch (e) {
             // Reset button state on error
             if (saveBtn) {
@@ -7234,6 +7241,11 @@
                 ids: ids.slice(),
                 page_id: String(issueData.selectedPageId || '')
             });
+
+            // Refresh regression stats if the panel exists
+            if (typeof window.loadRegressionStats === 'function') {
+                window.loadRegressionStats();
+            }
         } catch (e) { issueNotify((e && e.message) ? e.message : 'Unable to delete issues.', 'danger'); }
     }
 

@@ -359,6 +359,10 @@
     function init() {
         loadRegressionStats();
 
+        // Expose globally for issues module refresh
+        window.loadRegressionStats = loadRegressionStats;
+        window.loadRegressionRounds = loadRegressionRounds;
+
         wireConfirmModal();
 
         var newRoundBtn = document.getElementById('btnNewRegressionRound');

@@ -1983,6 +1983,11 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
         if (!markJson || !markJson.success) {
             throw new Error((markJson && markJson.message) ? markJson.message : 'Unable to mark finding as moved');
         }
+
+        // Refresh regression stats if the panel exists
+        if (typeof window.loadRegressionStats === 'function') {
+            window.loadRegressionStats();
+        }
     }
 
     function syncFinalIssuesCountBadgeFallback() {
