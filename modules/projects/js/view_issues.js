@@ -40,8 +40,7 @@
     var isAdminUser = userRole === 'admin' || userRole === 'superadmin';
     var isTesterRole = userRole === 'at_tester' || userRole === 'ft_tester';
     
-    console.log('[DIAG] view_issues.js loaded. Role:', userRole, 'isAdmin:', isAdminUser, 'isTester:', isTesterRole);
-    console.log('[DIAG] ProjectConfig:', ProjectConfig);
+
     var canUpdateIssueQaStatus = !!ProjectConfig.canUpdateIssueQaStatus;
     var clientEditableIssueStatuses = (ProjectConfig.issueStatuses || []).map(function (status) {
         return normalizeIssueStatusSlug(status.status_label || status.name || status.label || '');
@@ -2974,12 +2973,10 @@
     }
 
     function toggleFinalIssueFields(enable) {
-        console.log('[DIAG] toggleFinalIssueFields called. enable:', enable, 'userRole:', userRole);
         var modal = document.getElementById('finalIssueModal');
         if (!modal) return;
 
         var runFieldCheck = function(source) {
-            console.log('[DIAG] [Pass:' + source + '] Checking fields for enablement. Target status:', enable);
             
             // If we are supposed to be enabled AND user is NOT a client, FORCE IT
             var forceOn = (enable && userRole !== 'client');
@@ -6709,7 +6706,7 @@
         cbs.forEach(function (fn) { try { fn(); } catch (e) {} });
         
         // NEW: Once metadata is ready, ensure fields are enabled correctly
-        console.log('[DIAG] Metadata resolved. Refreshing UI state.');
+
         var modalEl = document.getElementById('finalIssueModal');
         if (modalEl && (modalEl.classList.contains('show') || modalEl.classList.contains('is-open'))) {
             // Only re-apply if the modal is currently open
@@ -6931,9 +6928,7 @@
             var json = null;
             try {
                 var text = await res.text();
-                console.log('Raw API response:', text);
                 json = text ? JSON.parse(text) : null;
-                console.log('Parsed API response:', json);
             } catch (pE) {
                 console.error('Failed to parse JSON response', pE);
                 console.error('Raw text that failed to parse:', text);
@@ -8434,7 +8429,7 @@
         updateEditingState();
         renderAll();
         loadFinalIssues(issueData.selectedPageId);
-        console.log('[DIAG] Detail-page startup: loading issues for page', issueData.selectedPageId);
+
     }
 
     // Define editFinalIssue for table edit buttons
