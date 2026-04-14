@@ -168,11 +168,57 @@ try {
         }
 
         if ($activeRound && !empty($activeRound['started_at'])) {
-            $regressionIssueCountStmt = $db->prepare("\n                SELECT COUNT(DISTINCT r.issue_id)\n                FROM (\n                    SELECT ic.issue_id\n                    FROM issue_comments ic\n                    INNER JOIN issues i1 ON i1.id = ic.issue_id\n                    WHERE i1.project_id = ?\n                      AND ic.comment_type = 'regression'\n                    UNION\n                    SELECT i2.id AS issue_id\n                    FROM issues i2\n                    WHERE i2.project_id = ?\n                      AND i2.created_at >= ?\n                ) r\n            ");
-            $regressionIssueCountStmt->execute([$projectId, $projectId, $activeRound['started_at']]);
+            $roundId = (int)$activeRound['id'];
+            $startedAt = (string)$activeRound['started_at'];
 
-            $statusStmt = $db->prepare("\n                SELECT COALESCE(s.name, 'Unknown') AS status_name, COUNT(DISTINCT i.id) AS cnt\n                FROM issues i\n                LEFT JOIN issue_statuses s ON s.id = i.status_id\n                WHERE i.project_id = ?\n                  AND i.id IN (\n                      SELECT ic2.issue_id\n                      FROM issue_comments ic2\n                      INNER JOIN issues i3 ON i3.id = ic2.issue_id\n                      WHERE i3.project_id = ?\n                        AND ic2.comment_type = 'regression'\n                      UNION\n                      SELECT i4.id\n                      FROM issues i4\n                      WHERE i4.project_id = ?\n                        AND i4.created_at >= ?\n                  )\n                GROUP BY COALESCE(s.name, 'Unknown')\n                ORDER BY cnt DESC\n            ");
-            $statusStmt->execute([$projectId, $projectId, $projectId, $activeRound['started_at']]);
+            $regressionIssueCountStmt = $db->prepare("
+                SELECT COUNT(DISTINCT r.issue_id)
+                FROM (
+                    SELECT ic.issue_id
+                    FROM issue_comments ic
+                    INNER JOIN issues i1 ON i1.id = ic.issue_id
+                    WHERE i1.project_id = ?
+                      AND ic.comment_type = 'regression'
+                      AND ic.created_at >= ?
+                    UNION
+                    SELECT i2.id AS issue_id
+                    FROM issues i2
+                    WHERE i2.project_id = ?
+                      AND i2.created_at >= ?
+                    UNION
+                    SELECT v.issue_id
+                    FROM regression_round_issue_versions v
+                    WHERE v.round_id = ?
+                ) r
+            ");
+            $regressionIssueCountStmt->execute([$projectId, $startedAt, $projectId, $startedAt, $roundId]);
+
+            $statusStmt = $db->prepare("
+                SELECT COALESCE(s.name, 'Unknown') AS status_name, COUNT(DISTINCT i.id) AS cnt
+                FROM issues i
+                LEFT JOIN issue_statuses s ON s.id = i.status_id
+                WHERE i.project_id = ?
+                  AND i.id IN (
+                      SELECT ic2.issue_id
+                      FROM issue_comments ic2
+                      INNER JOIN issues i3 ON i3.id = ic2.issue_id
+                      WHERE i3.project_id = ?
+                        AND ic2.comment_type = 'regression'
+                        AND ic2.created_at >= ?
+                      UNION
+                      SELECT i4.id
+                      FROM issues i4
+                      WHERE i4.project_id = ?
+                        AND i4.created_at >= ?
+                      UNION
+                      SELECT v.issue_id
+                      FROM regression_round_issue_versions v
+                      WHERE v.round_id = ?
+                  )
+                GROUP BY COALESCE(s.name, 'Unknown')
+                ORDER BY cnt DESC
+            ");
+            $statusStmt->execute([$projectId, $projectId, $startedAt, $projectId, $startedAt, $roundId]);
         } else {
             $regressionIssueCountStmt = $db->prepare("\n                SELECT COUNT(DISTINCT ic.issue_id)\n                FROM issue_comments ic\n                INNER JOIN issues i ON i.id = ic.issue_id\n                WHERE i.project_id = ?\n                  AND ic.comment_type = 'regression'\n            ");
             $regressionIssueCountStmt->execute([$projectId]);
