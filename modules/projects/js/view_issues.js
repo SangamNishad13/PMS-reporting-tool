@@ -8410,6 +8410,17 @@
     initSummernote();
     loadCommonIssues();
 
+    // On issues_page_detail.php the page_id comes from the URL (set above at startup).
+    // The DOMContentLoaded auto-select only fires when #issues tab exists on the page.
+    // For the standalone detail page there is no tab, so we must load issues here.
+    if (issueData.selectedPageId) {
+        ensurePageStore(issueData.pages, issueData.selectedPageId);
+        updateEditingState();
+        renderAll();
+        loadFinalIssues(issueData.selectedPageId);
+        console.log('[DIAG] Detail-page startup: loading issues for page', issueData.selectedPageId);
+    }
+
     // Define editFinalIssue for table edit buttons
     window.editFinalIssue = function (id) {
         var issue = issueData.pages[issueData.selectedPageId].final.find(function (i) { return String(i.id) === String(id); });

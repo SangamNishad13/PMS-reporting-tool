@@ -7,7 +7,14 @@ function jsonResponse($data, $statusCode = 200) {
     while (ob_get_level()) ob_end_clean();
     http_response_code($statusCode);
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    // Ensure all data is UTF-8 to prevent json_encode failure
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
+    if ($json === false) {
+        error_log("json_encode failed: " . json_last_error_msg());
+        echo json_encode(['error' => 'JSON encoding failed', 'msg' => json_last_error_msg()]);
+    } else {
+        echo $json;
+    }
     exit;
 }
 
