@@ -36,9 +36,11 @@
     var issueCommentsApi = ProjectConfig.baseDir + '/api/issue_comments.php';
     var issueDraftsApi = ProjectConfig.baseDir + '/api/issue_drafts.php';
     var uniqueIssuePages = ProjectConfig.uniqueIssuePages || [];
-    var userRole = String(ProjectConfig.userRole || '').toLowerCase();
     var isAdminUser = userRole === 'admin' || userRole === 'admin' || userRole === 'superadmin';
     var isTesterRole = userRole === 'at_tester' || userRole === 'ft_tester';
+    
+    console.log('[DIAG] view_issues.js loaded. Role:', userRole, 'isAdmin:', isAdminUser, 'isTester:', isTesterRole);
+    console.log('[DIAG] ProjectConfig:', ProjectConfig);
     var canUpdateIssueQaStatus = !!ProjectConfig.canUpdateIssueQaStatus;
     var clientEditableIssueStatuses = (ProjectConfig.issueStatuses || []).map(function (status) {
         return normalizeIssueStatusSlug(status.status_label || status.name || status.label || '');
@@ -2966,6 +2968,7 @@
     }
 
     function toggleFinalIssueFields(enable) {
+        console.log('[DIAG] toggleFinalIssueFields called. enable:', enable, 'userRole:', userRole);
         var form = document.getElementById('finalIssueModal');
         if (!form) return;
         form.querySelectorAll('input, select, textarea').forEach(function (el) {
@@ -2981,6 +2984,7 @@
             el.disabled = !enable;
         });
         if (window.jQuery && jQuery.fn.summernote) {
+            console.log('[DIAG] Setting Summernote state:', enable ? 'enable' : 'disable');
             jQuery('#finalIssueDetails').summernote(enable ? 'enable' : 'disable');
             jQuery('#finalIssueCommentEditor').summernote('enable');
         }
@@ -2992,6 +2996,20 @@
         applyIssueQaPermissionState();
         applyClientIssueEditingState(enable);
         applyTesterRegressionReadonlyState();
+        
+        // EMERGENCY OVERRIDE: If we want things enabled, FORCE THEM again here
+        if (enable && userRole !== 'client') {
+            console.log('[DIAG] Applying Emergency Enable Override');
+            var commentTypeEl = document.getElementById('finalIssueCommentType');
+            if (commentTypeEl) commentTypeEl.disabled = false;
+            
+            jQuery('.issue-dynamic-field').prop('disabled', false);
+            jQuery('#finalIssueMetadataContainer select, #finalIssueMetadataContainer input').prop('disabled', false);
+            
+            if (window.jQuery && jQuery.fn.select2) {
+                jQuery('.issue-dynamic-field').trigger('change.select2');
+            }
+        }
     }
 
     function openFinalViewer(issue) {
