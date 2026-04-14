@@ -152,43 +152,75 @@ try {
     }
 
     if ($action === 'get_stats') {
-        $activeRoundStmt = $db->prepare("\n            SELECT id, round_number, started_at\n            FROM regression_rounds\n            WHERE project_id = ?\n              AND status = 'in_progress'\n              AND is_active = 1\n            ORDER BY round_number DESC\n            LIMIT 1\n        ");
+        $activeRoundStmt = $db->prepare("
+            SELECT id, round_number, started_at, status, is_active
+            FROM regression_rounds
+            WHERE project_id = ?
+            ORDER BY (status = 'in_progress' AND is_active = 1) DESC, round_number DESC
+            LIMIT 1
+        ");
         $activeRoundStmt->execute([$projectId]);
         $activeRound = $activeRoundStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
-        $totalStmt = $db->prepare("SELECT COUNT(*) FROM issues WHERE project_id = ?");
-        $totalStmt->execute([$projectId]);
+        $issuesTotalSql = "SELECT COUNT(*) FROM issues WHERE project_id = ?";
+        $issuesTotalParams = [$projectId];
+        if ($pageId > 0) {
+            $issuesTotalSql = "
+                SELECT COUNT(DISTINCT i.id) 
+                FROM issues i 
+                LEFT JOIN issue_pages ip ON ip.issue_id = i.id
+                WHERE i.project_id = ? AND (i.page_id = ? OR ip.page_id = ?)
+            ";
+            $issuesTotalParams = [$projectId, $pageId, $pageId];
+        }
+        $totalStmt = $db->prepare($issuesTotalSql);
+        $totalStmt->execute($issuesTotalParams);
         $issuesTotal = (int)$totalStmt->fetchColumn();
 
         $newIssuesInRoundTotal = 0;
         if ($activeRound && !empty($activeRound['started_at'])) {
-            $newIssuesStmt = $db->prepare("\n                SELECT COUNT(*)\n                FROM issues\n                WHERE project_id = ?\n                  AND created_at >= ?\n            ");
-            $newIssuesStmt->execute([$projectId, $activeRound['started_at']]);
+            $newSql = "SELECT COUNT(*) FROM issues WHERE project_id = ? AND created_at >= ?";
+            $newParams = [$projectId, $activeRound['started_at']];
+            if ($pageId > 0) {
+                $newSql = "
+                    SELECT COUNT(DISTINCT i.id) FROM issues i 
+                    LEFT JOIN issue_pages ip ON ip.issue_id = i.id
+                    WHERE i.project_id = ? AND i.created_at >= ? AND (i.page_id = ? OR ip.page_id = ?)
+                ";
+                $newParams = [$projectId, $activeRound['started_at'], $pageId, $pageId];
+            }
+            $newIssuesStmt = $db->prepare($newSql);
+            $newIssuesStmt->execute($newParams);
             $newIssuesInRoundTotal = (int)$newIssuesStmt->fetchColumn();
         }
 
         if ($activeRound && !empty($activeRound['started_at'])) {
             $roundId = (int)$activeRound['id'];
             $startedAt = (string)$activeRound['started_at'];
+            $pageFilter = ($pageId > 0) ? " AND (i.page_id = $pageId OR EXISTS(SELECT 1 FROM issue_pages ip2 WHERE ip2.issue_id = i.id AND ip2.page_id = $pageId))" : "";
 
             $regressionIssueCountStmt = $db->prepare("
                 SELECT COUNT(DISTINCT r.issue_id)
                 FROM (
                     SELECT ic.issue_id
                     FROM issue_comments ic
-                    INNER JOIN issues i1 ON i1.id = ic.issue_id
-                    WHERE i1.project_id = ?
+                    INNER JOIN issues i ON i.id = ic.issue_id
+                    WHERE i.project_id = ?
                       AND ic.comment_type = 'regression'
                       AND ic.created_at >= ?
+                      $pageFilter
                     UNION
                     SELECT i2.id AS issue_id
                     FROM issues i2
                     WHERE i2.project_id = ?
                       AND i2.created_at >= ?
+                      " . (($pageId > 0) ? " AND (i2.page_id = $pageId OR EXISTS(SELECT 1 FROM issue_pages ip3 WHERE ip3.issue_id = i2.id AND ip3.page_id = $pageId))" : "") . "
                     UNION
                     SELECT v.issue_id
                     FROM regression_round_issue_versions v
+                    INNER JOIN issues i4 ON i4.id = v.issue_id
                     WHERE v.round_id = ?
+                      " . (($pageId > 0) ? " AND (i4.page_id = $pageId OR EXISTS(SELECT 1 FROM issue_pages ip4 WHERE ip4.issue_id = i4.id AND ip4.page_id = $pageId))" : "") . "
                 ) r
             ");
             $regressionIssueCountStmt->execute([$projectId, $startedAt, $projectId, $startedAt, $roundId]);
@@ -205,25 +237,47 @@ try {
                       WHERE i3.project_id = ?
                         AND ic2.comment_type = 'regression'
                         AND ic2.created_at >= ?
+                        " . (($pageId > 0) ? " AND (i3.page_id = $pageId OR EXISTS(SELECT 1 FROM issue_pages ip5 WHERE ip5.issue_id = i3.id AND ip5.page_id = $pageId))" : "") . "
                       UNION
                       SELECT i4.id
                       FROM issues i4
                       WHERE i4.project_id = ?
                         AND i4.created_at >= ?
+                        " . (($pageId > 0) ? " AND (i4.page_id = $pageId OR EXISTS(SELECT 1 FROM issue_pages ip6 WHERE ip6.issue_id = i4.id AND ip6.page_id = $pageId))" : "") . "
                       UNION
                       SELECT v.issue_id
                       FROM regression_round_issue_versions v
+                      INNER JOIN issues i5 ON i5.id = v.issue_id
                       WHERE v.round_id = ?
+                        " . (($pageId > 0) ? " AND (i5.page_id = $pageId OR EXISTS(SELECT 1 FROM issue_pages ip7 WHERE ip7.issue_id = i5.id AND ip7.page_id = $pageId))" : "") . "
                   )
                 GROUP BY COALESCE(s.name, 'Unknown')
                 ORDER BY cnt DESC
             ");
             $statusStmt->execute([$projectId, $projectId, $startedAt, $projectId, $startedAt, $roundId]);
         } else {
-            $regressionIssueCountStmt = $db->prepare("\n                SELECT COUNT(DISTINCT ic.issue_id)\n                FROM issue_comments ic\n                INNER JOIN issues i ON i.id = ic.issue_id\n                WHERE i.project_id = ?\n                  AND ic.comment_type = 'regression'\n            ");
+            $pageSelector = ($pageId > 0) ? " AND (i.page_id = $pageId OR EXISTS(SELECT 1 FROM issue_pages ip8 WHERE ip8.issue_id = i.id AND ip8.page_id = $pageId))" : "";
+            
+            $regressionIssueCountStmt = $db->prepare("
+                SELECT COUNT(DISTINCT ic.issue_id)
+                FROM issue_comments ic
+                INNER JOIN issues i ON i.id = ic.issue_id
+                WHERE i.project_id = ?
+                  AND ic.comment_type = 'regression'
+                  $pageSelector
+            ");
             $regressionIssueCountStmt->execute([$projectId]);
 
-            $statusStmt = $db->prepare("\n                SELECT COALESCE(s.name, 'Unknown') AS status_name, COUNT(DISTINCT i.id) AS cnt\n                FROM issues i\n                INNER JOIN issue_comments ic ON ic.issue_id = i.id AND ic.comment_type = 'regression'\n                LEFT JOIN issue_statuses s ON s.id = i.status_id\n                WHERE i.project_id = ?\n                GROUP BY COALESCE(s.name, 'Unknown')\n                ORDER BY cnt DESC\n            ");
+            $statusStmt = $db->prepare("
+                SELECT COALESCE(s.name, 'Unknown') AS status_name, COUNT(DISTINCT i.id) AS cnt
+                FROM issues i
+                INNER JOIN issue_comments ic ON ic.issue_id = i.id AND ic.comment_type = 'regression'
+                LEFT JOIN issue_statuses s ON s.id = i.status_id
+                WHERE i.project_id = ?
+                  $pageSelector
+                GROUP BY COALESCE(s.name, 'Unknown')
+                ORDER BY cnt DESC
+            ");
             $statusStmt->execute([$projectId]);
         }
 
