@@ -2969,52 +2969,72 @@
 
     function toggleFinalIssueFields(enable) {
         console.log('[DIAG] toggleFinalIssueFields called. enable:', enable, 'userRole:', userRole);
-        var form = document.getElementById('finalIssueModal');
-        if (!form) return;
-        
-        var runEnablement = function(source) {
-            console.log('[DIAG] Running field enablement logic from:', source);
-            form.querySelectorAll('input, select, textarea').forEach(function (el) {
+        var modal = document.getElementById('finalIssueModal');
+        if (!modal) return;
+
+        var runFieldCheck = function(source) {
+            console.log('[DIAG] [Pass:' + source + '] Checking fields for enablement. Target status:', enable);
+            
+            // If we are supposed to be enabled AND user is NOT a client, FORCE IT
+            var forceOn = (enable && userRole !== 'client');
+            
+            modal.querySelectorAll('input, select, textarea').forEach(function (el) {
                 if (el.type === 'hidden') return;
                 if (el.closest('#finalIssueComments')) return;
                 
-                // NEVER disable the comment type dropdown or dynamic metadata fields
+                // Fields that must ALWAYS be enabled for every Edit mode
                 if (el.id === 'finalIssueCommentType' || el.classList.contains('issue-dynamic-field')) {
                     el.disabled = false;
                     return;
                 }
                 
-                el.disabled = !enable;
+                // If forceOn is true, we must be enabled
+                if (forceOn) {
+                    el.disabled = false;
+                } else {
+                    el.disabled = !enable;
+                }
             });
-            
+
             if (window.jQuery && jQuery.fn.summernote) {
-                jQuery('#finalIssueDetails').summernote(enable ? 'enable' : 'disable');
+                if (forceOn) {
+                    jQuery('#finalIssueDetails').summernote('enable');
+                } else {
+                    jQuery('#finalIssueDetails').summernote(enable ? 'enable' : 'disable');
+                }
                 jQuery('#finalIssueCommentEditor').summernote('enable');
             }
-            
+
             if (window.jQuery && jQuery.fn.select2) {
-                jQuery('.issue-select2, .issue-select2-tags').not('.issue-dynamic-field').prop('disabled', !enable);
-                jQuery('.issue-dynamic-field').prop('disabled', false); // Always enabled
+                if (forceOn) {
+                    jQuery('.issue-select2, .issue-select2-tags').prop('disabled', false);
+                } else {
+                    jQuery('.issue-select2, .issue-select2-tags').not('.issue-dynamic-field').prop('disabled', !enable);
+                    jQuery('.issue-dynamic-field').prop('disabled', false);
+                }
                 
-                // Also trigger metadata container specifically
-                jQuery('#finalIssueMetadataContainer select, #finalIssueMetadataContainer input').prop('disabled', false);
+                jQuery('#finalIssueMetadataContainer select, #finalIssueMetadataContainer input').prop('disabled', !forceOn && !enable);
                 if (enable) {
                     jQuery('.issue-dynamic-field').filter(':visible').trigger('change.select2');
                 }
             }
-            
+
             applyIssueQaPermissionState();
             applyClientIssueEditingState(enable);
             applyTesterRegressionReadonlyState();
         };
 
-        // Run immediately
-        runEnablement('direct');
+        // Pass 1: Immediate
+        runFieldCheck('initial');
         
-        // If enabling, add a couple of safety delayed runs for late-rendering metadata
+        // Only run safety loop if we are trying to ENABLE or if it's already "enabled"
         if (enable) {
-            setTimeout(function() { runEnablement('500ms-safety'); }, 500);
-            setTimeout(function() { runEnablement('2000ms-safety'); }, 2000);
+            // Pass 2: 500ms
+            setTimeout(function() { runFieldCheck('500ms-safety'); }, 500);
+            // Pass 3: 2000ms
+            setTimeout(function() { runFieldCheck('2s-safety'); }, 2000);
+            // Pass 4: 5000ms (Total brute force for slow servers)
+            setTimeout(function() { runFieldCheck('5s-brute-force'); }, 5000);
         }
     }
 

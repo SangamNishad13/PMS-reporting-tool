@@ -118,14 +118,8 @@ foreach ($dirs as $dir) {
     $safeBranch = escapeshellarg(BRANCH);
     $cmd = "cd $safeDir"
         . " && git fetch origin $safeBranch 2>&1"
-        . " && git diff --name-only --diff-filter=AMT HEAD FETCH_HEAD"
-        . " | grep -Ev '^(uploads/|storage/|tmp/)'"
-        . " | while IFS= read -r f; do"
-        . " [ -z \"$f\" ] && continue;"
-        . " mkdir -p \"$(dirname \"$f\")\";"
-        . " git show \"FETCH_HEAD:$f\" > \"$f\";"
-        . " chown www-data:www-data \"$f\" 2>/dev/null || true;"
-        . " done 2>&1";
+        . " && git reset --hard origin/$safeBranch 2>&1"
+        . " && chown -R www-data:www-data . 2>&1";
     $output = shell_exec($cmd);
     deploy_log("[$dir]\n" . (string)$output);
 }
