@@ -1157,8 +1157,10 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                 }
 
                 if ($userRole === 'client' && (int)($oldIssue['client_ready'] ?? 0) !== 1) {
-                    if ($db->inTransaction()) $db->rollBack();
-                    jsonError('Permission denied', 403);
+                    if (!isIssueVisibleToClientThroughSnapshot($db, $id, $projectId)) {
+                        if ($db->inTransaction()) $db->rollBack();
+                        jsonError('Permission denied', 403);
+                    }
                 }
 
                 if ($expectedUpdatedAt !== '' && !empty($oldIssue['updated_at']) && $expectedUpdatedAt !== (string)$oldIssue['updated_at']) {
