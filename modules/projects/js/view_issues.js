@@ -712,36 +712,13 @@
     }
 
     async function refreshTesterRegressionLock() {
-        if (!isTesterRole || !projectId) {
-            testerRegressionLock.active = false;
-            testerRegressionLock.roundNumber = 0;
-            testerRegressionLock.loaded = true;
-            return false;
-        }
-
-        try {
-            var res = await fetch(regressionApiBase + '?action=get_stats&project_id=' + encodeURIComponent(projectId), {
-                credentials: 'same-origin'
-            });
-            if (!res.ok) {
-                testerRegressionLock.loaded = true;
-                return testerRegressionLock.active;
-            }
-            var json = await res.json();
-            var activeRound = (json && json.success) ? (json.active_round || null) : null;
-            var roundNumber = activeRound ? parseInt(activeRound.round_number || 0, 10) : 0;
-            testerRegressionLock.active = roundNumber > 0;
-            testerRegressionLock.roundNumber = roundNumber > 0 ? roundNumber : 0;
-            testerRegressionLock.loaded = true;
-            return testerRegressionLock.active;
-        } catch (e) {
-            testerRegressionLock.loaded = true;
-            return testerRegressionLock.active;
-        }
+        // Feature disabled - always returns false immediately
+        return false;
     }
 
     function applyTesterRegressionReadonlyState() {
-        // These fields must ALWAYS be enabled for EVERYONE
+        // Regression lock concept removed. 
+        // Ensure Comment Type and Metadata fields are always enabled for everyone.
         var commentTypeEl = document.getElementById('finalIssueCommentType');
         if (commentTypeEl) commentTypeEl.disabled = false;
         
@@ -749,34 +726,21 @@
             jQuery('.issue-dynamic-field').prop('disabled', false).trigger('change.select2');
         }
 
-        if (!isTesterRole) return;
-
-        var locked = isTesterEditLockedByRegression();
-        var lockMessage = getTesterRegressionLockMessage();
-
         var detailsEl = document.getElementById('finalIssueDetails');
-        // Only lock the details field for testers during regression
         if (window.jQuery && jQuery.fn.summernote) {
-            if (locked) {
-                jQuery('#finalIssueDetails').summernote('disable');
-            } else {
-                jQuery('#finalIssueDetails').summernote('enable');
+            var $details = jQuery('#finalIssueDetails');
+            if ($details.length) {
+                $details.summernote('enable');
             }
         } else if (detailsEl) {
-            detailsEl.disabled = locked ? true : false;
+            detailsEl.disabled = false;
         }
 
         if (detailsEl) {
-            if (locked) {
-                detailsEl.setAttribute('data-regression-readonly', '1');
-                detailsEl.setAttribute('title', lockMessage);
-            } else {
-                detailsEl.removeAttribute('data-regression-readonly');
-                detailsEl.removeAttribute('title');
-            }
+            detailsEl.removeAttribute('data-regression-readonly');
+            detailsEl.removeAttribute('title');
         }
 
-        // Ensure metadata fields are always enabled for testers (fallback/extra insurance)
         if (window.jQuery && jQuery.fn.select2) {
             jQuery('#finalIssuePages, #finalIssueGroupedUrls, #finalIssueReporters, #finalIssueAssignee').prop('disabled', false).trigger('change.select2');
         }
@@ -1003,7 +967,7 @@
         s = s.replace(/^\s*(&lt;\/strong&gt;&lt;\/p&gt;\s*)+/ig, '');
         s = s.replace(/<p>\s*<strong>\s*$/ig, '');
         s = s.replace(/&lt;p&gt;\s*&lt;strong&gt;\s*$/ig, '');
-        s = s.replace(/&lt;pre&gt;\s*&lt;code&gt;/ig, '');
+        s = s.replace(/&lt;\/pre&gt;/ig, '');
         s = s.replace(/&lt;\/code&gt;\s*&lt;\/pre&gt;/ig, '');
         s = decodeHtmlEntities(s);
         s = s.replace(/<pre>\s*<code>/ig, '');
@@ -2093,17 +2057,6 @@
                 var $source = $editor.prev('textarea');
                 var isFinalIssueDetailsEditor = $source.length && $source.attr('id') === 'finalIssueDetails';
 
-                if (isFinalIssueDetailsEditor && isTesterEditLockedByRegression()) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    var src = $img.attr('src') || '';
-                    var alt = $img.attr('alt') || '';
-                    if (src) {
-                        openIssueImageModal(src, alt);
-                    }
-                    return;
-                }
-
                 e.preventDefault();
                 issueData.imageUpload.isEditing = true;
                 issueData.imageUpload.editingImg = $img;
@@ -3135,9 +3088,7 @@
         }
 
         clearIssueConflictNotice();
-
-        await refreshTesterRegressionLock();
-
+        
         toggleFinalIssueFields(true);
         document.getElementById('finalEditorTitle').textContent = issue ? 'Edit Final Issue' : 'New Final Issue';
         updateClientIssueSidebarHeader(issue);
