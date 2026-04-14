@@ -1,15 +1,37 @@
 <?php
+// Simple .env loader for environment-specific configuration
+if (file_exists(__DIR__ . '/../.env')) {
+    $envLines = file(__DIR__ . '/../.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($envLines as $line) {
+        if (strpos(trim($line), '#') === 0) continue;
+        if (strpos($line, '=') !== false) {
+            list($name, $value) = explode('=', $line, 2);
+            $name = trim($name);
+            $value = trim($value);
+            // Strip optional quotes
+            if (preg_match('/^["\'](.*)["\']$/', $value, $matches)) {
+                $value = $matches[1];
+            }
+            if ($name !== '') {
+                putenv("$name=$value");
+                $_ENV[$name] = $value;
+                $_SERVER[$name] = $value;
+            }
+        }
+    }
+}
+
 // Database configuration - prefer environment variables on production hosts.
 // SECURITY: Never use default root/empty credentials in production.
-// Set DB_HOST, DB_NAME, DB_USER, DB_PASS as environment variables.
+// Set DB_HOST, DB_NAME, DB_USER, DB_PASS as environment variables or in .env.
 define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
-define('DB_NAME', getenv('DB_NAME') ?: 'project_management');
-define('DB_USER', getenv('DB_USER') ?: 'root');
-define('DB_PASS', getenv('DB_PASS') ?: '');
+define('DB_NAME', getenv('DB_NAME') ?: 'athenaeu_project_management');
+define('DB_USER', getenv('DB_USER') ?: 'athenaeu_pms');
+define('DB_PASS', getenv('DB_PASS') ?: '$Sis@2026$');
 
 // Warn if running with default insecure credentials (non-CLI only)
 if (php_sapi_name() !== 'cli' && DB_USER === 'root' && DB_PASS === '') {
-    error_log('SECURITY WARNING: Application is running with default root/empty database credentials. Set DB_USER and DB_PASS environment variables immediately.');
+    error_log('SECURITY WARNING: Application is running with default root/empty database credentials.');
 }
 
 // Runtime performance tuning (OPcache hints, APCu)
