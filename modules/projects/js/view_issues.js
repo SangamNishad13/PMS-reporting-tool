@@ -741,6 +741,14 @@
     }
 
     function applyTesterRegressionReadonlyState() {
+        // These fields must ALWAYS be enabled for EVERYONE
+        var commentTypeEl = document.getElementById('finalIssueCommentType');
+        if (commentTypeEl) commentTypeEl.disabled = false;
+        
+        if (window.jQuery && jQuery.fn.select2) {
+            jQuery('.issue-dynamic-field').prop('disabled', false).trigger('change.select2');
+        }
+
         if (!isTesterRole) return;
 
         var locked = isTesterEditLockedByRegression();
@@ -768,9 +776,7 @@
             }
         }
 
-        // Ensure comment type and metadata fields are always enabled for testers
-        var commentTypeEl = document.getElementById('finalIssueCommentType');
-        if (commentTypeEl) commentTypeEl.disabled = false;
+        // Ensure metadata fields are always enabled for testers (fallback/extra insurance)
         if (window.jQuery && jQuery.fn.select2) {
             jQuery('#finalIssuePages, #finalIssueGroupedUrls, #finalIssueReporters, #finalIssueAssignee').prop('disabled', false).trigger('change.select2');
         }
@@ -3012,6 +3018,13 @@
         form.querySelectorAll('input, select, textarea').forEach(function (el) {
             if (el.type === 'hidden') return;
             if (el.closest('#finalIssueComments')) return;
+            
+            // NEVER disable the comment type dropdown or dynamic metadata fields
+            if (el.id === 'finalIssueCommentType' || el.classList.contains('issue-dynamic-field')) {
+                el.disabled = false;
+                return;
+            }
+            
             el.disabled = !enable;
         });
         if (window.jQuery && jQuery.fn.summernote) {
@@ -3019,7 +3032,9 @@
             jQuery('#finalIssueCommentEditor').summernote('enable');
         }
         if (window.jQuery && jQuery.fn.select2) {
-            jQuery('.issue-select2, .issue-select2-tags').prop('disabled', !enable);
+            // Bulk update select2 elements, excluding dynamic fields which we handle separately
+            jQuery('.issue-select2, .issue-select2-tags').not('.issue-dynamic-field').prop('disabled', !enable);
+            jQuery('.issue-dynamic-field').prop('disabled', false); // Always enabled
         }
         applyIssueQaPermissionState();
         applyClientIssueEditingState(enable);
