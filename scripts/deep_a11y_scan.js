@@ -1339,28 +1339,34 @@ function getRuleSpecificGuidance(violation, context) {
       });
     });
 
-    reportStatus(token, { message: `Engine found ${(scanResult.violations || []).length} violation types. Enhancing with AI...` });
+    const isAiEnhanceMode = (mode === 'ai_enhance');
+    const msg = isAiEnhanceMode 
+        ? `Engine found ${(scanResult.violations || []).length} violation types. Enhancing with AI...`
+        : `Engine found ${(scanResult.violations || []).length} violation types. Processing snapshots...`;
+    reportStatus(token, { message: msg });
 
     const violations = scanResult.violations || [];
     const CONCURRENCY = 3; // AI processing concurrency
     const aiResultsMap = new Map();
 
     // --- PHASE 1: Parallel AI Recommendations ---
-    for (let i = 0; i < violations.length; i += CONCURRENCY) {
-      const batch = violations.slice(i, i + CONCURRENCY);
-      await Promise.all(batch.map(async (v) => {
-          const allNodes = v.nodes || [];
-          const nodes = maxNodesArg > 0 ? allNodes.slice(0, maxNodesArg) : allNodes;
-          const snippet = nodes[0] ? String(nodes[0].html || '').trim() : '';
-          
-          try {
-              reportStatus(token, { message: `AI Analyzing: ${v.id}...` });
-              const aiData = await getAIEnhancedFindings(v, snippet, feedbackPath, token);
-              if (aiData) {
-                  aiResultsMap.set(v.id, aiData);
-              }
-          } catch (_) {}
-      }));
+    if (isAiEnhanceMode) {
+      for (let i = 0; i < violations.length; i += CONCURRENCY) {
+        const batch = violations.slice(i, i + CONCURRENCY);
+        await Promise.all(batch.map(async (v) => {
+            const allNodes = v.nodes || [];
+            const nodes = maxNodesArg > 0 ? allNodes.slice(0, maxNodesArg) : allNodes;
+            const snippet = nodes[0] ? String(nodes[0].html || '').trim() : '';
+            
+            try {
+                reportStatus(token, { message: `AI Analyzing: ${v.id}...` });
+                const aiData = await getAIEnhancedFindings(v, snippet, feedbackPath, token);
+                if (aiData) {
+                    aiResultsMap.set(v.id, aiData);
+                }
+            } catch (_) {}
+        }));
+      }
     }
 
     // --- PHASE 2: Sequential Puppeteer Processing ---
