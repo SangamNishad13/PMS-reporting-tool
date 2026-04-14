@@ -2971,44 +2971,50 @@
         console.log('[DIAG] toggleFinalIssueFields called. enable:', enable, 'userRole:', userRole);
         var form = document.getElementById('finalIssueModal');
         if (!form) return;
-        form.querySelectorAll('input, select, textarea').forEach(function (el) {
-            if (el.type === 'hidden') return;
-            if (el.closest('#finalIssueComments')) return;
-            
-            // NEVER disable the comment type dropdown or dynamic metadata fields
-            if (el.id === 'finalIssueCommentType' || el.classList.contains('issue-dynamic-field')) {
-                el.disabled = false;
-                return;
-            }
-            
-            el.disabled = !enable;
-        });
-        if (window.jQuery && jQuery.fn.summernote) {
-            console.log('[DIAG] Setting Summernote state:', enable ? 'enable' : 'disable');
-            jQuery('#finalIssueDetails').summernote(enable ? 'enable' : 'disable');
-            jQuery('#finalIssueCommentEditor').summernote('enable');
-        }
-        if (window.jQuery && jQuery.fn.select2) {
-            // Bulk update select2 elements, excluding dynamic fields which we handle separately
-            jQuery('.issue-select2, .issue-select2-tags').not('.issue-dynamic-field').prop('disabled', !enable);
-            jQuery('.issue-dynamic-field').prop('disabled', false); // Always enabled
-        }
-        applyIssueQaPermissionState();
-        applyClientIssueEditingState(enable);
-        applyTesterRegressionReadonlyState();
         
-        // EMERGENCY OVERRIDE: If we want things enabled, FORCE THEM again here
-        if (enable && userRole !== 'client') {
-            console.log('[DIAG] Applying Emergency Enable Override');
-            var commentTypeEl = document.getElementById('finalIssueCommentType');
-            if (commentTypeEl) commentTypeEl.disabled = false;
+        var runEnablement = function(source) {
+            console.log('[DIAG] Running field enablement logic from:', source);
+            form.querySelectorAll('input, select, textarea').forEach(function (el) {
+                if (el.type === 'hidden') return;
+                if (el.closest('#finalIssueComments')) return;
+                
+                // NEVER disable the comment type dropdown or dynamic metadata fields
+                if (el.id === 'finalIssueCommentType' || el.classList.contains('issue-dynamic-field')) {
+                    el.disabled = false;
+                    return;
+                }
+                
+                el.disabled = !enable;
+            });
             
-            jQuery('.issue-dynamic-field').prop('disabled', false);
-            jQuery('#finalIssueMetadataContainer select, #finalIssueMetadataContainer input').prop('disabled', false);
+            if (window.jQuery && jQuery.fn.summernote) {
+                jQuery('#finalIssueDetails').summernote(enable ? 'enable' : 'disable');
+                jQuery('#finalIssueCommentEditor').summernote('enable');
+            }
             
             if (window.jQuery && jQuery.fn.select2) {
-                jQuery('.issue-dynamic-field').trigger('change.select2');
+                jQuery('.issue-select2, .issue-select2-tags').not('.issue-dynamic-field').prop('disabled', !enable);
+                jQuery('.issue-dynamic-field').prop('disabled', false); // Always enabled
+                
+                // Also trigger metadata container specifically
+                jQuery('#finalIssueMetadataContainer select, #finalIssueMetadataContainer input').prop('disabled', false);
+                if (enable) {
+                    jQuery('.issue-dynamic-field').filter(':visible').trigger('change.select2');
+                }
             }
+            
+            applyIssueQaPermissionState();
+            applyClientIssueEditingState(enable);
+            applyTesterRegressionReadonlyState();
+        };
+
+        // Run immediately
+        runEnablement('direct');
+        
+        // If enabling, add a couple of safety delayed runs for late-rendering metadata
+        if (enable) {
+            setTimeout(function() { runEnablement('500ms-safety'); }, 500);
+            setTimeout(function() { runEnablement('2000ms-safety'); }, 2000);
         }
     }
 
@@ -6675,6 +6681,14 @@
         _metadataReady = true;
         var cbs = _metadataReadyResolvers.splice(0);
         cbs.forEach(function (fn) { try { fn(); } catch (e) {} });
+        
+        // NEW: Once metadata is ready, ensure fields are enabled correctly
+        console.log('[DIAG] Metadata resolved. Refreshing UI state.');
+        var modalEl = document.getElementById('finalIssueModal');
+        if (modalEl && (modalEl.classList.contains('show') || modalEl.classList.contains('is-open'))) {
+            // Only re-apply if the modal is currently open
+            applyTesterRegressionReadonlyState();
+        }
     }
 
     function loadMetadataOptions() {
