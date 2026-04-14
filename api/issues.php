@@ -1163,26 +1163,28 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                     }
                 }
 
-                if ($expectedUpdatedAt !== '' && !empty($oldIssue['updated_at']) && $expectedUpdatedAt !== (string)$oldIssue['updated_at']) {
-                    if ($db->inTransaction()) $db->rollBack();
-                    jsonResponse([
-                        'error' => 'This issue was modified by another user. Please reload latest data and try again.',
-                        'conflict' => true,
-                        'current_updated_at' => (string)$oldIssue['updated_at']
-                    ], 409);
-                }
-
-                if ($expectedHistoryId !== null) {
-                    $histStmt = $db->prepare("SELECT COALESCE(MAX(id), 0) FROM issue_history WHERE issue_id = ?");
-                    $histStmt->execute([$id]);
-                    $currentHistoryId = (int)$histStmt->fetchColumn();
-                    if ($currentHistoryId !== $expectedHistoryId) {
+                if ($userRole !== 'client') {
+                    if ($expectedUpdatedAt !== '' && !empty($oldIssue['updated_at']) && $expectedUpdatedAt !== (string)$oldIssue['updated_at']) {
                         if ($db->inTransaction()) $db->rollBack();
                         jsonResponse([
                             'error' => 'This issue was modified by another user. Please reload latest data and try again.',
                             'conflict' => true,
-                            'current_history_id' => $currentHistoryId
+                            'current_updated_at' => (string)$oldIssue['updated_at']
                         ], 409);
+                    }
+
+                    if ($expectedHistoryId !== null) {
+                        $histStmt = $db->prepare("SELECT COALESCE(MAX(id), 0) FROM issue_history WHERE issue_id = ?");
+                        $histStmt->execute([$id]);
+                        $currentHistoryId = (int)$histStmt->fetchColumn();
+                        if ($currentHistoryId !== $expectedHistoryId) {
+                            if ($db->inTransaction()) $db->rollBack();
+                            jsonResponse([
+                                'error' => 'This issue was modified by another user. Please reload latest data and try again.',
+                                'conflict' => true,
+                                'current_history_id' => $currentHistoryId
+                            ], 409);
+                        }
                     }
                 }
 
