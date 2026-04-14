@@ -36,7 +36,8 @@
     var issueCommentsApi = ProjectConfig.baseDir + '/api/issue_comments.php';
     var issueDraftsApi = ProjectConfig.baseDir + '/api/issue_drafts.php';
     var uniqueIssuePages = ProjectConfig.uniqueIssuePages || [];
-    var isAdminUser = userRole === 'admin' || userRole === 'admin' || userRole === 'superadmin';
+    var userRole = ProjectConfig.userRole || '';
+    var isAdminUser = userRole === 'admin' || userRole === 'superadmin';
     var isTesterRole = userRole === 'at_tester' || userRole === 'ft_tester';
     
     console.log('[DIAG] view_issues.js loaded. Role:', userRole, 'isAdmin:', isAdminUser, 'isTester:', isTesterRole);
