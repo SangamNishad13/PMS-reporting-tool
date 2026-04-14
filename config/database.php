@@ -1,33 +1,23 @@
 <?php
-// Simple .env loader for environment-specific configuration
-if (file_exists(__DIR__ . '/../.env')) {
-    $envLines = file(__DIR__ . '/../.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($envLines as $line) {
-        if (strpos(trim($line), '#') === 0) continue;
-        if (strpos($line, '=') !== false) {
-            list($name, $value) = explode('=', $line, 2);
-            $name = trim($name);
-            $value = trim($value);
-            // Strip optional quotes
-            if (preg_match('/^["\'](.*)["\']$/', $value, $matches)) {
-                $value = $matches[1];
-            }
-            if ($name !== '') {
-                putenv("$name=$value");
-                $_ENV[$name] = $value;
-                $_SERVER[$name] = $value;
-            }
-        }
-    }
+// Smart configuration based on environment
+$serverHost = $_SERVER['HTTP_HOST'] ?? '';
+$scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+
+// Default values (Live)
+$dbName = 'athenaeu_project_management';
+$dbUser = 'athenaeu_pms';
+$dbPass = '$Sis@2026$';
+$dbHost = 'localhost';
+
+// UAT overrides
+if (strpos($serverHost, 'uat') !== false || strpos($scriptPath, 'PMS-UAT') !== false) {
+    $dbName = 'athenaeu_project_management_uat';
 }
 
-// Database configuration - prefer environment variables on production hosts.
-// SECURITY: Never use default root/empty credentials in production.
-// Set DB_HOST, DB_NAME, DB_USER, DB_PASS as environment variables or in .env.
-define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
-define('DB_NAME', getenv('DB_NAME') ?: 'athenaeu_project_management');
-define('DB_USER', getenv('DB_USER') ?: 'athenaeu_pms');
-define('DB_PASS', getenv('DB_PASS') ?: '$Sis@2026$');
+define('DB_HOST', getenv('DB_HOST') ?: $dbHost);
+define('DB_NAME', getenv('DB_NAME') ?: $dbName);
+define('DB_USER', getenv('DB_USER') ?: $dbUser);
+define('DB_PASS', getenv('DB_PASS') ?: $dbPass);
 
 // Warn if running with default insecure credentials (non-CLI only)
 if (php_sapi_name() !== 'cli' && DB_USER === 'root' && DB_PASS === '') {
