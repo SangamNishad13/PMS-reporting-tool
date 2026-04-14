@@ -51,28 +51,58 @@ if ($secret === '' || $secret === 'change-me-strong-secret') {
 }
 
 $payload = file_get_contents('php://input');
-$signature = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
-$expected = 'sha256=' . hash_hmac('sha256', $payload, $secret);
 
-if (!hash_equals($expected, $signature)) {
-    deploy_log('Blocked: signature mismatch');
+$githubSignature256 = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
+$githubSignature = $_SERVER['HTTP_X_HUB_SIGNATURE'] ?? '';
+$gitlabToken = $_SERVER['HTTP_X_GITLAB_TOKEN'] ?? '';
+$bitbucketSignature = $_SERVER['HTTP_X_HUB_SIGNATURE'] ?? '';
+
+$isValid = false;
+
+if ($githubSignature256 !== '') {
+    $expected = 'sha256=' . hash_hmac('sha256', $payload, $secret);
+    if (hash_equals($expected, $githubSignature256)) {
+        $isValid = true;
+    }
+} elseif ($githubSignature !== '') {
+    $expected = 'sha1=' . hash_hmac('sha1', $payload, $secret);
+    if (hash_equals($expected, $githubSignature)) {
+        $isValid = true;
+    }
+} elseif ($gitlabToken !== '') {
+    if (hash_equals($secret, $gitlabToken)) {
+        $isValid = true;
+    }
+}
+
+if (!$isValid) {
+    deploy_log('Blocked: signature mismatch or missing signature. Headers: ' . json_encode(getallheaders() ?: $_SERVER));
     http_response_code(403);
     echo 'Forbidden';
     exit;
 }
 
-$event = $_SERVER['HTTP_X_GITHUB_EVENT'] ?? '';
-if ($event !== 'push') {
+$event = $_SERVER['HTTP_X_GITHUB_EVENT'] ?? $_SERVER['HTTP_X_GITLAB_EVENT'] ?? $_SERVER['HTTP_X_EVENT_KEY'] ?? '';
+if (!in_array($event, ['push', 'Push Hook', 'repo:push'])) {
     http_response_code(200);
-    echo 'Ignored non-push event';
+    echo 'Ignored non-push event: ' . $event;
     exit;
 }
 
-$data = json_decode($payload, true);
+$data = @json_decode($payload, true);
+if (!$data && isset($_POST['payload'])) {
+    $data = @json_decode($_POST['payload'], true);
+}
+
 $pushedBranch = $data['ref'] ?? '';
+// Also try gitlab push event structure if ref is missing
+if (empty($pushedBranch) && isset($data['push']['changes'][0]['new']['name'])) {
+    $pushedBranch = 'refs/heads/' . $data['push']['changes'][0]['new']['name'];
+}
+
 if ($pushedBranch !== 'refs/heads/' . BRANCH) {
     http_response_code(200);
-    echo 'Branch not matched, skipping.';
+    echo "Branch {$pushedBranch} not matched, skipping.";
     exit;
 }
 

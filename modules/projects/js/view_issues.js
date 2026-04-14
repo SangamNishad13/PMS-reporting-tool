@@ -708,19 +708,7 @@
     }
 
     function isTesterEditLockedByRegression() {
-        var editIdEl = document.getElementById('finalIssueEditId');
-        var isExistingIssue = !!(editIdEl && String(editIdEl.value || '').trim());
-        // If not existing issue, never lock (new issue)
-        if (!isExistingIssue) return false;
-
-        // If current user is creator, never lock
-        var creatorId = null;
-        var currentUserId = String(ProjectConfig.userId || '');
-        var creatorInput = document.getElementById('finalIssueCreatorId');
-        if (creatorInput) creatorId = String(creatorInput.value || '');
-        if (creatorId && currentUserId && creatorId === currentUserId) return false;
-
-        return !!(isTesterRole && testerRegressionLock.active && isExistingIssue);
+        return false;
     }
 
     async function refreshTesterRegressionLock() {
