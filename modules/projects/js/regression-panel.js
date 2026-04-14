@@ -588,6 +588,33 @@
             '</div>';
     }
 
+    function getStatusName(id) {
+        var statuses = window.ProjectConfig && window.ProjectConfig.issueStatuses ? window.ProjectConfig.issueStatuses : [];
+        var status = statuses.find(function(s) { return String(s.id) === String(id); });
+        return status ? (status.name || status.status_label || id) : id;
+    }
+
+    function getPriorityName(id) {
+        var map = {'1': 'High', '2': 'Medium', '3': 'Low'};
+        return map[String(id)] || id;
+    }
+
+    function getPageNames(ids) {
+        var pages = window.ProjectConfig && window.ProjectConfig.projectPages ? window.ProjectConfig.projectPages : [];
+        return (ids || []).map(function(id) {
+            var page = pages.find(function(p) { return String(p.id) === String(id); });
+            return page ? (page.title || page.url || page.page_name || id) : id;
+        });
+    }
+
+    function getUserNames(ids) {
+        var users = window.ProjectConfig && window.ProjectConfig.projectUsers ? window.ProjectConfig.projectUsers : [];
+        return (ids || []).map(function(id) {
+            var user = users.find(function(u) { return String(u.id) === String(id); });
+            return user ? (user.full_name || user.name || user.username || id) : id;
+        });
+    }
+
     function renderVersionPayload(payload) {
         if (!payload || !payload.issue) {
             return '<div class="text-muted small">Version snapshot unavailable.</div>';
@@ -598,24 +625,36 @@
         var groupedUrls = metadata.grouped_urls || [];
         var environments = metadata.environments || [];
 
+        var statusName = getStatusName(issue.status_id);
+        var priorityName = getPriorityName(issue.priority_id);
+        var isClientReady = String(issue.client_ready) === '1' ? 'Yes' : 'No';
+        var pageNames = getPageNames(pageIds);
+        var reporterNames = getUserNames(metadata.reporter_ids || []);
+        var assigneeNames = getUserNames(metadata.assignee_ids || []);
+
+        var descriptionHtml = issue.description || '';
+        if (window.DOMPurify) {
+            descriptionHtml = window.DOMPurify.sanitize(descriptionHtml);
+        }
+
         return '<div class="row g-3">' +
             '<div class="col-md-6">' +
             '<div class="small"><strong>Title:</strong> ' + escHtml(String(issue.title || '')) + '</div>' +
-            '<div class="small"><strong>Status ID:</strong> ' + escHtml(String(issue.status_id || '')) + '</div>' +
-            '<div class="small"><strong>Priority ID:</strong> ' + escHtml(String(issue.priority_id || '')) + '</div>' +
+            '<div class="small"><strong>Status:</strong> ' + escHtml(String(statusName)) + '</div>' +
+            '<div class="small"><strong>Priority:</strong> ' + escHtml(String(priorityName)) + '</div>' +
             '<div class="small"><strong>Severity:</strong> ' + escHtml(String(issue.severity || '')) + '</div>' +
-            '<div class="small"><strong>Client Ready:</strong> ' + escHtml(String(issue.client_ready || '0')) + '</div>' +
+            '<div class="small"><strong>Client Ready:</strong> ' + escHtml(isClientReady) + '</div>' +
             '</div>' +
             '<div class="col-md-6">' +
-            '<div class="small"><strong>Pages:</strong> ' + formatArrayValue(pageIds) + '</div>' +
+            '<div class="small"><strong>Pages:</strong> ' + formatArrayValue(pageNames) + '</div>' +
             '<div class="small"><strong>Grouped URLs:</strong> ' + formatArrayValue(groupedUrls) + '</div>' +
             '<div class="small"><strong>Environments:</strong> ' + formatArrayValue(environments) + '</div>' +
-            '<div class="small"><strong>Reporters:</strong> ' + formatArrayValue(metadata.reporter_ids || []) + '</div>' +
-            '<div class="small"><strong>Assignees:</strong> ' + formatArrayValue(metadata.assignee_ids || []) + '</div>' +
+            '<div class="small"><strong>Reporters:</strong> ' + formatArrayValue(reporterNames) + '</div>' +
+            '<div class="small"><strong>Assignees:</strong> ' + formatArrayValue(assigneeNames) + '</div>' +
             '</div>' +
             '<div class="col-12">' +
             '<div class="small"><strong>Description:</strong></div>' +
-            '<div class="small text-muted border rounded p-2 bg-light">' + escHtml(stripTags(String(issue.description || ''))) + '</div>' +
+            '<div class="small text-muted border rounded p-2 bg-light summernote-content" style="max-height:400px; overflow-y:auto;">' + descriptionHtml + '</div>' +
             '</div>' +
             '</div>';
     }
