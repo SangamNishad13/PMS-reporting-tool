@@ -3700,7 +3700,7 @@
                     $search.off('paste.multis2').on('paste.multis2', function(e) {
                         var cb = e.originalEvent.clipboardData || window.clipboardData;
                         var text = cb.getData('text');
-                        var items = text.split(/[\n,]+/).map(function(s){ return s.trim(); }).filter(Boolean);
+                        var items = text.split(/[,\r\n]+/).map(function(s){ return s.trim(); }).filter(Boolean);
                         if (items.length > 1) {
                             e.preventDefault();
                             var current = $s2.val() || [];
