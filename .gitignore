@@ -30,4 +30,9 @@ storage/*
 
 # Temporary / Runtime Files
 tmp/*
-!tmp/.gitkeep
+!tmp/.gitkeep
+
+# Diagnostic / one-off scripts (should never be committed)
+*diag*.php
+*test_token*.php
+fix_tokens.php
