@@ -138,7 +138,7 @@ include __DIR__ . '/../../includes/header.php';
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h2><i class="fas fa-desktop text-primary"></i> AT Tester Dashboard</h2>
                 <div>
-                    <span class="badge bg-info">Accessibility Testing</span>
+                    <span class="badge bg-info" style="background-color:black !important;">Accessibility Testing</span>
                 </div>
             </div>
         </div>
@@ -168,7 +168,7 @@ include __DIR__ . '/../../includes/header.php';
     <!-- Stats Cards -->
     <div class="row mb-4">
         <div class="col-md-3">
-            <div class="card bg-primary text-white">
+            <div class="card bg-info text-white">
                 <div class="card-body">
                     <div class="d-flex justify-content-between">
                         <div>

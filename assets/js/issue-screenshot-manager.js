@@ -54,6 +54,13 @@ class IssueScreenshotManager {
                 }
             }
         });
+
+        // Upload form submit — delegated so it works regardless of when modal renders
+        document.addEventListener('submit', (e) => {
+            if (e.target && e.target.id === 'screenshotUploadForm') {
+                this.uploadScreenshots(e);
+            }
+        });
     }
 
     setupDeleteModal() {
@@ -584,10 +591,4 @@ document.addEventListener('DOMContentLoaded', () => {
         baseDir: window.ProjectConfig?.baseDir || '',
         projectId: window.ProjectConfig?.projectId || 0
     });
-
-    // Bind upload form submit
-    const uploadForm = document.getElementById('screenshotUploadForm');
-    if (uploadForm) {
-        uploadForm.addEventListener('submit', (e) => window.issueScreenshotManager.uploadScreenshots(e));
-    }
 });

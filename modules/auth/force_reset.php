@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/helpers.php';
 
 $auth = new Auth();
 $auth->requireLogin();
@@ -86,11 +87,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
                     <div class="mb-3">
                         <label class="form-label">New Password</label>
-                        <input type="password" name="new_password" autocomplete="off" class="form-control" required placeholder="Min 8 chars, uppercase, number, special char">
+                        <div class="input-group">
+                            <input type="password" id="new_password" name="new_password" autocomplete="off" class="form-control" placeholder="Min 8 chars, uppercase, number, special char">
+                            <button type="button" class="btn btn-outline-secondary" data-toggle-password="new_password" aria-label="Toggle password visibility" aria-pressed="false">
+                                <i class="fas fa-eye" aria-hidden="true"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Confirm New Password</label>
-                        <input type="password" name="confirm_password" autocomplete="off" class="form-control" required>
+                        <div class="input-group">
+                            <input type="password" id="confirm_password" name="confirm_password" autocomplete="off" class="form-control">
+                            <button type="button" class="btn btn-outline-secondary" data-toggle-password="confirm_password" aria-label="Toggle password visibility" aria-pressed="false">
+                                <i class="fas fa-eye" aria-hidden="true"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="d-grid shadow-sm">
                         <button type="submit" class="btn btn-primary">Update Password & Continue</button>
@@ -102,5 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         </div>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="<?php echo htmlspecialchars(getBaseDir(), ENT_QUOTES, 'UTF-8'); ?>/assets/js/auth-force-reset.js"></script>
 </body>
 </html>

@@ -104,7 +104,7 @@ include __DIR__ . '/../../includes/header.php';
                         <div class="alert alert-success" role="alert"><?php echo e($success); ?></div>
                     <?php endif; ?>
                     
-                    <form method="POST">
+                    <form method="POST" id="loginForm" novalidate data-has-error="<?php echo $error ? '1' : '0'; ?>">
                         <input type="hidden" name="csrf_token" value="<?php echo e(generateCsrfToken()); ?>">
                         
                         <?php /* Honeypot: hidden from real users, bots will fill it */ ?>
@@ -115,14 +115,22 @@ include __DIR__ . '/../../includes/header.php';
                         
                         <div class="mb-3">
                             <label for="username" class="form-label">Username or Email</label>
-                            <input type="text" autocomplete="username" class="form-control" id="username" name="username" value="<?php echo e($_POST['username'] ?? ''); ?>" required <?php echo $error ? 'autofocus' : ''; ?>>
+                            <input type="text" autocomplete="username" class="form-control" id="username" name="username" value="<?php echo e($_POST['username'] ?? ''); ?>">
+                            <div class="invalid-feedback">Please enter your username or email.</div>
                         </div>
                         <div class="mb-3">
                             <label for="password" class="form-label">Password</label>
-                            <input type="password" autocomplete="off" class="form-control" id="password" name="password" required>
+                            <div class="input-group">
+                                <input type="password" autocomplete="off" class="form-control" id="password" name="password">
+                                <button type="button" class="btn btn-outline-secondary" data-toggle-password="password" aria-label="Toggle password visibility" aria-pressed="false">
+                                    <i class="fas fa-eye" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div id="password-error" class="invalid-feedback d-block" style="display:none!important"></div>
                         </div>
                         <button type="submit" class="btn btn-primary w-100">Login</button>
                     </form>
+                    <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/auth-login.js"></script>
                     
 
                 </div>
