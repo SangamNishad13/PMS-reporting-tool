@@ -722,7 +722,7 @@ function normalize_local_upload_path_from_src($src, $allowedPrefixes = ['uploads
     if (!$allowed) return null;
 
     $ext = strtolower((string)pathinfo($path, PATHINFO_EXTENSION));
-    $imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'];
+    $imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'avif'];
     if (!in_array($ext, $imageExts, true)) return null;
 
     return $path;
