@@ -35,4 +35,7 @@ tmp/*
 # Diagnostic / one-off scripts (should never be committed)
 *diag*.php
 *test_token*.php
-fix_tokens.php
+fix_tokens.php
+
+# Office Temp Files
+~$*
