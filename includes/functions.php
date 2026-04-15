@@ -660,7 +660,7 @@ function get_public_image_token_secret() {
         (string)DB_NAME,
         (string)DB_USER,
         (string)DB_PASS,
-        __DIR__
+        strtolower(str_replace('\\', '/', realpath(__DIR__)))
     ];
     $secret = hash('sha256', implode('|', $parts));
     return $secret;

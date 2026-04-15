@@ -20,15 +20,24 @@ $envSecret = trim((string)getenv('PMS_PUBLIC_IMAGE_SECRET'));
 $appKey    = trim((string)getenv('APP_KEY'));
 echo "PMS_PUBLIC_IMAGE_SECRET set: " . ($envSecret !== '' ? 'YES (len=' . strlen($envSecret) . ')' : 'NO') . "\n";
 echo "APP_KEY set: " . ($appKey !== '' ? 'YES (len=' . strlen($appKey) . ')' : 'NO') . "\n";
-echo "Computed secret (first 8 chars): " . substr(get_public_image_token_secret(), 0, 8) . "...\n";
+
+$parts = [
+    (string)DB_HOST,
+    (string)DB_NAME,
+    (string)DB_USER,
+    (string)DB_PASS,
+    strtolower(str_replace('\\', '/', realpath(__DIR__)))
+];
+$computedSecret = hash('sha256', implode('|', $parts));
+echo "Computed normalized secret (first 8 chars): " . substr($computedSecret, 0, 8) . "...\n";
 echo "__DIR__: " . __DIR__ . "\n";
 
 // 3. Validate the sample token from the issue URL
 $sampleToken = 'eyJwIjoidXBsb2Fkcy9pc3N1ZXMvMjAyNjAzMzAvaXNzdWVfNjljYTRjMTQ2YjVlNzcuMTE4ODcxMDkucG5nIn0.f4d9d9362650d75fd5a8d7cefe50271c43ba8d16a16034cb113009e5f3b8c195';
-$parts = explode('.', $sampleToken, 2);
-$payloadB64 = $parts[0] ?? '';
-$sig        = $parts[1] ?? '';
-$expected   = hash_hmac('sha256', $payloadB64, get_public_image_token_secret());
+$partsToken = explode('.', $sampleToken, 2);
+$payloadB64 = $partsToken[0] ?? '';
+$sig        = $partsToken[1] ?? '';
+$expected   = hash_hmac('sha256', $payloadB64, $computedSecret);
 echo "\n=== Token Validation ===\n";
 echo "Submitted sig: " . $sig . "\n";
 echo "Expected sig:  " . $expected . "\n";
