@@ -344,14 +344,16 @@ if ($method === 'POST' && isset($_POST['action'])) {
                 }
             
                 // Save to database
-                $stmt = $db->prepare("
-                    INSERT INTO issue_page_screenshots 
-                    (issue_id, page_id, grouped_url_id, url_text, file_path, original_filename, file_size, mime_type, description, uploaded_by)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ");
+                if (!isset($insertStmt)) {
+                    $insertStmt = $db->prepare("
+                        INSERT INTO issue_page_screenshots 
+                        (issue_id, page_id, grouped_url_id, url_text, file_path, original_filename, file_size, mime_type, description, uploaded_by)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                }
             
                 try {
-                    $stmt->execute([
+                    $insertStmt->execute([
                         $issueId > 0 ? $issueId : null,
                         $pageId,
                         $groupedUrlId > 0 ? $groupedUrlId : null,
