@@ -3692,6 +3692,38 @@
             try { if ($modalUrls.data('select2')) $modalUrls.select2('destroy'); } catch (e) { }
             $modalPages.select2({ width: '100%', closeOnSelect: false, dropdownParent: $modal });
             $modalUrls.select2({ width: '100%', tags: true, tokenSeparators: [','], closeOnSelect: false, dropdownParent: $modal });
+
+            // Multi-paste handler helper
+            var setupMultiPaste = function($s2, isTags) {
+                $s2.on('select2:open', function() {
+                    var $search = jQuery('.select2-container--open .select2-search__field');
+                    $search.off('paste.multis2').on('paste.multis2', function(e) {
+                        var cb = e.originalEvent.clipboardData || window.clipboardData;
+                        var text = cb.getData('text');
+                        var items = text.split(/[\n,]+/).map(function(s){ return s.trim(); }).filter(Boolean);
+                        if (items.length > 1) {
+                            e.preventDefault();
+                            var current = $s2.val() || [];
+                            items.forEach(function(item) {
+                                if (current.indexOf(item) === -1) {
+                                    var exists = $s2.find("option").filter(function() { return this.value === item; }).length > 0;
+                                    if (!exists && isTags) {
+                                        $s2.append(new Option(item, item, true, true));
+                                        current.push(item);
+                                    } else if (exists) {
+                                        current.push(item);
+                                    }
+                                }
+                            });
+                            $s2.val(current).trigger('change');
+                            $s2.select2('close');
+                        }
+                    });
+                });
+            };
+
+            setupMultiPaste($modalPages, false);
+            setupMultiPaste($modalUrls, true);
         }
 
         $openBtn.off('click.urlModal').on('click.urlModal', function () {

@@ -11,7 +11,8 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/client_issue_snapshots.php';
 require_once __DIR__ . '/../includes/models/SecurityValidator.php';
-ob_end_clean();
+// Keep ob_start active for the entire script to trap any potential warnings/notices.
+
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) { http_response_code(401); exit('Unauthorized'); }
@@ -1203,12 +1204,20 @@ $validateZip->close();
 $safeTitle = trim(preg_replace('/[^a-zA-Z0-9_\- ]/', '', $project['title'] ?? 'Project')) ?: 'Project';
 $filename  = $safeTitle . ' - Accessibility Audit Report.xlsx';
 
+// Ensure any accidental output from dependencies or logic is wiped before we send binary data.
+if (ob_get_level()) {
+    ob_end_clean();
+}
+
 header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-header('Content-Disposition: attachment; filename="' . $filename . '"');
+// Use both filename and filename* for maximum browser compatibility (RFC 6266)
+header('Content-Disposition: attachment; filename="' . str_replace('"', '', $filename) . '"; filename*=UTF-8\'\'' . rawurlencode($filename));
 header('Content-Length: ' . filesize($tmpFile));
-header('Cache-Control: private, no-cache');
-// Discard any accidental output (warnings, notices) before streaming binary
-if (ob_get_level()) ob_end_clean();
+header('Cache-Control: private, max-age=0, must-revalidate');
+header('Pragma: public');
+
 readfile($tmpFile);
-unlink($tmpFile);
+if (file_exists($tmpFile)) {
+    unlink($tmpFile);
+}
 exit;
