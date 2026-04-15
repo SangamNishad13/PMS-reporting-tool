@@ -70,12 +70,13 @@
             // Register a custom search function that uses data-* attributes on the TR
             $.fn.dataTable.ext.search.push(function (settings, data, dataIndex, rowData, counter) {
                 if (settings.nTable.id !== 'projectsTable') return true;
-                var tr = $(settings.nTable).find('tbody tr').eq(counter);
-                var status    = tr.data('status')    || '';
-                var type      = tr.data('type')      || '';
-                var priority  = tr.data('priority')  || '';
-                var clientId  = tr.data('client-id') || '';
-                var createdAt = tr.data('created-at')|| '';
+                var rowNode = settings.aoData[dataIndex].nTr;
+                var $tr = $(rowNode);
+                var status    = $tr.data('status')    || '';
+                var type      = $tr.data('type')      || '';
+                var priority  = $tr.data('priority')  || '';
+                var clientId  = $tr.data('client-id') || '';
+                var createdAt = $tr.data('created-at')|| '';
 
                 var fStatus   = $('#statusFilter').val();
                 var fType     = $('#typeFilter').val();
