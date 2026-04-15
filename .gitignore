@@ -18,6 +18,9 @@ api/*.log
 .env.*
 !.env.example
 
+# Local database config override (never commit)
+config/database.local.php
+
 node_modules/
 
 # User Uploads & dynamic assets
@@ -38,4 +41,4 @@ tmp/*
 fix_tokens.php
 
 # Office Temp Files
-~$*
+~$*

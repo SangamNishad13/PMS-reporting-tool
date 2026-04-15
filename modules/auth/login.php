@@ -89,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 include __DIR__ . '/../../includes/header.php';
 ?>
-<div class="container" role="main" id="main-content" tabindex="-1">
+<div class="container">
     <div class="row justify-content-center mt-5">
         <div class="col-md-6">
             <div class="card">
