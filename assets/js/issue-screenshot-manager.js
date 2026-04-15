@@ -19,11 +19,18 @@ if (typeof window.IssueScreenshotManager === 'undefined') {
         }
 
         ensureNotificationContainer() {
-            if (!document.getElementById('pmsNotificationContainer')) {
-                const container = document.createElement('div');
+            let container = document.getElementById('pmsNotificationContainer');
+            if (!container) {
+                container = document.createElement('div');
                 container.id = 'pmsNotificationContainer';
                 container.className = 'toast-container position-fixed top-0 end-0 p-3';
-                container.style.zIndex = '9999';
+                document.body.appendChild(container);
+            }
+            // Ensure high z-index to stay above modals (Bootstrap modals are usually 1055)
+            container.style.zIndex = '11000';
+            
+            // Move it to the end of body to avoid stacking context issues
+            if (container.parentElement !== document.body) {
                 document.body.appendChild(container);
             }
         }
