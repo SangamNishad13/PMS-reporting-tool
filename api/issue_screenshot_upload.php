@@ -19,7 +19,7 @@ if (!$auth->isLoggedIn()) {
 }
 
 $userRole = $auth->getUserRole();
-$allowedRoles = ['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester'];
+$allowedRoles = ['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'client'];
 if (!in_array($userRole, $allowedRoles)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Insufficient permissions']);
@@ -30,9 +30,6 @@ $method = $_SERVER['REQUEST_METHOD'];
 $baseDir = getBaseDir();
 $db = Database::getInstance();
 $userId = $_SESSION['user_id'];
-
-// Debug
-error_log("API called: method=$method, userId=$userId, role=$userRole");
 
 // Create upload directory if it doesn't exist
 $uploadDir = __DIR__ . '/../assets/uploads/issue_screenshots';
@@ -221,6 +218,17 @@ if ($method === 'GET' && isset($_GET['action'])) {
         echo json_encode([
             'success' => true,
             'screenshots' => $screenshots
+        ]);
+        exit;
+    }
+
+    if ($action === 'count') {
+        $pageId = (int)($_GET['page_id'] ?? 0);
+        $stmt = $db->prepare("SELECT COUNT(*) FROM issue_page_screenshots WHERE page_id = ?");
+        $stmt->execute([$pageId]);
+        echo json_encode([
+            'success' => true,
+            'count' => (int)$stmt->fetchColumn()
         ]);
         exit;
     }

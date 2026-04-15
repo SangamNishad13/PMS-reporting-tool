@@ -28,24 +28,7 @@ if ($viewerRole === 'client') {
 // CSRF protection for file uploads
 enforceApiCsrf();
 
-// Rate limiting: max 20 uploads per user per hour (session-based)
-$rl_key = 'upload_chat_' . ($_SESSION['user_id'] ?? 'anon');
-$rl_window = 3600; // 1 hour
-$rl_max = 20;
-$now = time();
-if (!isset($_SESSION['rate_limits'][$rl_key])) {
-    $_SESSION['rate_limits'][$rl_key] = ['count' => 0, 'window_start' => $now];
-}
-$rl = &$_SESSION['rate_limits'][$rl_key];
-if ($now - $rl['window_start'] > $rl_window) {
-    $rl = ['count' => 0, 'window_start' => $now];
-}
-if ($rl['count'] >= $rl_max) {
-    http_response_code(429);
-    echo json_encode(['error' => 'Too many uploads. Please wait before uploading again.']);
-    exit;
-}
-$rl['count']++;
+// Removed rate limiting as per user request to allow unlimited uploads.
 
 if (!isset($_FILES['image'])) {
     http_response_code(400);
@@ -59,8 +42,6 @@ if ($file['error'] !== UPLOAD_ERR_OK) {
     echo json_encode(['error' => 'Upload failed']);
     exit;
 }
-
-// Basic validations (robust on shared hosting with limited PHP extensions)
 $allowedMimeTypes = [
     'image/jpeg' => '.jpg',
     'image/jpg' => '.jpg',

@@ -652,8 +652,11 @@ include __DIR__ . '/../../includes/header.php';
                         <button class="btn btn-outline-primary btn-sm btn-upload-page-screenshots" data-page-id="<?php echo $pageId; ?>" title="Upload page screenshots">
                             <i class="fas fa-upload me-1"></i> Upload Screenshots
                         </button>
-                        <button class="btn btn-outline-info btn-sm btn-open-page-screenshots" data-page-id="<?php echo $pageId; ?>" title="View page screenshots">
+                        <button class="btn btn-outline-info btn-sm btn-open-page-screenshots position-relative" data-page-id="<?php echo $pageId; ?>" title="View page screenshots">
                             <i class="fas fa-images me-1"></i> View Screenshots
+                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger screenshot-count-badge d-none" data-page-id="<?php echo $pageId; ?>">
+                                0
+                            </span>
                         </button>
                     </div>
                 </div>
@@ -2746,4 +2749,15 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
 <script src="<?php echo $baseDir; ?>/assets/js/chat-widget.js?v=<?php echo time(); ?>"></script>
 <?php endif; ?>
 
-<?php include __DIR__ . '/../../includes/footer.php'; 
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
+<script>
+window.ProjectConfig = {
+    baseDir: '<?php echo $baseDir; ?>',
+    projectId: <?php echo (int)$projectId; ?>,
+    pageId: <?php echo (int)$pageId; ?>
+};
+</script>
+<script src="<?php echo $baseDir; ?>/assets/js/issue-screenshot-manager.js?v=<?php echo time(); ?>"></script>
+
+<?php include __DIR__ . '/../../includes/footer.php';

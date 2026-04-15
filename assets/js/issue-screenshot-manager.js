@@ -14,6 +14,7 @@ class IssueScreenshotManager {
         this.currentPage = 1;
         this.pageSize = 10;
         this.init();
+        this.updateCountBadge();
     }
 
     init() {
@@ -170,6 +171,7 @@ class IssueScreenshotManager {
         }
 
         status.className = `alert alert-${type} small mb-3`;
+        status.classList.remove('d-none'); // Explicitly show
         status.innerHTML = message;
     }
 
@@ -184,6 +186,10 @@ class IssueScreenshotManager {
     }
 
     resolveImageUrl(screenshot) {
+        if (screenshot?.public_url) {
+            return screenshot.public_url;
+        }
+
         const filePath = String(screenshot?.file_path || '').trim().replace(/^\/+/, '');
         if (!filePath) {
             return '';
@@ -261,9 +267,33 @@ class IssueScreenshotManager {
                     this.screenshots = Array.isArray(data.screenshots) ? data.screenshots : [];
                     this.populateUrlFilterOptions();
                     this.applyScreenshotFilters();
+                    this.updateCountBadge(this.screenshots.length);
                 }
             })
             .catch(err => console.error('Error loading screenshots:', err));
+    }
+
+    async updateCountBadge(count = null) {
+        const pageId = this.pageId || window.ProjectConfig?.pageId;
+        if (!pageId) return;
+
+        if (count === null) {
+            try {
+                const r = await fetch(`${this.apiUrl}?action=count&page_id=${pageId}`);
+                const data = await r.json();
+                if (data.success) {
+                    count = data.count;
+                }
+            } catch (e) {}
+        }
+
+        if (count !== null) {
+            const badges = document.querySelectorAll(`.screenshot-count-badge[data-page-id="${pageId}"]`);
+            badges.forEach(badge => {
+                badge.textContent = count;
+                badge.classList.toggle('d-none', count === 0);
+            });
+        }
     }
 
     populateUrlFilterOptions() {
@@ -468,7 +498,9 @@ class IssueScreenshotManager {
             try {
                 data = raw ? JSON.parse(raw) : null;
             } catch (parseError) {
-                throw new Error(raw || 'Empty response from server');
+                // If parsing fails, the response might be a PHP error or HTML - log for debug
+                console.error('Server response was not valid JSON:', raw);
+                throw new Error('Server returned an invalid response. This often happens if there is a database error or a misconfiguration.');
             }
 
             if (!response.ok) {
@@ -489,8 +521,9 @@ class IssueScreenshotManager {
             }
         } catch (error) {
             console.error('Upload error:', error);
-            this.setStatus(error.message || 'Upload failed', 'danger');
-            showNotification('Upload failed: ' + error.message, 'danger');
+            const msg = error.message || 'Upload failed unknown error';
+            this.setStatus(msg, 'danger');
+            showNotification('Upload failed: ' + msg, 'danger');
         } finally {
             uploadBtn.disabled = false;
             uploadBtn.innerHTML = originalText;

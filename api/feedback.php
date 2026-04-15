@@ -33,23 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 try {
     if ($action === 'submit_feedback') {
-        // Rate limiting: max 5 feedbacks per 5 minutes
-        $rl_key = 'feedback_rl_' . $userId;
-        $rl_window = 300; // 5 minutes
-        $rl_max = 5;
-        $now = time();
-        if (!isset($_SESSION['rate_limits'][$rl_key])) {
-            $_SESSION['rate_limits'][$rl_key] = ['count' => 0, 'window_start' => $now];
-        }
-        $rl = &$_SESSION['rate_limits'][$rl_key];
-        if ($now - $rl['window_start'] > $rl_window) {
-            $rl = ['count' => 0, 'window_start' => $now];
-        }
-        if ($rl['count'] >= $rl_max) {
-            echo json_encode(['success' => false, 'message' => 'Rate limit exceeded. Please wait before submitting more feedback.']);
-            exit;
-        }
-        $rl['count']++;
+        // Removed rate limiting as per user request to allow unlimited feedback.
+
 
         // Support multiple recipients and optional project scoping
         $recipientIds = $_POST['recipient_ids'] ?? null; // expected as comma-separated or array

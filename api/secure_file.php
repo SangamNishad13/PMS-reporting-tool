@@ -48,6 +48,7 @@ if (!isset($_SESSION['user_id']) && !$allowPublicIssueImage) {
     exit;
 }
 
+
 $parts = explode('/', $relPath);
 foreach ($parts as $part) {
     if ($part !== '' && $part[0] === '.') {
