@@ -99,6 +99,18 @@ function xstr(string $v): string {
     return $v;
 }
 
+/**
+ * Convert 0-indexed column number to Excel column letter (e.g. 0 -> A, 26 -> AA).
+ */
+function numToCol(int $n): string {
+    $result = '';
+    while ($n >= 0) {
+        $result = chr($n % 26 + 65) . $result;
+        $n = intdiv($n, 26) - 1;
+    }
+    return $result;
+}
+
 /** Build an xlsx inlineStr cell — supports newlines and all text content */
 function xcell(string $col, int $row, string $val, string $style = ''): string {
     $s = $style ? ' s="' . $style . '"' : '';
@@ -980,17 +992,66 @@ $zip->addFromString('xl/worksheets/sheet3.xml', $sh3);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SHEET 4: Final Report
-// A=Sr.No  B=Issue Key  C=Page No  D=Page Name  E=Page URL
-// F=Issue Title  G=Actual Result  H=Incorrect Code  I=Screenshots
-// J=Recommendation  K=Correct Code  L=Severity  M=Priority
-// N=User Affected  O=WCAG SC Number  P=WCAG SC Name  Q=WCAG Level
-// R=GIGW 3.0  S=IS 17802  T=Environments  U=Developer's Status  V=Developer's Comment
 // ══════════════════════════════════════════════════════════════════════════════
 $sh4 = $zip->getFromName('xl/worksheets/sheet4.xml');
-clearDataRows($sh4);
+
+// We need to rewrite the header row specifically to include Regression columns
+$rrStmt = $db->prepare("SELECT id, round_number FROM regression_rounds WHERE project_id = ? ORDER BY round_number ASC");
+$rrStmt->execute([$projectId]);
+$regressionRounds = $rrStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Map base headers
+$baseHeaders = [
+    'Sr.No', 'Issue Key', 'Page No', 'Page Name', 'Page URL', 'Issue Title',
+    'Actual Result', 'Incorrect Code', 'Screenshots', 'Recommendation', 'Correct Code',
+    'Severity', 'Priority', 'Responsibility', 'User Affected', 'WCAG SC Number', 'WCAG SC Name',
+    'WCAG Level', 'GIGW 3.0', 'IS 17802', 'Environments', 'Developer\'s Status', 'Developer\'s Comment'
+];
+
+foreach ($regressionRounds as $rr) {
+    $rnum = (int)$rr['round_number'];
+    $baseHeaders[] = "Regression Round {$rnum} Status";
+    $baseHeaders[] = "Regression Round {$rnum} Comment";
+}
+
+// Find <sheetData>
+$pos = strpos($sh4, '<sheetData>');
+if ($pos === false) {
+    $pos = strpos($sh4, '<sheetData/>');
+    if ($pos !== false) {
+        $sh4 = substr_replace($sh4, '<sheetData></sheetData>', $pos, 12);
+        $pos = strpos($sh4, '<sheetData>');
+    }
+}
+$endPos = strpos($sh4, '</sheetData>');
+if ($pos !== false && $endPos !== false) {
+    $before = substr($sh4, 0, $pos + 11);
+    $after  = substr($sh4, $endPos);
+    
+    // Build new dynamic header row
+    $headerRow = '<row r="1" spans="1:' . count($baseHeaders) . '">';
+    foreach ($baseHeaders as $i => $hText) {
+        $colLetter = numToCol($i);
+        // Header style is usually s="2" or similar bold center string. We will just use the inline string.
+        // It's safer to use s="2" assuming template has style 2 for headers.
+        $headerRow .= xcell($colLetter, 1, $hText, '2');
+    }
+    $headerRow .= '</row>';
+    
+    $sh4 = $before . $headerRow . $after;
+}
 
 $rows4 = '';
 $srNo  = 1;
+
+// Prepare regression issue snapshots statement
+$rrivStmt = $db->prepare("SELECT latest_payload FROM regression_round_issue_versions WHERE project_id = ? AND round_id = ? AND issue_id = ?");
+
+// Prepare regression comments statement
+// We fetch only normal or regression comments, we will take the latest one added during the round?
+// Or we just get all comments with comment_type='regression'
+$commentStmt = $db->prepare("SELECT comment_html FROM issue_comments WHERE issue_id = ? AND comment_type = 'regression' AND created_at >= (SELECT started_at FROM regression_rounds WHERE id = ?) AND (created_at <= (SELECT ended_at FROM regression_rounds WHERE id = ?) OR (SELECT ended_at FROM regression_rounds WHERE id = ?) IS NULL) ORDER BY created_at DESC LIMIT 1");
+
 foreach ($filteredIssues as $iss) {
     $iid   = (int)$iss['id'];
     $rn    = $srNo + 1;
@@ -1034,6 +1095,7 @@ foreach ($filteredIssues as $iss) {
     $is17802   = implode(', ', metaArray($meta, 'is17802'));
     $severity  = ucfirst(strtolower(metaFirst($meta, 'severity') ?: ($iss['severity'] ?? 'minor')));
     $priority  = ucfirst(strtolower(metaFirst($meta, 'priority') ?: 'medium'));
+    $responsibility = implode(', ', metaArray($meta, 'responsibility'));
     $envs      = implode(', ', metaArray($meta, 'environments'));
     $issueKey  = $iss['issue_key'] ?? metaFirst($meta, 'issue_key');
 
@@ -1058,7 +1120,8 @@ foreach ($filteredIssues as $iss) {
     }
     $screenshotUrls = implode("\n", array_map('absoluteUrl', extractImageUrls($sections['screenshot'])));
 
-    $rows4 .= '<row r="' . $rn . '" spans="1:22">'
+    $totalCols = count($baseHeaders);
+    $rows4 .= '<row r="' . $rn . '" spans="1:' . $totalCols . '">'
         . '<c r="A' . $rn . '"><v>' . $srNo . '</v></c>'
         . xcell('B', $rn, $issueKey)
         . xcell('C', $rn, $pageNums)
@@ -1072,16 +1135,45 @@ foreach ($filteredIssues as $iss) {
         . xcell('K', $rn, $correctCode)
         . xcell('L', $rn, $severity)
         . xcell('M', $rn, $priority)
-        . xcell('N', $rn, $usersAff)
-        . xcell('O', $rn, $wcagNums)
-        . xcell('P', $rn, $wcagNames)
-        . xcell('Q', $rn, $wcagLevel)
-        . xcell('R', $rn, $gigw)
-        . xcell('S', $rn, $is17802)
-        . xcell('T', $rn, $envs)
-        . xcell('U', $rn, '')
+        . xcell('N', $rn, $responsibility)
+        . xcell('O', $rn, $usersAff)
+        . xcell('P', $rn, $wcagNums)
+        . xcell('Q', $rn, $wcagNames)
+        . xcell('R', $rn, $wcagLevel)
+        . xcell('S', $rn, $gigw)
+        . xcell('T', $rn, $is17802)
+        . xcell('U', $rn, $envs)
         . xcell('V', $rn, '')
-        . '</row>';
+        . xcell('W', $rn, '');
+        
+    $colIdx = 23; // X is col index 23
+    foreach ($regressionRounds as $rr) {
+        $roundId = (int)$rr['id'];
+        
+        // Find issue status in this round
+        $rrivStmt->execute([$projectId, $roundId, $iid]);
+        $versionPayload = $rrivStmt->fetchColumn();
+        $statusStr = '';
+        if ($versionPayload) {
+            $vp = json_decode($versionPayload, true);
+            if ($vp && isset($vp['issue']['status_id'])) {
+                $stId = (int)$vp['issue']['status_id'];
+                $snameStmt = $db->prepare("SELECT name FROM issue_statuses WHERE id = ?");
+                $snameStmt->execute([$stId]);
+                $statusStr = (string)$snameStmt->fetchColumn();
+            }
+        }
+        
+        // Find comment for this round
+        $commentStmt->execute([$iid, $roundId, $roundId, $roundId]);
+        $commHtml = $commentStmt->fetchColumn();
+        $commStr = $commHtml ? stripHtml($commHtml) : '';
+        
+        $rows4 .= xcell(numToCol($colIdx++), $rn, $statusStr);
+        $rows4 .= xcell(numToCol($colIdx++), $rn, $commStr);
+    }
+    
+    $rows4 .= '</row>';
     $srNo++;
 }
 injectRows($sh4, $rows4);
