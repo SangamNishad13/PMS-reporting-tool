@@ -3,7 +3,8 @@
  * Handles screenshot uploads and management for issues
  */
 
-class IssueScreenshotManager {
+if (!window.IssueScreenshotManager) {
+window.IssueScreenshotManager = class IssueScreenshotManager {
     constructor(config = {}) {
         this.baseDir = config.baseDir || '';
         this.projectId = config.projectId || 0;
@@ -622,10 +623,11 @@ function showNotification(message, type = 'info') {
     }, 5000);
 }
 
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    window.issueScreenshotManager = new IssueScreenshotManager({
-        baseDir: window.ProjectConfig?.baseDir || '',
-        projectId: window.ProjectConfig?.projectId || 0
+    // Initialize when DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+        window.issueScreenshotManager = new IssueScreenshotManager({
+            baseDir: window.ProjectConfig?.baseDir || '',
+            projectId: window.ProjectConfig?.projectId || 0
+        });
     });
-});
+}
