@@ -697,12 +697,12 @@ function normalize_local_upload_path_from_src($src, $allowedPrefixes = ['uploads
         $candidate = $urlPath !== '' ? $urlPath : $src;
         $candidate = str_replace('\\', '/', $candidate);
         $candidate = ltrim($candidate, '/');
-        $posUploads = strpos($candidate, 'uploads/');
         $posAssetsUploads = strpos($candidate, 'assets/uploads/');
-        if ($posUploads !== false) {
-            $path = substr($candidate, $posUploads);
-        } elseif ($posAssetsUploads !== false) {
+        $posUploads = strpos($candidate, 'uploads/');
+        if ($posAssetsUploads !== false) {
             $path = substr($candidate, $posAssetsUploads);
+        } elseif ($posUploads !== false) {
+            $path = substr($candidate, $posUploads);
         }
     }
 
@@ -729,7 +729,14 @@ function normalize_local_upload_path_from_src($src, $allowedPrefixes = ['uploads
 }
 
 function build_public_image_url_from_src($src) {
-    $relPath = normalize_local_upload_path_from_src($src, ['uploads/issues/', 'uploads/chat/', 'assets/uploads/']);
+    $relPath = normalize_local_upload_path_from_src($src, [
+        'uploads/issues/', 
+        'uploads/chat/', 
+        'assets/uploads/issues/', 
+        'assets/uploads/chat/', 
+        'assets/uploads/issue_screenshots/',
+        'assets/uploads/'
+    ]);
     if ($relPath === null) {
         return (string)$src;
     }

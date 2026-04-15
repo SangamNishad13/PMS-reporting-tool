@@ -11,7 +11,6 @@ class IssueScreenshotManager {
         this.pendingDeleteScreenshotId = null;
         this.screenshots = [];
         this.filteredScreenshots = [];
-        this.currentPage = 1;
         this.pageSize = 10;
         this.init();
         this.updateCountBadge();
@@ -181,7 +180,12 @@ class IssueScreenshotManager {
             return '';
         }
 
-        const base = this.baseDir ? this.baseDir.replace(/\/$/, '') : '';
+        let base = this.baseDir ? this.baseDir.replace(/\/$/, '') : '';
+        // Ensure base starts with / if it's not empty and not absolute
+        if (base && !base.startsWith('/') && !base.includes('://')) {
+            base = '/' + base;
+        }
+        
         return `${base}/api/secure_file.php?path=${encodeURIComponent(normalizedPath)}`;
     }
 

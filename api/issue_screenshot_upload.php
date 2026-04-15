@@ -21,6 +21,7 @@ if (!$auth->isLoggedIn()) {
 $userRole = $auth->getUserRole();
 $allowedRoles = ['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'client'];
 if (!in_array($userRole, $allowedRoles)) {
+    error_log("[IssueScreenshotAPI] Insufficient permissions. Role: $userRole");
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Insufficient permissions']);
     exit;
@@ -29,8 +30,7 @@ if (!in_array($userRole, $allowedRoles)) {
 $method = $_SERVER['REQUEST_METHOD'];
 $baseDir = getBaseDir();
 $db = Database::getInstance();
-$userId = $_SESSION['user_id'];
-
+$userId = $_SESSION['user_id'] ?? 0;
 // Create upload directory if it doesn't exist
 $uploadDir = __DIR__ . '/../assets/uploads/issue_screenshots';
 if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true) && !is_dir($uploadDir)) {
