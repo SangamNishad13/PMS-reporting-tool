@@ -71,26 +71,36 @@
             $.fn.dataTable.ext.search.push(function (settings, data, dataIndex, rowData, counter) {
                 if (settings.nTable.id !== 'projectsTable') return true;
                 var tr = $(settings.nTable).find('tbody tr').eq(counter);
-                var status   = tr.data('status')   || '';
-                var type     = tr.data('type')     || '';
-                var priority = tr.data('priority') || '';
+                var status    = tr.data('status')    || '';
+                var type      = tr.data('type')      || '';
+                var priority  = tr.data('priority')  || '';
+                var clientId  = tr.data('client-id') || '';
+                var createdAt = tr.data('created-at')|| '';
 
                 var fStatus   = $('#statusFilter').val();
                 var fType     = $('#typeFilter').val();
                 var fPriority = $('#priorityFilter').val();
+                var fClient   = $('#clientFilter').val();
+                var fStart    = $('#startDate').val();
+                var fEnd      = $('#endDate').val();
 
                 if (fStatus   && status   !== fStatus)   return false;
                 if (fType     && type     !== fType)     return false;
                 if (fPriority && priority !== fPriority) return false;
+                if (fClient   && String(clientId) !== String(fClient)) return false;
+                
+                if (fStart && createdAt < fStart) return false;
+                if (fEnd   && createdAt > fEnd)   return false;
+                
                 return true;
             });
 
             projectsTable = $('#projectsTable').DataTable({
                 pageLength: 25,
                 lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]],
-                order: [[1, 'asc']],
+                order: [[7, 'desc']], // Default sort by Created At descending
                 columnDefs: [
-                    { targets: [0, 7], orderable: false, searchable: false }
+                    { targets: [0, 8], orderable: false, searchable: false }
                 ],
                 language: {
                     search: 'Global Filter:',
@@ -99,8 +109,8 @@
                 }
             });
 
-            // Status / Type / Priority filter dropdowns trigger DataTables redraw
-            $('#statusFilter, #typeFilter, #priorityFilter').on('change', function () {
+            // Status / Type / Priority / Client / Date filters trigger DataTables redraw
+            $('#statusFilter, #typeFilter, #priorityFilter, #clientFilter, #startDate, #endDate').on('change', function () {
                 projectsTable.draw();
             });
 

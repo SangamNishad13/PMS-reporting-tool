@@ -153,11 +153,32 @@ include __DIR__ . '/../../includes/header.php';
                     </select>
                 </div>
                 <div class="col-md-3">
+                    <label class="form-label">Client</label>
+                    <select id="clientFilter" class="form-select">
+                        <option value="">All Clients</option>
+                        <?php
+                        $filterClients = $db->query("SELECT id, name FROM clients ORDER BY name")->fetchAll();
+                        foreach ($filterClients as $fc) {
+                            echo '<option value="' . $fc['id'] . '">' . htmlspecialchars($fc['name']) . '</option>';
+                        }
+                        ?>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Start Date</label>
+                    <input type="date" id="startDate" class="form-control" value="<?php echo date('Y-m-d', strtotime('-1 month')); ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">End Date</label>
+                    <input type="date" id="endDate" class="form-control" value="<?php echo date('Y-m-d'); ?>">
+                </div>
+                <div class="col-md-6">
                     <label class="form-label">Search</label>
                     <input type="text" id="searchProject" class="form-control" placeholder="Search projects...">
                 </div>
             </div>
         </div>
+
     </div>
     
     <!-- Projects Table -->
@@ -173,7 +194,9 @@ include __DIR__ . '/../../includes/header.php';
                         <th>Type</th>
                         <th>Priority</th>
                         <th>Status</th>
+                        <th>Created At</th>
                         <th>Actions</th>
+
                     </tr>
                 </thead>
                 <tbody>
@@ -201,7 +224,10 @@ include __DIR__ . '/../../includes/header.php';
                         data-status="<?php echo htmlspecialchars($project['status']); ?>" 
                         data-type="<?php echo htmlspecialchars($project['project_type'] ?? ''); ?>"
                         data-priority="<?php echo htmlspecialchars($project['priority'] ?? ''); ?>"
+                        data-client-id="<?php echo htmlspecialchars($project['client_id']); ?>"
+                        data-created-at="<?php echo date('Y-m-d', strtotime($project['created_at'])); ?>"
                         data-subprojects='<?php echo !empty($subs) ? json_encode($subs, JSON_HEX_APOS | JSON_HEX_QUOT) : ""; ?>'>
+
                         <td>
                             <?php if (!empty($subs)): ?>
                             <i class="fas fa-chevron-right expand-btn text-primary" onclick="toggleSubprojects(<?php echo $project['id']; ?>, this)"></i>
@@ -237,6 +263,12 @@ include __DIR__ . '/../../includes/header.php';
                             </span>
                         </td>
                         <td>
+                            <span class="text-muted small">
+                                <?php echo date('d-M-Y', strtotime($project['created_at'])); ?>
+                            </span>
+                        </td>
+                        <td>
+
                             <a href="<?php echo $baseDir; ?>/modules/projects/view.php?id=<?php echo $project['id']; ?>" class="btn btn-sm btn-outline-info" title="View"><i class="fas fa-eye"></i></a>
                             <a href="<?php echo $baseDir; ?>/modules/projects/edit.php?id=<?php echo $project['id']; ?>" class="btn btn-sm btn-outline-warning" title="Edit"><i class="fas fa-edit"></i></a>
                         </td>
