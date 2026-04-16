@@ -170,19 +170,53 @@ class EmailSender {
         $this->sendCommand($fp, 'DATA', [354]);
 
         $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+        $boundary = 'pms_mixed_' . md5(uniqid(time(), true));
+        $relatedBoundary = 'pms_related_' . md5(uniqid(time(), true));
+
         $headers = [];
         $headers[] = 'Date: ' . date('r');
         $headers[] = 'From: ' . $fromName . ' <' . $fromEmail . '>';
         $headers[] = 'To: <' . $to . '>';
         $headers[] = 'Subject: ' . $encodedSubject;
         $headers[] = 'MIME-Version: 1.0';
-        $headers[] = $isHtml ? 'Content-Type: text/html; charset=UTF-8' : 'Content-Type: text/plain; charset=UTF-8';
-        $headers[] = 'Content-Transfer-Encoding: 8bit';
+        
+        // Detect and prepare logo for embedding
+        $logoPath = realpath(__DIR__ . '/../storage/SIS-Logo-3.png');
+        $hasLogo = ($logoPath && file_exists($logoPath));
+
+        if ($hasLogo) {
+            $headers[] = 'Content-Type: multipart/related; boundary="' . $relatedBoundary . '"';
+        } else {
+            $headers[] = $isHtml ? 'Content-Type: text/html; charset=UTF-8' : 'Content-Type: text/plain; charset=UTF-8';
+            $headers[] = 'Content-Transfer-Encoding: 8bit';
+        }
         $headers[] = 'X-Mailer: PMS SMTP';
 
         $normalizedBody = str_replace(["\r\n", "\r"], "\n", (string)$body);
         $normalizedBody = preg_replace('/^\./m', '..', $normalizedBody); // dot-stuffing
-        $data = implode("\r\n", $headers) . "\r\n\r\n" . str_replace("\n", "\r\n", $normalizedBody) . "\r\n.\r\n";
+        
+        $emailContent = "";
+        if ($hasLogo) {
+            $emailContent .= "--" . $relatedBoundary . "\r\n";
+            $emailContent .= "Content-Type: text/html; charset=UTF-8\r\n";
+            $emailContent .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+            $emailContent .= str_replace("\n", "\r\n", $normalizedBody) . "\r\n\r\n";
+            
+            // Attach Logo
+            $logoData = base64_encode(file_get_contents($logoPath));
+            $logoFilename = basename($logoPath);
+            $emailContent .= "--" . $relatedBoundary . "\r\n";
+            $emailContent .= "Content-Type: image/png; name=\"" . $logoFilename . "\"\r\n";
+            $emailContent .= "Content-Transfer-Encoding: base64\r\n";
+            $emailContent .= "Content-ID: <company_logo>\r\n";
+            $emailContent .= "Content-Disposition: inline; filename=\"" . $logoFilename . "\"\r\n\r\n";
+            $emailContent .= chunk_split($logoData, 76, "\r\n") . "\r\n";
+            $emailContent .= "--" . $relatedBoundary . "--\r\n";
+        } else {
+            $emailContent .= str_replace("\n", "\r\n", $normalizedBody) . "\r\n";
+        }
+
+        $data = implode("\r\n", $headers) . "\r\n\r\n" . $emailContent . "\r\n.\r\n";
         fwrite($fp, $data);
         $this->expectCode($fp, [250]);
 

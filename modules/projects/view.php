@@ -265,8 +265,17 @@ foreach ($uniqueIssuePages as $u) {
     }
 }
 
-// Load QA statuses for issue modal
-$qaStatuses = $db->query("SELECT status_key, status_label FROM qa_status_master WHERE is_active = 1 ORDER BY display_order ASC, status_label ASC")->fetchAll(PDO::FETCH_ASSOC);
+// Fetch issue metadata fields
+$metadataFieldsStmt = $db->query("SELECT id, field_key, field_label, options_json FROM issue_metadata_fields WHERE is_active = 1 ORDER BY sort_order ASC");
+$metadataFields = $metadataFieldsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+foreach ($metadataFields as &$field) {
+    if (!empty($field['options_json'])) {
+        $field['options'] = json_decode($field['options_json'], true);
+    } else {
+        $field['options'] = [];
+    }
+}
 
 // Load issue statuses for issue modal
 $issueStatuses = getIssueStatusesForRole($db, $normalizedUserRole);
@@ -804,6 +813,9 @@ include __DIR__ . '/../../includes/header.php';
         qaStatuses: <?php echo json_encode($qaStatuses ?? [], JSON_HEX_TAG | JSON_HEX_AMP); ?>,
         issueStatuses: <?php echo json_encode($issueStatuses ?? [], JSON_HEX_TAG | JSON_HEX_AMP); ?>
     };
+
+    // Define issueMetadataFields globally for view_issues.js
+    window.issueMetadataFields = <?php echo json_encode($metadataFields ?? []); ?>;
 </script>
 
 <?php include 'partials/modals.php'; ?>

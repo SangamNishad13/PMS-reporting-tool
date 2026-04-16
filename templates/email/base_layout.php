@@ -91,7 +91,7 @@
                     <tr>
                         <td class="header">
                             <?php if (!empty($companyLogo)): ?>
-                                <img src="<?php echo htmlspecialchars($companyLogo); ?>" alt="<?php echo htmlspecialchars($companyName); ?>" style="max-height: 60px; margin-bottom: 10px;">
+                                <img src="cid:company_logo" alt="<?php echo htmlspecialchars($companyName); ?>" style="max-height: 60px; margin-bottom: 10px;">
                             <?php endif; ?>
                             <h1 style="margin: 0; font-size: 28px; letter-spacing: -1px;"><?php echo htmlspecialchars($app_name ?? 'Sakshi PMS'); ?></h1>
                             <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 16px;"><?php echo htmlspecialchars($header_subtitle ?? ''); ?></p>
