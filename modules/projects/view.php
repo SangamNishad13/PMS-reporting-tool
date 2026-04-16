@@ -281,32 +281,15 @@ foreach ($metadataFields as &$field) {
 $issueStatuses = getIssueStatusesForRole($db, $normalizedUserRole);
 
 // Load project users for issue modal (includes assigned users, project lead, admins, and any existing reporters)
+// Load users for config (includes all active non-client users for robust name resolution)
 $projectUsersStmt = $db->prepare("
-    SELECT DISTINCT u.id, u.full_name, u.username
-    FROM user_assignments ua 
-    JOIN users u ON ua.user_id = u.id 
-    WHERE ua.project_id = ? 
-      AND u.is_active = 1
-      AND (ua.is_removed IS NULL OR ua.is_removed = 0)
-    UNION
-    SELECT DISTINCT pl.id, pl.full_name, pl.username
-    FROM projects p
-    JOIN users pl ON p.project_lead_id = pl.id
-    WHERE p.id = ?
-      AND p.project_lead_id IS NOT NULL
-      AND pl.is_active = 1
-    UNION
-    SELECT DISTINCT u.id, u.full_name, u.username
-    FROM users u
-    WHERE u.is_active = 1 AND u.role IN ('admin')
-    UNION
-    SELECT DISTINCT u.id, u.full_name, u.username
-    FROM users u
-    INNER JOIN issues i ON i.reporter_id = u.id
-    WHERE i.project_id = ?
+    SELECT id, full_name, username, role
+    FROM users
+    WHERE is_active = 1 
+      AND role != 'client'
     ORDER BY full_name
 ");
-$projectUsersStmt->execute([$projectId, $projectId, $projectId]);
+$projectUsersStmt->execute();
 $projectUsers = $projectUsersStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get current running phase

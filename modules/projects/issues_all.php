@@ -51,17 +51,12 @@ $qaStatusesStmt = $db->query("SELECT status_key, status_label, badge_color FROM 
 $qaStatuses = $qaStatusesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $reportersStmt = $db->prepare("
-    SELECT DISTINCT u.id, u.full_name, u.username, u.role
-    FROM users u
-    INNER JOIN user_assignments ua ON u.id = ua.user_id
-    WHERE ua.project_id = ? AND u.is_active = 1 AND (ua.is_removed IS NULL OR ua.is_removed = 0)
-    UNION
-    SELECT u.id, u.full_name, u.username, u.role
-    FROM users u
-    WHERE u.is_active = 1 AND u.role IN ('admin')
+    SELECT id, full_name, username, role
+    FROM users
+    WHERE is_active = 1 AND role != 'client'
     ORDER BY full_name
 ");
-$reportersStmt->execute([$projectId]);
+$reportersStmt->execute();
 $projectUsers = $reportersStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch grouped URLs for auto-populating when pages are selected
