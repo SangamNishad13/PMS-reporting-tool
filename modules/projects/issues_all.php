@@ -53,7 +53,6 @@ $qaStatuses = $qaStatusesStmt->fetchAll(PDO::FETCH_ASSOC);
 $reportersStmt = $db->prepare("
     SELECT id, full_name, username, role
     FROM users
-    WHERE is_active = 1
     ORDER BY full_name
 ");
 $reportersStmt->execute();
