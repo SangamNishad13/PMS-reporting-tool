@@ -11,11 +11,19 @@ $host = $hostOnly;
 if ($port > 0 && $port <= 65535) {
     $host .= ':' . $port;
 }
-$scriptDir = isset($_SERVER['SCRIPT_NAME']) ? str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])) : '';
-if ($scriptDir === '/' || $scriptDir === '\\' || $scriptDir === '.') {
-    $scriptDir = '';
+// Derive app URL dynamically
+$appRoot = str_replace('\\', '/', realpath(__DIR__ . '/..'));
+$docRoot = str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT']));
+
+$webRoot = '';
+if (!empty($docRoot) && strpos($appRoot, $docRoot) === 0) {
+    $webRoot = substr($appRoot, strlen($docRoot));
 }
-$derivedAppUrl = rtrim($scheme . '://' . $host . $scriptDir, '/');
+$webRoot = str_replace('\\', '/', $webRoot);
+$webRoot = '/' . trim($webRoot, '/');
+if ($webRoot === '/') $webRoot = '';
+
+$derivedAppUrl = rtrim($scheme . '://' . $host . $webRoot, '/');
 
 // Application Settings
 return [
