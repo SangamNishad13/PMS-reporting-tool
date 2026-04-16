@@ -3976,16 +3976,7 @@
             var reporterHtml = '';
             if (reportersArray.length > 0) {
                 reporterHtml = reportersArray.map(function (reporterId) {
-                    // Get reporter name from project users
-                    var reporterName = 'Unknown';
-                    if (ProjectConfig.projectUsers) {
-                        var found = ProjectConfig.projectUsers.find(function (u) {
-                            return u.id == reporterId;
-                        });
-                        if (found) {
-                            reporterName = found.full_name;
-                        }
-                    }
+                    var reporterName = getProjectUserNameById(reporterId);
                     return '<span class="badge bg-info me-1">' + escapeHtml(reporterName) + '</span>';
                 }).join('');
             } else {
