@@ -30,9 +30,9 @@ return [
     // Application
     'app_name' => 'Project Management System',
     'app_version' => '1.0.0',
-    'app_url' => getenv('APP_URL') ?: $derivedAppUrl,
+    'app_url' => getenv('APP_URL') ?: (($_SERVER['HTTP_HOST'] ?? '') ? $derivedAppUrl : 'https://pms.athenaeumtransformation.com'),
     'company_name' => getenv('COMPANY_NAME') ?: 'Sakshi Infotech Solutions LLP',
-    'company_logo' => getenv('COMPANY_LOGO') ?: ($derivedAppUrl . '/storage/SIS-Logo-3.png'), // URL to logo
+    'company_logo' => getenv('COMPANY_LOGO') ?: 'https://pms.athenaeumtransformation.com/storage/SIS-Logo-3.png', // URL to logo
 
     // Security
     'session_timeout' => 1800, // 30 minutes
