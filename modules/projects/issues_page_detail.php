@@ -49,12 +49,11 @@ if (!$page) {
     exit;
 }
 
-// Fetch users for config (includes all active non-client users for robust name resolution)
+// Fetch users for config (includes all active users for robust name resolution across reporters/QA)
 $projectUsersStmt = $db->prepare("
     SELECT id, full_name, username, role
     FROM users
     WHERE is_active = 1 
-      AND role != 'client'
     ORDER BY full_name
 ");
 $projectUsersStmt->execute();

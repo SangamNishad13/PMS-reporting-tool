@@ -281,12 +281,11 @@ foreach ($metadataFields as &$field) {
 $issueStatuses = getIssueStatusesForRole($db, $normalizedUserRole);
 
 // Load project users for issue modal (includes assigned users, project lead, admins, and any existing reporters)
-// Load users for config (includes all active non-client users for robust name resolution)
+// Load users for config (includes all active users for robust name resolution across reporters/QA)
 $projectUsersStmt = $db->prepare("
     SELECT id, full_name, username, role
     FROM users
     WHERE is_active = 1 
-      AND role != 'client'
     ORDER BY full_name
 ");
 $projectUsersStmt->execute();
