@@ -413,34 +413,67 @@ $(document).ready(function() {
         const fullName = $(this).data('fullname');
         const btn = $(this);
 
-        if (!confirm('Send a 2FA configuration reminder email to ' + fullName + '?')) {
-            return;
-        }
+        const modalHtml = `
+            <div class="modal fade" id="confirm2FAReminderModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">
+                                <i class="fas fa-shield-alt text-primary"></i> Send 2FA Reminder
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Send a 2FA configuration reminder email to <strong>${fullName}</strong>?</p>
+                            <div class="alert alert-primary py-2 small mb-0">
+                                <i class="fas fa-info-circle"></i> This will send a professional security instruction email to help them set up their account.
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" id="confirmSend2FA">
+                                <i class="fas fa-paper-plane"></i> Send Reminder
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
 
-        const oldHtml = btn.html();
-        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+        $('#confirm2FAReminderModal').remove();
+        $('body').append(modalHtml);
+        const modal = new bootstrap.Modal(document.getElementById('confirm2FAReminderModal'));
+        modal.show();
 
-        $.ajax({
-            url: window._adminUsersConfig.baseDir + '/api/admin_2fa_reminder.php',
-            method: 'POST',
-            data: {
-                user_id: userId,
-                csrf_token: window._csrfToken || (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute('content') || ''
-            },
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    showToast(response.message || 'Reminder sent successfully.', 'success');
-                } else {
-                    showToast(response.error || 'Failed to send reminder.', 'warning');
+        $('#confirmSend2FA').on('click', function() {
+            const confirmBtn = $(this);
+            confirmBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
+            btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+            $.ajax({
+                url: window._adminUsersConfig.baseDir + '/api/admin_2fa_reminder.php',
+                method: 'POST',
+                data: {
+                    user_id: userId,
+                    csrf_token: window._csrfToken || (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute('content') || ''
+                },
+                dataType: 'json',
+                success: function(response) {
+                    modal.hide();
+                    if (response.success) {
+                        showToast(response.message || 'Reminder sent successfully.', 'success');
+                    } else {
+                        showToast(response.error || 'Failed to send reminder.', 'warning');
+                    }
+                },
+                error: function(xhr) {
+                    modal.hide();
+                    showToast('Error: ' + (xhr.responseText || xhr.statusText), 'danger');
+                },
+                complete: function() {
+                    btn.prop('disabled', false).html('<i class="fas fa-shield-alt"></i>');
                 }
-            },
-            error: function(xhr) {
-                showToast('Error: ' + (xhr.responseText || xhr.statusText), 'danger');
-            },
-            complete: function() {
-                btn.prop('disabled', false).html(oldHtml);
-            }
+            });
         });
     });
 
@@ -449,38 +482,69 @@ $(document).ready(function() {
         const selected = getSelectedUserIds();
         if (!selected.length) return;
 
-        if (!confirm('Send 2FA configuration reminder emails to ' + selected.length + ' selected users?')) {
-            return;
-        }
+        const modalHtml = `
+            <div class="modal fade" id="confirmBulk2FAReminderModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">
+                                <i class="fas fa-shield-alt text-primary"></i> Bulk 2FA Reminder
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Send 2FA configuration reminder emails to <strong>${selected.length}</strong> selected users?</p>
+                            <div class="alert alert-info py-2 small mb-0">
+                                <i class="fas fa-paper-plane"></i> Emails will be sent individually to all selected accounts.
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" id="confirmSendBulk2FA">
+                                <i class="fas fa-paper-plane"></i> Send to ${selected.length} Users
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
 
-        const btn = $(this);
-        const oldHtml = btn.html();
-        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
+        $('#confirmBulk2FAReminderModal').remove();
+        $('body').append(modalHtml);
+        const modal = new bootstrap.Modal(document.getElementById('confirmBulk2FAReminderModal'));
+        modal.show();
 
-        $.ajax({
-            url: window._adminUsersConfig.baseDir + '/api/admin_2fa_reminder.php',
-            method: 'POST',
-            data: {
-                user_ids: selected,
-                csrf_token: window._csrfToken || (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute('content') || ''
-            },
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    showToast(response.message || 'Reminders sent successfully.', 'success');
-                    if (response.fail_count > 0) {
-                        console.warn('Reminder failures:', response.errors);
+        $('#confirmSendBulk2FA').on('click', function() {
+            const confirmBtn = $(this);
+            confirmBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
+            const bulkBtn = $('#bulk2FAReminderBtn');
+            const oldBulkHtml = bulkBtn.html();
+            bulkBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Processing...');
+
+            $.ajax({
+                url: window._adminUsersConfig.baseDir + '/api/admin_2fa_reminder.php',
+                method: 'POST',
+                data: {
+                    user_ids: selected,
+                    csrf_token: window._csrfToken || (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute('content') || ''
+                },
+                dataType: 'json',
+                success: function(response) {
+                    modal.hide();
+                    if (response.success) {
+                        showToast(response.message || 'Reminders sent successfully.', 'success');
+                    } else {
+                        showToast(response.error || 'Failed to send reminders.', 'danger');
                     }
-                } else {
-                    showToast(response.error || 'Failed to send reminders.', 'danger');
+                },
+                error: function(xhr) {
+                    modal.hide();
+                    showToast('Error: ' + (xhr.responseText || xhr.statusText), 'danger');
+                },
+                complete: function() {
+                    bulkBtn.prop('disabled', false).html(oldBulkHtml);
                 }
-            },
-            error: function(xhr) {
-                showToast('Error: ' + (xhr.responseText || xhr.statusText), 'danger');
-            },
-            complete: function() {
-                btn.prop('disabled', false).html(oldHtml);
-            }
+            });
         });
     });
 });
