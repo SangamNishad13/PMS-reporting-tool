@@ -61,9 +61,14 @@ $projectUsersStmt = $db->prepare("
     SELECT u.id, u.full_name, u.username, u.role
     FROM users u
     WHERE u.is_active = 1 AND u.role IN ('admin')
+    UNION
+    SELECT DISTINCT u.id, u.full_name, u.username, u.role
+    FROM users u
+    INNER JOIN issues i ON i.reporter_id = u.id
+    WHERE i.project_id = ?
     ORDER BY full_name
 ");
-$projectUsersStmt->execute([$projectId]);
+$projectUsersStmt->execute([$projectId, $projectId]);
 $projectUsers = $projectUsersStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch QA statuses
