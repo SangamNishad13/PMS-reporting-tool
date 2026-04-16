@@ -221,116 +221,100 @@ class EmailSender {
         return $code;
     }
     
+    /**
+     * Render a template within the base layout
+     * 
+     * @param string $templateName Name of the template in templates/email/
+     * @param array $data Data to be passed to the template
+     * @return string Rendered HTML
+     */
+    public function renderTemplate($templateName, $data = []) {
+        $data['app_name'] = $this->settings['app_name'] ?? 'Project Management System';
+        $data['company_name'] = $this->settings['company_name'] ?? 'Sakshi Infotech Solutions LLP';
+        $data['app_url'] = $this->settings['app_url'] ?? '';
+        $data['company_logo'] = $this->settings['company_logo'] ?? '';
+        
+        // Add camelCase aliases for templates
+        $data['appName'] = $data['app_name'];
+        $data['companyName'] = $data['company_name'];
+        $data['appUrl'] = $data['app_url'];
+        $data['companyLogo'] = $data['company_logo'];
+        
+        // Extract variables for the template
+        extract($data);
+        
+        $templatePath = __DIR__ . '/../templates/email/' . $templateName . '.php';
+        $baseLayoutPath = __DIR__ . '/../templates/email/base_layout.php';
+        
+        if (!file_exists($templatePath)) {
+            error_log("Email template not found: $templatePath");
+            return $data['content'] ?? '';
+        }
+
+        // Start buffering for template content
+        ob_start();
+        include $templatePath;
+        $content = ob_get_clean();
+        
+        // Pass the rendered content and other vars to the base layout
+        if (file_exists($baseLayoutPath)) {
+            ob_start();
+            $data['content'] = $content;
+            // Subject might be overridden in $data
+            $subject = $data['subject'] ?? ($data['header_subtitle'] ?? 'Notification');
+            include $baseLayoutPath;
+            return ob_get_clean();
+        }
+        
+        return $content; // Fallback if base layout missing
+    }
+    
     public function sendWelcomeEmail($userEmail, $userName) {
         $subject = "Welcome to Project Management System";
-        $body = "
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; }
-                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background-color: #007bff; color: white; padding: 20px; text-align: center; }
-                    .content { padding: 20px; background-color: #f8f9fa; }
-                    .footer { text-align: center; padding: 20px; color: #6c757d; }
-                </style>
-            </head>
-            <body>
-                <div class='container'>
-                    <div class='header'>
-                        <h1>Welcome to Project Management System</h1>
-                    </div>
-                    <div class='content'>
-                        <h2>Hello $userName,</h2>
-                        <p>Your account has been successfully created.</p>
-                        <p>You can now login to the system and start managing your projects.</p>
-                        <p><strong>Important:</strong> Please change your password after first login.</p>
-                        <p>If you have any questions, please contact your system administrator.</p>
-                    </div>
-                    <div class='footer'>
-                        <p>&copy; " . date('Y') . " Project Management System. All rights reserved.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        ";
+        $headerSubtitle = "Your journey starts here";
+        
+        $body = $this->renderTemplate('welcome_email', [
+            'userName' => $userName,
+            'subject' => $subject,
+            'header_subtitle' => $headerSubtitle,
+            'appUrl' => $this->settings['app_url']
+        ]);
         
         return $this->send($userEmail, $subject, $body, true);
     }
     
     public function sendAssignmentNotification($userEmail, $userName, $projectTitle, $role) {
         $subject = "New Assignment: $projectTitle";
-        $body = "
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; }
-                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background-color: #28a745; color: white; padding: 20px; text-align: center; }
-                    .content { padding: 20px; background-color: #f8f9fa; }
-                    .button { display: inline-block; padding: 10px 20px; background-color: #007bff; 
-                              color: white; text-decoration: none; border-radius: 5px; }
-                </style>
-            </head>
-            <body>
-                <div class='container'>
-                    <div class='header'>
-                        <h1>New Assignment Notification</h1>
-                    </div>
-                    <div class='content'>
-                        <h2>Hello $userName,</h2>
-                        <p>You have been assigned a new role in the project:</p>
-                        <div style='background-color: white; padding: 15px; border-radius: 5px; margin: 20px 0;'>
-                            <p><strong>Project:</strong> $projectTitle</p>
-                            <p><strong>Role:</strong> " . ucfirst(str_replace('_', ' ', $role)) . "</p>
-                        </div>
-                        <p>Please login to the system to view your assignments and start working.</p>
-                        <p style='text-align: center; margin-top: 30px;'>
-                            <a href='" . $this->settings['app_url'] . "' class='button'>Go to System</a>
-                        </p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        ";
+        // Convert single project into array format for the improved template
+        $projects = [[
+            'title' => $projectTitle,
+            'role_name' => ucfirst(str_replace('_', ' ', $role))
+        ]];
+        
+        $body = $this->renderTemplate('assignment_notification', [
+            'userName' => $userName,
+            'projects' => $projects,
+            'adminName' => 'System Administrator',
+            'subject' => $subject,
+            'header_subtitle' => 'New Project Access',
+            'appUrl' => $this->settings['app_url']
+        ]);
         
         return $this->send($userEmail, $subject, $body, true);
     }
     
     public function sendMentionNotification($userEmail, $userName, $mentionedBy, $message, $link) {
         $subject = "You were mentioned in a conversation";
-        $body = "
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; }
-                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background-color: #ffc107; color: white; padding: 20px; text-align: center; }
-                    .content { padding: 20px; background-color: #f8f9fa; }
-                    .message { background-color: white; padding: 15px; border-left: 4px solid #ffc107; 
-                              margin: 20px 0; }
-                </style>
-            </head>
-            <body>
-                <div class='container'>
-                    <div class='header'>
-                        <h1>Mention Notification</h1>
-                    </div>
-                    <div class='content'>
-                        <h2>Hello $userName,</h2>
-                        <p>You were mentioned by <strong>$mentionedBy</strong> in a conversation.</p>
-                        <div class='message'>
-                            <p><em>$message</em></p>
-                        </div>
-                        <p>Click the link below to view the conversation:</p>
-                        <p><a href='$link'>$link</a></p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        ";
+        
+        $body = $this->renderTemplate('mention_notification', [
+            'userName' => $userName,
+            'mentionedBy' => $mentionedBy,
+            'message' => $message,
+            'link' => $link,
+            'subject' => $subject,
+            'header_subtitle' => 'Collaboration Insight',
+            'appUrl' => $this->settings['app_url']
+        ]);
         
         return $this->send($userEmail, $subject, $body, true);
     }
@@ -340,49 +324,13 @@ class EmailSender {
         $appUrl = $this->settings['app_url'] ?? '';
         $profileUrl = rtrim($appUrl, '/') . '/modules/profile.php';
         
-        $body = "
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; }
-                    .container { max-width: 600px; margin: 20px auto; border: 1px solid #e1e1e1; border-radius: 8px; overflow: hidden; }
-                    .header { background-color: #1a73e8; color: white; padding: 30px; text-align: center; }
-                    .content { padding: 30px; background-color: #ffffff; }
-                    .button { display: inline-block; padding: 12px 25px; background-color: #1a73e8; 
-                              color: white !important; text-decoration: none; border-radius: 4px; font-weight: bold; margin-top: 20px; }
-                    .footer { text-align: center; padding: 20px; font-size: 12px; color: #777; background-color: #f9f9f9; }
-                    .shield-icon { font-size: 48px; margin-bottom: 10px; }
-                </style>
-            </head>
-            <body>
-                <div class='container'>
-                    <div class='header'>
-                        <div class='shield-icon'>🛡️</div>
-                        <h1>Security Reminder</h1>
-                    </div>
-                    <div class='content'>
-                        <h2>Hi $userName,</h2>
-                        <p>To ensure the security of your account and the project data, we highly recommend enabling <strong>Two-Factor Authentication (2FA)</strong>.</p>
-                        <p>2FA adds an extra layer of protection by requiring a verification code from your mobile device when you log in.</p>
-                        <p>It only takes a minute to set up using Google Authenticator or any other TOTP app.</p>
-                        <p style='text-align: center;'>
-                            <a href='$profileUrl' class='button'>Enable 2FA Now</a>
-                        </p>
-                        <p style='margin-top: 25px;'><strong>Steps to Enable:</strong></p>
-                        <ol>
-                            <li>Go to your Profile settings.</li>
-                            <li>Find the Security section.</li>
-                            <li>Click 'Setup 2FA' and scan the QR code.</li>
-                        </ol>
-                    </div>
-                    <div class='footer'>
-                        <p>This is an automated security reminder from the Project Management System.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        ";
+        $body = $this->renderTemplate('2fa_reminder', [
+            'userName' => $userName,
+            'profileUrl' => $profileUrl,
+            'subject' => $subject,
+            'header_subtitle' => 'Security First',
+            'appUrl' => $appUrl
+        ]);
         
         return $this->send($userEmail, $subject, $body, true);
     }
