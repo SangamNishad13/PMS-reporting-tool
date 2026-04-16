@@ -29,7 +29,7 @@
 <p>You can now view detailed accessibility analytics and compliance reports for these projects on your dashboard.</p>
 
 <div style="text-align: center;">
-    <a href="<?php echo $appUrl; ?>" class="button">Access Project Dashboard</a>
+    <a href="<?php echo htmlspecialchars($appUrl); ?>" class="button">Access Project Dashboard</a>
 </div>
 
 <p style="margin-top: 30px;"><strong>What's ready for you:</strong></p>

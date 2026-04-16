@@ -24,7 +24,7 @@
 <p>If you were expecting this change, no action is required. You can still access your other projects and reports by logging in to the dashboard.</p>
 
 <div style="text-align: center;">
-    <a href="<?php echo $appUrl; ?>" class="button" style="background-color: #475569;">View Remaining Projects</a>
+    <a href="<?php echo htmlspecialchars($appUrl); ?>" class="button" style="background-color: #475569;">View Remaining Projects</a>
 </div>
 
 <p style="margin-top: 30px; font-size: 14px; color: #64748b;">If you believe this revocation was made in error or if you require access again, please contact <strong><?php echo htmlspecialchars($adminName); ?></strong> or your system administrator.</p>

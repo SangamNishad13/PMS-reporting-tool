@@ -91,10 +91,10 @@
                     <tr>
                         <td class="header">
                             <?php if (!empty($companyLogo)): ?>
-                                <img src="<?php echo $companyLogo; ?>" alt="<?php echo htmlspecialchars($companyName); ?>" style="max-height: 60px; margin-bottom: 10px;">
+                                <img src="<?php echo htmlspecialchars($companyLogo); ?>" alt="<?php echo htmlspecialchars($companyName); ?>" style="max-height: 60px; margin-bottom: 10px;">
                             <?php endif; ?>
-                            <h1 style="margin: 0; font-size: 28px; letter-spacing: -1px;"><?php echo $app_name ?? 'Athenaeum PMS'; ?></h1>
-                            <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 16px;"><?php echo $header_subtitle ?? ''; ?></p>
+                            <h1 style="margin: 0; font-size: 28px; letter-spacing: -1px;"><?php echo htmlspecialchars($app_name ?? 'Sakshi PMS'); ?></h1>
+                            <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 16px;"><?php echo htmlspecialchars($header_subtitle ?? ''); ?></p>
                         </td>
                     </tr>
                     
@@ -108,9 +108,9 @@
                     <!-- Footer -->
                     <tr>
                         <td class="footer">
-                            <p style="margin: 0 0 10px 0;">&copy; <?php echo date('Y'); ?> <?php echo $company_name ?? 'Athenaeum Transformation'; ?>. All rights reserved.</p>
+                            <p style="margin: 0 0 10px 0;">&copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($company_name ?? 'Sakshi Infotech Solutions LLP'); ?>. All rights reserved.</p>
                             <?php if (isset($unsubscribe_url)): ?>
-                                <p style="margin: 0;"><a href="<?php echo $unsubscribe_url; ?>" style="color: #0755C6; text-decoration: underline;">Notification Preferences</a></p>
+                                <p style="margin: 0;"><a href="<?php echo htmlspecialchars($unsubscribe_url); ?>" style="color: #0755C6; text-decoration: underline;">Notification Preferences</a></p>
                             <?php endif; ?>
                             <p style="margin: 15px 0 0 0; font-size: 11px; color: #94a3b8;">This is an automated message from the Project Management System. Please do not reply directly to this email.</p>
                         </td>

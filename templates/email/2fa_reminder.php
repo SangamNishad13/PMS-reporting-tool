@@ -21,7 +21,7 @@
 <p>It only takes 60 seconds to set up using Google Authenticator, Authy, or any standard TOTP app.</p>
 
 <div style="text-align: center;">
-    <a href="<?php echo $profileUrl; ?>" class="button">Enable 2FA Now</a>
+    <a href="<?php echo htmlspecialchars($profileUrl); ?>" class="button">Enable 2FA Now</a>
 </div>
 
 <p style="margin-top: 30px;"><strong>Simple Setup Steps:</strong></p>

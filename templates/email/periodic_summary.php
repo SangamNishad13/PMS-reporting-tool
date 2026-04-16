@@ -63,7 +63,7 @@ $resolutionRate = $totalIssues > 0 ? round(($resolvedIssues / $totalIssues) * 10
 </table>
 
 <div style="text-align: center; margin-top: 40px;">
-    <a href="<?php echo $appUrl; ?>" class="button">Access Full Dashboard Reports</a>
+    <a href="<?php echo htmlspecialchars($appUrl); ?>" class="button">Access Full Dashboard Reports</a>
 </div>
 
 <p style="margin-top: 30px; font-size: 14px; color: #64748b;">This summary highlights key movements in your projects over the last period. Detailed technical breakdowns for each issue can be found in the reporting system.</p>
