@@ -262,7 +262,7 @@ function showEditDeviceModal(deviceId) {
     $('#deviceType').val(device.device_type);
     $('#model').val(device.model);
     $('#storageCapacity').val(device.storage_capacity || '');
-    $('#chargerWire').val(device.charger_wire || 'Yes');
+    $('#chargerWire').val(device.charger_wire || '');
     $('#version').val(device.version);
     $('#serialNumber').val(device.serial_number);
     $('#purchaseDate').val(device.purchase_date);

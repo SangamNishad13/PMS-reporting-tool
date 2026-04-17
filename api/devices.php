@@ -116,16 +116,16 @@ try {
             $stmt->execute([
                 $_POST['device_name'],
                 $_POST['device_type'],
-                $_POST['model'] ?? null,
-                $_POST['version'] ?? null,
-                $_POST['serial_number'] ?? null,
-                $_POST['purchase_date'] ?? null,
-                $_POST['status'] ?? 'Available',
-                $_POST['ownership_type'] ?? 'Owned',
-                $_POST['lease_owner'] ?? null,
-                $_POST['storage_capacity'] ?? null,
-                $_POST['charger_wire'] ?? null,
-                $_POST['notes'] ?? null
+                !empty($_POST['model']) ? $_POST['model'] : null,
+                !empty($_POST['version']) ? $_POST['version'] : null,
+                !empty($_POST['serial_number']) ? $_POST['serial_number'] : null,
+                !empty($_POST['purchase_date']) ? $_POST['purchase_date'] : null,
+                !empty($_POST['status']) ? $_POST['status'] : 'Available',
+                !empty($_POST['ownership_type']) ? $_POST['ownership_type'] : 'Owned',
+                !empty($_POST['lease_owner']) ? $_POST['lease_owner'] : null,
+                !empty($_POST['storage_capacity']) ? (int)$_POST['storage_capacity'] : null,
+                !empty($_POST['charger_wire']) ? $_POST['charger_wire'] : null,
+                !empty($_POST['notes']) ? $_POST['notes'] : null
             ]);
             
             echo json_encode(['success' => true, 'message' => 'Device added successfully', 'device_id' => $pdo->lastInsertId()]);
@@ -163,16 +163,16 @@ try {
             $stmt->execute([
                 $_POST['device_name'],
                 $_POST['device_type'],
-                $_POST['model'] ?? null,
-                $_POST['version'] ?? null,
-                $_POST['serial_number'] ?? null,
-                $_POST['purchase_date'] ?? null,
+                !empty($_POST['model']) ? $_POST['model'] : null,
+                !empty($_POST['version']) ? $_POST['version'] : null,
+                !empty($_POST['serial_number']) ? $_POST['serial_number'] : null,
+                !empty($_POST['purchase_date']) ? $_POST['purchase_date'] : null,
                 $_POST['status'],
-                $_POST['ownership_type'] ?? 'Owned',
-                $_POST['lease_owner'] ?? null,
-                $_POST['storage_capacity'] ?? null,
-                $_POST['charger_wire'] ?? null,
-                $_POST['notes'] ?? null,
+                !empty($_POST['ownership_type']) ? $_POST['ownership_type'] : 'Owned',
+                !empty($_POST['lease_owner']) ? $_POST['lease_owner'] : null,
+                !empty($_POST['storage_capacity']) ? (int)$_POST['storage_capacity'] : null,
+                !empty($_POST['charger_wire']) ? $_POST['charger_wire'] : null,
+                !empty($_POST['notes']) ? $_POST['notes'] : null,
                 $deviceId
             ]);
             
