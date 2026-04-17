@@ -76,6 +76,9 @@ try {
                     d.serial_number,
                     d.purchase_date,
                     d.ownership_type,
+                    d.lease_owner,
+                    d.storage_capacity,
+                    d.charger_wire,
                     CASE
                         WHEN da.user_id IS NOT NULL THEN 'Assigned'
                         WHEN d.status = 'Assigned' AND da.user_id IS NULL THEN 'Available'
@@ -107,8 +110,8 @@ try {
             }
             
             $stmt = $pdo->prepare("
-                INSERT INTO devices (device_name, device_type, model, version, serial_number, purchase_date, status, ownership_type, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO devices (device_name, device_type, model, version, serial_number, purchase_date, status, ownership_type, lease_owner, storage_capacity, charger_wire, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $_POST['device_name'],
@@ -119,6 +122,9 @@ try {
                 $_POST['purchase_date'] ?? null,
                 $_POST['status'] ?? 'Available',
                 $_POST['ownership_type'] ?? 'Owned',
+                $_POST['lease_owner'] ?? null,
+                $_POST['storage_capacity'] ?? null,
+                $_POST['charger_wire'] ?? 'Yes',
                 $_POST['notes'] ?? null
             ]);
             
@@ -151,7 +157,7 @@ try {
             $stmt = $pdo->prepare("
                 UPDATE devices 
                 SET device_name = ?, device_type = ?, model = ?, version = ?, 
-                    serial_number = ?, purchase_date = ?, status = ?, ownership_type = ?, notes = ?
+                    serial_number = ?, purchase_date = ?, status = ?, ownership_type = ?, lease_owner = ?, storage_capacity = ?, charger_wire = ?, notes = ?
                 WHERE id = ?
             ");
             $stmt->execute([
@@ -163,6 +169,9 @@ try {
                 $_POST['purchase_date'] ?? null,
                 $_POST['status'],
                 $_POST['ownership_type'] ?? 'Owned',
+                $_POST['lease_owner'] ?? null,
+                $_POST['storage_capacity'] ?? null,
+                $_POST['charger_wire'] ?? 'Yes',
                 $_POST['notes'] ?? null,
                 $deviceId
             ]);

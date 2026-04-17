@@ -1,7 +1,9 @@
--- Migration: Add ownership_type to devices table
+-- Migration: Add ownership and hardware fields to devices table
 -- Date: 2026-04-17
--- Description: Adds an ownership_type column to track whether a device is Owned or Leased.
+-- Description: Adds ownership_type, lease_owner, storage_capacity, charger_wire columns.
 
 ALTER TABLE `devices`
-ADD COLUMN `ownership_type` ENUM('Owned', 'Leased') NOT NULL DEFAULT 'Owned'
-AFTER `status`;
+ADD COLUMN `ownership_type` ENUM('Owned', 'Leased') NOT NULL DEFAULT 'Owned' AFTER `status`,
+ADD COLUMN `lease_owner` VARCHAR(255) DEFAULT NULL AFTER `ownership_type`,
+ADD COLUMN `storage_capacity` INT(11) DEFAULT NULL AFTER `lease_owner`,
+ADD COLUMN `charger_wire` ENUM('Yes', 'No') NOT NULL DEFAULT 'Yes' AFTER `storage_capacity`;

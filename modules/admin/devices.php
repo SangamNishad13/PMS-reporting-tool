@@ -86,6 +86,8 @@ include __DIR__ . '/../../includes/header.php';
                                     <th>Model</th>
                                     <th>Version</th>
                                     <th>Ownership</th>
+                                    <th>Storage</th>
+                                    <th>Charger/Wire</th>
                                     <th>Status</th>
                                     <th>Assigned To</th>
                                     <th>Actions</th>
@@ -189,6 +191,21 @@ include __DIR__ . '/../../includes/header.php';
                         <label class="form-label">Model</label>
                         <input type="text" class="form-control" id="model" name="model">
                     </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Storage Capacity (GB)</label>
+                            <input type="number" class="form-control" id="storageCapacity" name="storage_capacity" min="0" placeholder="e.g. 128">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Charger / Wire Included</label>
+                            <select class="form-select" id="chargerWire" name="charger_wire">
+                                <option value="Yes">Yes</option>
+                                <option value="No">No</option>
+                            </select>
+                        </div>
+                    </div>
+
                     
                     <div class="mb-3">
                         <label class="form-label">Version</label>
@@ -217,10 +234,15 @@ include __DIR__ . '/../../includes/header.php';
 
                     <div class="mb-3">
                         <label class="form-label">Ownership Type *</label>
-                        <select class="form-select" id="ownershipType" name="ownership_type" required>
+                        <select class="form-select" id="ownershipType" name="ownership_type" required onchange="toggleLeaseOwner(this.value)">
                             <option value="Owned">Owned</option>
                             <option value="Leased">Leased</option>
                         </select>
+                    </div>
+
+                    <div class="mb-3 d-none" id="leaseOwnerWrap">
+                        <label class="form-label">Lease Owner / Vendor Name *</label>
+                        <input type="text" class="form-control" id="leaseOwner" name="lease_owner" placeholder="e.g. ABC Rentals Pvt Ltd">
                     </div>
 
                     <div class="mb-3 d-none" id="editAssignWrap">

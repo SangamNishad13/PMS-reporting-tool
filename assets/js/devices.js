@@ -88,12 +88,31 @@ function getOwnershipBadge(ownership) {
     return '<span class="badge bg-success"><i class="fas fa-check-circle me-1"></i>Owned</span>';
 }
 
+function getChargerBadge(charger) {
+    if (charger === 'No') {
+        return '<span class="badge bg-danger">No</span>';
+    }
+    return '<span class="badge bg-success">Yes</span>';
+}
+
+function toggleLeaseOwner(value) {
+    if (value === 'Leased') {
+        $('#leaseOwnerWrap').removeClass('d-none');
+        $('#leaseOwner').attr('required', true);
+    } else {
+        $('#leaseOwnerWrap').addClass('d-none');
+        $('#leaseOwner').removeAttr('required').val('');
+    }
+}
+
 function renderDevices() {
     const tbody = $('#devicesTable tbody');
     tbody.empty();
     devices.forEach(device => {
         const statusBadge = getStatusBadge(device.status);
         const ownershipBadge = getOwnershipBadge(device.ownership_type || 'Owned');
+        const chargerBadge = getChargerBadge(device.charger_wire || 'Yes');
+        const storage = device.storage_capacity ? device.storage_capacity + ' GB' : '-';
         const assignedTo = device.assigned_to_name || '-';
         tbody.append(`
             <tr>
@@ -102,6 +121,8 @@ function renderDevices() {
                 <td>${device.model || '-'}</td>
                 <td>${device.version || '-'}</td>
                 <td>${ownershipBadge}</td>
+                <td>${storage}</td>
+                <td>${chargerBadge}</td>
                 <td>${statusBadge}</td>
                 <td>${assignedTo}</td>
                 <td>
@@ -214,6 +235,8 @@ function showAddDeviceModal() {
     $('#deviceForm')[0].reset();
     $('#deviceId').val('');
     $('#editAssignWrap').addClass('d-none');
+    $('#leaseOwnerWrap').addClass('d-none');
+    $('#leaseOwner').removeAttr('required').val('');
     $('#editAssignUserId').empty().append('<option value="">-- Keep Current Assignment --</option>').attr('data-current-assigned', '');
     $('#deviceModal').modal('show');
 }
@@ -237,11 +260,15 @@ function showEditDeviceModal(deviceId) {
     $('#deviceName').val(device.device_name);
     $('#deviceType').val(device.device_type);
     $('#model').val(device.model);
+    $('#storageCapacity').val(device.storage_capacity || '');
+    $('#chargerWire').val(device.charger_wire || 'Yes');
     $('#version').val(device.version);
     $('#serialNumber').val(device.serial_number);
     $('#purchaseDate').val(device.purchase_date);
     $('#status').val(device.status);
     $('#ownershipType').val(device.ownership_type || 'Owned');
+    toggleLeaseOwner(device.ownership_type || 'Owned');
+    $('#leaseOwner').val(device.lease_owner || '');
     $('#notes').val(device.notes);
     $('#editAssignWrap').removeClass('d-none');
     populateEditAssignUsers(device.assigned_user_id || '');
