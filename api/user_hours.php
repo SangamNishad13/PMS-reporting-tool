@@ -13,7 +13,7 @@ enforceApiCsrf();
 
 $db = Database::getInstance();
 $currentUserId = $_SESSION['user_id'];
-$isAdmin = isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin', 'super_admin']);
+$isAdmin = isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin','admin']);
 
 $userId = isset($_GET['user_id']) ? intval($_GET['user_id']) : null;
 $date = isset($_GET['date']) ? trim($_GET['date']) : null; // expected YYYY-MM-DD

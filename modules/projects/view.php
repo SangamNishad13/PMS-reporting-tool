@@ -7,7 +7,7 @@ require_once __DIR__ . '/../../includes/chat_helpers.php';
 require_once __DIR__ . '/../../includes/client_permissions.php';
 
 $auth = new Auth();
-$auth->requireRole(['super_admin', 'admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'client']);
+$auth->requireRole(['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester', 'admin', 'client']);
 
 $baseDir = getBaseDir();
 $projectId = (int)($_GET['id'] ?? 0);
