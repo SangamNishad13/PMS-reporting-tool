@@ -198,11 +198,8 @@ include __DIR__ . '/../../includes/header.php';
                             <input type="number" class="form-control" id="storageCapacity" name="storage_capacity" min="0" placeholder="e.g. 128">
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Charger / Wire Included</label>
-                            <select class="form-select" id="chargerWire" name="charger_wire">
-                                <option value="Yes">Yes</option>
-                                <option value="No">No</option>
-                            </select>
+                            <label class="form-label">Charger / Wire Details</label>
+                            <input type="text" class="form-control" id="chargerWire" name="charger_wire" placeholder="e.g. Yes, 65W, or Original">
                         </div>
                     </div>
 

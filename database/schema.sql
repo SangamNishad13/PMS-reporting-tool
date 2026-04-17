@@ -312,7 +312,7 @@ CREATE TABLE `devices` (
   `ownership_type` enum('Owned','Leased') NOT NULL DEFAULT 'Owned',
   `lease_owner` varchar(255) DEFAULT NULL,
   `storage_capacity` int(11) DEFAULT NULL,
-  `charger_wire` enum('Yes','No') NOT NULL DEFAULT 'Yes',
+  `charger_wire` varchar(255) DEFAULT NULL,
   `notes` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),

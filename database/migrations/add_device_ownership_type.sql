@@ -6,4 +6,4 @@ ALTER TABLE `devices`
 ADD COLUMN `ownership_type` ENUM('Owned', 'Leased') NOT NULL DEFAULT 'Owned' AFTER `status`,
 ADD COLUMN `lease_owner` VARCHAR(255) DEFAULT NULL AFTER `ownership_type`,
 ADD COLUMN `storage_capacity` INT(11) DEFAULT NULL AFTER `lease_owner`,
-ADD COLUMN `charger_wire` ENUM('Yes', 'No') NOT NULL DEFAULT 'Yes' AFTER `storage_capacity`;
+ADD COLUMN `charger_wire` VARCHAR(255) DEFAULT NULL AFTER `storage_capacity`;

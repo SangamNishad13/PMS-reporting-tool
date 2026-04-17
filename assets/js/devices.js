@@ -89,10 +89,11 @@ function getOwnershipBadge(ownership) {
 }
 
 function getChargerBadge(charger) {
-    if (charger === 'No') {
-        return '<span class="badge bg-danger">No</span>';
-    }
-    return '<span class="badge bg-success">Yes</span>';
+    if (!charger) return '-';
+    let color = 'secondary';
+    if (charger.toLowerCase().includes('yes')) color = 'success';
+    if (charger.toLowerCase().includes('no')) color = 'danger';
+    return `<span class="badge bg-${color}">${charger}</span>`;
 }
 
 function toggleLeaseOwner(value) {

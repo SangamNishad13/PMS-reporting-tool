@@ -124,7 +124,7 @@ try {
                 $_POST['ownership_type'] ?? 'Owned',
                 $_POST['lease_owner'] ?? null,
                 $_POST['storage_capacity'] ?? null,
-                $_POST['charger_wire'] ?? 'Yes',
+                $_POST['charger_wire'] ?? null,
                 $_POST['notes'] ?? null
             ]);
             
@@ -171,7 +171,7 @@ try {
                 $_POST['ownership_type'] ?? 'Owned',
                 $_POST['lease_owner'] ?? null,
                 $_POST['storage_capacity'] ?? null,
-                $_POST['charger_wire'] ?? 'Yes',
+                $_POST['charger_wire'] ?? null,
                 $_POST['notes'] ?? null,
                 $deviceId
             ]);
