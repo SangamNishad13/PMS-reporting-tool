@@ -10,6 +10,13 @@ $_SESSION['csrf_token'] = 'mock_token';
 
 $db = Database::getInstance();
 
+// Find a valid user ID to test with
+$userId = $db->query("SELECT id FROM users WHERE is_active = 1 LIMIT 1")->fetchColumn();
+if (!$userId) {
+    echo "No active user found in database to test with.\n";
+    exit;
+}
+
 // Find a page_id and environment_id to test with
 $row = $db->query("SELECT page_id, environment_id FROM page_environments LIMIT 1")->fetch(PDO::FETCH_ASSOC);
 
@@ -22,7 +29,7 @@ if (!$row) {
         $db->prepare("INSERT IGNORE INTO page_environments (page_id, environment_id, status) VALUES (?, ?, 'not_started')")->execute([$pageId, $envId]);
         $row = ['page_id' => $pageId, 'environment_id' => $envId];
     } else {
-        echo "No data found to verify fix.\n";
+        echo "No Page/Environment data found to verify fix.\n";
         exit;
     }
 }
@@ -30,20 +37,15 @@ if (!$row) {
 $pageId = $row['page_id'];
 $envId = $row['environment_id'];
 
-echo "Testing update for page_id=$pageId, env_id=$envId\n";
+echo "Testing update for page_id=$pageId, env_id=$envId with user_id=$userId\n";
 
-// Emulate POST request to api/update_page_status.php
+// Emulate POST request
 $_SERVER['REQUEST_METHOD'] = 'POST';
 $_SERVER['HTTP_X_CSRF_TOKEN'] = 'mock_token';
-
-// We can't easily include the API file because it calls exit/die and sends headers.
-// Instead, we'll manually run the core logic or simulate the request if possible.
-// Since we want to check if the DB error still occurs, we can just run the query.
 
 try {
     $statusType = 'testing';
     $status = 'completed';
-    $userId = 1;
     
     $columnName = 'status';
     $updateStmt = $db->prepare("
