@@ -85,6 +85,7 @@ include __DIR__ . '/../../includes/header.php';
                                     <th>Type</th>
                                     <th>Model</th>
                                     <th>Version</th>
+                                    <th>Ownership</th>
                                     <th>Status</th>
                                     <th>Assigned To</th>
                                     <th>Actions</th>
@@ -211,6 +212,14 @@ include __DIR__ . '/../../includes/header.php';
                             <option value="Assigned">Assigned</option>
                             <option value="Maintenance">Maintenance</option>
                             <option value="Retired">Retired</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Ownership Type *</label>
+                        <select class="form-select" id="ownershipType" name="ownership_type" required>
+                            <option value="Owned">Owned</option>
+                            <option value="Leased">Leased</option>
                         </select>
                     </div>
 

@@ -81,11 +81,19 @@ function filterHistory() {
     });
 }
 
+function getOwnershipBadge(ownership) {
+    if (ownership === 'Leased') {
+        return '<span class="badge bg-warning text-dark"><i class="fas fa-file-contract me-1"></i>Leased</span>';
+    }
+    return '<span class="badge bg-success"><i class="fas fa-check-circle me-1"></i>Owned</span>';
+}
+
 function renderDevices() {
     const tbody = $('#devicesTable tbody');
     tbody.empty();
     devices.forEach(device => {
         const statusBadge = getStatusBadge(device.status);
+        const ownershipBadge = getOwnershipBadge(device.ownership_type || 'Owned');
         const assignedTo = device.assigned_to_name || '-';
         tbody.append(`
             <tr>
@@ -93,6 +101,7 @@ function renderDevices() {
                 <td><i class="fas fa-${getDeviceIcon(device.device_type)}"></i> ${device.device_type}</td>
                 <td>${device.model || '-'}</td>
                 <td>${device.version || '-'}</td>
+                <td>${ownershipBadge}</td>
                 <td>${statusBadge}</td>
                 <td>${assignedTo}</td>
                 <td>
@@ -232,6 +241,7 @@ function showEditDeviceModal(deviceId) {
     $('#serialNumber').val(device.serial_number);
     $('#purchaseDate').val(device.purchase_date);
     $('#status').val(device.status);
+    $('#ownershipType').val(device.ownership_type || 'Owned');
     $('#notes').val(device.notes);
     $('#editAssignWrap').removeClass('d-none');
     populateEditAssignUsers(device.assigned_user_id || '');

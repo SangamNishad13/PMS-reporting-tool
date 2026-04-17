@@ -309,6 +309,7 @@ CREATE TABLE `devices` (
   `serial_number` varchar(255) DEFAULT NULL,
   `purchase_date` date DEFAULT NULL,
   `status` enum('Available','Assigned','Maintenance','Retired') DEFAULT 'Available',
+  `ownership_type` enum('Owned','Leased') NOT NULL DEFAULT 'Owned',
   `notes` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
