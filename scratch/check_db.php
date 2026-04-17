@@ -1,17 +1,12 @@
 <?php
-require_once 'config/database.php';
+require_once __DIR__ . '/../config/database.php';
 $db = Database::getInstance();
-$stmt = $db->query("SHOW TABLES");
-$tables = $stmt->fetchAll(PDO::FETCH_COLUMN);
-echo "Tables:\n";
-print_r($tables);
-
-$history = [];
 try {
-    $stmt = $db->query("SELECT * FROM migration_history");
-    $history = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    echo "\nMigration History:\n";
-    print_r($history);
+    $res = $db->query("SELECT DISTINCT status FROM page_environments");
+    print_r($res->fetchAll(PDO::FETCH_COLUMN));
+    
+    $res2 = $db->query("DESCRIBE page_environments");
+    print_r($res2->fetchAll(PDO::FETCH_ASSOC));
 } catch (Exception $e) {
-    echo "\nmigration_history table does not exist.\n";
+    echo "Error: " . $e->getMessage();
 }

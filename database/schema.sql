@@ -823,7 +823,7 @@ DROP TABLE IF EXISTS `page_environments`;
 CREATE TABLE `page_environments` (
   `page_id` int(11) NOT NULL,
   `environment_id` int(11) NOT NULL,
-  `status` enum('not_started','in_progress','pass','fail','on_hold','needs_review') DEFAULT 'not_started',
+  `status` enum('not_started','in_progress','completed','pass','fail','on_hold','needs_review') DEFAULT 'not_started',
   `last_updated_by` int(11) DEFAULT NULL,
   `last_updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `qa_status` enum('pending','pass','fail','na','completed') DEFAULT 'pending',
