@@ -3765,6 +3765,29 @@
                 document.body.removeChild(ta);
             }
         });
+
+        jQuery('#btnClearGroupedUrls').off('click.urlModalClear').on('click.urlModalClear', function () {
+            if (confirm('Are you sure you want to remove all grouped URLs?')) {
+                $modalUrls.val(null).trigger('change');
+            }
+        });
+        
+        // Add native Ctrl+A + Delete support inside the Select2 search field
+        jQuery(document).off('keydown.urlSelect2Clear').on('keydown.urlSelect2Clear', '.select2-container--open .select2-search__field', function(e) {
+            if (e.ctrlKey && e.key === 'a') {
+                jQuery(this).data('ctrlA_pressed', true);
+            } else if ((e.key === 'Backspace' || e.key === 'Delete') && jQuery(this).data('ctrlA_pressed')) {
+                var $select2Input = jQuery(this).closest('.select2-container').prev('select');
+                if ($select2Input.attr('id') === 'urlModalGroupedUrls' || $select2Input.attr('id') === 'finalIssueGroupedUrls') {
+                    $select2Input.val(null).trigger('change');
+                    jQuery(this).val(''); // Clear the search box too
+                    jQuery(this).data('ctrlA_pressed', false);
+                    e.preventDefault();
+                }
+            } else {
+                jQuery(this).data('ctrlA_pressed', false);
+            }
+        });
     }
 
     function clearIssueMetadataForTemplateReset() {

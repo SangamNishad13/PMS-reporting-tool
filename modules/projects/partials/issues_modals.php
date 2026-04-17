@@ -758,6 +758,9 @@ body.client-issue-sidebar-open {
                 <div class="form-text">Search, select, or type custom URL and press Enter to add it.</div>
             </div>
             <div class="modal-footer">
+                <button type="button" class="btn btn-outline-danger me-auto" id="btnClearGroupedUrls">
+                    <i class="fas fa-trash-alt me-1"></i> Clear All URLs
+                </button>
                 <button type="button" class="btn btn-outline-secondary" id="btnCopyGroupedUrls">
                     <i class="fas fa-copy me-1"></i> Copy Selected URLs
                 </button>
