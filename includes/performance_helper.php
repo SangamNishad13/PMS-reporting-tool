@@ -177,8 +177,8 @@ class PerformanceHelper {
                 COALESCE(SUM(ptl.hours_spent), 0) AS total_hours,
                 COUNT(DISTINCT ptl.project_id) AS project_count,
                 COUNT(DISTINCT ptl.page_id) AS page_count,
-                COALESCE(SUM(CASE WHEN ptl.task_type = 'page_testing' AND ptl.page_id IS NOT NULL AND {$pageTestingMatch} THEN ptl.hours_spent ELSE 0 END), 0) AS page_testing_hours,
-                COUNT(DISTINCT CASE WHEN ptl.task_type = 'page_testing' AND ptl.page_id IS NOT NULL AND {$pageTestingMatch} THEN ptl.page_id END) AS assigned_page_testing_count
+                COALESCE(SUM(CASE WHEN ptl.task_type = 'page_testing' AND ptl.page_id IS NOT NULL THEN ptl.hours_spent ELSE 0 END), 0) AS page_testing_hours,
+                COUNT(DISTINCT CASE WHEN ptl.task_type = 'page_testing' AND ptl.page_id IS NOT NULL THEN ptl.page_id END) AS assigned_page_testing_count
                  FROM project_time_logs ptl
                  LEFT JOIN project_pages pp ON pp.id = ptl.page_id
                  WHERE ptl.user_id IN ($idPlaceholder)";
@@ -798,8 +798,8 @@ class PerformanceHelper {
                                         COALESCE(SUM(CASE WHEN p.project_code = 'OFF-PROD-001' OR p.title LIKE 'Off-Production / Bench%' THEN ptl.hours_spent ELSE 0 END), 0) AS off_production_hours,
                                         COUNT(DISTINCT ptl.project_id) AS project_count,
                                         COUNT(DISTINCT ptl.page_id) AS page_count,
-                                        COALESCE(SUM(CASE WHEN ptl.task_type = 'page_testing' AND ptl.page_id IS NOT NULL AND {$pageTestingMatch} THEN ptl.hours_spent ELSE 0 END), 0) AS page_testing_hours,
-                                        COUNT(DISTINCT CASE WHEN ptl.task_type = 'page_testing' AND ptl.page_id IS NOT NULL AND {$pageTestingMatch} THEN ptl.page_id END) AS assigned_page_testing_count,
+                                        COALESCE(SUM(CASE WHEN ptl.task_type = 'page_testing' AND ptl.page_id IS NOT NULL THEN ptl.hours_spent ELSE 0 END), 0) AS page_testing_hours,
+                                        COUNT(DISTINCT CASE WHEN ptl.task_type = 'page_testing' AND ptl.page_id IS NOT NULL THEN ptl.page_id END) AS assigned_page_testing_count,
                                         COUNT(DISTINCT ptl.log_date) AS active_days
                                 FROM project_time_logs ptl
                                 LEFT JOIN projects p ON p.id = ptl.project_id
