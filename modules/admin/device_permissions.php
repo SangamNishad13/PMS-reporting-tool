@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_device_perm'])
         $check = $db->prepare("SELECT role FROM users WHERE id = ? LIMIT 1");
         $check->execute([$userId]);
         $row = $check->fetch(PDO::FETCH_ASSOC);
-        if ($row && in_array($row['role'], ['admin','admin'])) {
+        if ($row && in_array($row['role'], ['admin', 'super_admin'])) {
             $_SESSION['error'] = "Role-based device access for admin users cannot be changed here.";
         } else {
             $prevStmt = $db->prepare("SELECT can_manage_devices FROM users WHERE id = ? LIMIT 1");
@@ -92,8 +92,8 @@ include __DIR__ . '/../../includes/header.php';
                         <?php foreach ($users as $u): ?>
                             <?php
                                 $roleLabel = ucfirst(str_replace('_', ' ', $u['role']));
-                                $permLabel = in_array($u['role'], ['admin','admin']) ? 'Role-based' : 'Explicit';
-                                $isRoleBased = in_array($u['role'], ['admin','admin']);
+                                $permLabel = in_array($u['role'], ['admin', 'super_admin']) ? 'Role-based' : 'Explicit';
+                                $isRoleBased = in_array($u['role'], ['admin', 'super_admin']);
                             ?>
                             <tr>
                                 <td><?php echo htmlspecialchars($u['full_name'], ENT_QUOTES, 'UTF-8'); ?></td>

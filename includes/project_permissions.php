@@ -14,7 +14,7 @@ function hasProjectPermission($db, $userId, $projectId, $permission) {
         $userStmt->execute([$userId]);
         $user = $userStmt->fetch();
         
-        if ($user && in_array($user['role'], ['admin'])) {
+        if ($user && in_array($user['role'], ['admin', 'super_admin'])) {
             return true;
         }
         
@@ -119,7 +119,7 @@ function hasResourceWorkloadAccess($db, $userId) {
         $userStmt->execute([$userId]);
         $user = $userStmt->fetch();
         
-        if ($user && in_array($user['role'], ['admin'])) {
+        if ($user && in_array($user['role'], ['admin', 'super_admin'])) {
             return true;
         }
         
@@ -177,7 +177,7 @@ function getUserProjectPermissions($db, $userId, $projectId) {
         $userStmt->execute([$userId]);
         $user = $userStmt->fetch();
         
-        if ($user && in_array($user['role'], ['admin'])) {
+        if ($user && in_array($user['role'], ['admin', 'super_admin'])) {
             // Return all available permissions
             $allPermsStmt = $db->query("SELECT permission_type FROM project_permissions_types WHERE is_active = 1");
             return $allPermsStmt->fetchAll(PDO::FETCH_COLUMN);
@@ -238,7 +238,7 @@ function hasProjectAccess($db, $userId, $projectId) {
         $userStmt->execute([$userId]);
         $user = $userStmt->fetch();
         
-        if ($user && in_array($user['role'], ['admin'])) {
+        if ($user && in_array($user['role'], ['admin', 'super_admin'])) {
             return true;
         }
         
@@ -297,7 +297,7 @@ function getUserAccessibleProjects($db, $userId) {
         $userStmt->execute([$userId]);
         $user = $userStmt->fetch();
         
-        if ($user && in_array($user['role'], ['admin'])) {
+        if ($user && in_array($user['role'], ['admin', 'super_admin'])) {
             return $db->query("SELECT id, title, po_number, status FROM projects ORDER BY title")->fetchAll();
         }
         
@@ -747,7 +747,7 @@ function hasIssueQaStatusUpdateAccess($db, $userId, $projectId) {
         $role = strtolower((string)($row['role'] ?? ''));
         $clientId = (int)($row['client_id'] ?? 0);
 
-        if (in_array($role, ['admin'], true)) return true;
+        if (in_array($role, ['admin', 'super_admin'], true)) return true;
 
         // Existing project-level permission path already supported.
         if (hasProjectPermission($db, $userId, $projectId, 'qa_status_update')) return true;

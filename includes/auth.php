@@ -600,6 +600,7 @@ class Auth {
         
         // Single role with hierarchy
         $roleHierarchy = [
+            'super_admin' => 6,
             'admin' => 5,
             'project_lead' => 4,
             'qa' => 3,
@@ -674,7 +675,7 @@ function requireLogin() {
 
 function requireAdmin() {
     requireLogin();
-    if (!in_array($_SESSION['role'] ?? '', ['admin'])) {
+    if (!in_array($_SESSION['role'] ?? '', ['admin', 'super_admin'])) {
         $_SESSION['error'] = "You don't have permission to access this page.";
         require_once __DIR__ . '/helpers.php';
         $baseDir = getBaseDir();
@@ -699,7 +700,7 @@ function requireDeviceManager() {
             // ignore
         }
     }
-    if (!in_array($role, ['admin']) && !$canManage) {
+    if (!in_array($role, ['admin', 'super_admin']) && !$canManage) {
         $_SESSION['error'] = "You don't have permission to access this page.";
         require_once __DIR__ . '/helpers.php';
         $baseDir = getBaseDir();

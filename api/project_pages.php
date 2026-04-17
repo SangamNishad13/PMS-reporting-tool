@@ -189,7 +189,7 @@ try {
             // permission: admin/admin/project_lead
             $role = $_SESSION['role'] ?? '';
             $userId = $_SESSION['user_id'] ?? 0;
-            if (!in_array($role, ['admin','admin','project_lead'])) jsonRes(['error' => 'Permission denied'], 403);
+            if (!in_array($role, ['admin', 'super_admin','project_lead'])) jsonRes(['error' => 'Permission denied'], 403);
             if ($role === 'project_lead') {
                 $p = $db->prepare('SELECT project_lead_id FROM projects WHERE id = ? LIMIT 1');
                 $p->execute([$projectId]);

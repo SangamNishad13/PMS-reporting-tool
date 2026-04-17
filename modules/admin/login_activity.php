@@ -4,7 +4,7 @@ require_once __DIR__ . '/../../includes/helpers.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
 $auth = new Auth();
-$auth->requireRole(['admin','admin']);
+$auth->requireRole(['admin', 'super_admin']);
 
 $db = Database::getInstance();
 
