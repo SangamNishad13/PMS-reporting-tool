@@ -1283,7 +1283,7 @@ include __DIR__ . '/../../includes/header.php';
         userRole: <?php echo json_encode($userRole); ?>,
         canUpdateIssueQaStatus: <?php echo $canUpdateIssueQaStatus ? 'true' : 'false'; ?>,
         baseDir: '<?php echo $baseDir; ?>',
-        projectType: '<?php echo $project['type'] ?? 'web'; ?>',
+        projectType: '<?php echo strtolower($project['project_type'] ?? 'web'); ?>',
         currentPageUrl: <?php echo json_encode($page['url'] ?? ''); ?>,
         projectPages: <?php echo json_encode($projectPages ?? []); ?>,
         groupedUrls: <?php echo json_encode($groupedUrls ?? []); ?>,
