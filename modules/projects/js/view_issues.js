@@ -2026,6 +2026,61 @@
             }
         });
 
+        // Auto-formatting for backticks: Convert `text` to <code>text</code>
+        $el.on('summernote.keyup', function(we, e) {
+            if (e.key !== '`') return;
+
+            try {
+                var range = $el.summernote('createRange');
+                if (!range || !range.sc || range.sc.nodeType !== 3) return;
+
+                var text = range.sc.textContent;
+                var pos = range.so;
+                
+                // Check if we are already inside a code tag
+                if (jQuery(range.sc.parentNode).closest('code').length) return;
+
+                // Look for an opening backtick before the one just typed (at pos-1)
+                var lastBacktick = text.lastIndexOf('`', pos - 2);
+                if (lastBacktick === -1) return;
+
+                // Extract content between backticks
+                var codeText = text.substring(lastBacktick + 1, pos - 1);
+                if (codeText.length === 0) return;
+
+                // Create elements
+                var parent = range.sc.parentNode;
+                var beforeText = text.substring(0, lastBacktick);
+                var afterText = text.substring(pos);
+                
+                var codeEl = document.createElement('code');
+                codeEl.textContent = codeText;
+                
+                // We need to use Summernote's insertNode or direct DOM manipulation that stays in context
+                // Directly replacing text content is safest for simple text nodes
+                var prefixNode = document.createTextNode(beforeText);
+                var suffixNode = document.createTextNode('\u200B' + afterText); // Zero-width space helps positioning
+
+                parent.insertBefore(prefixNode, range.sc);
+                parent.insertBefore(codeEl, range.sc);
+                parent.insertBefore(suffixNode, range.sc);
+                parent.removeChild(range.sc);
+
+                // Position cursor at start of suffixNode (after the zero-width space)
+                var newRange = document.createRange();
+                newRange.setStart(suffixNode, 1);
+                newRange.collapse(true);
+                var sel = window.getSelection();
+                if (sel) {
+                    sel.removeAllRanges();
+                    sel.addRange(newRange);
+                }
+
+                // Notify Summernote of change
+                $el.summernote('triggerEvent', 'change');
+            } catch (err) { }
+        });
+
         // Exit bullet list on Enter in empty <li>
         $el.on('summernote.keydown', function(we, e) {
             if (e.keyCode !== 13) return;
