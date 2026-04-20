@@ -143,59 +143,6 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
     <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/summernote_image_helper.js?v=<?php echo $assetVersion; ?>"></script>
     <?php endif; ?>
     <script nonce="<?php echo $cspNonce; ?>">
-    // Global suppression: disable browser alert/confirm/prompt, Notification prompts,
-    // prevent Bootstrap modals from appearing, and hide success alerts/toasts.
-    (function(){
-        try {
-            // Disable native dialogs
-            window._origAlert = window.alert; window.alert = function(){};
-            window._origConfirm = window.confirm; window.confirm = function(){ return true; };
-            window._origPrompt = window.prompt; window.prompt = function(){ return null; };
-
-            // Prevent Notification permission prompts and construction
-            if (window.Notification) {
-                try {
-                    Notification.requestPermission = function(){ return Promise.resolve('denied'); };
-                } catch (e) {}
-                try {
-                    // Replace constructor with noop to avoid showing system notifications
-                    window.Notification = function(){};
-                } catch (e) {}
-            }
-
-            // Allow Bootstrap modals to function (previously blocked; re-enabled to fix calendar dialogs)
-
-            // Hide only success alerts immediately and when added.
-            // Do not hide `.toast`, otherwise global showToast() messages become invisible.
-            function hideSuccessElements(node){
-                if (!node) return;
-                try {
-                    if (node.nodeType === 1) {
-                        if (node.matches('.alert-success, .alert-success *')) {
-                            node.style.display = 'none';
-                        }
-                        var els = node.querySelectorAll && node.querySelectorAll('.alert-success');
-                        if (els && els.length) {
-                            els.forEach(function(el){ el.style.display = 'none'; });
-                        }
-                    }
-                } catch (e) {}
-            }
-
-            // Initial pass
-            hideSuccessElements(document.documentElement);
-
-            // Observe DOM for new success elements
-            var observer = new MutationObserver(function(mutations){
-                mutations.forEach(function(m){
-                    m.addedNodes.forEach(hideSuccessElements);
-                });
-            });
-            try { observer.observe(document.documentElement || document.body, { childList: true, subtree: true }); } catch(e){}
-
-        } catch (e) {}
-    })();
-    
     // Global toast helper (available early for all pages)
     (function() {
         // Track last focused element so we can restore focus after toast close
