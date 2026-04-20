@@ -2113,18 +2113,29 @@
             if (e.keyCode === 8) {
                 try {
                     var range = $el.summernote('createRange');
-                    if (!range || !range.sc || range.sc.nodeType !== 3) return;
+                    if (!range || !range.sc) return;
 
                     var codeNode = null;
-                    var textNodeToCleanup = range.sc;
+                    var textNodeToCleanup = null;
 
-                    // Case 1: Cursor at index 1 of a node starting with \u200B (immediately after conversion)
-                    if (range.so === 1 && range.sc.textContent.charAt(0) === '\u200B') {
-                        codeNode = range.sc.previousSibling;
-                    } 
-                    // Case 2: Cursor at index 0 (if \u200B was already deleted)
-                    else if (range.so === 0) {
-                        codeNode = range.sc.previousSibling;
+                    // Support identifying code node from different cursor positions
+                    if (range.sc.nodeType === 3) {
+                        // Case A: Inside the <code> tag at the end
+                        if (range.sc.parentNode && range.sc.parentNode.nodeName === 'CODE') {
+                            if (range.so === range.sc.textContent.length) {
+                                codeNode = range.sc.parentNode;
+                                // No text node cleanup needed if we are inside
+                            }
+                        } 
+                        // Case B: Immediately after the <code> tag in a text node
+                        else {
+                            if (range.so === 1 && range.sc.textContent.charAt(0) === '\u200B') {
+                                codeNode = range.sc.previousSibling;
+                                textNodeToCleanup = range.sc;
+                            } else if (range.so === 0) {
+                                codeNode = range.sc.previousSibling;
+                            }
+                        }
                     }
 
                     if (codeNode && codeNode.nodeName === 'CODE') {
@@ -2137,14 +2148,16 @@
                         parent.insertBefore(newNode, codeNode);
                         parent.removeChild(codeNode);
                         
-                        // Cleanup the suffix text node (remove \u200B or the node entirely)
-                        if (textNodeToCleanup.textContent === '\u200B' || textNodeToCleanup.textContent === '') {
-                            if (textNodeToCleanup.parentNode === parent) parent.removeChild(textNodeToCleanup);
-                        } else if (textNodeToCleanup.textContent.startsWith('\u200B')) {
-                            textNodeToCleanup.textContent = textNodeToCleanup.textContent.substring(1);
+                        // Cleanup trailing markers if we were in the suffix node
+                        if (textNodeToCleanup) {
+                            if (textNodeToCleanup.textContent === '\u200B' || textNodeToCleanup.textContent === '') {
+                                if (textNodeToCleanup.parentNode === parent) parent.removeChild(textNodeToCleanup);
+                            } else if (textNodeToCleanup.textContent.startsWith('\u200B')) {
+                                textNodeToCleanup.textContent = textNodeToCleanup.textContent.substring(1);
+                            }
                         }
 
-                        // Position cursor at end of the restored backtick + text
+                        // Position cursor at end of the restored plain text
                         var newRange = document.createRange();
                         newRange.setStart(newNode, newNode.length);
                         newRange.collapse(true);
