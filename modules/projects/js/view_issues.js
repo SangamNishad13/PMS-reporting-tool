@@ -2113,38 +2113,48 @@
             if (e.keyCode === 8) {
                 try {
                     var range = $el.summernote('createRange');
-                    if (!range || !range.sc) return;
+                    if (!range || !range.sc || range.sc.nodeType !== 3) return;
 
-                    // If we are at the beginning of a text node that follows a <code> element
-                    if (range.so === 0 && range.sc.nodeType === 3) {
-                        var prev = range.sc.previousSibling;
-                        if (prev && prev.nodeName === 'CODE') {
-                            e.preventDefault();
-                            var codeText = prev.textContent;
-                            var parent = prev.parentNode;
-                            
-                            // Replace <code>text</code> with `text (leaving the opening backtick)
-                            var newNode = document.createTextNode('` ' + codeText);
-                            parent.insertBefore(newNode, prev);
-                            parent.removeChild(prev);
-                            
-                            // Remove the zero-width space node if it's there
-                            if (range.sc && (range.sc.textContent === '\u200B' || range.sc.textContent === '')) {
-                                parent.removeChild(range.sc);
-                            }
+                    var codeNode = null;
+                    var textNodeToCleanup = range.sc;
 
-                            // Set cursor to end of the new text
-                            var newRange = document.createRange();
-                            newRange.setStart(newNode, newNode.length);
-                            newRange.collapse(true);
-                            var sel = window.getSelection();
-                            if (sel) {
-                                sel.removeAllRanges();
-                                sel.addRange(newRange);
-                            }
-                            $el.summernote('triggerEvent', 'change');
-                            return;
+                    // Case 1: Cursor at index 1 of a node starting with \u200B (immediately after conversion)
+                    if (range.so === 1 && range.sc.textContent.charAt(0) === '\u200B') {
+                        codeNode = range.sc.previousSibling;
+                    } 
+                    // Case 2: Cursor at index 0 (if \u200B was already deleted)
+                    else if (range.so === 0) {
+                        codeNode = range.sc.previousSibling;
+                    }
+
+                    if (codeNode && codeNode.nodeName === 'CODE') {
+                        e.preventDefault();
+                        var codeText = codeNode.textContent;
+                        var parent = codeNode.parentNode;
+                        
+                        // Replace <code>text</code> with `text (plain text)
+                        var newNode = document.createTextNode('` ' + codeText);
+                        parent.insertBefore(newNode, codeNode);
+                        parent.removeChild(codeNode);
+                        
+                        // Cleanup the suffix text node (remove \u200B or the node entirely)
+                        if (textNodeToCleanup.textContent === '\u200B' || textNodeToCleanup.textContent === '') {
+                            if (textNodeToCleanup.parentNode === parent) parent.removeChild(textNodeToCleanup);
+                        } else if (textNodeToCleanup.textContent.startsWith('\u200B')) {
+                            textNodeToCleanup.textContent = textNodeToCleanup.textContent.substring(1);
                         }
+
+                        // Position cursor at end of the restored backtick + text
+                        var newRange = document.createRange();
+                        newRange.setStart(newNode, newNode.length);
+                        newRange.collapse(true);
+                        var sel = window.getSelection();
+                        if (sel) {
+                            sel.removeAllRanges();
+                            sel.addRange(newRange);
+                        }
+                        $el.summernote('triggerEvent', 'change');
+                        return;
                     }
                 } catch (err) { }
             }
