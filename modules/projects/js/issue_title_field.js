@@ -292,9 +292,9 @@
         }
 
         function formatCodeBackticks(html) {
-            if (!html) return html;
-            // Matches text between backticks that are not already inside a code tag
-            // RegEx: `([^`]+)` -> <code>$1</code> (simple version for single text nodes)
+            if (!html || typeof html !== 'string') return html;
+            // Matches text between backticks: `code` -> <code>code</code>
+            // Uses global match to catch all instances in the preset
             return html.replace(/`([^`]+)`/g, '<code>$1</code>');
         }
         

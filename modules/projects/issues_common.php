@@ -353,7 +353,7 @@ include __DIR__ . '/partials/issues_modals.php';
     window.issueMetadataFields = <?php echo json_encode($metadataFields ?? []); ?>;
 </script>
 
-<script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js"></script>
+<script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js?v=<?php echo time(); ?>"></script>
 
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/regression-panel.js?v=<?php echo time(); ?>"></script>

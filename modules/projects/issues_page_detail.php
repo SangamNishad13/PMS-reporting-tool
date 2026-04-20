@@ -1307,7 +1307,7 @@ include __DIR__ . '/../../includes/header.php';
     window.issueMetadataFields = <?php echo json_encode($metadataFields ?? []); ?>;
 </script>
 
-<script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js?v=20260210180000"></script>
+<script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/regression-panel.js?v=<?php echo time(); ?>"></script>
 

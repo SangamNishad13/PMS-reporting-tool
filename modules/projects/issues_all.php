@@ -593,7 +593,7 @@ window.issueMetadataFields = <?php echo json_encode($metadataFields ?? []); ?>;
 
 <!-- Include issue management JavaScript -->
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_core.js"></script>
-<script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js"></script>
+<script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/regression-panel.js?v=<?php echo time(); ?>"></script>
 
