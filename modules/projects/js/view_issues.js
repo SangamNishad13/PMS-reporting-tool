@@ -2133,7 +2133,7 @@
                         var parent = codeNode.parentNode;
                         
                         // Replace <code>text</code> with `text (plain text)
-                        var newNode = document.createTextNode('` ' + codeText);
+                        var newNode = document.createTextNode('`' + codeText);
                         parent.insertBefore(newNode, codeNode);
                         parent.removeChild(codeNode);
                         
