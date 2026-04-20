@@ -556,13 +556,13 @@ window._csrfToken = <?php echo json_encode(generateCsrfToken()); ?>;
 // Global configuration object required by view_issues.js
 window.ProjectConfig = {
     projectId: <?php echo $projectId; ?>,
-    projectType: '<?php echo strtolower($project['project_type'] ?? 'web'); ?>',
-    userRole: '<?php echo htmlspecialchars((string)$normalizedUserRole, ENT_QUOTES, 'UTF-8'); ?>',
+    projectType: <?php echo json_encode(strtolower($project['project_type'] ?? 'web')); ?>,
+    userRole: <?php echo json_encode((string)($normalizedUserRole ?? '')); ?>,
     canUpdateIssueQaStatus: <?php echo $canUpdateIssueQaStatus ? 'true' : 'false'; ?>,
     projectPages: <?php echo json_encode($projectPages); ?>,
     uniqueIssuePages: <?php echo json_encode($uniqueIssuePages ?? []); ?>,
     groupedUrls: <?php echo json_encode($groupedUrls); ?>,
-    baseDir: '<?php echo $baseDir; ?>',
+    baseDir: <?php echo json_encode($baseDir); ?>,
     projectUsers: <?php echo json_encode($projectUsers); ?>,
     qaStatuses: <?php echo json_encode($qaStatuses); ?>,
     issueStatuses: <?php echo json_encode($issueStatuses); ?>,
