@@ -57,8 +57,8 @@ function mapComputedToPageStatus(string $status): string {
         'needs_review' => 'needs_review',
         'qa_in_progress' => 'qa_in_progress',
         'not_started' => 'not_started',
-        'pass' => 'qa_in_progress',
-        'fail' => 'in_fixing'
+        'pass' => 'completed',
+        'fail' => 'needs_review'
     ];
     return $map[$status] ?? 'in_progress';
 }
