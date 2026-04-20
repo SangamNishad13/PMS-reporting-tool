@@ -2028,7 +2028,9 @@
 
         // Auto-formatting for backticks: Convert `text` to <code>text</code>
         $el.on('summernote.keyup', function(we, e) {
-            if (e.key !== '`') return;
+            // More robust key detection
+            var key = e.key || (e.originalEvent && e.originalEvent.key);
+            if (key !== '`') return;
 
             try {
                 var range = $el.summernote('createRange');
