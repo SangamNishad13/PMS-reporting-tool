@@ -141,8 +141,10 @@ function stopScanProcess(string $token): bool {
     $pid = (int)$data['pid'];
     if ($pid <= 0) return false;
 
-    // Check if process exists and kill it (Linux specific)
-    if (function_exists('posix_kill')) {
+    // Kill the process (cross-platform support)
+    if (strncasecmp(PHP_OS, 'WIN', 3) === 0) {
+        @exec("taskkill /F /PID $pid > NUL 2>&1");
+    } else if (function_exists('posix_kill')) {
         @posix_kill($pid, 9); // SIGKILL
     } else {
         @exec("kill -9 $pid > /dev/null 2>&1");

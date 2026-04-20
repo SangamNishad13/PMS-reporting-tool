@@ -21,7 +21,22 @@ function toLabelText(id, fallback) {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+async function isOllamaAvailable() {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const response = await fetch('http://localhost:11434/api/tags', { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
 async function getAIEnhancedFindings(violation, snippet, feedbackPath, token = null) {
+  if (!(await isOllamaAvailable())) {
+    return null;
+  }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes for slow Llama3 inference on VPS
   
@@ -110,6 +125,9 @@ Instructions:
 }
 
 async function runAIDiscoveryAudit(page, feedbackPath) {
+  if (!(await isOllamaAvailable())) {
+      throw new Error('AI Discovery requires Ollama to be running on localhost:11434. Please start Ollama or use standard scan.');
+  }
   const simplifiedDOM = await page.evaluate(() => {
     function getCleanAttributes(el) {
       const attrs = {};
@@ -271,13 +289,15 @@ function findBrowserExecutable() {
   const candidates = [
     process.env.CHROME_PATH,
     process.env.PUPPETEER_EXECUTABLE_PATH,
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium-browser',
-    '/usr/bin/chromium',
+    // Windows Common Paths (Primary on Windows)
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    // Linux Common Paths
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium'
   ].filter(Boolean);
 
   for (const c of candidates) {
