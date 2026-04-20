@@ -340,7 +340,7 @@ include __DIR__ . '/partials/issues_modals.php';
         userRole: <?php echo json_encode($userRole); ?>,
         canUpdateIssueQaStatus: <?php echo $canUpdateIssueQaStatus ? 'true' : 'false'; ?>,
         baseDir: '<?php echo $baseDir; ?>',
-        projectType: '<?php echo $project['type'] ?? 'web'; ?>',
+        projectType: '<?php echo strtolower($project['project_type'] ?? 'web'); ?>',
         projectPages: <?php echo json_encode($projectPages ?? []); ?>,
         uniqueIssuePages: <?php echo json_encode($uniqueIssuePages ?? []); ?>,
         groupedUrls: <?php echo json_encode($groupedUrls ?? []); ?>,
