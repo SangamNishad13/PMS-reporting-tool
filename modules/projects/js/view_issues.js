@@ -2127,6 +2127,11 @@
                             var newNode = document.createTextNode('` ' + codeText);
                             parent.insertBefore(newNode, prev);
                             parent.removeChild(prev);
+                            
+                            // Remove the zero-width space node if it's there
+                            if (range.sc && (range.sc.textContent === '\u200B' || range.sc.textContent === '')) {
+                                parent.removeChild(range.sc);
+                            }
 
                             // Set cursor to end of the new text
                             var newRange = document.createRange();
