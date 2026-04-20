@@ -46,22 +46,8 @@ if (!in_array($statusType, ['testing', 'qa'])) {
     exit;
 }
 
-// Validate status based on type
-if ($statusType === 'testing') {
-    $validStatuses = ['not_started', 'in_progress', 'completed', 'on_hold', 'needs_review'];
-} else {
-    $qaAliases = [
-        'pending' => 'not_started',
-        'na' => 'on_hold',
-        'pass' => 'completed',
-        'fail' => 'needs_review'
-    ];
-    $status = strtolower(trim((string)$status));
-    if (isset($qaAliases[$status])) {
-        $status = $qaAliases[$status];
-    }
-    $validStatuses = ['not_started', 'in_progress', 'completed', 'on_hold', 'needs_review'];
-}
+// Standard statuses shared by testing and qa types
+$validStatuses = ['not_started', 'in_progress', 'completed', 'on_hold', 'needs_review'];
 
 if (!in_array($status, $validStatuses)) {
     echo json_encode(['success' => false, 'message' => 'Invalid status value']);
