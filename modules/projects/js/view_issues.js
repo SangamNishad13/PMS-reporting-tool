@@ -7489,28 +7489,42 @@
 
     var addF = document.getElementById('issueAddFinalBtn'); if (addF) addF.addEventListener('click', function () { openFinalEditor(null); });
 
-    // Alt+N shortcut: trigger Add Issue / Add Common Issue on pages where these buttons exist.
+    // Keyboard shortcuts: Alt+A (Add), Alt+S (Save), Alt+N (New/Add)
     document.addEventListener('keydown', function (e) {
         if (!e || !e.altKey) return;
-        if (String(e.key || '').toLowerCase() !== 'n') return;
+        var key = String(e.key || '').toLowerCase();
 
-        // If any modal is open, skip global "new" shortcut.
-        if (document.querySelector('.modal.show')) return;
-
-        var finalBtn = document.getElementById('issueAddFinalBtn');
-        var commonBtn = document.getElementById('commonAddBtn');
-
-        // Prefer the visible/active action button.
-        if (isVisibleAndEnabled(finalBtn)) {
-            e.preventDefault();
-            e.stopPropagation();
-            finalBtn.click();
-            return;
+        // 1. Alt+S: Save Issue (only if modal is open)
+        if (key === 's') {
+            var saveBtn = document.getElementById('finalIssueSaveBtn');
+            if (saveBtn && isVisibleAndEnabled(saveBtn)) {
+                e.preventDefault();
+                e.stopPropagation();
+                saveBtn.click();
+                return;
+            }
         }
-        if (isVisibleAndEnabled(commonBtn)) {
-            e.preventDefault();
-            e.stopPropagation();
-            commonBtn.click();
+
+        // 2. Alt+A or Alt+N: Add Issue
+        if (key === 'a' || key === 'n') {
+            // If any modal is open, skip global "add" shortcut (unless it's Alt+S)
+            if (document.querySelector('.modal.show')) return;
+
+            var finalBtn = document.getElementById('issueAddFinalBtn') || document.getElementById('addIssueBtn');
+            var commonBtn = document.getElementById('commonAddBtn');
+
+            // Prefer the visible/active action button.
+            if (isVisibleAndEnabled(finalBtn)) {
+                e.preventDefault();
+                e.stopPropagation();
+                finalBtn.click();
+                return;
+            }
+            if (isVisibleAndEnabled(commonBtn)) {
+                e.preventDefault();
+                e.stopPropagation();
+                commonBtn.click();
+            }
         }
     });
 

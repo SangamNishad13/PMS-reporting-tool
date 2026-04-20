@@ -290,6 +290,13 @@
             highlightedIndex = -1;
             input.removeAttribute('aria-activedescendant');
         }
+
+        function formatCodeBackticks(html) {
+            if (!html) return html;
+            // Matches text between backticks that are not already inside a code tag
+            // RegEx: `([^`]+)` -> <code>$1</code> (simple version for single text nodes)
+            return html.replace(/`([^`]+)`/g, '<code>$1</code>');
+        }
         
         function loadPresetData(title) {
             // Fetch preset details and populate form
@@ -308,7 +315,9 @@
                             const descField = document.getElementById('finalIssueDetails');
                             if (descField) {
                                 if (window.jQuery && jQuery.fn.summernote && jQuery(descField).summernote) {
-                                    jQuery(descField).summernote('code', data.preset.description_html);
+                                    // Transform backticks to <code> before setting the content
+                                    const formattedHtml = formatCodeBackticks(data.preset.description_html);
+                                    jQuery(descField).summernote('code', formattedHtml);
                                 } else {
                                     descField.value = data.preset.description_html;
                                 }

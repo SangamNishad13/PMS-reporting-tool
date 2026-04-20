@@ -273,6 +273,16 @@ include __DIR__ . '/../../includes/header.php';
     margin: 0 !important;
     line-height: 1.5 !important;
 }
+.note-editable code {
+    background-color: #f1f5f9;
+    color: #0f172a;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.9em;
+    border: 1px solid #e2e8f0;
+    font-weight: 500;
+}
 
 /* ── Final Issues Table ─────────────────────────────────────── */
 #finalIssuesBody tr td,
