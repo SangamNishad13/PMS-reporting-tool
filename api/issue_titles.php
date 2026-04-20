@@ -19,21 +19,21 @@ try {
     
     if ($presetsOnly || $q === '') {
         // Get all presets for the project type (for focus/empty field)
-        $presetStmt = $db->prepare('SELECT DISTINCT title FROM issue_presets WHERE project_type = ? ORDER BY title LIMIT 20');
+        $presetStmt = $db->prepare('SELECT DISTINCT title FROM issue_presets WHERE project_type = ? ORDER BY title LIMIT 100');
         $presetStmt->execute([$projectType]);
         while ($row = $presetStmt->fetch(PDO::FETCH_ASSOC)) {
             $titles[] = $row['title'];
         }
     } else if ($q !== '' && strlen($q) >= 2) {
         // Get titles from issue_presets (admin-created presets)
-        $presetStmt = $db->prepare('SELECT DISTINCT title FROM issue_presets WHERE project_type = ? AND title LIKE ? ORDER BY title LIMIT 10');
+        $presetStmt = $db->prepare('SELECT DISTINCT title FROM issue_presets WHERE project_type = ? AND title LIKE ? ORDER BY title LIMIT 50');
         $presetStmt->execute([$projectType, '%' . $q . '%']);
         while ($row = $presetStmt->fetch(PDO::FETCH_ASSOC)) {
             $titles[] = $row['title'];
         }
         
         // Get titles from existing issues (previously used titles)
-        $issueStmt = $db->prepare('SELECT DISTINCT title FROM issues WHERE title LIKE ? ORDER BY updated_at DESC LIMIT 10');
+        $issueStmt = $db->prepare('SELECT DISTINCT title FROM issues WHERE title LIKE ? ORDER BY updated_at DESC LIMIT 50');
         $issueStmt->execute(['%' . $q . '%']);
         while ($row = $issueStmt->fetch(PDO::FETCH_ASSOC)) {
             // Avoid duplicates
@@ -42,8 +42,8 @@ try {
             }
         }
         
-        // Limit total results to 15
-        $titles = array_slice($titles, 0, 15);
+        // Limit total results to 100
+        $titles = array_slice($titles, 0, 100);
     }
     
 } catch (Exception $e) {

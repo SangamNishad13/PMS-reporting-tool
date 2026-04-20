@@ -107,7 +107,11 @@
             clearTimeout(timer);
             const val = input.value.trim();
             if (val.length < 2) {
-                dropdown.style.display = 'none';
+                if (val.length === 0) {
+                    fetchAllPresets();
+                } else {
+                    dropdown.style.display = 'none';
+                }
                 return;
             }
             timer = setTimeout(() => fetchSuggestions(val), 250);
@@ -239,6 +243,13 @@
                             suggestionItems.push(item);
                         });
                         setHighlightedIndex(0);
+                        dropdown.style.display = 'block';
+                    } else if (query.trim().length >= 2) {
+                        // Show "No results" only if query length >= 2
+                        const item = document.createElement('div');
+                        item.className = 'px-3 py-2 text-muted small italic';
+                        item.textContent = 'No matching suggestions found';
+                        dropdown.appendChild(item);
                         dropdown.style.display = 'block';
                     } else {
                         resetSuggestions();
