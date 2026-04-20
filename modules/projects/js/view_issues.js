@@ -2083,30 +2083,65 @@
             } catch (err) { }
         });
 
-        // Exit bullet list on Enter in empty <li>
+        // Exit bullet list on Enter in empty <li>, and handle Backspace for code blocks
         $el.on('summernote.keydown', function(we, e) {
-            if (e.keyCode !== 13) return;
+            // Handle Enter (13)
+            if (e.keyCode === 13) {
+                try {
+                    var range = $el.summernote('createRange');
+                    if (!range || !range.sc) return;
 
-            try {
-                var range = $el.summernote('createRange');
-                if (!range || !range.sc) return;
+                    var node = range.sc.nodeType === 3 ? range.sc.parentNode : range.sc;
+                    var currentLi = node.closest ? node.closest('li') : null;
+                    if (!currentLi || currentLi.textContent.trim() !== '') return;
 
-                var node = range.sc.nodeType === 3 ? range.sc.parentNode : range.sc;
-                var currentLi = node.closest ? node.closest('li') : null;
-                if (!currentLi || currentLi.textContent.trim() !== '') return;
+                    var list = currentLi.closest('ul, ol');
+                    if (!list) return;
 
-                var list = currentLi.closest('ul, ol');
-                if (!list) return;
+                    e.preventDefault();
+                    $el.summernote('saveRange');
+                    document.execCommand('insertParagraph');
+                    // Remove the now-empty li that was left behind
+                    if (currentLi.parentNode) currentLi.parentNode.removeChild(currentLi);
+                    if (list.children.length === 0 && list.parentNode) list.parentNode.removeChild(list);
+                    $el.summernote('restoreRange');
+                } catch (err) { }
+                return;
+            }
 
-                e.preventDefault();
-                $el.summernote('saveRange');
-                document.execCommand('insertParagraph');
-                // Remove the now-empty li that was left behind
-                if (currentLi.parentNode) currentLi.parentNode.removeChild(currentLi);
-                if (list.children.length === 0 && list.parentNode) list.parentNode.removeChild(list);
-                $el.summernote('restoreRange');
-            } catch (err) {
-                // Silently ignore
+            // Handle Backspace (8)
+            if (e.keyCode === 8) {
+                try {
+                    var range = $el.summernote('createRange');
+                    if (!range || !range.sc) return;
+
+                    // If we are at the beginning of a text node that follows a <code> element
+                    if (range.so === 0 && range.sc.nodeType === 3) {
+                        var prev = range.sc.previousSibling;
+                        if (prev && prev.nodeName === 'CODE') {
+                            e.preventDefault();
+                            var codeText = prev.textContent;
+                            var parent = prev.parentNode;
+                            
+                            // Replace <code>text</code> with `text (leaving the opening backtick)
+                            var newNode = document.createTextNode('` ' + codeText);
+                            parent.insertBefore(newNode, prev);
+                            parent.removeChild(prev);
+
+                            // Set cursor to end of the new text
+                            var newRange = document.createRange();
+                            newRange.setStart(newNode, newNode.length);
+                            newRange.collapse(true);
+                            var sel = window.getSelection();
+                            if (sel) {
+                                sel.removeAllRanges();
+                                sel.addRange(newRange);
+                            }
+                            $el.summernote('triggerEvent', 'change');
+                            return;
+                        }
+                    }
+                } catch (err) { }
             }
         });
     }
