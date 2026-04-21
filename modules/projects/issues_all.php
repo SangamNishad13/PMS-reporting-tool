@@ -58,7 +58,24 @@ $reportersStmt = $db->prepare("
 $reportersStmt->execute();
 $projectUsers = $reportersStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Fetch grouped URLs for auto-populating when pages are selected
+// Global Project Config for JS
+$projectConfig = [
+    'projectId' => $projectId,
+    'userId' => $userId,
+    'userRole' => $userRole,
+    'baseDir' => $baseDir,
+    'projectType' => strtolower($project['project_type'] ?? 'web'),
+    'canUpdateIssueQaStatus' => $canUpdateIssueQaStatus
+];
+?>
+
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
+    window.ProjectConfig = <?php echo json_encode($projectConfig); ?>;
+    window._csrfToken = <?php echo json_encode(generateCsrfToken()); ?>;
+</script>
+
+<?php
+// Fetch grouped URLs
 $groupedStmt = $db->prepare("
     SELECT 
         gu.id AS grouped_id, 

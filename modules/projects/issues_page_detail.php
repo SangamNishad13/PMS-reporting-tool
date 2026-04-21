@@ -2598,6 +2598,9 @@ document.getElementById('pageIssuesRefreshBtn').addEventListener('click', functi
                 if (data.success) {
                     // Show success feedback
                     selectElement.classList.add('border-success');
+                    if (typeof showToast === 'function') {
+                        showToast(data.message || 'Status updated successfully', 'success');
+                    }
                     setTimeout(function() {
                         selectElement.classList.remove('border-success');
                     }, 1000);

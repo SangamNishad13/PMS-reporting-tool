@@ -51,7 +51,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_env_status']))
     $environmentId = (int)($_POST['environment_id'] ?? 0);
     $projectId = (int)($_POST['project_id'] ?? 0);
     $status = trim((string)($_POST['status'] ?? ''));
-    $allowedStatuses = ['pending', 'na', 'completed'];
+    
+    // Map old labels/values to new ENUM values supported by DB
+    $qaStatusMap = [
+        'pending' => 'not_started',
+        'na' => 'on_hold',
+        'not_started' => 'not_started',
+        'on_hold' => 'on_hold',
+        'completed' => 'completed',
+        'pass' => 'completed'
+    ];
+    
+    if (isset($qaStatusMap[$status])) {
+        $status = $qaStatusMap[$status];
+    }
+
+    $allowedStatuses = ['not_started', 'in_progress', 'completed', 'on_hold', 'needs_review'];
 
     if ($pageId <= 0 || $environmentId <= 0 || $projectId <= 0 || !in_array($status, $allowedStatuses, true)) {
         $_SESSION['error'] = 'Invalid status update request.';
@@ -787,9 +802,9 @@ if (!empty($qaPendingRows)) {
                                     <input type="hidden" name="environment_id" value="<?php echo (int)$page['environment_id']; ?>">
                                     <input type="hidden" name="project_id" value="<?php echo (int)$page['project_id']; ?>">
                                     <select name="status" class="form-select form-select-sm" style="min-width: 150px;" aria-label="Update QA environment status">
-                                        <option value="pending" <?php echo $qaStatus === 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                        <option value="na" <?php echo $qaStatus === 'na' ? 'selected' : ''; ?>>N/A</option>
-                                        <option value="completed" <?php echo $qaStatus === 'completed' ? 'selected' : ''; ?>>Completed</option>
+                                        <option value="not_started" <?php echo ($qaStatus === 'not_started' || $qaStatus === 'pending') ? 'selected' : ''; ?>>Pending</option>
+                                        <option value="on_hold" <?php echo ($qaStatus === 'on_hold' || $qaStatus === 'na') ? 'selected' : ''; ?>>N/A</option>
+                                        <option value="completed" <?php echo ($qaStatus === 'completed' || $qaStatus === 'pass') ? 'selected' : ''; ?>>Completed</option>
                                     </select>
                                     <button type="submit" name="update_env_status" class="btn btn-sm btn-primary">Update</button>
                                 </form>

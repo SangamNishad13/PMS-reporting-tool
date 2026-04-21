@@ -102,6 +102,25 @@ try {
     $issueStatuses = [];
 }
 
+// Global Project Config for JS
+$projectConfig = [
+    'projectId' => $projectId,
+    'userId' => $userId,
+    'userRole' => $userRole,
+    'baseDir' => $baseDir,
+    'projectType' => strtolower($project['project_type'] ?? 'web'),
+    'canUpdateIssueQaStatus' => $canUpdateIssueQaStatus
+];
+?>
+
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
+    window.ProjectConfig = <?php echo json_encode($projectConfig); ?>;
+    window._csrfToken = <?php echo json_encode(generateCsrfToken()); ?>;
+</script>
+
+<?php
+// Page logic below
+
 // Fetch project users (project team) for reporters dropdown
 $projectUsers = [];
 try {
