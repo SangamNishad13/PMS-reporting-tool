@@ -305,11 +305,25 @@ function renderIssues() {
             mainRow += '<td class="text-center"><input type="checkbox" class="issues-all-select" value="' + escapeAttr(issue.id) + '" aria-label="Select issue ' + escapeAttr(issue.issue_key || issue.id) + '"></td>';
         }
 
+        // Truncate pages display - show max 2 pages, rest in tooltip
+        var pagesHtml = '<span class="text-muted">No pages</span>';
+        if (issue.pages) {
+            var pagesList = issue.pages.split(', ');
+            if (pagesList.length <= 2) {
+                pagesHtml = escapeHtml(issue.pages);
+            } else {
+                var shown = pagesList.slice(0, 2).join(', ');
+                var rest = pagesList.slice(2).join(', ');
+                pagesHtml = escapeHtml(shown) +
+                    ' <span class="badge bg-secondary" title="' + escapeAttr(rest) + '" style="cursor:help;">+' + (pagesList.length - 2) + ' more</span>';
+            }
+        }
+
         mainRow +=
             '<td><button class="btn btn-link p-0 me-2 text-muted chevron-toggle" style="border:none;background:none;"><i class="fas fa-chevron-right chevron-icon" id="chevron-' + issue.id + '"></i></button>' +
             '<span class="badge bg-primary">' + escapeHtml(issue.issue_key) + '</span></td>' +
             '<td>' + (issue.common_title ? '<div>' + escapeHtml(issue.common_title) + '</div><small class="text-muted">' + escapeHtml(issue.title) + '</small>' : '<div>' + escapeHtml(issue.title) + '</div>') + '</td>' +
-            '<td><small>' + (issue.pages ? escapeHtml(issue.pages) : '<span class="text-muted">No pages</span>') + '</small></td>' +
+            '<td><small>' + pagesHtml + '</small></td>' +
             '<td><span class="status-badge" style="background-color:' + issue.status_color + ';color:white;">' + escapeHtml(issue.status_name) + '</span></td>';
 
         if (!isClient) {
