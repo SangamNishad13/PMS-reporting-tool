@@ -754,6 +754,11 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                             <!-- Project Lead Menus -->
                             <?php if ($_SESSION['role'] === 'project_lead'): ?>
                                 <li class="nav-item">
+                                    <a class="nav-link text-white <?php echo (strpos($currentRequestPath, '/modules/project_lead/my_projects.php') !== false) ? 'active' : ''; ?>" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/project_lead/my_projects.php">
+                                        <i class="fas fa-project-diagram me-1 opacity-50"></i> My Projects
+                                    </a>
+                                </li>
+                                <li class="nav-item">
                                     <a class="nav-link text-white" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/project_lead/team_assignment.php">
                                         <i class="fas fa-users-cog me-1 opacity-50"></i> Team Assignment
                                     </a>
