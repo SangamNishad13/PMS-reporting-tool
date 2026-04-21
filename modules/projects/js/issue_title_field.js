@@ -155,7 +155,7 @@
                 e.stopImmediatePropagation();
                 setHighlightedIndex((highlightedIndex - 1 + suggestionItems.length) % suggestionItems.length);
                 input.focus();
-            } else if (key === 'Enter' || key === ' ' || code === 13 || code === 32) {
+            } else if (key === 'Enter' || code === 13) {
                 if (highlightedIndex >= 0 && highlightedIndex < suggestionItems.length) {
                     e.preventDefault();
                     e.stopPropagation();
