@@ -3600,38 +3600,17 @@
             if (!s) return;
             if (urls.indexOf(s) === -1) urls.push(s);
         }
-        function getUniqueUrlForPage(pageId) {
-            var page = pages.find(function (p) { return String(p.id) === String(pageId); }) || null;
-            var pageName = page && page.page_name ? String(page.page_name).trim().toLowerCase() : '';
-            var pageNumber = page && page.page_number ? String(page.page_number).trim().toLowerCase() : '';
-            var pageUrl = page && page.url ? String(page.url).trim().toLowerCase() : '';
-
-            var row = (uniqueIssuePages || []).find(function (u) {
-                var mapped = String(u.mapped_page_id || '') === String(pageId);
-                var uidMatch = String(u.unique_id || '') === String(pageId);
-                var nameMatch = pageName && String(u.unique_name || '').trim().toLowerCase() === pageName;
-                var numberMatch = pageNumber && String(u.unique_name || '').trim().toLowerCase() === pageNumber;
-                var urlMatch = pageUrl && String(u.canonical_url || '').trim().toLowerCase() === pageUrl;
-                return mapped || uidMatch || nameMatch || numberMatch || urlMatch;
-            });
-            if (row) {
-                return row.canonical_url || row.unique_url || row.url || '';
-            }
-            return '';
-        }
 
         // For each selected page
         pageIds.forEach(function (pageId) {
             var page = pages.find(function (p) { return String(p.id) === String(pageId); });
             var pageUrl = page && page.url ? String(page.url).trim().toLowerCase() : '';
 
-            // Add all grouped URLs matched by unique_page_id OR by URL match (for unassigned rows)
             var hasGroupedUrls = false;
             groupedUrls.forEach(function (row) {
-                var rowUniquePageId = row.unique_page_id || row.mapped_page_id;
+                var rowPageId = row.unique_page_id != null ? row.unique_page_id : (row.mapped_page_id != null ? row.mapped_page_id : null);
+                var matchById = rowPageId !== null && String(rowPageId) === String(pageId);
                 var rowUrl = String(row.url || row.normalized_url || '').trim().toLowerCase();
-
-                var matchById = rowUniquePageId && String(rowUniquePageId) === String(pageId);
                 var matchByUrl = pageUrl && rowUrl && rowUrl === pageUrl;
 
                 if (matchById || matchByUrl) {
@@ -3640,9 +3619,8 @@
                 }
             });
 
-            // If no grouped URLs found, add the page's primary URL
+            // fallback: page's own URL
             if (!hasGroupedUrls) {
-                addUrl(getUniqueUrlForPage(pageId));
                 if (page) {
                     addUrl(page.url || page.canonical_url || page.unique_url || page.normalized_url || page.page_url);
                 }
@@ -3681,13 +3659,6 @@
 
     function setGroupedUrls(values) {
         var $sel = jQuery('#finalIssueGroupedUrls');
-        var current = $sel.val() || [];
-        function appendOption(val, label) {
-            var safeVal = String(val || '').trim();
-            if (!safeVal) return;
-            if ($sel.find('option').filter(function () { return this.value === safeVal; }).length) return;
-            $sel.append('<option value="' + safeVal.replace(/"/g, '&quot;') + '">' + (label || safeVal) + '</option>');
-        }
         var uniqueValues = [];
         (values || []).forEach(function (u) {
             var s = String(u || '').trim();
@@ -3695,17 +3666,32 @@
             if (uniqueValues.indexOf(s) === -1) uniqueValues.push(s);
         });
 
-        var allOptions = getAllGroupedUrlOptions();
+        // Destroy select2, rebuild options, reinit, then set value
+        try { $sel.select2('destroy'); } catch (e) {}
 
         $sel.empty();
-        allOptions.forEach(function (u) { appendOption(u, u); });
-        // Ensure selected values (including custom typed URLs) remain present.
-        uniqueValues.forEach(function (u) { appendOption(u, u); });
-        current.forEach(function (u) {
-            var s = String(u || '').trim();
-            if (!s) return;
-            appendOption(s, s);
+        // Add all available options
+        getAllGroupedUrlOptions().forEach(function (u) {
+            $sel.append(new Option(u, u, false, false));
         });
+        // Ensure selected values exist as options
+        uniqueValues.forEach(function (u) {
+            if (!$sel.find('option[value="' + u.replace(/"/g, '\\"') + '"]').length) {
+                $sel.append(new Option(u, u, false, false));
+            }
+        });
+
+        // Reinit select2
+        var $gpParent = $sel.closest('.modal');
+        $sel.select2({
+            width: '100%',
+            tags: true,
+            tokenSeparators: [','],
+            closeOnSelect: false,
+            placeholder: 'Search or add URLs...',
+            dropdownParent: $gpParent.length ? $gpParent : null
+        });
+
         $sel.val(uniqueValues).trigger('change');
         updateUrlSelectionSummary();
         updateGroupedUrlsPreview();
