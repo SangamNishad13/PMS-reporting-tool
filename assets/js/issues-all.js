@@ -365,15 +365,30 @@ function renderIssues() {
                 '<div class="mb-2"><strong>Reporter(s):</strong><br>' + (issue.reporters ? escapeHtml(issue.reporters) : '<span class="text-muted">N/A</span>') + '</div>';
         }
 
-        mainRow += '<div class="mb-2"><strong>Page(s):</strong><br>' + (issue.pages ? escapeHtml(issue.pages) : '<span class="text-muted">No pages</span>') + '</div>';
+        // Pages - bullet list with scrollable container
+        if (issue.pages) {
+            var pagesList = issue.pages.split(', ');
+            mainRow += '<div class="mb-2"><strong>Page(s):</strong> <span class="badge bg-secondary ms-1">' + pagesList.length + '</span>';
+            mainRow += '<div class="mt-1 border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">';
+            mainRow += '<ul class="list-unstyled mb-0 small">';
+            pagesList.forEach(function(p) {
+                mainRow += '<li><i class="fas fa-file-alt text-muted me-1"></i>' + escapeHtml(p.trim()) + '</li>';
+            });
+            mainRow += '</ul></div></div>';
+        } else {
+            mainRow += '<div class="mb-2"><strong>Page(s):</strong><br><span class="text-muted">No pages</span></div>';
+        }
 
         if (issue.grouped_urls && issue.grouped_urls.length > 0) {
-            mainRow += '<div class="mb-2"><strong>Grouped URLs:</strong>' +
-                '<button class="btn btn-link p-0 ms-2 text-primary" style="font-size:12px;text-decoration:none;" onclick="toggleGroupedUrls(' + issue.id + ',event)">' +
-                '<i class="fas fa-chevron-down" id="grouped-urls-icon-' + issue.id + '"></i>' +
-                '<span id="grouped-urls-text-' + issue.id + '">Show (' + issue.grouped_urls.length + ')</span></button>' +
-                '<div id="grouped-urls-content-' + issue.id + '" style="display:none;margin-top:8px;">' +
-                '<small>' + issue.grouped_urls.map(function (u) { return escapeHtml(u); }).join('<br>') + '</small></div></div>';
+            mainRow += '<div class="mb-2"><strong>Grouped URLs:</strong> <span class="badge bg-info ms-1">' + issue.grouped_urls.length + '</span>' +
+                '<button class="btn btn-link p-0 ms-1 text-primary" style="font-size:12px;text-decoration:none;" onclick="toggleGroupedUrls(' + issue.id + ',event)"><small>Show/Hide</small></button>' +
+                '<div id="grouped-urls-content-' + issue.id + '" style="display:none;margin-top:4px;">' +
+                '<div class="border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
+                '<ul class="list-unstyled mb-0 small">' +
+                issue.grouped_urls.map(function (u) {
+                    return '<li class="mb-1 text-break"><a href="' + escapeHtml(u) + '" target="_blank" class="text-decoration-none"><i class="fas fa-link me-1 text-primary"></i>' + escapeHtml(u) + '</a></li>';
+                }).join('') +
+                '</ul></div></div></div>';
         }
 
         if (!isClient) {
