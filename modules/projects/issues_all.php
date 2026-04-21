@@ -65,15 +65,12 @@ $groupedStmt = $db->prepare("
         gu.url, 
         gu.normalized_url, 
         gu.unique_page_id, 
+        gu.unique_page_id AS mapped_page_id,
         up.id AS unique_id, 
         up.page_name AS unique_name,
-        up.url AS canonical_url,
-        pp.id AS mapped_page_id, 
-        pp.page_name AS mapped_page_name 
+        up.url AS canonical_url
     FROM grouped_urls gu 
     LEFT JOIN project_pages up ON gu.unique_page_id = up.id
-    LEFT JOIN project_pages pp ON pp.project_id = gu.project_id 
-        AND (pp.url = gu.url OR pp.url = gu.normalized_url) 
     WHERE gu.project_id = ? 
     ORDER BY gu.url
 ");
