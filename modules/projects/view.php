@@ -219,7 +219,17 @@ $uniqueStmt = $db->prepare("SELECT up.id, up.project_id, up.page_name AS name, u
 $uniqueStmt->execute([$projectId]);
 $uniquePages = $uniqueStmt->fetchAll(PDO::FETCH_ASSOC);
 
-$groupedStmt = $db->prepare("SELECT gu.id AS grouped_id, gu.url, gu.normalized_url, gu.unique_page_id, gu.unique_page_id AS mapped_page_id, up.id AS unique_id, up.page_name AS unique_name, up.url AS canonical_url FROM grouped_urls gu LEFT JOIN project_pages up ON gu.unique_page_id = up.id WHERE gu.project_id = ? ORDER BY gu.url");
+$groupedStmt = $db->prepare("
+    SELECT gu.id AS grouped_id, gu.url, gu.normalized_url, gu.unique_page_id,
+           COALESCE(gu.unique_page_id, pp_match.id) AS mapped_page_id,
+           up.id AS unique_id, up.page_name AS unique_name, up.url AS canonical_url
+    FROM grouped_urls gu
+    LEFT JOIN project_pages up ON gu.unique_page_id = up.id
+    LEFT JOIN project_pages pp_match ON pp_match.project_id = gu.project_id
+        AND (pp_match.url = gu.url OR pp_match.url = gu.normalized_url)
+    WHERE gu.project_id = ?
+    ORDER BY gu.url
+");
 $groupedStmt->execute([$projectId]);
 $groupedUrls = $groupedStmt->fetchAll(PDO::FETCH_ASSOC);
 

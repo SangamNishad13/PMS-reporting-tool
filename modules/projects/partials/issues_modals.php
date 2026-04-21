@@ -543,7 +543,13 @@ body.client-issue-sidebar-open {
                 <textarea id="finalIssueDetails" class="issue-summernote"></textarea>
                 <select id="finalIssuePages" class="form-select form-select-sm issue-select2" multiple>
                     <?php foreach ($projectPages as $p): ?>
-                        <option value="<?php echo (int)$p['id']; ?>"><?php echo htmlspecialchars($p['page_name']); ?></option>
+                        <option value="<?php echo (int)$p['id']; ?>"><?php
+                            if (!empty($p['page_number'])) {
+                                echo htmlspecialchars($p['page_number']) . ' - ' . htmlspecialchars($p['page_name']);
+                            } else {
+                                echo htmlspecialchars($p['page_name']);
+                            }
+                        ?></option>
                     <?php endforeach; ?>
                 </select>
                 <div id="finalIssueGroupedUrlsPreview">
@@ -675,7 +681,15 @@ body.client-issue-sidebar-open {
                         <label class="form-label mt-2">Page Name(s)</label>
                         <select id="finalIssuePages" class="form-select form-select-sm issue-select2" multiple>
                             <?php foreach ($projectPages as $p): ?>
-                                <option value="<?php echo (int)$p['id']; ?>"><?php echo htmlspecialchars($p['page_name']); ?></option>
+                                <option value="<?php echo (int)$p['id']; ?>"><?php
+                                    $label = '';
+                                    if (!empty($p['page_number'])) {
+                                        $label = htmlspecialchars($p['page_number']) . ' - ' . htmlspecialchars($p['page_name']);
+                                    } else {
+                                        $label = htmlspecialchars($p['page_name']);
+                                    }
+                                    echo $label;
+                                ?></option>
                             <?php endforeach; ?>
                         </select>
                         <div class="d-grid gap-1 mt-2">
