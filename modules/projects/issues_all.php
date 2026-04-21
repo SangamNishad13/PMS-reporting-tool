@@ -58,23 +58,6 @@ $reportersStmt = $db->prepare("
 $reportersStmt->execute();
 $projectUsers = $reportersStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Global Project Config for JS
-$projectConfig = [
-    'projectId' => $projectId,
-    'userId' => $userId,
-    'userRole' => $userRole,
-    'baseDir' => $baseDir,
-    'projectType' => strtolower($project['project_type'] ?? 'web'),
-    'canUpdateIssueQaStatus' => $canUpdateIssueQaStatus
-];
-?>
-
-<script nonce="<?php echo $cspNonce ?? ''; ?>">
-    window.ProjectConfig = <?php echo json_encode($projectConfig); ?>;
-    window._csrfToken = <?php echo json_encode(generateCsrfToken()); ?>;
-</script>
-
-<?php
 // Fetch grouped URLs
 $groupedStmt = $db->prepare("
     SELECT 
