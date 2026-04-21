@@ -2208,6 +2208,12 @@ jQuery(function ($) {
         placeholder: 'Search and select users...',
         allowClear: true,
         closeOnSelect: false
+    }).on('select2:select select2:unselect', function () {
+        // Clear search text after selecting a member
+        var searchInput = $(this).data('select2').$dropdown.find('.select2-search__field');
+        if (searchInput.length) {
+            searchInput.val('').trigger('input');
+        }
     });
 });
 </script>
