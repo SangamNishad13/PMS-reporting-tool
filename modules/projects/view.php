@@ -808,7 +808,7 @@ include __DIR__ . '/../../includes/header.php';
         projectType: <?php echo json_encode($project['type'] ?? 'web', JSON_HEX_TAG | JSON_HEX_AMP); ?>,
         projectPages: <?php echo json_encode($projectPages ?? [], JSON_HEX_TAG | JSON_HEX_AMP); ?>,
         uniqueIssuePages: <?php echo json_encode($uniqueIssuePages ?? [], JSON_HEX_TAG | JSON_HEX_AMP); ?>,
-        groupedUrls: <?php echo json_encode($groupedUrls ?? [], JSON_HEX_TAG | JSON_HEX_AMP); ?>,
+        groupedUrls: <?php echo json_encode($groupedUrls ?? [], JSON_HEX_TAG); ?>,
         projectUsers: <?php echo json_encode($projectUsers ?? [], JSON_HEX_TAG | JSON_HEX_AMP); ?>,
         qaStatuses: <?php echo json_encode($qaStatuses ?? [], JSON_HEX_TAG | JSON_HEX_AMP); ?>,
         issueStatuses: <?php echo json_encode($issueStatuses ?? [], JSON_HEX_TAG | JSON_HEX_AMP); ?>

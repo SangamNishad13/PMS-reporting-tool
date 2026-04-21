@@ -33,6 +33,27 @@
     var regressionApiBase = ProjectConfig.baseDir + '/api/regression_actions.php';
     var issueImageUploadUrl = ProjectConfig.baseDir + '/api/issue_upload_image.php';
     var issueTemplatesApi = ProjectConfig.baseDir + '/api/issue_templates.php';
+
+    // Load full grouped URLs from API (inline ProjectConfig may be truncated for large datasets)
+    (function loadGroupedUrlsFromApi() {
+        fetch(ProjectConfig.baseDir + '/api/project_pages.php?action=list_grouped&project_id=' + projectId)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && Array.isArray(data.grouped_urls) && data.grouped_urls.length > 0) {
+                    // Normalize to match expected format
+                    groupedUrls = data.grouped_urls.map(function(row) {
+                        return {
+                            id: row.id,
+                            url: row.url,
+                            normalized_url: row.normalized_url,
+                            unique_page_id: row.unique_page_id,
+                            mapped_page_id: row.unique_page_id  // same field
+                        };
+                    });
+                }
+            })
+            .catch(function() {}); // silent fail, fallback to ProjectConfig data
+    })();
     var issueCommentsApi = ProjectConfig.baseDir + '/api/issue_comments.php';
     var issueDraftsApi = ProjectConfig.baseDir + '/api/issue_drafts.php';
     var uniqueIssuePages = ProjectConfig.uniqueIssuePages || [];
