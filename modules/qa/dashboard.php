@@ -35,8 +35,8 @@ function mapComputedToPageStatus(string $status): string {
         'needs_review' => 'needs_review',
         'qa_in_progress' => 'qa_in_progress',
         'not_started' => 'not_started',
-        'pass' => 'completed',
-        'fail' => 'needs_review'
+        'pass' => 'qa_in_progress',
+        'fail' => 'in_fixing'
     ];
     return $map[$status] ?? 'in_progress';
 }
@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_env_status']))
     $environmentId = (int)($_POST['environment_id'] ?? 0);
     $projectId = (int)($_POST['project_id'] ?? 0);
     $status = trim((string)($_POST['status'] ?? ''));
-    $allowedStatuses = ['not_started', 'in_progress', 'completed', 'on_hold', 'needs_review'];
+    $allowedStatuses = ['pending', 'na', 'completed'];
 
     if ($pageId <= 0 || $environmentId <= 0 || $projectId <= 0 || !in_array($status, $allowedStatuses, true)) {
         $_SESSION['error'] = 'Invalid status update request.';
