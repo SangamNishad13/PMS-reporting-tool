@@ -775,11 +775,13 @@ function formatTestStatusLabel($status) {
 function formatQAStatusLabel($status) {
     if (empty($status)) return 'Not reviewed';
     $s = strtolower($status);
-    if ($s === 'pass' || $s === 'completed') return 'QA Approved';
-    if (in_array($s, ['in_progress', 'inprogress', 'ongoing', 'qa_in_progress'])) return 'QA In Progress';
-    if (in_array($s, ['on_hold', 'hold', 'na'])) return 'Not Required';
+    if ($s === 'pass') return 'QA Approved';
+    if (in_array($s, ['in_progress', 'inprogress', 'ongoing'])) return 'In Progress';
+    if (in_array($s, ['on_hold', 'hold'])) return 'On Hold';
     if ($s === 'not_started' || $s === 'pending') return 'Not Started';
-    if (in_array($s, ['fail', 'failed', 'needs_review'])) return 'QA Rejected';
+    if (in_array($s, ['fail', 'failed'])) return 'QA Rejected';
+    if ($s === 'needs_review') return 'Needs Review';
+    if ($s === 'completed') return 'Completed';
     return ucfirst(str_replace('_', ' ', $s));
 }
 
@@ -1045,11 +1047,18 @@ function ensureProjectInProgress($db, $projectId) {
 function renderQAEnvStatusDropdown($pageId, $envId, $currentStatus) {
     global $userRole, $userId;
     
+    $statusMap = [
+        'pending' => 'not_started',
+        'na' => 'on_hold',
+        'pass' => 'completed',
+        'fail' => 'needs_review'
+    ];
+
     $normalizedStatus = strtolower(trim((string)$currentStatus));
-    if ($normalizedStatus === '' || $normalizedStatus === 'pending') $normalizedStatus = "not_started";
-    if ($normalizedStatus === 'pass') $normalizedStatus = "completed";
-    if ($normalizedStatus === 'fail') $normalizedStatus = "needs_review";
-    if ($normalizedStatus === 'na') $normalizedStatus = "on_hold";
+    if (isset($statusMap[$normalizedStatus])) {
+        $normalizedStatus = $statusMap[$normalizedStatus];
+    }
+    if ($normalizedStatus === '') $normalizedStatus = "not_started";
 
     $statuses = [
         "not_started" => "Not Started",
