@@ -422,11 +422,6 @@ body.client-issue-sidebar-open {
                     <p class="text-muted mb-0">Complete list of all accessibility issues in this project</p>
                 </div>
                 <div class="d-flex flex-wrap gap-2 align-items-center">
-                    <?php if ($_SESSION['role'] !== 'client'): ?>
-                    <button class="btn btn-primary" id="addIssueBtn">
-                        <i class="fas fa-plus me-1"></i> Add Issue
-                    </button>
-                    <?php endif; ?>
                     <a href="<?php echo $baseDir; ?>/api/download_screenshots.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-primary">
                         <i class="fas fa-download me-1"></i> Download Screenshots
                     </a>
@@ -527,6 +522,9 @@ body.client-issue-sidebar-open {
                 </div>
                 <div class="d-flex align-items-center gap-2">
                     <?php if ($_SESSION['role'] !== 'client'): ?>
+                    <button class="btn btn-sm btn-primary" id="addIssueBtn">
+                        <i class="fas fa-plus me-1"></i> Add Issue
+                    </button>
                     <button class="btn btn-sm btn-outline-success" id="allIssuesMarkClientReadyBtn" disabled>
                         <i class="fas fa-check me-1"></i> Mark Client Ready
                     </button>
