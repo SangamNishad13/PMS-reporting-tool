@@ -9,6 +9,80 @@ var baseDir   = window.ProjectConfig ? window.ProjectConfig.baseDir   : '';
 var allIssues = [];
 var filteredIssues = [];
 var loadIssuesDebounceTimer = null;
+var currentPage = 1;
+var perPage = 50;
+
+function getPagedIssues() {
+    var start = (currentPage - 1) * perPage;
+    return filteredIssues.slice(start, start + perPage);
+}
+
+function getTotalPages() {
+    return Math.max(1, Math.ceil(filteredIssues.length / perPage));
+}
+
+function renderPagination() {
+    var info = document.getElementById('paginationInfo');
+    var controls = document.getElementById('paginationControls');
+    var bar = document.getElementById('paginationBar');
+    if (!controls) return;
+
+    var total = filteredIssues.length;
+    var totalPages = getTotalPages();
+    var start = total === 0 ? 0 : (currentPage - 1) * perPage + 1;
+    var end = Math.min(currentPage * perPage, total);
+
+    if (info) info.textContent = total === 0 ? 'No issues' : 'Showing ' + start + '–' + end + ' of ' + total;
+    if (bar) bar.style.display = totalPages <= 1 ? 'none' : '';
+
+    if (totalPages <= 1) { controls.innerHTML = ''; return; }
+
+    var html = '';
+    // Prev
+    html += '<li class="page-item' + (currentPage === 1 ? ' disabled' : '') + '">' +
+        '<a class="page-link" href="#" data-page="' + (currentPage - 1) + '" aria-label="Previous">&laquo;</a></li>';
+
+    // Page numbers (show max 7 around current)
+    var pages = [];
+    if (totalPages <= 7) {
+        for (var i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+        pages = [1];
+        if (currentPage > 3) pages.push('...');
+        for (var p = Math.max(2, currentPage - 1); p <= Math.min(totalPages - 1, currentPage + 1); p++) pages.push(p);
+        if (currentPage < totalPages - 2) pages.push('...');
+        pages.push(totalPages);
+    }
+
+    pages.forEach(function (p) {
+        if (p === '...') {
+            html += '<li class="page-item disabled"><span class="page-link">…</span></li>';
+        } else {
+            html += '<li class="page-item' + (p === currentPage ? ' active' : '') + '">' +
+                '<a class="page-link" href="#" data-page="' + p + '">' + p + '</a></li>';
+        }
+    });
+
+    // Next
+    html += '<li class="page-item' + (currentPage === totalPages ? ' disabled' : '') + '">' +
+        '<a class="page-link" href="#" data-page="' + (currentPage + 1) + '" aria-label="Next">&raquo;</a></li>';
+
+    controls.innerHTML = html;
+
+    controls.querySelectorAll('a.page-link[data-page]').forEach(function (a) {
+        a.addEventListener('click', function (e) {
+            e.preventDefault();
+            var pg = parseInt(this.getAttribute('data-page'));
+            if (pg >= 1 && pg <= getTotalPages() && pg !== currentPage) {
+                currentPage = pg;
+                renderIssues();
+                // Scroll to table top
+                var table = document.getElementById('issuesTable');
+                if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    });
+}
 
 function getIssuesAllSelectedIds() {
     return Array.from(document.querySelectorAll('.issues-all-select:checked')).map(function (checkbox) {
@@ -19,7 +93,8 @@ function getIssuesAllSelectedIds() {
 function updateIssuesAllSelectionState() {
     var markBtn = document.getElementById('allIssuesMarkClientReadyBtn');
     var selectAll = document.getElementById('issuesSelectAll');
-    var checkboxes = Array.from(document.querySelectorAll('.issues-all-select'));
+    // Only consider visible (current page) checkboxes
+    var checkboxes = Array.from(document.querySelectorAll('#issuesTableBody .issues-all-select'));
     var checked = checkboxes.filter(function (checkbox) { return checkbox.checked; });
 
     if (markBtn) {
@@ -198,10 +273,13 @@ function renderIssues() {
 
     if (filteredIssues.length === 0) {
         tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="text-center py-5"><i class="fas fa-inbox fa-3x text-muted mb-3"></i><p class="text-muted">No issues found</p></td></tr>';
+        renderPagination();
         return;
     }
 
-    tbody.innerHTML = filteredIssues.map(function (issue) {
+    var pagedIssues = getPagedIssues();
+
+    tbody.innerHTML = pagedIssues.map(function (issue) {
         var mainRow = '<tr class="issue-row" data-issue-id="' + issue.id + '" style="cursor: pointer;">';
 
         if (!isClient) {
@@ -287,6 +365,7 @@ function renderIssues() {
 
     attachEventListeners();
     updateIssuesAllSelectionState();
+    renderPagination();
 }
 
 function updateCounts() {
@@ -325,6 +404,7 @@ function applyFilters() {
         }
         return true;
     });
+    currentPage = 1; // reset to first page on filter change
     updateCounts();
     renderIssues();
 }
@@ -557,10 +637,21 @@ if (_issuesSelectAll) {
     _issuesSelectAll.addEventListener('click', function (e) { e.stopPropagation(); });
     _issuesSelectAll.addEventListener('change', function () {
         var isChecked = !!this.checked;
-        document.querySelectorAll('.issues-all-select').forEach(function (checkbox) {
+        // Only select/deselect current page's visible checkboxes
+        document.querySelectorAll('#issuesTableBody .issues-all-select').forEach(function (checkbox) {
             checkbox.checked = isChecked;
         });
         updateIssuesAllSelectionState();
+    });
+}
+
+// Per-page dropdown
+var _perPageSelect = document.getElementById('perPageSelect');
+if (_perPageSelect) {
+    _perPageSelect.addEventListener('change', function () {
+        perPage = parseInt(this.value) || 50;
+        currentPage = 1;
+        renderIssues();
     });
 }
 

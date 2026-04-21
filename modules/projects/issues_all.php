@@ -492,12 +492,21 @@ body.client-issue-sidebar-open {
     <!-- Issues Table -->
     <div class="card">
         <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <div>
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-3 flex-wrap">
                     <span class="text-muted">Total Issues: <strong id="totalCount">0</strong></span>
-                    <span class="text-muted ms-3">Showing: <strong id="filteredCount">0</strong></span>
-                    <?php if ($_SESSION['role'] === 'client'): ?>
-                    <?php endif; ?>
+                    <span class="text-muted">Showing: <strong id="filteredCount">0</strong></span>
+                    <div class="d-flex align-items-center gap-1">
+                        <label class="text-muted small mb-0">Per page:</label>
+                        <select id="perPageSelect" class="form-select form-select-sm" style="width:auto;">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                            <option value="250">250</option>
+                            <option value="500">500</option>
+                            <option value="1000">1000</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
                     <?php if ($_SESSION['role'] !== 'client'): ?>
@@ -541,6 +550,13 @@ body.client-issue-sidebar-open {
                         </tr>
                     </tbody>
                 </table>
+            </div>
+            <!-- Pagination -->
+            <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2" id="paginationBar">
+                <div class="text-muted small" id="paginationInfo"></div>
+                <nav aria-label="Issues pagination">
+                    <ul class="pagination pagination-sm mb-0" id="paginationControls"></ul>
+                </nav>
             </div>
         </div>
     </div>
