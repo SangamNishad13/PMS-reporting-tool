@@ -533,6 +533,14 @@ body.client-issue-sidebar-open {
                     </button>
                 </div>
             </div>
+
+            <!-- Top pagination bar -->
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2" id="paginationBarTop">
+                <div class="text-muted small" id="paginationInfoTop"></div>
+                <nav aria-label="Issues pagination top">
+                    <ul class="pagination pagination-sm mb-0" id="paginationControlsTop"></ul>
+                </nav>
+            </div>
             
             <div class="table-responsive">
                 <table class="table table-hover" id="issuesTable">

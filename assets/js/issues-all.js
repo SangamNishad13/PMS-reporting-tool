@@ -22,64 +22,72 @@ function getTotalPages() {
 }
 
 function renderPagination() {
-    var info = document.getElementById('paginationInfo');
-    var controls = document.getElementById('paginationControls');
-    var bar = document.getElementById('paginationBar');
-    if (!controls) return;
-
     var total = filteredIssues.length;
     var totalPages = getTotalPages();
     var start = total === 0 ? 0 : (currentPage - 1) * perPage + 1;
     var end = Math.min(currentPage * perPage, total);
+    var infoText = total === 0 ? 'No issues' : 'Showing ' + start + '–' + end + ' of ' + total;
 
-    if (info) info.textContent = total === 0 ? 'No issues' : 'Showing ' + start + '–' + end + ' of ' + total;
-    if (bar) bar.style.display = totalPages <= 1 ? 'none' : '';
+    // Update both top and bottom pagination bars
+    ['Top', ''].forEach(function(suffix) {
+        var info = document.getElementById('paginationInfo' + suffix);
+        var controls = document.getElementById('paginationControls' + suffix);
+        var bar = document.getElementById('paginationBar' + suffix);
 
-    if (totalPages <= 1) { controls.innerHTML = ''; return; }
+        if (info) info.textContent = infoText;
+        if (bar) bar.style.display = totalPages <= 1 ? 'none' : '';
+        if (!controls) return;
 
-    var html = '';
-    // Prev
-    html += '<li class="page-item' + (currentPage === 1 ? ' disabled' : '') + '">' +
-        '<a class="page-link" href="#" data-page="' + (currentPage - 1) + '" aria-label="Previous">&laquo;</a></li>';
+        if (totalPages <= 1) { controls.innerHTML = ''; return; }
 
-    // Page numbers (show max 7 around current)
-    var pages = [];
-    if (totalPages <= 7) {
-        for (var i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-        pages = [1];
-        if (currentPage > 3) pages.push('...');
-        for (var p = Math.max(2, currentPage - 1); p <= Math.min(totalPages - 1, currentPage + 1); p++) pages.push(p);
-        if (currentPage < totalPages - 2) pages.push('...');
-        pages.push(totalPages);
-    }
+        var html = '';
+        // Prev
+        html += '<li class="page-item' + (currentPage === 1 ? ' disabled' : '') + '">' +
+            '<a class="page-link" href="#" data-page="' + (currentPage - 1) + '" aria-label="Previous">&laquo;</a></li>';
 
-    pages.forEach(function (p) {
-        if (p === '...') {
-            html += '<li class="page-item disabled"><span class="page-link">…</span></li>';
+        // Smart page numbers - show max 5 around current to avoid horizontal scroll
+        var pages = [];
+        if (totalPages <= 5) {
+            for (var i = 1; i <= totalPages; i++) pages.push(i);
         } else {
-            html += '<li class="page-item' + (p === currentPage ? ' active' : '') + '">' +
-                '<a class="page-link" href="#" data-page="' + p + '">' + p + '</a></li>';
+            pages = [1];
+            if (currentPage > 3) pages.push('...');
+            var rangeStart = Math.max(2, currentPage - 1);
+            var rangeEnd = Math.min(totalPages - 1, currentPage + 1);
+            // Adjust range to always show 3 numbers in middle
+            if (currentPage <= 3) rangeEnd = Math.min(totalPages - 1, 4);
+            if (currentPage >= totalPages - 2) rangeStart = Math.max(2, totalPages - 3);
+            for (var p = rangeStart; p <= rangeEnd; p++) pages.push(p);
+            if (currentPage < totalPages - 2) pages.push('...');
+            pages.push(totalPages);
         }
-    });
 
-    // Next
-    html += '<li class="page-item' + (currentPage === totalPages ? ' disabled' : '') + '">' +
-        '<a class="page-link" href="#" data-page="' + (currentPage + 1) + '" aria-label="Next">&raquo;</a></li>';
-
-    controls.innerHTML = html;
-
-    controls.querySelectorAll('a.page-link[data-page]').forEach(function (a) {
-        a.addEventListener('click', function (e) {
-            e.preventDefault();
-            var pg = parseInt(this.getAttribute('data-page'));
-            if (pg >= 1 && pg <= getTotalPages() && pg !== currentPage) {
-                currentPage = pg;
-                renderIssues();
-                // Scroll to table top
-                var table = document.getElementById('issuesTable');
-                if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        pages.forEach(function (p) {
+            if (p === '...') {
+                html += '<li class="page-item disabled"><span class="page-link">…</span></li>';
+            } else {
+                html += '<li class="page-item' + (p === currentPage ? ' active' : '') + '">' +
+                    '<a class="page-link" href="#" data-page="' + p + '">' + p + '</a></li>';
             }
+        });
+
+        // Next
+        html += '<li class="page-item' + (currentPage === totalPages ? ' disabled' : '') + '">' +
+            '<a class="page-link" href="#" data-page="' + (currentPage + 1) + '" aria-label="Next">&raquo;</a></li>';
+
+        controls.innerHTML = html;
+
+        controls.querySelectorAll('a.page-link[data-page]').forEach(function (a) {
+            a.addEventListener('click', function (e) {
+                e.preventDefault();
+                var pg = parseInt(this.getAttribute('data-page'));
+                if (pg >= 1 && pg <= getTotalPages() && pg !== currentPage) {
+                    currentPage = pg;
+                    renderIssues();
+                    var table = document.getElementById('issuesTable');
+                    if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
         });
     });
 }
