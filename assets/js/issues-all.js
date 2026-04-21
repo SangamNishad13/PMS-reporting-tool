@@ -391,20 +391,23 @@ function renderIssues() {
                 '</ul></div></div></div>';
         }
 
-        if (!isClient) {
-            mainRow += '<div class="mb-2"><strong>Created:</strong><br><small class="text-muted">' + new Date(issue.created_at).toLocaleString() + '</small></div>' +
-                '<div class="mb-2"><strong>Updated:</strong><br><small class="text-muted">' + new Date(issue.updated_at).toLocaleString() + '</small></div>';
-        }
-
-        if (window.ProjectConfig && window.ProjectConfig.metadataFields && issue.metadata) {
+        if (window.ProjectConfig && window.ProjectConfig.metadataFields) {
             window.ProjectConfig.metadataFields.forEach(function (field) {
                 if (field.field_key === 'severity' || field.field_key === 'priority') return;
-                var value = issue.metadata[field.field_key];
+                // Check metadata object first, then direct issue property
+                var value = (issue.metadata && issue.metadata[field.field_key] !== undefined)
+                    ? issue.metadata[field.field_key]
+                    : issue[field.field_key];
                 if (value && value.length > 0) {
                     var displayValue = Array.isArray(value) ? value.join(', ') : value;
                     mainRow += '<div class="mb-2"><strong>' + escapeHtml(field.field_label) + ':</strong><br>' + escapeHtml(displayValue) + '</div>';
                 }
             });
+        }
+
+        if (!isClient) {
+            mainRow += '<div class="mb-2"><strong>Created:</strong><br><small class="text-muted">' + new Date(issue.created_at).toLocaleString() + '</small></div>' +
+                '<div class="mb-2"><strong>Updated:</strong><br><small class="text-muted">' + new Date(issue.updated_at).toLocaleString() + '</small></div>';
         }
 
         mainRow += '</div></div></div></div></div></td></tr>';

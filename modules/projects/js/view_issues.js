@@ -5497,17 +5497,7 @@
                     '</ul></div></div>' +
                     urlsHtml;
                 
-                // Created and Updated - hide for client
-                if (userRole !== 'client') {
-                    if (actualIssue.created_at) {
-                        metadataHtml += '<div class="mb-2"><strong>Created:</strong><br><small class="text-muted">' + new Date(actualIssue.created_at).toLocaleString() + '</small></div>';
-                    }
-                    if (actualIssue.updated_at) {
-                        metadataHtml += '<div class="mb-2"><strong>Updated:</strong><br><small class="text-muted">' + new Date(actualIssue.updated_at).toLocaleString() + '</small></div>';
-                    }
-                }
-
-                // Add metadata fields
+                // Add metadata fields - before created/updated
                 if (typeof issueMetadataFields !== 'undefined') {
                     issueMetadataFields.forEach(function (f) {
                         if (f.field_key === 'severity' || f.field_key === 'priority') return;
@@ -5517,6 +5507,16 @@
                             metadataHtml += '<div class="mb-2"><strong>' + escapeHtml(f.field_label) + ':</strong> ' + escapeHtml(displayValue) + '</div>';
                         }
                     });
+                }
+
+                // Created and Updated - last, hide for client
+                if (userRole !== 'client') {
+                    if (actualIssue.created_at) {
+                        metadataHtml += '<div class="mb-2"><strong>Created:</strong><br><small class="text-muted">' + new Date(actualIssue.created_at).toLocaleString() + '</small></div>';
+                    }
+                    if (actualIssue.updated_at) {
+                        metadataHtml += '<div class="mb-2"><strong>Updated:</strong><br><small class="text-muted">' + new Date(actualIssue.updated_at).toLocaleString() + '</small></div>';
+                    }
                 }
             } else {
                 metadataHtml = '<div class="mb-2"><strong>Title:</strong> ' + escapeHtml(it.title) + '</div>' +
