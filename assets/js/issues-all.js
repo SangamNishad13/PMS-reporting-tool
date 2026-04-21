@@ -253,7 +253,19 @@ function performLoadIssues(preserveFilters, silentErrors, retryCount) {
     })
     .then(function (data) {
         if (data.success) {
-            allIssues = data.issues;
+            // Natural sort by issue_key (e.g. MuthootOne-1, MuthootOne-2, ... MuthootOne-10)
+            allIssues = (data.issues || []).sort(function(a, b) {
+                var ka = String(a.issue_key || '');
+                var kb = String(b.issue_key || '');
+                // Split prefix and numeric suffix: "MuthootOne-10" -> ["MuthootOne", 10]
+                var ma = ka.match(/^(.*?)(\d+)$/);
+                var mb = kb.match(/^(.*?)(\d+)$/);
+                if (ma && mb) {
+                    if (ma[1] !== mb[1]) return ma[1].localeCompare(mb[1]);
+                    return parseInt(ma[2], 10) - parseInt(mb[2], 10);
+                }
+                return ka.localeCompare(kb);
+            });
             if (preserveFilters) { applyFilters(); } else { filteredIssues = allIssues; updateCounts(); renderIssues(); }
         } else {
             throw new Error(data.message || 'Failed to load issues');
