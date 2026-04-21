@@ -82,6 +82,11 @@ foreach ($metadataFields as &$field) {
 $pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_pages WHERE project_id = ? ORDER BY page_name");
 $pagesStmt->execute([$projectId]);
 $projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
+usort($projectPages, function($a, $b) {
+    $an = $a['page_number'] ?? '';
+    $bn = $b['page_number'] ?? '';
+    return strnatcasecmp((string)$an, (string)$bn);
+});
 
 $pageDisplayNumberById = [];
 $pageDisplaySequence = 1;

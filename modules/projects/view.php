@@ -187,6 +187,12 @@ $allEnvironments = $db->query("SELECT id, name FROM testing_environments ORDER B
 $pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_pages WHERE project_id = ? ORDER BY page_name");
 $pagesStmt->execute([$projectId]);
 $projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
+// Natural sort by page_number
+usort($projectPages, function($a, $b) {
+    $an = $a['page_number'] ?? '';
+    $bn = $b['page_number'] ?? '';
+    return strnatcasecmp((string)$an, (string)$bn);
+});
 
 // Issue page summaries for Issues tab
 $issuePageSummaries = [];

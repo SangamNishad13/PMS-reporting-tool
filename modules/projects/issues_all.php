@@ -41,9 +41,16 @@ if (!$project) {
 }
 
 // Get filter options
-$pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_pages WHERE project_id = ? ORDER BY page_number, page_name");
+$pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_pages WHERE project_id = ? ORDER BY page_name");
 $pagesStmt->execute([$projectId]);
 $projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Natural sort by page_number (Page 1, Page 2, Page 10... not Page 1, Page 10, Page 2)
+usort($projectPages, function($a, $b) {
+    $an = $a['page_number'] ?? '';
+    $bn = $b['page_number'] ?? '';
+    return strnatcasecmp((string)$an, (string)$bn);
+});
 
 $issueStatuses = getIssueStatusesForRole($db, $userRole);
 
@@ -51,11 +58,18 @@ $qaStatusesStmt = $db->query("SELECT status_key, status_label, badge_color FROM 
 $qaStatuses = $qaStatusesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $reportersStmt = $db->prepare("
-    SELECT id, full_name, username, role
-    FROM users
+    SELECT DISTINCT u.id, u.full_name, u.username, u.role
+    FROM users u
+    INNER JOIN user_assignments ua ON u.id = ua.user_id
+    WHERE ua.project_id = ? AND u.is_active = 1 AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+    UNION
+    SELECT DISTINCT u.id, u.full_name, u.username, u.role
+    FROM users u
+    INNER JOIN projects p ON p.project_lead_id = u.id
+    WHERE p.id = ? AND u.is_active = 1
     ORDER BY full_name
 ");
-$reportersStmt->execute();
+$reportersStmt->execute([$projectId, $projectId]);
 $projectUsers = $reportersStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch grouped URLs
