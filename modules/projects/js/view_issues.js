@@ -5488,7 +5488,13 @@
                         '</div>';
                 }
                 
-                metadataHtml += '<div class="mb-2"><strong>Page(s):</strong><br>' + escapeHtml(pagesStr) + '</div>' +
+                metadataHtml += '<div class="mb-2"><strong>Page(s):</strong> <span class="badge bg-secondary ms-1">' + (it.pages || []).length + '</span>' +
+                    '<div class="mt-1 border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
+                    '<ul class="list-unstyled mb-0 small">' +
+                    (it.pages || []).map(function(pageId) {
+                        return '<li><i class="fas fa-file-alt text-muted me-1"></i>' + escapeHtml(getPageName(pageId)) + '</li>';
+                    }).join('') +
+                    '</ul></div></div>' +
                     urlsHtml;
                 
                 // Created and Updated - hide for client
@@ -5514,10 +5520,13 @@
                 }
             } else {
                 metadataHtml = '<div class="mb-2"><strong>Title:</strong> ' + escapeHtml(it.title) + '</div>' +
-                    '<div class="mb-2"><strong>Pages:</strong> ' +
-                    '<span class="badge bg-secondary">' + pageCount + '</span><br>' +
-                    '<small class="text-muted">' + escapeHtml(pagesStr) + '</small>' +
-                    '</div>' +
+                    '<div class="mb-2"><strong>Pages:</strong> <span class="badge bg-secondary ms-1">' + pageCount + '</span>' +
+                    '<div class="mt-1 border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
+                    '<ul class="list-unstyled mb-0 small">' +
+                    (it.pages || []).map(function(pageId) {
+                        return '<li><i class="fas fa-file-alt text-muted me-1"></i>' + escapeHtml(getPageName(pageId)) + '</li>';
+                    }).join('') +
+                    '</ul></div></div>' +
                     (it.issue_id ? '<div class="mb-2"><strong>Issue ID:</strong> ' + escapeHtml(it.issue_id) + '</div>' : '') +
                     '<div class="alert alert-info small mt-2"><i class="fas fa-info-circle me-1"></i>Load the page to see full issue details</div>';
             }
