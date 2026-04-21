@@ -509,7 +509,7 @@ body.client-issue-sidebar-open {
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <div class="d-flex align-items-center gap-3 flex-wrap">
                     <span class="text-muted">Total Issues: <strong id="totalCount">0</strong></span>
-                    <span class="text-muted">Showing: <strong id="filteredCount">0</strong></span>
+                    <span class="text-muted">Filtered: <strong id="filteredCount">0</strong></span>
                     <div class="d-flex align-items-center gap-1">
                         <label class="text-muted small mb-0">Per page:</label>
                         <select id="perPageSelect" class="form-select form-select-sm" style="width:auto;">
