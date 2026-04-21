@@ -37,7 +37,6 @@ function renderPagination() {
         if (info) info.textContent = infoText;
         if (bar) bar.style.display = totalPages <= 1 ? 'none' : '';
         if (!controls) return;
-
         if (totalPages <= 1) { controls.innerHTML = ''; return; }
 
         var html = '';
@@ -377,8 +376,7 @@ function renderIssues() {
 }
 
 function updateCounts() {
-    document.getElementById('totalCount').textContent    = allIssues.length;
-    document.getElementById('filteredCount').textContent = filteredIssues.length;
+    // totalCount and filteredCount elements removed - info shown in pagination
 }
 
 function applyFilters() {
