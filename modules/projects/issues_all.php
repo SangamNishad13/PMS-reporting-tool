@@ -399,22 +399,28 @@ body.client-issue-sidebar-open {
 
     <div class="card mb-3">
         <div class="card-body">
-            <div class="row align-items-center">
-                <div class="col-md-8">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
                     <h2 class="mb-1">
                         <i class="fas fa-list text-primary me-2"></i>
                         All Issues
                     </h2>
                     <p class="text-muted mb-0">Complete list of all accessibility issues in this project</p>
                 </div>
-                <div class="col-md-4 text-md-end">
+                <div class="d-flex flex-wrap gap-2 align-items-center">
                     <?php if ($_SESSION['role'] !== 'client'): ?>
-                    <button class="btn btn-primary me-2" id="addIssueBtn">
+                    <button class="btn btn-primary" id="addIssueBtn">
                         <i class="fas fa-plus me-1"></i> Add Issue
                     </button>
                     <?php endif; ?>
-                    <a href="<?php echo $baseDir; ?>/api/download_screenshots.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-primary me-2">
+                    <a href="<?php echo $baseDir; ?>/api/download_screenshots.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-primary">
                         <i class="fas fa-download me-1"></i> Download Screenshots
+                    </a>
+                    <a href="<?php echo $baseDir; ?>/modules/projects/issues_common.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-info">
+                        <i class="fas fa-layer-group me-1"></i> Common Issues
+                    </a>
+                    <a href="<?php echo $baseDir; ?>/modules/projects/issues_pages.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-secondary">
+                        <i class="fas fa-file-alt me-1"></i> Page View
                     </a>
                     <a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-secondary">
                         <i class="fas fa-arrow-left me-1"></i> Back
