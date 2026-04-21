@@ -14,7 +14,6 @@ $projectId = (int)($_GET['project_id'] ?? 0);
 $filterQaId = (int)($_GET['filter_qa'] ?? ($_POST['filter_qa'] ?? 0));
 $filterFtId = (int)($_GET['filter_ft'] ?? ($_POST['filter_ft'] ?? 0));
 $filterAtId = (int)($_GET['filter_at'] ?? ($_POST['filter_at'] ?? 0));
-$tab = $_GET['tab'] ?? 'pending'; // Default to pending
 
 if ($projectId <= 0) {
     header('Location: dashboard.php');
@@ -40,9 +39,6 @@ if ($filterFtId > 0) {
 }
 if ($filterAtId > 0) {
     $redirectParams['filter_at'] = $filterAtId;
-}
-if ($tab !== '') {
-    $redirectParams['tab'] = $tab;
 }
 $tasksRedirectUrl = 'qa_tasks.php?' . http_build_query($redirectParams);
 
@@ -166,12 +162,6 @@ if ($filterAtId > 0) {
     $params[] = $filterAtId;
 }
 
-if ($tab === 'pending') {
-    $where[] = "pe.qa_status NOT IN ('completed', 'on_hold')";
-} elseif ($tab === 'completed') {
-    $where[] = "pe.qa_status = 'completed'";
-}
-
 $pagesSql = "\n    SELECT\n        pp.id, pp.page_name, pp.url, pp.screen_name, pp.status AS page_status,\n        pe.environment_id, pe.qa_status,\n        te.name AS environment_name, te.browser, te.assistive_tech\n    FROM project_pages pp\n    JOIN page_environments pe ON pp.id = pe.page_id\n    JOIN testing_environments te ON pe.environment_id = te.id\n    WHERE " . implode(' AND ', $where) . "\n    ORDER BY pp.page_name, te.name\n";
 
 $pagesStmt = $db->prepare($pagesSql);
@@ -269,27 +259,12 @@ include __DIR__ . '/../../includes/header.php';
     <?php endif; ?>
 
     <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="fas fa-list"></i> Assigned Pages</h5>
-            <ul class="nav nav-pills card-header-pills">
-                <li class="nav-item">
-                    <a class="nav-link <?php echo $tab === 'pending' ? 'active' : ''; ?>" 
-                       href="qa_tasks.php?project_id=<?php echo $projectId; ?>&tab=pending">Pending</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link <?php echo $tab === 'all' ? 'active' : ''; ?>" 
-                       href="qa_tasks.php?project_id=<?php echo $projectId; ?>&tab=all">All Tasks</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link <?php echo $tab === 'completed' ? 'active' : ''; ?>" 
-                       href="qa_tasks.php?project_id=<?php echo $projectId; ?>&tab=completed">Completed</a>
-                </li>
-            </ul>
+        <div class="card-header">
+            <h5><i class="fas fa-list"></i> Assigned Pages</h5>
         </div>
         <div class="card-body">
             <form method="GET" class="row g-2 align-items-end mb-3">
                 <input type="hidden" name="project_id" value="<?php echo (int)$projectId; ?>">
-                <input type="hidden" name="tab" value="<?php echo htmlspecialchars($tab); ?>">
                 <div class="col-md-3">
                     <label for="filterQa" class="form-label form-label-sm mb-1">QA</label>
                     <select id="filterQa" name="filter_qa" class="form-select form-select-sm">

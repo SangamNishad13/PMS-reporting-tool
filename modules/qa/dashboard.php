@@ -198,12 +198,11 @@ if (hasAdminPrivileges()) {
     // Admin sees stats for all QA work
     $stmt = $db->prepare("
         SELECT 
-            COUNT(CASE WHEN pe.qa_status NOT IN ('completed', 'on_hold') THEN pe.id END) as pending_pages,
-            COUNT(CASE WHEN pe.qa_status = 'completed' THEN pe.id END) as completed_pages,
-            COUNT(CASE WHEN pp.status = 'in_fixing' THEN pe.id END) as fixing_pages,
+            COUNT(DISTINCT CASE WHEN pp.status IS NULL OR LOWER(pp.status) NOT IN ('on_hold', 'hold', 'completed') THEN pp.id END) as pending_pages,
+            COUNT(DISTINCT CASE WHEN pp.status = 'completed' THEN pp.id END) as completed_pages,
+            COUNT(DISTINCT CASE WHEN pp.status = 'in_fixing' THEN pp.id END) as fixing_pages,
             COUNT(DISTINCT pp.project_id) as total_assigned_projects
-        FROM page_environments pe
-        JOIN project_pages pp ON pe.page_id = pp.id
+        FROM project_pages pp
         JOIN projects p ON pp.project_id = p.id
         WHERE p.status NOT IN ('cancelled')
     ");
@@ -221,13 +220,13 @@ if (hasAdminPrivileges()) {
 } else {
     $stmt = $db->prepare("
         SELECT 
-            COUNT(CASE WHEN pe.qa_status NOT IN ('completed', 'on_hold') THEN pe.id END) as pending_pages,
-            COUNT(CASE WHEN pe.qa_status = 'completed' THEN pe.id END) as completed_pages,
-            COUNT(CASE WHEN pp.status = 'in_fixing' THEN pe.id END) as fixing_pages,
+            COUNT(DISTINCT CASE WHEN pp.status IS NULL OR LOWER(pp.status) NOT IN ('on_hold', 'hold', 'completed') THEN pp.id END) as pending_pages,
+            COUNT(DISTINCT CASE WHEN pp.status = 'completed' THEN pp.id END) as completed_pages,
+            COUNT(DISTINCT CASE WHEN pp.status = 'in_fixing' THEN pp.id END) as fixing_pages,
             COUNT(DISTINCT pp.project_id) as total_assigned_projects
-        FROM page_environments pe
-        JOIN project_pages pp ON pe.page_id = pp.id
+        FROM project_pages pp
         JOIN projects p ON pp.project_id = p.id
+        LEFT JOIN page_environments pe ON pp.id = pe.page_id
         WHERE (
             pp.qa_id = ? 
             OR pe.qa_id = ?
@@ -293,7 +292,7 @@ $activeProjects = $assignedProjects->fetchAll();
 // Pending QA rows (same layout intent as qa_tasks.php table)
 $qaPendingWhere = [
     "p.status != 'cancelled'",
-    "pe.qa_status NOT IN ('completed', 'on_hold')"
+    "(pp.status IS NULL OR LOWER(pp.status) NOT IN ('completed', 'in_fixing', 'on_hold', 'hold'))"
 ];
 $qaPendingParams = [];
 
@@ -470,7 +469,7 @@ if (!empty($qaPendingRows)) {
             <div class="row">
                 <div class="col-md-4">
                     <h4>Welcome, <?php echo $_SESSION['full_name']; ?>!</h4>
-                    <p class="mb-0">You have <?php echo (int)($stats['pending_pages'] ?? 0); ?> tasks pending review.</p>
+                    <p class="mb-0">You have <?php echo (int)$stats['pending_pages']; ?> pages pending review.</p>
                 </div>
                 <div class="col-md-8">
                     <div class="row g-2">
