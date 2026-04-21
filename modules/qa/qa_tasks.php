@@ -73,7 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_env_status']))
     $pageId = (int)($_POST['page_id'] ?? 0);
     $environmentId = (int)($_POST['environment_id'] ?? 0);
     $status = trim((string)($_POST['status'] ?? ''));
-    $allowedStatuses = ['not_started', 'in_progress', 'completed', 'on_hold', 'needs_review'];
+    $allowedStatuses = ['pending', 'na', 'completed'];
 
     if ($pageId <= 0 || $environmentId <= 0 || !in_array($status, $allowedStatuses, true)) {
         $_SESSION['error'] = 'Invalid status update request.';
@@ -356,22 +356,16 @@ include __DIR__ . '/../../includes/header.php';
                                 </td>
                                 <td>
                                     <?php
-                                    $qaStatus = strtolower(trim((string)($page['qa_status'] ?? 'not_started')));
-                                    if ($qaStatus === '' || $qaStatus === 'pending') $qaStatus = 'not_started';
-                                    if ($qaStatus === 'na') $qaStatus = 'on_hold';
-                                    if ($qaStatus === 'pass') $qaStatus = 'completed';
-                                    if ($qaStatus === 'fail') $qaStatus = 'needs_review';
-
+                                    $qaStatusRaw = strtolower(trim((string)($page['qa_status'] ?? 'pending')));
+                                    $qaStatus = in_array($qaStatusRaw, ['pending', 'na', 'completed'], true) ? $qaStatusRaw : 'pending';
                                     $statusClass = 'secondary';
-                                    $statusText = formatQAStatusLabel($qaStatus);
+                                    $statusText = 'Pending';
                                     if ($qaStatus === 'completed') {
                                         $statusClass = 'success';
-                                    } elseif ($qaStatus === 'in_progress') {
-                                        $statusClass = 'info text-dark';
-                                    } elseif ($qaStatus === 'needs_review') {
-                                        $statusClass = 'danger';
-                                    } elseif ($qaStatus === 'on_hold') {
-                                        $statusClass = 'warning text-dark';
+                                        $statusText = 'Completed';
+                                    } elseif ($qaStatus === 'na') {
+                                        $statusClass = 'secondary';
+                                        $statusText = 'N/A';
                                     }
 
                                     $pageStatus = (string)($page['page_status'] ?? 'not_started');
@@ -388,11 +382,9 @@ include __DIR__ . '/../../includes/header.php';
                                         <input type="hidden" name="filter_ft" value="<?php echo (int)$filterFtId; ?>">
                                         <input type="hidden" name="filter_at" value="<?php echo (int)$filterAtId; ?>">
                                         <select name="status" class="form-select form-select-sm" style="min-width: 150px;" aria-label="Update QA environment status">
-                                            <option value="not_started" <?php echo $qaStatus === 'not_started' ? 'selected' : ''; ?>>Not Started</option>
-                                            <option value="in_progress" <?php echo $qaStatus === 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
+                                            <option value="pending" <?php echo $qaStatus === 'pending' ? 'selected' : ''; ?>>Pending</option>
+                                            <option value="na" <?php echo $qaStatus === 'na' ? 'selected' : ''; ?>>N/A</option>
                                             <option value="completed" <?php echo $qaStatus === 'completed' ? 'selected' : ''; ?>>Completed</option>
-                                            <option value="on_hold" <?php echo $qaStatus === 'on_hold' ? 'selected' : ''; ?>>On Hold</option>
-                                            <option value="needs_review" <?php echo $qaStatus === 'needs_review' ? 'selected' : ''; ?>>Needs Review</option>
                                         </select>
                                         <button type="submit" name="update_env_status" class="btn btn-sm btn-primary">Update</button>
                                     </form>
