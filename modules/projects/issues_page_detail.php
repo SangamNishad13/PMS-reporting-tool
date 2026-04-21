@@ -673,7 +673,7 @@ include __DIR__ . '/../../includes/header.php';
                         <?php endif; ?>
                         <?php if (!empty($groupedUrls)): ?>
                         <div class="page-header-metric">
-                            <button class="btn btn-xs btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#pageUrlsList">
+                            <button class="btn btn-xs btn-outline-secondary" onclick="var el=document.getElementById('pageUrlsList');if(el)el.style.display=el.style.display==='none'||!el.style.display?'block':'none';event.stopPropagation();">
                                 <i class="fas fa-link me-1"></i><?php echo count($groupedUrls); ?> URLs
                             </button>
                         </div>
@@ -699,7 +699,7 @@ include __DIR__ . '/../../includes/header.php';
 
     <?php if (!empty($groupedUrls)): ?>
     <!-- Collapsible Grouped URLs -->
-    <div class="collapse mb-2" id="pageUrlsList">
+    <div class="mb-2" id="pageUrlsList" style="display:none;">
         <div class="card">
             <div class="card-body py-2">
                 <div class="small">

@@ -4526,21 +4526,6 @@
             document.querySelectorAll('#finalIssuesBody img').forEach(function (img) {
                 img.style.cursor = 'pointer';
             });
-            
-            // Add event listeners for grouped URLs collapse with manual toggle
-            document.querySelectorAll('#finalIssuesBody .grouped-urls-toggle').forEach(function (toggleBtn) {
-                toggleBtn.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    var targetId = this.getAttribute('data-bs-target');
-                    if (targetId) {
-                        var collapseEl = document.querySelector(targetId);
-                        if (collapseEl) {
-                            collapseEl.style.display = (collapseEl.style.display === 'none' || !collapseEl.style.display) ? 'block' : 'none';
-                        }
-                    }
-                });
-            });
         }, 100);
     }
 
@@ -5915,6 +5900,19 @@
         var finalMarkClientReady = document.getElementById('finalMarkClientReadyBtn');
         if (finalMarkClientReady) finalMarkClientReady.disabled = !finalChecked || !canEdit();
     }
+
+    // Event delegation for grouped URLs toggle - instant, no setTimeout delay
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.grouped-urls-toggle');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var targetId = btn.getAttribute('data-bs-target');
+        if (targetId) {
+            var el = document.querySelector(targetId);
+            if (el) el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
+        }
+    });
 
     // Global image click delegation for image previews
     document.addEventListener('click', function(e) {
