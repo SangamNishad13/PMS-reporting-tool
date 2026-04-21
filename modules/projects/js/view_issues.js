@@ -4294,36 +4294,24 @@
                     }
                     pagesHtml += '</div>';
 
-                    // Grouped URLs section - scrollable container
+                    // Grouped URLs section - same as issues-all.js
                     var urlsHtml = '';
                     if (issue.grouped_urls && issue.grouped_urls.length > 0) {
-                        var urlsId = 'urls-' + issue.id;
-                        urlsHtml += '<div class="mb-2">';
-                        urlsHtml += '<strong>Grouped URLs:</strong> ';
-                        urlsHtml += '<span class="badge bg-info ms-1">' + issue.grouped_urls.length + '</span> ';
-                        urlsHtml += '<button class="btn btn-xs btn-link p-0 grouped-urls-toggle" data-bs-toggle="collapse" data-bs-target="#' + urlsId + '" aria-expanded="false">';
-                        urlsHtml += '<small>Show/Hide</small>';
-                        urlsHtml += '</button>';
-                        urlsHtml += '<div class="mt-1" id="' + urlsId + '" style="display:none;">';
-                        urlsHtml += '<div class="border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">';
-
-                        var urlsFound = 0;
+                        urlsHtml += '<div class="mb-2"><strong>Grouped URLs:</strong> <span class="badge bg-info ms-1">' + issue.grouped_urls.length + '</span>' +
+                            '<button class="btn btn-link p-0 ms-1 text-primary" style="font-size:12px;text-decoration:none;" onclick="toggleGroupedUrls(\'' + issue.id + '\',event)"><small>Show/Hide</small></button>' +
+                            '<div id="grouped-urls-content-' + issue.id + '" style="display:none;margin-top:4px;">' +
+                            '<div class="border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
+                            '<ul class="list-unstyled mb-0 small">';
                         issue.grouped_urls.forEach(function (urlString) {
                             var urlData = (ProjectConfig.groupedUrls || []).find(function (u) {
                                 return u.url === urlString || u.normalized_url === urlString;
                             });
                             var displayUrl = urlData ? urlData.url : urlString;
                             if (displayUrl) {
-                                urlsFound++;
-                                urlsHtml += '<div class="mb-1 small text-break">';
-                                urlsHtml += '<a href="' + escapeHtml(displayUrl) + '" target="_blank" class="text-decoration-none">';
-                                urlsHtml += '<i class="fas fa-link me-1 text-primary"></i>';
-                                urlsHtml += escapeHtml(displayUrl);
-                                urlsHtml += '</a></div>';
+                                urlsHtml += '<li class="mb-1 text-break"><a href="' + escapeHtml(displayUrl) + '" target="_blank" class="text-decoration-none"><i class="fas fa-link me-1 text-primary"></i>' + escapeHtml(displayUrl) + '</a></li>';
                             }
                         });
-                        if (urlsFound === 0) urlsHtml += '<div class="text-muted small">No URL data available</div>';
-                        urlsHtml += '</div></div></div>';
+                        urlsHtml += '</ul></div></div></div>';
                     }
 
                     if (userRole === 'client') {
@@ -5446,33 +5434,24 @@
                     reporterHtml = '<span class="text-muted">N/A</span>';
                 }
 
-                // Grouped URLs
+                // Grouped URLs - same as issues-all.js
                 var urlsHtml = '';
                 if (actualIssue.grouped_urls && actualIssue.grouped_urls.length > 0) {
-                    var urlsId = 'common-urls-' + it.id;
-                    urlsHtml = '<div class="mb-2">';
-                    urlsHtml += '<strong>Grouped URLs:</strong> ';
-                    urlsHtml += '<span class="badge bg-info">' + actualIssue.grouped_urls.length + '</span> ';
-                    urlsHtml += '<button type="button" class="btn btn-xs btn-link p-0 ms-1 grouped-urls-toggle-btn" data-target="' + urlsId + '" aria-expanded="false">';
-                    urlsHtml += '<i class="fas fa-chevron-down"></i>';
-                    urlsHtml += '</button>';
-                    urlsHtml += '<div class="collapse mt-2" id="' + urlsId + '">';
-                    urlsHtml += '<div class="small p-2 border rounded bg-light" style="max-height: 150px; overflow-y: auto;">';
-
+                    urlsHtml = '<div class="mb-2"><strong>Grouped URLs:</strong> <span class="badge bg-info ms-1">' + actualIssue.grouped_urls.length + '</span>' +
+                        '<button class="btn btn-link p-0 ms-1 text-primary" style="font-size:12px;text-decoration:none;" onclick="toggleGroupedUrls(\'' + it.id + '\',event)"><small>Show/Hide</small></button>' +
+                        '<div id="grouped-urls-content-' + it.id + '" style="display:none;margin-top:4px;">' +
+                        '<div class="border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
+                        '<ul class="list-unstyled mb-0 small">';
                     actualIssue.grouped_urls.forEach(function (urlString) {
                         var urlData = (ProjectConfig.groupedUrls || []).find(function (u) {
                             return u.url === urlString || u.normalized_url === urlString;
                         });
                         var displayUrl = urlData ? urlData.url : urlString;
                         if (displayUrl) {
-                            urlsHtml += '<div class="mb-1">';
-                            urlsHtml += '<a href="' + escapeHtml(displayUrl) + '" target="_blank" class="text-decoration-none">';
-                            urlsHtml += '<i class="fas fa-external-link-alt me-1 text-primary"></i>';
-                            urlsHtml += '<span class="text-primary">' + escapeHtml(displayUrl) + '</span>';
-                            urlsHtml += '</a></div>';
+                            urlsHtml += '<li class="mb-1 text-break"><a href="' + escapeHtml(displayUrl) + '" target="_blank" class="text-decoration-none"><i class="fas fa-link me-1 text-primary"></i>' + escapeHtml(displayUrl) + '</a></li>';
                         }
                     });
-                    urlsHtml += '</div></div></div>';
+                    urlsHtml += '</ul></div></div></div>';
                 }
 
                 // Build metadata HTML - Common Title first, then conditionally show other fields
@@ -8623,4 +8602,16 @@
     window.loadCommonIssues = loadCommonIssues;
     window.openFinalEditor = openFinalEditor;
     window.updateIssueTabCounts = updateIssueTabCounts;
+
+    // Expose toggleGroupedUrls globally (used by onclick in rendered HTML)
+    window.toggleGroupedUrls = function(issueId, event) {
+        if (event) event.stopPropagation();
+        var content = document.getElementById('grouped-urls-content-' + issueId);
+        if (!content) return;
+        if (content.style.display === 'none' || !content.style.display) {
+            content.style.display = 'block';
+        } else {
+            content.style.display = 'none';
+        }
+    };
 })(); // IIFE invocation - this actually executes the function
