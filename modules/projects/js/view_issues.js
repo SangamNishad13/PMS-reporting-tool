@@ -3627,6 +3627,10 @@
             }
         });
 
+        console.log('[groupedUrlsByPages] pageIds:', pageIds, '| groupedUrls.length:', groupedUrls.length, '| result count:', urls.length);
+        if (groupedUrls.length > 0) {
+            console.log('[groupedUrlsByPages] sample groupedUrls[0]:', JSON.stringify(groupedUrls[0]));
+        }
         return urls;
     }
 
