@@ -512,7 +512,7 @@ body.client-issue-sidebar-open {
                     <span class="text-muted">Filtered: <strong id="filteredCount">0</strong></span>
                     <div class="d-flex align-items-center gap-1">
                         <label class="text-muted small mb-0">Per page:</label>
-                        <select id="perPageSelect" class="form-select form-select-sm" style="width:auto;">
+                        <select id="perPageSelect" class="form-select form-select-sm" style="width:auto; min-width:75px; padding-right:1.75rem;">
                             <option value="25">25</option>
                             <option value="50" selected>50</option>
                             <option value="100">100</option>
