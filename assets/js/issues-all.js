@@ -623,17 +623,13 @@ function performDelete(issueId) {
 function escapeHtml(text) { var d = document.createElement('div'); d.textContent = text; return d.innerHTML; }
 
 function toggleGroupedUrls(issueId, event) {
-    event.stopPropagation();
+    if (event) event.stopPropagation();
     var content = document.getElementById('grouped-urls-content-' + issueId);
-    var icon    = document.getElementById('grouped-urls-icon-' + issueId);
-    var text    = document.getElementById('grouped-urls-text-' + issueId);
-    if (!content || !icon || !text) return;
-    if (content.style.display === 'none') {
-        content.style.display = 'block'; icon.classList.replace('fa-chevron-down', 'fa-chevron-up'); text.textContent = 'Hide';
+    if (!content) return;
+    if (content.style.display === 'none' || !content.style.display) {
+        content.style.display = 'block';
     } else {
-        content.style.display = 'none'; icon.classList.replace('fa-chevron-up', 'fa-chevron-down');
-        var cnt = content.querySelectorAll('small')[0] ? content.querySelectorAll('small')[0].innerHTML.split('<br>').length : 0;
-        text.textContent = 'Show (' + cnt + ')';
+        content.style.display = 'none';
     }
 }
 

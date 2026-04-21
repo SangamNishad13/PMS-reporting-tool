@@ -4532,33 +4532,11 @@
                 toggleBtn.addEventListener('click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
-
                     var targetId = this.getAttribute('data-bs-target');
                     if (targetId) {
                         var collapseEl = document.querySelector(targetId);
-                        var chevron = this.querySelector('i');
-
                         if (collapseEl) {
-                            // Toggle using inline style
-                            var isHidden = collapseEl.style.display === 'none';
-
-                            if (isHidden) {
-                                // Expand
-                                collapseEl.style.display = 'block';
-                                if (chevron) {
-                                    chevron.classList.remove('fa-chevron-down');
-                                    chevron.classList.add('fa-chevron-up');
-                                }
-                                this.setAttribute('aria-expanded', 'true');
-                            } else {
-                                // Collapse
-                                collapseEl.style.display = 'none';
-                                if (chevron) {
-                                    chevron.classList.remove('fa-chevron-up');
-                                    chevron.classList.add('fa-chevron-down');
-                                }
-                                this.setAttribute('aria-expanded', 'false');
-                            }
+                            collapseEl.style.display = (collapseEl.style.display === 'none' || !collapseEl.style.display) ? 'block' : 'none';
                         }
                     }
                 });
