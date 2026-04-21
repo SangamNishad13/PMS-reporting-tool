@@ -2209,11 +2209,18 @@ jQuery(function ($) {
         allowClear: true,
         closeOnSelect: false
     }).on('select2:select select2:unselect', function () {
-        // Clear search text after selecting a member
-        var searchInput = $(this).data('select2').$dropdown.find('.select2-search__field');
-        if (searchInput.length) {
-            searchInput.val('').trigger('input');
-        }
+        // Clear the search input after selection using setTimeout to let select2 finish
+        var self = this;
+        setTimeout(function () {
+            var $search = $(self).data('select2').$container.find('.select2-search__field');
+            if (!$search.length) {
+                $search = $(self).data('select2').$dropdown.find('.select2-search__field');
+            }
+            if ($search.length) {
+                $search.val('');
+                $search.trigger('input');
+            }
+        }, 0);
     });
 });
 </script>

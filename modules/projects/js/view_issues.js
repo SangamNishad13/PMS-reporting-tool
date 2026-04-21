@@ -2120,12 +2120,39 @@
                     if (!list) return;
 
                     e.preventDefault();
-                    $el.summernote('saveRange');
-                    document.execCommand('insertParagraph');
-                    // Remove the now-empty li that was left behind
-                    if (currentLi.parentNode) currentLi.parentNode.removeChild(currentLi);
-                    if (list.children.length === 0 && list.parentNode) list.parentNode.removeChild(list);
-                    $el.summernote('restoreRange');
+                    e.stopPropagation();
+
+                    // Remove the empty li
+                    var listParent = list.parentNode;
+                    currentLi.parentNode.removeChild(currentLi);
+                    if (list.children.length === 0 && list.parentNode) {
+                        list.parentNode.removeChild(list);
+                    }
+
+                    // Insert a new <p> after the list and place cursor there
+                    var newP = document.createElement('p');
+                    newP.appendChild(document.createElement('br'));
+                    if (listParent) {
+                        var listRef = list.parentNode ? list : null;
+                        // Insert after the list's current position
+                        var nextSibling = list.nextSibling;
+                        if (nextSibling) {
+                            listParent.insertBefore(newP, nextSibling);
+                        } else {
+                            listParent.appendChild(newP);
+                        }
+                    }
+
+                    // Place cursor inside the new paragraph
+                    var sel = window.getSelection();
+                    if (sel) {
+                        var r = document.createRange();
+                        r.setStart(newP, 0);
+                        r.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(r);
+                    }
+                    $el.summernote('triggerEvent', 'change');
                 } catch (err) { }
                 return;
             }
