@@ -363,19 +363,15 @@ include __DIR__ . '/../../includes/header.php';
                                     if ($qaStatus === 'fail') $qaStatus = 'needs_review';
 
                                     $statusClass = 'secondary';
-                                    $statusText = 'Pending';
+                                    $statusText = formatQAStatusLabel($qaStatus);
                                     if ($qaStatus === 'completed') {
                                         $statusClass = 'success';
-                                        $statusText = 'Completed';
-                                    } elseif ($qaStatus === 'on_hold') {
-                                        $statusClass = 'secondary';
-                                        $statusText = 'N/A';
                                     } elseif ($qaStatus === 'in_progress') {
                                         $statusClass = 'info text-dark';
-                                        $statusText = 'In Progress';
                                     } elseif ($qaStatus === 'needs_review') {
                                         $statusClass = 'danger';
-                                        $statusText = 'Needs Review';
+                                    } elseif ($qaStatus === 'on_hold') {
+                                        $statusClass = 'warning text-dark';
                                     }
 
                                     $pageStatus = (string)($page['page_status'] ?? 'not_started');
@@ -392,9 +388,11 @@ include __DIR__ . '/../../includes/header.php';
                                         <input type="hidden" name="filter_ft" value="<?php echo (int)$filterFtId; ?>">
                                         <input type="hidden" name="filter_at" value="<?php echo (int)$filterAtId; ?>">
                                         <select name="status" class="form-select form-select-sm" style="min-width: 150px;" aria-label="Update QA environment status">
-                                            <option value="not_started" <?php echo ($qaStatus === 'not_started' || $qaStatus === 'pending') ? 'selected' : ''; ?>>Pending</option>
-                                            <option value="on_hold" <?php echo ($qaStatus === 'on_hold' || $qaStatus === 'na') ? 'selected' : ''; ?>>N/A</option>
-                                            <option value="completed" <?php echo ($qaStatus === 'completed' || $qaStatus === 'pass') ? 'selected' : ''; ?>>Completed</option>
+                                            <option value="not_started" <?php echo $qaStatus === 'not_started' ? 'selected' : ''; ?>>Not Started</option>
+                                            <option value="in_progress" <?php echo $qaStatus === 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
+                                            <option value="completed" <?php echo $qaStatus === 'completed' ? 'selected' : ''; ?>>Completed</option>
+                                            <option value="on_hold" <?php echo $qaStatus === 'on_hold' ? 'selected' : ''; ?>>On Hold</option>
+                                            <option value="needs_review" <?php echo $qaStatus === 'needs_review' ? 'selected' : ''; ?>>Needs Review</option>
                                         </select>
                                         <button type="submit" name="update_env_status" class="btn btn-sm btn-primary">Update</button>
                                     </form>
