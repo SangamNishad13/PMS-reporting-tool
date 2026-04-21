@@ -3622,12 +3622,19 @@
 
         // For each selected page
         pageIds.forEach(function (pageId) {
-            // First, add all grouped URLs for this page
+            var page = pages.find(function (p) { return String(p.id) === String(pageId); });
+            var pageUrl = page && page.url ? String(page.url).trim().toLowerCase() : '';
+
+            // Add all grouped URLs matched by unique_page_id OR by URL match (for unassigned rows)
             var hasGroupedUrls = false;
             groupedUrls.forEach(function (row) {
-                var rowMappedPageId = row.mapped_page_id;
-                var rowUniquePageId = row.unique_page_id;
-                if (String(rowMappedPageId) === String(pageId) || String(rowUniquePageId) === String(pageId)) {
+                var rowUniquePageId = row.unique_page_id || row.mapped_page_id;
+                var rowUrl = String(row.url || row.normalized_url || '').trim().toLowerCase();
+
+                var matchById = rowUniquePageId && String(rowUniquePageId) === String(pageId);
+                var matchByUrl = pageUrl && rowUrl && rowUrl === pageUrl;
+
+                if (matchById || matchByUrl) {
                     hasGroupedUrls = true;
                     addUrl(row.url || row.normalized_url);
                 }
@@ -3635,25 +3642,9 @@
 
             // If no grouped URLs found, add the page's primary URL
             if (!hasGroupedUrls) {
-                // Prefer URL from Unique URLs mapping when available.
                 addUrl(getUniqueUrlForPage(pageId));
-
-                var page = pages.find(function (p) {
-                    return String(p.id) === String(pageId);
-                });
-
                 if (page) {
                     addUrl(page.url || page.canonical_url || page.unique_url || page.normalized_url || page.page_url);
-                }
-
-                // Extra fallback from grouped URLs dataset if canonical is available
-                if (!page || !(page.url || page.canonical_url || page.unique_url || page.normalized_url || page.page_url)) {
-                    var rowWithCanonical = groupedUrls.find(function (row) {
-                        return String(row.mapped_page_id) === String(pageId) && (row.canonical_url || row.unique_name);
-                    });
-                    if (rowWithCanonical) {
-                        addUrl(rowWithCanonical.canonical_url || rowWithCanonical.unique_name);
-                    }
                 }
             }
         });
