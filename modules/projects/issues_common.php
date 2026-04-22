@@ -207,6 +207,9 @@ include __DIR__ . '/../../includes/header.php';
                     <a href="<?php echo $baseDir; ?>/modules/projects/issues.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-secondary btn-sm me-2">
                         <i class="fas fa-arrow-left me-1"></i> Back
                     </a>
+                    <a href="<?php echo $baseDir; ?>/modules/projects/issues_all.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-info btn-sm me-2">
+                        <i class="fas fa-list me-1"></i> View All Issues
+                    </a>
                     <a href="<?php echo $baseDir; ?>/modules/projects/issues_pages.php?project_id=<?php echo $projectId; ?>" class="btn btn-outline-primary btn-sm">
                         <i class="fas fa-file-alt me-1"></i> Pages View
                     </a>
@@ -250,16 +253,17 @@ include __DIR__ . '/../../includes/header.php';
                             <?php if ($_SESSION['role'] !== 'client'): ?>
                             <th style="width:30px;"><input type="checkbox" id="commonSelectAll"></th>
                             <?php endif; ?>
+                            <th style="width:120px;">Issue Key</th>
                             <th>Common Issue Title</th>
-                            <th style="width:200px;">Pages</th>
+                            <th style="width:150px;">Pages</th>
                             <?php if ($_SESSION['role'] !== 'client'): ?>
-                            <th style="width:150px;">Actions</th>
+                            <th style="width:120px;">Actions</th>
                             <?php endif; ?>
                         </tr>
                     </thead>
                     <tbody id="commonIssuesBody">
                         <tr>
-                            <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '2' : '4'; ?>" class="text-center text-muted py-5">
+                            <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '3' : '5'; ?>" class="text-center text-muted py-5">
                                 <i class="fas fa-layer-group fa-3x mb-3 opacity-25"></i>
                                 <div>No common issues added yet.</div>
                                 <?php if ($_SESSION['role'] !== 'client'): ?>

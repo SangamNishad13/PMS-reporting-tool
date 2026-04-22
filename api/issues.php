@@ -1850,6 +1850,7 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
             $out[] = [
                 'id' => (int)$r['common_id'],
                 'issue_id' => $iid,
+                'issue_key' => $r['issue_key'] ?? ('ISS-' . $iid),
                 'title' => $r['common_title'] ?: $r['title'],
                 'description' => $descriptionHtml,
                 'pages' => $pages,

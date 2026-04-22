@@ -5306,7 +5306,7 @@
     function renderCommonIssues() {
         var tbody = document.getElementById('commonIssuesBody');
         if (!tbody) return;
-        var colspanCount = (userRole === 'client') ? 2 : 4;
+        var colspanCount = (userRole === 'client') ? 3 : 5;
         if (!issueData.common.length) {
             tbody.innerHTML = '<tr><td colspan="' + colspanCount + '" class="text-center py-5 text-muted">' + (userRole === 'client' ? 'No shared issues available right now.' : 'No common issues found.') + '</td></tr>';
             return;
@@ -5320,6 +5320,7 @@
                 var clientPages = (it.pages || []).map(getPageName).slice(0, 4);
                 var extraPages = Math.max(0, (it.pages || []).length - clientPages.length);
                 return '<tr>' +
+                    '<td><span class="badge bg-primary">' + escapeHtml(it.issue_key || ('ISS-' + it.issue_id)) + '</span></td>' +
                     '<td>' +
                     '<div class="fw-semibold">' + escapeHtml(it.title || 'Shared issue') + '</div>' +
                     (descriptionPreview ? '<div class="small text-muted mt-1">' + escapeHtml(descriptionPreview) + '</div>' : '') +
@@ -5364,7 +5365,10 @@
                     '</td>';
             }
             
-            mainRow += '<td style="min-width: 250px; max-width: 400px;">' +
+            // Issue Key column
+            mainRow += '<td><span class="badge bg-primary">' + escapeHtml(it.issue_key || ('ISS-' + it.issue_id)) + '</span></td>';
+
+            mainRow += '<td style="min-width: 250px;">' +
                 '<div class="d-flex align-items-center">' +
                 '<button class="btn btn-link p-0 me-2 text-muted chevron-toggle-btn" ' +
                 'data-collapse-target="#' + uniqueId + '" ' +
