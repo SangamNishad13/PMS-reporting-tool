@@ -4438,6 +4438,8 @@
             });
         });
 
+        document.dispatchEvent(new CustomEvent('pms:issueTableUpdated'));
+
         // Helper function to toggle issue row expansion
         function toggleIssueRow(btn) {
             var targetId = btn.getAttribute('data-collapse-target');
@@ -5320,7 +5322,7 @@
                 var clientPages = (it.pages || []).map(getPageName).slice(0, 4);
                 var extraPages = Math.max(0, (it.pages || []).length - clientPages.length);
                 return '<tr>' +
-                    '<td><span class="badge bg-primary">' + escapeHtml(it.issue_key || ('ISS-' + it.issue_id)) + '</span></td>' +
+                    '<td><span class="badge bg-primary">' + escapeHtml(it.issue_key || ((window.ProjectConfig ? window.ProjectConfig.projectCode : 'ISS') + '-' + it.issue_id)) + '</span></td>' +
                     '<td>' +
                     '<div class="fw-semibold text-truncate-cell" title="' + escapeAttr(it.title || 'Shared issue') + '">' + escapeHtml(it.title || 'Shared issue') + '</div>' +
                     (descriptionPreview ? '<div class="small text-muted mt-1 text-truncate-cell" title="' + escapeAttr(stripHtml(it.description || '')) + '">' + escapeHtml(descriptionPreview) + '</div>' : '') +
@@ -5366,7 +5368,7 @@
             }
             
             // Issue Key column
-            mainRow += '<td><span class="badge bg-primary">' + escapeHtml(it.issue_key || ('ISS-' + it.issue_id)) + '</span></td>';
+            mainRow += '<td><span class="badge bg-primary">' + escapeHtml(it.issue_key || ((window.ProjectConfig ? window.ProjectConfig.projectCode : 'ISS') + '-' + it.issue_id)) + '</span></td>';
 
             mainRow += '<td style="min-width: 250px;">' +
                 '<div class="d-flex align-items-center">' +
@@ -5678,6 +5680,8 @@
                 }
             });
         });
+
+        document.dispatchEvent(new CustomEvent('pms:issueTableUpdated'));
     }
 
     function renderAll() { renderFinalIssues(); renderCommonIssues(); updateSelectionButtons(); }

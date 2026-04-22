@@ -1298,6 +1298,7 @@ include __DIR__ . '/../../includes/header.php';
     
     window.ProjectConfig = {
         projectId: <?php echo json_encode($projectId); ?>,
+        projectCode: <?php echo json_encode($project['project_code'] ?? 'ISS'); ?>,
         pageId: <?php echo json_encode($pageId ?? 0); ?>,
         userId: <?php echo json_encode($userId); ?>,
         userRole: <?php echo json_encode($userRole); ?>,

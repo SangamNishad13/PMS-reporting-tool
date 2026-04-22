@@ -358,6 +358,7 @@ include __DIR__ . '/partials/issues_modals.php';
     
     window.ProjectConfig = {
         projectId: <?php echo json_encode($projectId); ?>,
+        projectCode: <?php echo json_encode($project['project_code'] ?? 'ISS'); ?>,
         userId: <?php echo json_encode($userId); ?>,
         userRole: <?php echo json_encode($userRole); ?>,
         canUpdateIssueQaStatus: <?php echo $canUpdateIssueQaStatus ? 'true' : 'false'; ?>,

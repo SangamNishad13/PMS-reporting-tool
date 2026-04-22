@@ -616,6 +616,7 @@ window._csrfToken = <?php echo json_encode(generateCsrfToken()); ?>;
 // Global configuration object required by view_issues.js
 window.ProjectConfig = {
     projectId: <?php echo $projectId; ?>,
+    projectCode: <?php echo json_encode($project['project_code'] ?? 'ISS'); ?>,
     projectType: <?php echo json_encode(strtolower($project['project_type'] ?? 'web')); ?>,
     userRole: <?php echo json_encode((string)($normalizedUserRole ?? '')); ?>,
     canUpdateIssueQaStatus: <?php echo $canUpdateIssueQaStatus ? 'true' : 'false'; ?>,

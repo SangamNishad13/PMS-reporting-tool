@@ -25,6 +25,18 @@ window.IssueNavigation = (function() {
         }
         injectStyles();
         document.addEventListener('keydown', handleGlobalKeydown);
+        // Listen for table updates to reposition badges
+        document.addEventListener('pms:issueTableUpdated', function() {
+            if (state.zapModeTarget !== 'none') {
+                refreshZapBadges();
+            }
+        });
+        // Listen for window resize
+        window.addEventListener('resize', function() {
+            if (state.zapModeTarget !== 'none') {
+                repositionBadges();
+            }
+        });
         // Clear active row or Zap mode if user clicks elsewhere
         document.addEventListener('click', function(e) {
             if (state.zapModeTarget !== 'none') {
@@ -150,6 +162,29 @@ window.IssueNavigation = (function() {
             scrollToTable();
             toggleZapMode('expand');
             return;
+        }
+
+        // Alt + A: Add Issue
+        if (e.altKey && e.code === 'KeyA') {
+            var addBtn = document.getElementById('addIssueBtn') || 
+                         document.getElementById('issueAddFinalBtn') || 
+                         document.getElementById('commonAddBtn');
+            if (addBtn && !addBtn.disabled && addBtn.offsetWidth > 0) {
+                e.preventDefault();
+                addBtn.click();
+                return;
+            }
+        }
+
+        // Alt + S: Save Issue (only if modal is open)
+        if (e.altKey && e.code === 'KeyS') {
+            var saveBtn = document.getElementById('finalIssueSaveBtn') || 
+                          document.getElementById('commonIssueSaveBtn');
+            if (saveBtn && !saveBtn.disabled && saveBtn.offsetParent !== null) {
+                e.preventDefault();
+                saveBtn.click();
+                return;
+            }
         }
 
         if (state.zapModeTarget !== 'none') {
@@ -290,10 +325,38 @@ window.IssueNavigation = (function() {
         state.badges.forEach(function(b) {
             if (!b.el || !document.body.contains(b.el)) return;
             var rect = b.el.getBoundingClientRect();
-            if (rect.height === 0) return; // collapsed row, skip
+            if (rect.height === 0) {
+                b.element.style.display = 'none';
+                return;
+            }
+            b.element.style.display = 'flex';
             b.element.style.top  = (window.scrollY + rect.top + (rect.height / 2)) + 'px';
             b.element.style.left = (window.scrollX + rect.left + 25) + 'px';
         });
+    }
+
+    function refreshZapBadges() {
+        if (state.zapModeTarget === 'none') return;
+        
+        var mode = state.zapModeTarget;
+        var headerNav = document.querySelector('header .navbar.sticky-top');
+        var headerHeight = headerNav ? headerNav.offsetHeight : 70;
+        var selector = (mode === 'edit') ? config.editBtnSelector : config.rowSelector;
+        
+        var newElements = Array.from(document.querySelectorAll(selector))
+            .filter(el => {
+                var rect = el.getBoundingClientRect();
+                return el.offsetWidth > 0 && el.offsetHeight > 0 && rect.top >= headerHeight;
+            });
+
+        // Re-map references if elements have changed (e.g. after AJAX re-render)
+        state.badges.forEach((b, index) => {
+            if (newElements[index]) {
+                b.el = newElements[index];
+            }
+        });
+
+        repositionBadges();
     }
 
     function clearZapMode() {
@@ -450,6 +513,9 @@ window.IssueNavigation = (function() {
                     <tr><td><kbd>K</kbd> / <kbd>↑</kbd></td><td>Move selection up to previous issue row.</td></tr>
                     <tr><td><kbd>Space</kbd> / <kbd>X</kbd></td><td>Expand or collapse the currently highlighted row.</td></tr>
                     <tr><td><kbd>Enter</kbd> / <kbd>E</kbd></td><td>Open the <strong>Edit</strong> modal for the highlighted row.</td></tr>
+                    <tr class="table-light"><td colspan="2" class="fw-semibold text-muted small pt-2 pb-1">Global Actions</td></tr>
+                    <tr><td><kbd>Alt</kbd> + <kbd>A</kbd></td><td><strong>Add Issue</strong> — opens the new issue editor modal.</td></tr>
+                    <tr><td><kbd>Alt</kbd> + <kbd>S</kbd></td><td><strong>Save Issue</strong> — saves changes when editor is open.</td></tr>
                     <tr><td><kbd>Esc</kbd></td><td>Clear active row highlight or dismiss badge overlay.</td></tr>
                   </tbody>
                 </table>

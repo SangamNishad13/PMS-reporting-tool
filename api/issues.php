@@ -293,6 +293,15 @@ function normalizeIssuePageSelection($db, $projectId, $pageId, $pageIds) {
 if (!hasProjectAccess($db, $userId, $projectId)) {
     jsonError('Permission denied', 403);
 }
+
+// Fetch project code for issue_key fallbacks
+$projectCode = 'ISS';
+try {
+    $codeStmt = $db->prepare("SELECT project_code FROM projects WHERE id = ? LIMIT 1");
+    $codeStmt->execute([(int)$projectId]);
+    $projectCode = (string)($codeStmt->fetchColumn() ?: 'ISS');
+} catch (Exception $e) { }
+
 $canUpdateQaStatus = hasIssueQaStatusUpdateAccess($db, $userId, $projectId);
 
 // Handle image deletion
@@ -487,7 +496,7 @@ try {
 
             $rowOut = [
                 'id' => $iid,
-                'issue_key' => $i['issue_key'] ?? 'ISS-' . $iid, // Fallback if column doesn't exist
+                'issue_key' => $i['issue_key'] ?? ($projectCode . '-' . $iid), // Fallback if column doesn't exist
                 'project_id' => (int)$i['project_id'],
                 'page_id' => $i['page_id'],
                 'title' => $i['title'],
@@ -631,7 +640,7 @@ try {
 
                 $out[] = [
                     'id' => $iid,
-                    'issue_key' => $i['issue_key'] ?? 'ISS-' . $iid,
+                    'issue_key' => $i['issue_key'] ?? ($projectCode . '-' . $iid),
                     'title' => $i['title'] ?? '',
                     'description' => $descriptionHtml,
                     'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? ($meta['common_title'][0] ?? '') : ($meta['common_title'] ?? ''),

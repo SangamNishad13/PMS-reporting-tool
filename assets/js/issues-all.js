@@ -417,6 +417,8 @@ function renderIssues() {
     attachEventListeners();
     updateIssuesAllSelectionState();
     renderPagination();
+
+    document.dispatchEvent(new CustomEvent('pms:issueTableUpdated'));
 }
 
 function updateCounts() {
