@@ -487,30 +487,14 @@
                                 <td><input type="checkbox" class="unique-check" value="<?php echo (int)$u['id']; ?>"></td>
                                 <?php
                                     // Determine display for Page No and Page Name.
-                                    $displayPageNo = '';
-                                    $displayPageName = '';
+                                    $displayPageNo = resolvePageDisplayValue($mapped ?: $u);
+                                    $displayPageName = $mapped['page_name'] ?? ($u['name'] ?? '');
                                     
-                                    // First check if unique page itself has page_number field set
-                                    if (!empty($u['page_number'])) {
-                                        $displayPageNo = $u['page_number'];
-                                        $displayPageName = $u['name'] ?? '';
-                                    } elseif (!empty($mapped) && !empty($mapped['page_number'])) {
-                                        $displayPageNo = $mapped['page_number'];
-                                        $displayPageName = $mapped['page_name'] ?? ($u['name'] ?? '');
-                                    } else {
-                                        // If no mapped project page, prefer moving generated "Page N" or "Global N" (from unique name) into Page No
-                                        $genLike = '';
-                                        if (!empty($u['name']) && preg_match('/^(Page|Global)\s+\d+/i', $u['name'])) {
-                                            $genLike = $u['name'];
-                                        }
-                                        if ($genLike) {
-                                            $displayPageNo = $genLike;
-                                            // keep page name blank (or show canonical_url)
+                                    // If page_number is still empty in results but was resolved from name, 
+                                    // adjust display name if needed.
+                                    if (empty($u['page_number']) && empty($mapped['page_number'])) {
+                                        if (preg_match('/^(Page|Global)\s+\d+/i', $displayPageName)) {
                                             $displayPageName = $u['canonical_url'] ?? '';
-                                        } else {
-                                            // fallback: show mapped page_name if exists, otherwise unique name
-                                            $displayPageNo = '';
-                                            $displayPageName = $mapped['page_name'] ?? ($u['name'] ?? '');
                                         }
                                     }
                                 ?>

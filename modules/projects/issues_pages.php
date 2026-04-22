@@ -221,19 +221,9 @@ try {
 }
 
 $displayPageNumberById = [];
-$displayPageSequence = 1;
-$displayGlobalSequence = 1;
 foreach ($uniqueIssuePages as &$uniqueIssuePageRow) {
     $displayPageId = (int)($uniqueIssuePageRow['mapped_page_id'] ?? 0) ?: (int)($uniqueIssuePageRow['unique_id'] ?? 0);
-    $rawPageNumber = trim((string)($uniqueIssuePageRow['mapped_page_number'] ?? ''));
-
-    if (stripos($rawPageNumber, 'Global') === 0) {
-        $displayPageNumber = 'Global ' . $displayGlobalSequence++;
-    } elseif (stripos($rawPageNumber, 'Page') === 0 || $rawPageNumber === '') {
-        $displayPageNumber = 'Page ' . $displayPageSequence++;
-    } else {
-        $displayPageNumber = $rawPageNumber;
-    }
+    $displayPageNumber = resolvePageDisplayValue($uniqueIssuePageRow);
 
     if ($displayPageId > 0) {
         $displayPageNumberById[$displayPageId] = $displayPageNumber;

@@ -89,23 +89,13 @@ usort($projectPages, function($a, $b) {
 });
 
 $pageDisplayNumberById = [];
-$pageDisplaySequence = 1;
-$globalDisplaySequence = 1;
 try {
-    $pageOrderStmt = $db->prepare("SELECT id, page_number FROM project_pages WHERE project_id = ? ORDER BY CASE WHEN page_number LIKE 'Global%' THEN 0 WHEN page_number LIKE 'Page%' THEN 1 ELSE 2 END, CAST(SUBSTRING_INDEX(page_number, ' ', -1) AS UNSIGNED), page_number, page_name, id");
+    $pageOrderStmt = $db->prepare("SELECT id, page_number, page_name FROM project_pages WHERE project_id = ?");
     $pageOrderStmt->execute([$projectId]);
     foreach ($pageOrderStmt->fetchAll(PDO::FETCH_ASSOC) as $orderedPageRow) {
         $orderedPageId = (int)($orderedPageRow['id'] ?? 0);
-        if ($orderedPageId <= 0) {
-            continue;
-        }
-        $rawPageNumber = trim((string)($orderedPageRow['page_number'] ?? ''));
-        if (stripos($rawPageNumber, 'Global') === 0) {
-            $pageDisplayNumberById[$orderedPageId] = 'Global ' . $globalDisplaySequence++;
-        } elseif (stripos($rawPageNumber, 'Page') === 0 || $rawPageNumber === '') {
-            $pageDisplayNumberById[$orderedPageId] = 'Page ' . $pageDisplaySequence++;
-        } else {
-            $pageDisplayNumberById[$orderedPageId] = $rawPageNumber;
+        if ($orderedPageId > 0) {
+            $pageDisplayNumberById[$orderedPageId] = resolvePageDisplayValue($orderedPageRow);
         }
     }
 } catch (Exception $e) {

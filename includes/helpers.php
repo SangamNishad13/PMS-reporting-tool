@@ -1143,3 +1143,28 @@ function get_geo_info($ip) {
         return [];
     }
 }
+
+/**
+ * Consistently resolves the display number for a project page.
+ * Prioritizes the database 'page_number' column.
+ * 
+ * @param array $pageRow Associative array containing at least 'page_number' and optionally 'page_name' or 'url'
+ * @return string The resolved display number (e.g., "Page 1", "Global 5")
+ */
+function resolvePageDisplayValue($pageRow) {
+    if (!is_array($pageRow)) return '-';
+    
+    $rawPageNumber = trim((string)($pageRow['page_number'] ?? ''));
+    if ($rawPageNumber !== '') {
+        return $rawPageNumber;
+    }
+    
+    // Fallback: Check if page_name already contains the number (e.g. "Page 10")
+    $pageName = trim((string)($pageRow['page_name'] ?? ''));
+    if (preg_match('/^(Page|Global)\s+\d+/i', $pageName)) {
+        return $pageName;
+    }
+    
+    // Fallback to '-' or empty if we really can't determine it
+    return '-';
+}
