@@ -873,7 +873,7 @@ try {
             
             $out[] = [
                 'id' => $iid,
-                'issue_key' => $i['issue_key'] ?? ($projectCode . '-' . $iid), // Fallback if column doesn't exist
+                'issue_key' => $i['issue_key'] ?? 'ISS-' . $iid, // Fallback if column doesn't exist
                 'title' => $i['title'],
                 'description' => $i['description'],
                 'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : ($meta['common_title'] ?? ''),
@@ -1047,7 +1047,7 @@ try {
 
             $out[] = [
                 'id' => $iid,
-                'issue_key' => $i['issue_key'] ?? ($projectCode . '-' . $iid),
+                'issue_key' => $i['issue_key'] ?? 'ISS-' . $iid,
                 'title' => $i['title'],
                 'description' => $i['description'],
                 'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : ($meta['common_title'] ?? ''),
@@ -1829,7 +1829,7 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
 
         $updatedIssue = [
             'id' => (int)$issueData['id'],
-            'issue_key' => $issueData['issue_key'] ?? ($projectCode . '-' . $issueData['id']), // Fallback if column doesn't exist
+            'issue_key' => $issueData['issue_key'] ?? 'ISS-' . $issueData['id'], // Fallback if column doesn't exist
             'title' => $issueData['title'],
             'description' => $descriptionHtml,
             'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : '',
@@ -1859,8 +1859,7 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
             'can_tester_delete' => $canTesterDelete,
             'created_at' => $issueData['created_at'],
             'updated_at' => $issueData['updated_at'],
-            'latest_history_id' => $latestHistoryId,
-            'metadata' => $meta // Unified structure for metadata rendering
+            'latest_history_id' => $latestHistoryId
         ];
         
         // Add custom metadata fields
@@ -1872,12 +1871,10 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
             }
         }
 
-        // Invalidate get_all and common_get_all cache for this project
+        // Invalidate get_all cache for this project
         if (function_exists('apcu_delete')) {
             apcu_delete("issues_all_{$projectId}_staff");
             apcu_delete("issues_all_{$projectId}_client");
-            apcu_delete("issues_common_all_{$projectId}_staff");
-            apcu_delete("issues_common_all_{$projectId}_client");
         }
 
         jsonResponse(['success' => true, 'id' => $id, 'issue_key' => $issueKey, 'issue' => $updatedIssue]);
@@ -2056,7 +2053,7 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
             $out[] = [
                 'id' => (int)$r['common_id'],
                 'issue_id' => $iid,
-                'issue_key' => $r['issue_key'] ?? ($projectCode . '-' . $iid),
+                'issue_key' => $r['issue_key'] ?? ('ISS-' . $iid),
                 'title' => $r['common_title'] ?: $r['title'],
                 'description' => $descriptionHtml,
                 'pages' => $pages,
