@@ -261,6 +261,13 @@
         var refreshBtn = document.getElementById('commonIssuesRefreshBtn');
         if (refreshBtn) refreshBtn.addEventListener('click', function() { loadIssues({ preserveFilters: true, keepPage: true }); });
 
+        var addIssueBtn = document.getElementById('addIssueBtn');
+        if (addIssueBtn) {
+            addIssueBtn.addEventListener('click', function() {
+                if (window.addCommonIssue) window.addCommonIssue();
+            });
+        }
+
         var perPageSelect = document.getElementById('perPageSelect');
         if (perPageSelect) perPageSelect.addEventListener('change', function() {
             perPage = parseInt(this.value) || 25;

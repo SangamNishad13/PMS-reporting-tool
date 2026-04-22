@@ -5473,9 +5473,9 @@
         document.querySelectorAll('.common-edit').forEach(function(el) {
             el.addEventListener('click', function(e) {
                 e.stopPropagation();
-                var id = this.dataset.id;
-                var issue = (issueData.common || []).find(function(ci) { return String(ci.id) === String(id); });
-                if (issue) openCommonEditor(issue);
+                if (window.editCommonIssue) {
+                    window.editCommonIssue(this.dataset.id);
+                }
             });
         });
 
@@ -8432,8 +8432,20 @@
 
     // Define editFinalIssue for table edit buttons
     window.editFinalIssue = function (id) {
-        var issue = issueData.pages[issueData.selectedPageId].final.find(function (i) { return String(i.id) === String(id); });
+        var issue = (issueData.pages[issueData.selectedPageId] && issueData.pages[issueData.selectedPageId].final) 
+            ? issueData.pages[issueData.selectedPageId].final.find(function (i) { return String(i.id) === String(id); })
+            : null;
         if (issue) openFinalEditor(issue);
+    };
+
+    // Define editCommonIssue for Common Issues table
+    window.editCommonIssue = function (id) {
+        var issue = (issueData.common || []).find(function (i) { return String(i.id) === String(id); });
+        if (issue) openFinalEditor(issue);
+    };
+
+    window.addCommonIssue = function () {
+        openFinalEditor();
     };
 
     // Expose necessary functions globally for external pages
