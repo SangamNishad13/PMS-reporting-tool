@@ -1338,6 +1338,9 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                     jsonError('Issue not found or unauthorized access to this project.', 404);
                 }
 
+                // Populate $issueKey for activity log and response
+                $issueKey = $oldIssue['issue_key'] ?? '';
+
                 if ($userRole === 'client' && (int)($oldIssue['client_ready'] ?? 0) !== 1) {
                     if (!isIssueVisibleToClientThroughSnapshot($db, $id, $projectId)) {
                         if ($db->inTransaction()) $db->rollBack();

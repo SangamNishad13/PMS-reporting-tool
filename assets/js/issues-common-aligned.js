@@ -244,7 +244,7 @@ function renderIssues() {
         var mainRow = '<tr class="align-middle issue-expandable-row" data-collapse-target="#' + uniqueId + '" style="cursor: pointer;">';
 
         if (!isClient) {
-            mainRow += '<td class="text-center checkbox-cell"><input type="checkbox" class="form-check-input common-select" data-id="' + issue.id + '"></td>';
+            mainRow += '<td class="text-center checkbox-cell" style="width: 40px; min-width: 40px; overflow: visible !important;"><input type="checkbox" class="form-check-input common-select" data-id="' + issue.id + '"></td>';
         }
 
         // Issue Key
@@ -309,7 +309,8 @@ function renderIssues() {
 
         if (window.ProjectConfig && window.issueMetadataFields) {
             window.issueMetadataFields.forEach(function (field) {
-                if (field.field_key === 'severity' || field.field_key === 'priority') return;
+                // Skip fields that are already rendered above
+                if (['severity', 'priority', 'status', 'issue_status', 'issue_key'].indexOf(field.field_key) !== -1) return;
                 var value = (issue.metadata && issue.metadata[field.field_key]) ? issue.metadata[field.field_key] : issue[field.field_key];
                 if (value && value.length > 0) {
                     var displayValue = Array.isArray(value) ? value.join(', ') : value;
@@ -407,7 +408,9 @@ function editCommonIssue(id) {
         qa_status: issueData.qa_status_keys || [],
         severity: issueData.severity || 'medium',
         priority: issueData.priority || 'medium',
-        metadata: issueData.metadata || {}
+        metadata: issueData.metadata || {},
+        updated_at: issueData.updated_at || null,
+        latest_history_id: issueData.latest_history_id != null ? issueData.latest_history_id : 0
     };
 
     if (typeof openFinalEditor === 'function') openFinalEditor(issue);

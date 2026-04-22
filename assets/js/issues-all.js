@@ -302,7 +302,7 @@ function renderIssues() {
         var mainRow = '<tr class="issue-row" data-issue-id="' + issue.id + '" style="cursor: pointer;">';
 
         if (!isClient) {
-            mainRow += '<td class="text-center"><input type="checkbox" class="issues-all-select" value="' + escapeAttr(issue.id) + '" aria-label="Select issue ' + escapeAttr(issue.issue_key || issue.id) + '"></td>';
+            mainRow += '<td class="text-center checkbox-cell" style="width: 40px; min-width: 40px; overflow: visible !important;"><input type="checkbox" class="issues-all-select" value="' + escapeAttr(issue.id) + '" aria-label="Select issue ' + escapeAttr(issue.issue_key || issue.id) + '"></td>';
         }
 
         // Truncate pages display - show max 2 pages, rest in tooltip
@@ -393,7 +393,8 @@ function renderIssues() {
 
         if (window.ProjectConfig && window.ProjectConfig.metadataFields) {
             window.ProjectConfig.metadataFields.forEach(function (field) {
-                if (field.field_key === 'severity' || field.field_key === 'priority') return;
+                // Skip fields already hardcoded in main issue details or rendered above
+                if (['severity', 'priority', 'status', 'issue_status', 'issue_key'].indexOf(field.field_key) !== -1) return;
                 // Check metadata object first, then direct issue property
                 var value = (issue.metadata && issue.metadata[field.field_key] !== undefined)
                     ? issue.metadata[field.field_key]
