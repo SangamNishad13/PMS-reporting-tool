@@ -21,6 +21,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $redirectTo .= '?' . $queryString;
     }
 
+    if ($postAction === 'unlock_user') {
+        $hash = trim($_POST['username_hash'] ?? '');
+        if ($hash) {
+            $stmt = $db->prepare("DELETE FROM login_attempts WHERE username_hash = ?");
+            $stmt->execute([$hash]);
+            $_SESSION['success'] = 'Account unlocked successfully.';
+        }
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    if ($postAction === 'unlock_all') {
+        $db->exec("DELETE FROM login_attempts");
+        $_SESSION['success'] = 'All locked accounts have been unlocked.';
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
     if ($postAction === 'delete_selected') {
         $idsRaw = $_POST['log_ids'] ?? [];
         $ids = [];
@@ -138,6 +156,96 @@ require_once __DIR__ . '/../../includes/header.php';
 <div class="container mt-4">
     <h3>Login / Logout Activity</h3>
     <p class="text-muted">Showing <?php echo $total; ?> events.</p>
+
+    <!-- Locked Accounts Section -->
+    <?php
+    $lockedUsers = [];
+    try {
+        $lockedStmt = $db->query("
+            SELECT la.username_hash, COUNT(*) as attempts,
+                   MIN(la.attempted_at) as first_attempt,
+                   MAX(la.attempted_at) as last_attempt,
+                   u.username, u.full_name, u.email,
+                   TIMESTAMPDIFF(SECOND, MIN(la.attempted_at), NOW()) as seconds_since_first
+            FROM login_attempts la
+            LEFT JOIN users u ON MD5(LOWER(u.username)) = la.username_hash
+            WHERE la.attempted_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+            GROUP BY la.username_hash
+            HAVING attempts >= 5
+            ORDER BY last_attempt DESC
+        ");
+        $lockedUsers = $lockedStmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+    ?>
+    <?php if (!empty($lockedUsers)): ?>
+    <div class="card mb-3 border-danger">
+        <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-lock me-2"></i>Locked Accounts (<?php echo count($lockedUsers); ?>)</span>
+            <form method="post" class="mb-0">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+                <input type="hidden" name="cleanup_action" value="unlock_all">
+                <button type="submit" class="btn btn-sm btn-light">
+                    <i class="fas fa-unlock me-1"></i> Unlock All
+                </button>
+            </form>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>User</th>
+                        <th>Attempts</th>
+                        <th>First Attempt</th>
+                        <th>Last Attempt</th>
+                        <th>Auto-unlock in</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($lockedUsers as $lu):
+                        $remainingSec = max(0, 900 - (int)($lu['seconds_since_first'] ?? 900));
+                        $remainingMin = ceil($remainingSec / 60);
+                    ?>
+                    <tr>
+                        <td>
+                            <?php if ($lu['full_name']): ?>
+                                <strong><?php echo htmlspecialchars($lu['full_name']); ?></strong><br>
+                                <small class="text-muted"><?php echo htmlspecialchars($lu['username'] ?? $lu['email'] ?? ''); ?></small>
+                            <?php else: ?>
+                                <span class="text-muted">Unknown (hash: <?php echo substr($lu['username_hash'], 0, 8); ?>...)</span>
+                            <?php endif; ?>
+                        </td>
+                        <td><span class="badge bg-danger"><?php echo (int)$lu['attempts']; ?></span></td>
+                        <td><small><?php echo htmlspecialchars($lu['first_attempt']); ?></small></td>
+                        <td><small><?php echo htmlspecialchars($lu['last_attempt']); ?></small></td>
+                        <td>
+                            <?php if ($remainingSec > 0): ?>
+                                <span class="text-warning"><?php echo $remainingMin; ?> min</span>
+                            <?php else: ?>
+                                <span class="text-success">Unlocking...</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <form method="post" class="mb-0">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+                                <input type="hidden" name="cleanup_action" value="unlock_user">
+                                <input type="hidden" name="username_hash" value="<?php echo htmlspecialchars($lu['username_hash']); ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-success">
+                                    <i class="fas fa-unlock me-1"></i> Unlock
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php else: ?>
+    <div class="alert alert-success mb-3 py-2">
+        <i class="fas fa-unlock me-2"></i> No accounts are currently locked.
+    </div>
+    <?php endif; ?>
 
     <div class="card mb-3 border-warning">
         <div class="card-body py-3">

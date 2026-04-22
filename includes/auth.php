@@ -241,7 +241,6 @@ class Auth {
             $this->db->prepare("DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE)")->execute();
 
             // Fixed window: count attempts since the FIRST attempt in the window.
-            // This prevents the lockout from extending every time a new attempt is made.
             $stmt = $this->db->prepare("
                 SELECT COUNT(*) as cnt, MIN(attempted_at) as first_attempt
                 FROM login_attempts
