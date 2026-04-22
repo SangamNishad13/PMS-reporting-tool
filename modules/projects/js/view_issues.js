@@ -5454,81 +5454,78 @@
                     urlsHtml += '</ul></div></div></div>';
                 }
 
-                // Build metadata HTML - Common Title first, then conditionally show other fields
+                // Build metadata HTML - structured like the sidebar in Page Detail
                 metadataHtml = '';
                 
-                // Common Title - show for everyone at the top
-                if (actualIssue.common_title) {
-                    metadataHtml += '<div class="mb-2"><strong>Common Title:</strong><br>' + escapeHtml(actualIssue.common_title) + '</div>';
-                }
-                
-                metadataHtml += '<div class="mb-2"><strong>Issue Key:</strong><br>' +
-                    '<span class="badge bg-primary">' + escapeHtml(actualIssue.issue_key || 'N/A') + '</span>' +
-                    '</div>' +
-                    '<div class="mb-2"><strong>Status:</strong><br>' + getStatusBadge(statusId, status) + '</div>' +
-                    '<div class="mb-2"><strong>Severity:</strong><br>' +
-                    '<span class="badge bg-warning text-dark">' + escapeHtml((severity || 'N/A').toUpperCase()) + '</span>' +
-                    '</div>' +
-                    '<div class="mb-2"><strong>Priority:</strong><br>' +
-                    '<span class="badge bg-info text-dark">' + escapeHtml((priority || 'N/A').toUpperCase()) + '</span>' +
+                // 1. Title
+                var displayTitle = actualIssue.common_title || it.title || 'Shared Issue';
+                metadataHtml += '<div class="mb-3"><strong>Title:</strong> ' + escapeHtml(displayTitle) + '</div>';
+
+                // 2. Issue ID
+                metadataHtml += '<div class="mb-3"><strong>Issue ID:</strong> ' + (actualIssue.id || it.issue_id || 'N/A') + '</div>';
+
+                // 3. Status, Severity, Priority
+                metadataHtml += '<div class="mb-3">' +
+                    '<strong>Status:</strong> ' + getStatusBadge(statusId, status) + 
+                    '<span class="mx-2 text-muted">|</span>' +
+                    '<strong>Severity:</strong> <span class="badge bg-warning text-dark">' + escapeHtml((severity || 'N/A').toUpperCase()) + '</span>' +
                     '</div>';
-                
-                // QA Status, Reporter(s), Created, Updated - hide for client
-                if (userRole !== 'client') {
-                    metadataHtml += '<div class="mb-2"><strong>QA Status:</strong><br>' + qaStatusHtml + '</div>' +
-                        '<div class="mb-2"><strong>Reporter(s):</strong><br>' +
-                        (reportersArray.length > 0 ? reportersArray.map(function (reporterId) {
-                            var reporterName = 'Unknown';
-                            if (ProjectConfig.projectUsers) {
-                                var found = ProjectConfig.projectUsers.find(function (u) { return u.id == reporterId; });
-                                if (found) reporterName = found.full_name;
-                            }
-                            return escapeHtml(reporterName);
-                        }).join(', ') : (actualIssue.reporter_name ? escapeHtml(actualIssue.reporter_name) : '<span class="text-muted">N/A</span>')) +
-                        '</div>';
-                }
-                
-                metadataHtml += '<div class="mb-2"><strong>Page(s):</strong> <span class="badge bg-secondary ms-1">' + (it.pages || []).length + '</span>' +
-                    '<div class="mt-1 border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
+
+                // 4. Pages List
+                metadataHtml += '<div class="mb-3"><strong>Pages:</strong> <span class="badge bg-secondary ms-1">' + (it.pages || []).length + '</span>' +
+                    '<div class="mt-2 border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
                     '<ul class="list-unstyled mb-0 small">' +
                     (it.pages || []).map(function(pageId) {
-                        return '<li><i class="fas fa-file-alt text-muted me-1"></i>' + escapeHtml(getPageName(pageId)) + '</li>';
+                        return '<li class="mb-1"><i class="fas fa-file-alt text-muted me-2"></i>' + escapeHtml(getPageName(pageId)) + '</li>';
                     }).join('') +
-                    '</ul></div></div>' +
-                    urlsHtml;
-                
-                // Add metadata fields - before created/updated
-                if (typeof issueMetadataFields !== 'undefined') {
+                    '</ul></div></div>';
+
+                // 5. Grouped URLs (if any)
+                if (urlsHtml) metadataHtml += urlsHtml;
+
+                // 6. Extra Metadata fields (hide for client)
+                if (userRole !== 'client' && typeof issueMetadataFields !== 'undefined') {
+                    var extraFieldsHtml = '';
                     issueMetadataFields.forEach(function (f) {
                         if (f.field_key === 'severity' || f.field_key === 'priority') return;
                         var value = actualIssue[f.field_key];
                         if (value && value.length > 0) {
                             var displayValue = Array.isArray(value) ? value.join(', ') : value;
-                            metadataHtml += '<div class="mb-2"><strong>' + escapeHtml(f.field_label) + ':</strong> ' + escapeHtml(displayValue) + '</div>';
+                            extraFieldsHtml += '<div class="mb-1 small"><strong>' + escapeHtml(f.field_label) + ':</strong> ' + escapeHtml(displayValue) + '</div>';
                         }
                     });
+                    if (extraFieldsHtml) {
+                        metadataHtml += '<div class="mb-3 pt-2 border-top">' + extraFieldsHtml + '</div>';
+                    }
                 }
 
-                // Created and Updated - last, hide for client
-                if (userRole !== 'client') {
-                    if (actualIssue.created_at) {
-                        metadataHtml += '<div class="mb-2"><strong>Created:</strong><br><small class="text-muted">' + new Date(actualIssue.created_at).toLocaleString() + '</small></div>';
-                    }
-                    if (actualIssue.updated_at) {
-                        metadataHtml += '<div class="mb-2"><strong>Updated:</strong><br><small class="text-muted">' + new Date(actualIssue.updated_at).toLocaleString() + '</small></div>';
-                    }
+                // 7. Created/Updated (Small footer style)
+                if (userRole !== 'client' && (actualIssue.created_at || actualIssue.updated_at)) {
+                    metadataHtml += '<div class="mt-3 pt-2 border-top small text-muted">';
+                    if (actualIssue.created_at) metadataHtml += '<div>Created: ' + new Date(actualIssue.created_at).toLocaleString() + '</div>';
+                    if (actualIssue.updated_at) metadataHtml += '<div>Updated: ' + new Date(actualIssue.updated_at).toLocaleString() + '</div>';
+                    metadataHtml += '</div>';
                 }
+
+                // 8. Footer Notice (Matching screenshot)
+                metadataHtml += '<div class="alert alert-info small mt-3 mb-0 py-2">' +
+                    '<i class="fas fa-info-circle me-2"></i>Load the page to see full issue details' +
+                    '</div>';
+
             } else {
-                metadataHtml = '<div class="mb-2"><strong>Title:</strong> ' + escapeHtml(it.title) + '</div>' +
-                    '<div class="mb-2"><strong>Pages:</strong> <span class="badge bg-secondary ms-1">' + pageCount + '</span>' +
-                    '<div class="mt-1 border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
+                // Fallback style when actualIssue is not loaded yet
+                metadataHtml = '<div class="mb-3"><strong>Title:</strong> ' + escapeHtml(it.title) + '</div>' +
+                    '<div class="mb-3"><strong>Pages:</strong> <span class="badge bg-secondary ms-1">' + pageCount + '</span>' +
+                    '<div class="mt-2 border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
                     '<ul class="list-unstyled mb-0 small">' +
                     (it.pages || []).map(function(pageId) {
-                        return '<li><i class="fas fa-file-alt text-muted me-1"></i>' + escapeHtml(getPageName(pageId)) + '</li>';
+                        return '<li class="mb-1"><i class="fas fa-file-alt text-muted me-2"></i>' + escapeHtml(getPageName(pageId)) + '</li>';
                     }).join('') +
                     '</ul></div></div>' +
-                    (it.issue_id ? '<div class="mb-2"><strong>Issue ID:</strong> ' + escapeHtml(it.issue_id) + '</div>' : '') +
-                    '<div class="alert alert-info small mt-2"><i class="fas fa-info-circle me-1"></i>Load the page to see full issue details</div>';
+                    (it.issue_id ? '<div class="mb-3"><strong>Issue ID:</strong> ' + escapeHtml(it.issue_id) + '</div>' : '') +
+                    '<div class="alert alert-info small mt-3 mb-0 py-2">' +
+                    '<i class="fas fa-info-circle me-2"></i>Load the page to see full issue details' +
+                    '</div>';
             }
 
             // Expandable details row
@@ -8463,34 +8460,31 @@
                         var i = issueData.common.find(function (x) { return String(x.id) === id; });
 
                         if (i) {
-                            var actualIssueId = i.issue_id;
+                            var actualIssueId = String(i.issue_id);
 
                             if (i.pages && i.pages.length > 0) {
-                                var firstPageId = i.pages[0];
+                                var firstPageId = String(i.pages[0]);
 
                                 ensurePageStore(issueData.pages, firstPageId);
                                 issueData.selectedPageId = firstPageId;
 
-                                if (!issueData.pages[firstPageId].final || issueData.pages[firstPageId].final.length === 0) {
-                                    loadFinalIssues(firstPageId).then(function () {
-                                        var finalIssue = issueData.pages[firstPageId].final.find(function (x) {
-                                            return String(x.id) === String(actualIssueId);
-                                        });
-
-                                        if (finalIssue) {
-                                            openFinalEditor(finalIssue);
-                                        }
-                                    }).catch(function (error) {
-                                        // Silently handle error
-                                    });
-                                } else {
+                                var findAndOpen = function() {
                                     var finalIssue = issueData.pages[firstPageId].final.find(function (x) {
-                                        return String(x.id) === String(actualIssueId);
+                                        return String(x.id) === actualIssueId;
                                     });
-
                                     if (finalIssue) {
                                         openFinalEditor(finalIssue);
+                                    } else if (typeof issueNotify === 'function') {
+                                        issueNotify('Could not find the underlying issue to edit.', 'warning');
                                     }
+                                };
+
+                                if (!issueData.pages[firstPageId].final || issueData.pages[firstPageId].final.length === 0) {
+                                    loadFinalIssues(firstPageId).then(findAndOpen).catch(function () {
+                                        if (typeof issueNotify === 'function') issueNotify('Failed to load issue data.', 'warning');
+                                    });
+                                } else {
+                                    findAndOpen();
                                 }
                             }
                         }
