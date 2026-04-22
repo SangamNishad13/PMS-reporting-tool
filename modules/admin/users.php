@@ -699,12 +699,15 @@ if (isset($_GET['action']) && $_GET['action'] === 'verify_credentials_mail') {
     exit;
 }
 
-// Get all users (excluding client role - they have separate management page)
+// Get all users with locked status
 $users = $db->query("
     SELECT u.*, 
            u.two_factor_enabled,
            COUNT(DISTINCT p.id) as project_count,
-           COUNT(DISTINCT pp.id) as page_count
+           COUNT(DISTINCT pp.id) as page_count,
+           (SELECT COUNT(*) FROM login_attempts la 
+            WHERE la.username_hash = MD5(LOWER(u.username)) 
+            AND la.attempted_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)) as login_attempt_count
     FROM users u
     LEFT JOIN projects p ON u.id = p.project_lead_id
     LEFT JOIN project_pages pp ON (
@@ -880,6 +883,14 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                                         data-bs-target="#editUserModal<?php echo $user['id']; ?>">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                <?php if ((int)($user['login_attempt_count'] ?? 0) >= 5): ?>
+                                <button type="button" class="btn btn-sm btn-danger unlock-user-btn"
+                                        data-username="<?php echo htmlspecialchars($user['username']); ?>"
+                                        data-username-hash="<?php echo md5(strtolower($user['username'])); ?>"
+                                        title="Account Locked - Click to Unlock">
+                                    <i class="fas fa-lock"></i>
+                                </button>
+                                <?php endif; ?>
                                 <button type="button" class="btn btn-sm btn-info send-reset-email-btn" 
                                         data-user-id="<?php echo $user['id']; ?>"
                                         data-username="<?php echo htmlspecialchars($user['username']); ?>"
@@ -1567,5 +1578,30 @@ window._adminUsersConfig = {
 </div>
 
 <script src="<?php echo htmlspecialchars(getBaseDir(), ENT_QUOTES, 'UTF-8'); ?>/assets/js/admin-users.js"></script>
+
+<script>
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.unlock-user-btn');
+    if (!btn) return;
+    var username = btn.getAttribute('data-username');
+    var hash = btn.getAttribute('data-username-hash');
+    if (!confirm('Unlock account for "' + username + '"?')) return;
+    fetch('<?php echo getBaseDir(); ?>/api/unlock_account.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': window._csrfToken || '' },
+        body: 'action=unlock&username_hash=' + encodeURIComponent(hash) + '&csrf_token=' + encodeURIComponent(window._csrfToken || '')
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            if (typeof showToast === 'function') showToast('Account unlocked for ' + username, 'success');
+            btn.remove();
+        } else {
+            if (typeof showToast === 'function') showToast('Failed to unlock: ' + (data.error || ''), 'danger');
+        }
+    })
+    .catch(() => { if (typeof showToast === 'function') showToast('Request failed', 'danger'); });
+});
+</script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; 
