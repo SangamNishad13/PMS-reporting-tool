@@ -5322,7 +5322,7 @@
                 var clientPages = (it.pages || []).map(getPageName).slice(0, 4);
                 var extraPages = Math.max(0, (it.pages || []).length - clientPages.length);
                 return '<tr>' +
-                    '<td><span class="badge bg-primary">' + escapeHtml(it.issue_key || ((window.ProjectConfig ? window.ProjectConfig.projectCode : 'ISS') + '-' + it.issue_id)) + '</span></td>' +
+                    '<td><span class="badge bg-primary">' + escapeHtml(it.issue_key || ((window.ProjectConfig ? window.ProjectConfig.projectCode : 'ISS') + '-' + (it.issue_id || it.id))) + '</span></td>' +
                     '<td>' +
                     '<div class="fw-semibold text-truncate-cell" title="' + escapeAttr(it.title || 'Shared issue') + '">' + escapeHtml(it.title || 'Shared issue') + '</div>' +
                     (descriptionPreview ? '<div class="small text-muted mt-1 text-truncate-cell" title="' + escapeAttr(stripHtml(it.description || '')) + '">' + escapeHtml(descriptionPreview) + '</div>' : '') +
@@ -7198,8 +7198,12 @@
                 }
             }
 
-            // Re-render the full table so all fields (status, priority, QA, etc.) reflect instantly
-            renderAll();
+            // Re-render the full table so all fields (status, priority, QA, etc.) reflect instantly.
+            // On Common Issues page, we skip the immediate built-in render to prevent flickering
+            // with older logic; the 'pms:issues-changed' event will trigger the correct refresh.
+            if (!document.getElementById('commonIssuesBody') || document.getElementById('issues-list')) {
+                renderAll();
+            }
             showFinalIssuesTab();
 
             if (!editId && issueData.comments['new']) {
