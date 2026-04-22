@@ -498,7 +498,12 @@
                                         }
                                     }
                                 ?>
-                                <td><?php echo htmlspecialchars($displayPageNo); ?></td>
+                                <td>
+                                    <div class="d-flex align-items-center justify-content-between gap-2">
+                                        <span class="page-no-display flex-grow-1 text-truncate"><?php echo htmlspecialchars($displayPageNo); ?></span>
+                                        <button type="button" class="btn btn-sm btn-link flex-shrink-0 edit-page-name" data-field="page_number" data-unique-id="<?php echo (int)$u['id']; ?>" data-page-id="<?php echo (int)($mapped['id'] ?? 0); ?>" data-current-name="<?php echo htmlspecialchars($displayPageNo); ?>" onclick="return window.handleEditPageName(this);">Edit</button>
+                                    </div>
+                                </td>
                                 <td>
                                     <div class="d-flex align-items-center justify-content-between gap-2">
                                         <span class="page-name-display flex-grow-1 text-truncate"><?php echo htmlspecialchars($displayPageName); ?></span>

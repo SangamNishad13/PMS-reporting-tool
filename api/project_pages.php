@@ -239,8 +239,8 @@ try {
             $newName = trim($input['page_name'] ?? '');
             $field = trim($input['field'] ?? 'page_name');
             if (!$uniqueId && !$pageId) jsonRes(['error' => 'unique_page_id or page_id required'], 400);
-            if (!in_array($field, ['page_name', 'canonical_url', 'notes'], true)) jsonRes(['error' => 'invalid field'], 400);
-            if ($field !== 'notes' && $newName === '') jsonRes(['error' => 'page_name required'], 400);
+            if (!in_array($field, ['page_name', 'canonical_url', 'notes', 'page_number'], true)) jsonRes(['error' => 'invalid field'], 400);
+            if (!in_array($field, ['notes', 'page_number']) && $newName === '') jsonRes(['error' => 'value required'], 400);
 
             // determine project id
             if ($pageId) {
@@ -269,6 +269,8 @@ try {
                     $upd = $db->prepare('UPDATE project_pages SET notes = ?, updated_at = NOW() WHERE id = ?');
                 } elseif ($field === 'canonical_url') {
                     $upd = $db->prepare('UPDATE project_pages SET url = ?, updated_at = NOW() WHERE id = ?');
+                } elseif ($field === 'page_number') {
+                    $upd = $db->prepare('UPDATE project_pages SET page_number = ?, updated_at = NOW() WHERE id = ?');
                 } else {
                     $upd = $db->prepare('UPDATE project_pages SET page_name = ?, updated_at = NOW() WHERE id = ?');
                 }
@@ -677,6 +679,16 @@ try {
                 $del->execute([$id]);
 
                 $db->commit();
+                
+                // log activity
+                try {
+                    logActivity($db, $userId, 'deleted_page', 'page', $id, [
+                        'page_name' => $up['page_name'] ?? ($up['name'] ?? ''),
+                        'page_number' => $up['page_number'] ?? '',
+                        'project_id' => $projectId
+                    ]);
+                } catch (Exception $e) {}
+
                 jsonRes(['success' => true]);
             } catch (Exception $e) {
                 $db->rollBack();

@@ -1469,6 +1469,16 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
 
         $db->commit();
 
+        // Activity Log for UI timeline
+        try {
+            $logAction = ($action === 'create') ? 'added_issue' : 'updated_issue';
+            logActivity($db, $userId, $logAction, 'issue', $id, [
+                'issue_key' => $issueKey,
+                'title' => $title,
+                'project_id' => $projectId
+            ]);
+        } catch (Exception $e) {}
+
         if ((int) $id > 0) {
             if ((int) $clientReady === 1 || $userRole === 'client' || isIssueVisibleToClientThroughSnapshot($db, $id, $projectId)) {
                 publishIssueClientSnapshot($db, (int) $id);
@@ -1770,6 +1780,14 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
 
             $db->commit();
             
+            // Log to UI Activity Log
+            try {
+                logActivity($db, $userId, 'bulk_delete_issues', 'project', $projectId, [
+                    'count' => count($ids),
+                    'ids' => $ids
+                ]);
+            } catch (Exception $e) {}
+
             // Security Logging: Log issue deletion
             try {
                 $auditLogger = new AuditLogger();
@@ -1963,6 +1981,15 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         }
 
         cleanupIssueUploadsFromHtmlBlocks($htmlBlocksForCleanup);
+        
+        // Log to UI Activity Log for Common Issue deletion
+        try {
+            logActivity($db, $userId, 'bulk_delete_common_issues', 'project', $projectId, [
+                'count' => count($ids),
+                'issue_count' => count($issueIds)
+            ]);
+        } catch (Exception $e) {}
+
         jsonResponse(['success' => true]);
     }
 

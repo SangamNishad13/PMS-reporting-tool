@@ -338,13 +338,14 @@ var ProjectConfig = window.ProjectConfig || {};
         document.getElementById('editPage_page_id').value = pageId;
         document.getElementById('editPage_field').value = field;
         // hide the field selector when opened from an Edit button so user edits only the clicked field
-        var fieldWrapper = document.getElementById('editPage_field').closest('.mb-3');
-        if (fieldWrapper) {
-            fieldWrapper.style.display = 'none';
-            modalEl._editFieldHidden = true;
-        }
         // update modal title to reflect target field
-        try { modalEl.querySelector('.modal-title').textContent = field === 'notes' ? 'Edit Notes' : (field === 'canonical_url' ? 'Edit Unique URL' : 'Edit Page Name'); } catch (e) {}
+        try { 
+            var titleText = 'Edit Page Name';
+            if (field === 'notes') titleText = 'Edit Notes';
+            else if (field === 'canonical_url') titleText = 'Edit Unique URL';
+            else if (field === 'page_number') titleText = 'Edit Page Number';
+            modalEl.querySelector('.modal-title').textContent = titleText; 
+        } catch (e) {}
         // toggle input types
         if (field === 'notes') {
             document.getElementById('editPage_input_wrap').classList.add('d-none');
@@ -354,7 +355,11 @@ var ProjectConfig = window.ProjectConfig || {};
             document.getElementById('editPage_input_wrap').classList.remove('d-none');
             document.getElementById('editPage_text_wrap').classList.add('d-none');
             document.getElementById('editPage_value').value = current;
-            document.getElementById('editPage_label').textContent = field === 'page_name' ? 'Page Name' : (field === 'canonical_url' ? 'Unique URL' : 'Value');
+            var labelText = 'Value';
+            if (field === 'page_name') labelText = 'Page Name';
+            else if (field === 'canonical_url') labelText = 'Unique URL';
+            else if (field === 'page_number') labelText = 'Page Number';
+            document.getElementById('editPage_label').textContent = labelText;
         }
 
         // show modal
@@ -380,9 +385,13 @@ var ProjectConfig = window.ProjectConfig || {};
                 if (j && j.success) {
                     // update UI: find the related display element in the same row
                     try {
-                        var parentRow = btn.closest('tr') || btn.parentElement;
-                        var targetSelector = f === 'notes' ? '.notes-display' : (f === 'canonical_url' ? '.unique-url-display' : '.page-name-display');
-                        var target = parentRow ? parentRow.querySelector(targetSelector) : null;
+                    var parentRow = btn.closest('tr') || btn.parentElement;
+                    var targetSelector = '.page-name-display';
+                    if (f === 'notes') targetSelector = '.notes-display';
+                    else if (f === 'canonical_url') targetSelector = '.unique-url-display';
+                    else if (f === 'page_number') targetSelector = '.page-no-display';
+                    
+                    var target = parentRow ? parentRow.querySelector(targetSelector) : null;
                         if (target) target.textContent = val;
                         btn.setAttribute('data-current-name', val);
                         if (f === 'notes' && parentRow) {
@@ -435,7 +444,11 @@ var ProjectConfig = window.ProjectConfig || {};
         }).then(r => r.json()).then(function (j) {
             if (j && j.success) {
                 var parent = btn.closest('tr') || btn.parentElement;
-                var targetSelector = field === 'notes' ? '.notes-display' : (field === 'canonical_url' ? '.unique-url-display' : '.page-name-display');
+                var targetSelector = '.page-name-display';
+                if (field === 'notes') targetSelector = '.notes-display';
+                else if (field === 'canonical_url') targetSelector = '.unique-url-display';
+                else if (field === 'page_number') targetSelector = '.page-no-display';
+                
                 var target = parent ? parent.querySelector(targetSelector) : null;
                 if (target) target.textContent = val;
                 btn.setAttribute('data-current-name', val);
