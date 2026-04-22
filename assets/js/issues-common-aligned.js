@@ -523,5 +523,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Listen for changes from the main issue editor (view_issues.js)
+    document.addEventListener('pms:issues-changed', function(e) {
+        // Refresh the list to pick up the changes and ensure correct rendering
+        loadIssues({ preserveFilters: true });
+    });
+
     loadIssues({ immediate: true });
 });

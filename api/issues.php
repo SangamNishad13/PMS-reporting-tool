@@ -873,7 +873,7 @@ try {
             
             $out[] = [
                 'id' => $iid,
-                'issue_key' => $i['issue_key'] ?? 'ISS-' . $iid, // Fallback if column doesn't exist
+                'issue_key' => $i['issue_key'] ?? ($projectCode . '-' . $iid), // Fallback if column doesn't exist
                 'title' => $i['title'],
                 'description' => $i['description'],
                 'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : ($meta['common_title'] ?? ''),
@@ -1047,7 +1047,7 @@ try {
 
             $out[] = [
                 'id' => $iid,
-                'issue_key' => $i['issue_key'] ?? 'ISS-' . $iid,
+                'issue_key' => $i['issue_key'] ?? ($projectCode . '-' . $iid),
                 'title' => $i['title'],
                 'description' => $i['description'],
                 'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : ($meta['common_title'] ?? ''),
@@ -1477,15 +1477,15 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
                 if ($hasResolvedAtColumn) logHistory($db, $id, $userId, 'resolved_at', $oldIssue['resolved_at'] ?? null, $resolvedAtValue);
 
                 if ($hasResolvedAtColumn && $hasChanged) {
-                    $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, resolved_at = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
+                    $stmt = $db->prepare("UPDATE issues SET issue_key = ?, title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, resolved_at = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
                 } elseif ($hasResolvedAtColumn) {
-                    $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, resolved_at = ? WHERE id = ? AND project_id = ?");
+                    $stmt = $db->prepare("UPDATE issues SET issue_key = ?, title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, resolved_at = ? WHERE id = ? AND project_id = ?");
                 } elseif ($hasChanged) {
-                    $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
+                    $stmt = $db->prepare("UPDATE issues SET issue_key = ?, title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ?, updated_at = NOW() WHERE id = ? AND project_id = ?");
                 } else {
-                    $stmt = $db->prepare("UPDATE issues SET title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ? WHERE id = ? AND project_id = ?");
+                    $stmt = $db->prepare("UPDATE issues SET issue_key = ?, title = ?, description = ?, priority_id = ?, status_id = ?, reporter_id = ?, assignee_id = ?, page_id = ?, severity = ?, common_issue_title = ?, client_ready = ? WHERE id = ? AND project_id = ?");
                 }
-                $params = [$title, $description, $priorityId, $statusId, $reporterId, $assigneeId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady];
+                $params = [$issueKey, $title, $description, $priorityId, $statusId, $reporterId, $assigneeId, $pageId ?: null, $severity, $commonTitle ?: null, $clientReady];
                 if ($hasResolvedAtColumn) {
                     $params[] = $resolvedAtValue;
                 }
@@ -1829,7 +1829,7 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
 
         $updatedIssue = [
             'id' => (int)$issueData['id'],
-            'issue_key' => $issueData['issue_key'] ?? 'ISS-' . $issueData['id'], // Fallback if column doesn't exist
+            'issue_key' => $issueData['issue_key'] ?? ($projectCode . '-' . $issueData['id']), // Fallback if column doesn't exist
             'title' => $issueData['title'],
             'description' => $descriptionHtml,
             'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : '',
@@ -1859,7 +1859,8 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
             'can_tester_delete' => $canTesterDelete,
             'created_at' => $issueData['created_at'],
             'updated_at' => $issueData['updated_at'],
-            'latest_history_id' => $latestHistoryId
+            'latest_history_id' => $latestHistoryId,
+            'metadata' => $meta // Unified structure for metadata rendering
         ];
         
         // Add custom metadata fields
@@ -1871,10 +1872,12 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
             }
         }
 
-        // Invalidate get_all cache for this project
+        // Invalidate get_all and common_get_all cache for this project
         if (function_exists('apcu_delete')) {
             apcu_delete("issues_all_{$projectId}_staff");
             apcu_delete("issues_all_{$projectId}_client");
+            apcu_delete("issues_common_all_{$projectId}_staff");
+            apcu_delete("issues_common_all_{$projectId}_client");
         }
 
         jsonResponse(['success' => true, 'id' => $id, 'issue_key' => $issueKey, 'issue' => $updatedIssue]);
