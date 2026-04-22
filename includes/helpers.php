@@ -1154,8 +1154,8 @@ function get_geo_info($ip) {
 function resolvePageDisplayValue($pageRow) {
     if (!is_array($pageRow)) return '-';
     
-    $rawPageNumber = trim((string)($pageRow['page_number'] ?? ''));
-    if ($rawPageNumber !== '') {
+    $rawPageNumber = trim((string)($pageRow['page_number'] ?? ($pageRow['mapped_page_number'] ?? '')));
+    if ($rawPageNumber !== '' && $rawPageNumber !== '-') {
         return $rawPageNumber;
     }
     

@@ -697,6 +697,52 @@ if (!$projectId) {
         exit;
     }
 
+    // Handle Edit Page Metadata
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_page_metadata'])) {
+        $pageId = (int)$_POST['page_id'];
+        $pageName = trim($_POST['page_name'] ?? '');
+        $pageNumber = trim($_POST['page_number'] ?? '');
+        $url = trim($_POST['url'] ?? '');
+        $screenName = trim($_POST['screen_name'] ?? '');
+        $notes = trim($_POST['notes'] ?? '');
+
+        if ($pageId > 0 && !empty($pageName)) {
+            try {
+                // Get old values for logging
+                $oldStmt = $db->prepare("SELECT page_name, page_number, url, screen_name, notes FROM project_pages WHERE id = ?");
+                $oldStmt->execute([$pageId]);
+                $oldData = $oldStmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($oldData) {
+                    $upd = $db->prepare("UPDATE project_pages SET page_name = ?, page_number = ?, url = ?, screen_name = ?, notes = ? WHERE id = ?");
+                    $upd->execute([$pageName, $pageNumber, $url, $screenName, $notes, $pageId]);
+
+                    logActivity($db, $userId, 'edit_page_metadata', 'page', $pageId, [
+                        'project_id' => $projectId,
+                        'old' => $oldData,
+                        'new' => [
+                            'page_name' => $pageName,
+                            'page_number' => $pageNumber,
+                            'url' => $url,
+                            'screen_name' => $screenName,
+                            'notes' => $notes
+                        ]
+                    ]);
+
+                    $_SESSION['success'] = "Page metadata updated successfully.";
+                } else {
+                    $_SESSION['error'] = "Page not found.";
+                }
+            } catch (Exception $e) {
+                $_SESSION['error'] = "Update failed: " . $e->getMessage();
+            }
+        } else {
+            $_SESSION['error'] = "Page ID and Name are required.";
+        }
+        header("Location: manage_assignments.php?project_id=$projectId&tab=pages");
+        exit;
+    }
+
     // Handle Unique Page Assignment - create/update project pages for grouped URLs
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_unique'])) {
         $uniqueId = (int)($_POST['unique_id'] ?? 0);
@@ -1871,8 +1917,22 @@ include __DIR__ . '/../../includes/header.php';
                                             </span>
                                         </td>
                                         <td class="text-center">
+                                            <button type="button" class="btn btn-sm btn-outline-info" 
+                                                    data-bs-toggle="modal" 
+                                                    data-bs-target="#editMetadataModal" 
+                                                    onclick="populateEditMetadataModal(<?php echo htmlspecialchars(json_encode([
+                                                        'id' => $p['id'],
+                                                        'page_name' => $p['page_name'],
+                                                        'page_number' => $p['page_number'],
+                                                        'url' => $p['url'],
+                                                        'screen_name' => $p['screen_name'],
+                                                        'notes' => $p['notes'] ?? ''
+                                                    ])); ?>)"
+                                                    title="Edit page info (Name, Number, etc.)">
+                                                <i class="fas fa-info-circle"></i>
+                                            </button>
                                             <button type="button" class="btn btn-sm btn-outline-primary" data-page-edit-id="<?php echo $p['id']; ?>" data-bs-toggle="modal" data-bs-target="#pageModal<?php echo $p['id']; ?>" title="Edit assignments">
-                                                <i class="fas fa-edit"></i>
+                                                <i class="fas fa-user-edit"></i>
                                             </button>
                                             <?php if ($canManageTeam): ?>
                                                 <a href="?project_id=<?php echo $projectId; ?>&remove_page=<?php echo $p['id']; ?>" class="btn btn-sm btn-outline-danger ms-1" title="Delete page" onclick="confirmModal('Delete this page and its environment links? This cannot be undone.', function(){ window.location.href='?project_id=<?php echo $projectId; ?>&remove_page=<?php echo $p['id']; ?>'; }); return false;">
@@ -2509,6 +2569,66 @@ jQuery(function ($) {
 </div>
 <?php endforeach; ?>
 <?php endif; ?>
+
+<!-- Edit Page Metadata Modal -->
+<div class="modal fade" id="editMetadataModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="editMetadataForm">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Page Information</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken()); ?>">
+                    <input type="hidden" name="page_id" id="edit_page_id">
+                    <input type="hidden" name="edit_page_metadata" value="1">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Page Name *</label>
+                        <input type="text" name="page_name" id="edit_page_name" class="form-control" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Page Number</label>
+                        <input type="text" name="page_number" id="edit_page_number" class="form-control" placeholder="e.g. Page 1">
+                        <small class="text-muted">Use 'Page X' format for consistent sorting.</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">URL / Screen ID</label>
+                        <input type="text" name="url" id="edit_page_url" class="form-control">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Screen Name (Optional)</label>
+                        <input type="text" name="screen_name" id="edit_screen_name" class="form-control">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea name="notes" id="edit_page_notes" class="form-control" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
+function populateEditMetadataModal(data) {
+    document.getElementById('edit_page_id').value = data.id || '';
+    document.getElementById('edit_page_name').value = data.page_name || '';
+    document.getElementById('edit_page_number').value = data.page_number || '';
+    document.getElementById('edit_page_url').value = data.url || '';
+    document.getElementById('edit_screen_name').value = data.screen_name || '';
+    document.getElementById('edit_page_notes').value = data.notes || '';
+}
+</script>
 
 <!-- manage-assignments.js handles multiselect delete -->
 

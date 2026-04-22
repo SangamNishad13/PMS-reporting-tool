@@ -26,6 +26,10 @@
                             WHEN al.action = 'remove_phase' THEN 'Phase removed'
                             WHEN al.action = 'duplicated_project' THEN 'Project duplicated'
                             WHEN al.action = 'archived_project' THEN 'Project archived'
+                            WHEN al.action = 'edit_page_metadata' THEN 'Page metadata updated'
+                            WHEN al.action = 'quick_add_page' THEN 'Page added (Quick)'
+                            WHEN al.action = 'bulk_delete_pages' THEN 'Pages deleted (Bulk)'
+                            WHEN al.action = 'assign_unique' THEN 'Unique pages assigned'
                             ELSE CONCAT(UPPER(SUBSTRING(REPLACE(al.action, '_', ' '), 1, 1)), SUBSTRING(REPLACE(al.action, '_', ' '), 2))
                         END as action,
                         CASE 
@@ -57,6 +61,14 @@
                                 CONCAT('Project duplicated from \"', JSON_UNQUOTE(JSON_EXTRACT(al.details, '$.original_title')), '\"')
                             WHEN al.action = 'archived_project' THEN 
                                 'Project archived'
+                            WHEN al.action = 'edit_page_metadata' THEN 
+                                CONCAT('Page \"', JSON_UNQUOTE(JSON_EXTRACT(al.details, '$.new.page_name')), '\" metadata updated')
+                            WHEN al.action = 'quick_add_page' THEN 
+                                CONCAT('Quick added page \"', JSON_UNQUOTE(JSON_EXTRACT(al.details, '$.page_name')), '\"')
+                            WHEN al.action = 'bulk_delete_pages' THEN 
+                                CONCAT('Bulk deleted ', JSON_UNQUOTE(JSON_EXTRACT(al.details, '$.count')), ' page(s)')
+                            WHEN al.action = 'assign_unique' THEN 
+                                CONCAT('Assigned unique page ID ', JSON_UNQUOTE(JSON_EXTRACT(al.details, '$.unique_id')), ' (created ', JSON_UNQUOTE(JSON_EXTRACT(al.details, '$.created_pages')), ' sub-pages)')
                             ELSE CONCAT('Action: ', al.action)
                         END as description,
                         al.created_at as activity_date,
@@ -68,7 +80,7 @@
                            SELECT id FROM project_pages WHERE project_id = ?
                        ))
                     ORDER BY al.created_at DESC
-                    LIMIT 20
+                    LIMIT 50
                 ");
                 $activity->execute([$projectId, $projectId]);
                 
@@ -94,9 +106,13 @@
                                     'add_phase' => 'plus',
                                     'remove_phase' => 'minus',
                                     'duplicated_project' => 'copy',
-                                    'archived_project' => 'archive'
+                                    'archived_project' => 'archive',
+                                    'edit_page_metadata' => 'info-circle',
+                                    'quick_add_page' => 'file-medical',
+                                    'bulk_delete_pages' => 'trash-alt',
+                                    'assign_unique' => 'project-diagram'
                                 ];
-                                echo $iconMap[$log['type']] ?? 'info-circle';
+                                echo $iconMap[$log['type']] ?? 'stream';
                             ?> text-<?php 
                                 // Map activity types to colors
                                 $colorMap = [
@@ -113,7 +129,11 @@
                                     'add_phase' => 'success',
                                     'remove_phase' => 'danger',
                                     'duplicated_project' => 'info',
-                                    'archived_project' => 'secondary'
+                                    'archived_project' => 'secondary',
+                                    'edit_page_metadata' => 'info',
+                                    'quick_add_page' => 'success',
+                                    'bulk_delete_pages' => 'danger',
+                                    'assign_unique' => 'primary'
                                 ];
                                 echo $colorMap[$log['type']] ?? 'secondary';
                             ?>"></i>

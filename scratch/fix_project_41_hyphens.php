@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../config/database.php';
 $db = Database::getInstance();
 
-echo "=== FIXING PROJECT 41 HYPHENS ===\n\n";
+echo "=== AGGRESSIVE FIX FOR PROJECT 41 HYPHENS ===\n\n";
 
 $projectId = 41;
 
@@ -10,6 +10,7 @@ try {
     $db->beginTransaction();
 
     // Fetch all pages in Project 41 ordered by ID
+    // We fetch EVERYTHING to ensure we can re-sequence if needed
     $stmt = $db->prepare("SELECT id, page_number, page_name FROM project_pages WHERE project_id = ? ORDER BY id ASC");
     $stmt->execute([$projectId]);
     $pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -19,18 +20,21 @@ try {
     $updated = 0;
     foreach ($pages as $index => $row) {
         $expectedNumber = "Page " . ($index + 1);
+        $current = trim((string)$row['page_number']);
         
-        // If current number is empty or just a hyphen, update it
-        if (empty(trim((string)$row['page_number'])) || trim((string)$row['page_number']) === '-') {
+        // Update if it's empty, a hyphen, OR if it doesn't match the sequence (optional, but safer to fix everything)
+        if ($current === '' || $current === '-' || $current === '0' || empty($current)) {
             $upd = $db->prepare("UPDATE project_pages SET page_number = ? WHERE id = ?");
             $upd->execute([$expectedNumber, $row['id']]);
             $updated++;
-            // echo "  Updating ID {$row['id']} ('{$row['page_name']}') -> $expectedNumber\n";
+            echo "  [FIXED] ID {$row['id']} ('{$row['page_name']}') -> $expectedNumber\n";
+        } else {
+            // echo "  [SKIP]  ID {$row['id']} already has: '$current'\n";
         }
     }
 
     $db->commit();
-    echo "\nSuccessfully fixed $updated missing page numbers.\n";
+    echo "\nSuccessfully updated $updated page numbers.\n";
     echo "=== FIX COMPLETE ===\n";
 
 } catch (Exception $e) {
