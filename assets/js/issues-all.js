@@ -224,18 +224,25 @@ function loadIssues(options) {
     var silentErrors    = !!opts.silentErrors;
     var immediate       = !!opts.immediate;
 
-    if (loadIssuesDebounceTimer) { clearTimeout(loadIssuesDebounceTimer); loadIssuesDebounceTimer = null; }
+    if (loadIssuesDebounceTimer) {
+        clearTimeout(loadIssuesDebounceTimer);
+        loadIssuesDebounceTimer = null;
+    }
 
-    if (immediate) return performLoadIssues(preserveFilters, silentErrors);
+    var doLoad = function() {
+        return performLoadIssues(preserveFilters, silentErrors, 0, keepPage);
+    };
+
+    if (immediate) return doLoad();
 
     return new Promise(function (resolve) {
         loadIssuesDebounceTimer = setTimeout(function () {
-            performLoadIssues(preserveFilters, silentErrors).then(resolve);
+            doLoad().then(resolve);
         }, 300);
     });
 }
 
-function performLoadIssues(preserveFilters, silentErrors, retryCount) {
+function performLoadIssues(preserveFilters, silentErrors, retryCount, keepPage) {
     retryCount = retryCount || 0;
     var maxRetries = 3;
     var controller = new AbortController();
@@ -327,10 +334,21 @@ function renderIssues() {
             }
         }
 
+        var descPreview = '';
+        var rawDesc = issue.description || '';
+        if (rawDesc) {
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = rawDesc;
+            var plainDesc = (tempDiv.textContent || tempDiv.innerText || '').trim();
+            if (plainDesc.length > 0) {
+                descPreview = plainDesc.substring(0, 100) + (plainDesc.length > 100 ? '...' : '');
+            }
+        }
+
         mainRow +=
             '<td><button class="btn btn-link p-0 me-2 text-muted chevron-toggle" style="border:none;background:none;"><i class="fas fa-chevron-right chevron-icon" id="chevron-' + issue.id + '"></i></button>' +
             '<span class="badge bg-primary">' + escapeHtml(issue.issue_key) + '</span></td>' +
-            '<td>' + (issue.common_title ? '<div class="text-truncate-cell" title="' + escapeAttr(issue.common_title) + '">' + escapeHtml(issue.common_title) + '</div><small class="text-muted text-truncate-cell" title="' + escapeAttr(issue.title) + '">' + escapeHtml(issue.title) + '</small>' : '<div class="text-truncate-cell" title="' + escapeAttr(issue.title) + '">' + escapeHtml(issue.title) + '</div>') + '</td>' +
+            '<td>' + (issue.common_title ? '<div class="text-truncate-cell" title="' + escapeAttr(issue.common_title) + '">' + escapeHtml(issue.common_title) + '</div><small class="text-muted text-truncate-cell" title="' + escapeAttr(issue.title) + '">' + escapeHtml(issue.title) + '</small>' : '<div class="text-truncate-cell fw-bold" title="' + escapeAttr(issue.title) + '">' + escapeHtml(issue.title) + '</div>' + (descPreview ? '<div class="small text-muted text-truncate-cell" title="' + escapeAttr(descPreview) + '">' + escapeHtml(descPreview) + '</div>' : '')) + '</td>' +
             '<td><small>' + pagesHtml + '</small></td>' +
             '<td><span class="status-badge" style="background-color:' + issue.status_color + ';color:white;">' + escapeHtml(issue.status_name) + '</span></td>';
 

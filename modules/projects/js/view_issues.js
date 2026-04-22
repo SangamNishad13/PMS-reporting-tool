@@ -5296,10 +5296,7 @@
                     });
                 }
             }, 100);
-        }
-
-    
-    function addNewIssueRow(issueDataObj) {
+        }    function addNewIssueRow(issueDataObj) {
         // For new issues, just re-render the table
         // The new issue will appear at the top due to the unshift() in the save function
         renderFinalIssues();
@@ -5308,250 +5305,138 @@
     function renderCommonIssues() {
         var tbody = document.getElementById('commonIssuesBody');
         if (!tbody) return;
-        var colspanCount = (userRole === 'client') ? 3 : 5;
-        if (!issueData.common.length) {
-            tbody.innerHTML = '<tr><td colspan="' + colspanCount + '" class="text-center py-5 text-muted">' + (userRole === 'client' ? 'No shared issues available right now.' : 'No common issues found.') + '</td></tr>';
+        
+        var userRole = (window.ProjectConfig ? window.ProjectConfig.userRole : '');
+        var colspan = (userRole === 'client') ? 3 : 5;
+
+        var commonIssues = (window.issueData && Array.isArray(window.issueData.common)) ? window.issueData.common : [];
+
+        if (commonIssues.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="text-center py-5 text-muted">' + 
+                (userRole === 'client' ? 'No shared issues available right now.' : 'No common issues found.') + 
+                '</td></tr>';
             return;
         }
 
-        tbody.innerHTML = issueData.common.map(function (it) {
-            var descriptionPreview = stripHtml(it.description || '').substring(0, 100);
-            if (descriptionPreview && stripHtml(it.description || '').length > 100) descriptionPreview += '...';
-
-            if (userRole === 'client') {
-                var clientPages = (it.pages || []).map(getPageName).slice(0, 4);
-                var extraPages = Math.max(0, (it.pages || []).length - clientPages.length);
-                return '<tr>' +
-                    '<td><span class="badge bg-primary">' + escapeHtml(it.issue_key || ((window.ProjectConfig ? window.ProjectConfig.projectCode : 'ISS') + '-' + (it.issue_id || it.id))) + '</span></td>' +
-                    '<td>' +
-                    '<div class="fw-semibold text-truncate-cell" title="' + escapeAttr(it.title || 'Shared issue') + '">' + escapeHtml(it.title || 'Shared issue') + '</div>' +
-                    (descriptionPreview ? '<div class="small text-muted mt-1 text-truncate-cell" title="' + escapeAttr(stripHtml(it.description || '')) + '">' + escapeHtml(descriptionPreview) + '</div>' : '') +
-                    '</td>' +
-                    '<td>' +
-                    '<div class="d-flex flex-wrap gap-1">' +
-                    clientPages.map(function (pageName) {
-                        return '<span class="badge bg-light text-dark border">' + escapeHtml(pageName) + '</span>';
-                    }).join('') +
-                    (extraPages ? '<span class="badge bg-secondary">+' + extraPages + ' more</span>' : '') +
-                    '</div>' +
-                    '</td>' +
-                    '</tr>';
-            }
-
-            var pagesStr = (it.pages || []).map(getPageName).slice(0, 5).join(', ') + ((it.pages && it.pages.length > 5) ? '...' : '');
+        tbody.innerHTML = commonIssues.map(function (it) {
             var uniqueId = 'common-issue-details-' + it.id;
-            var pageCount = (it.pages || []).length;
-            var testerDeleteBlocked = !!(isTesterRole && it.can_tester_delete === false);
-            var deleteTitle = testerDeleteBlocked
-                ? 'Testers cannot delete this issue because it has comments or QA status is set on an Open issue.'
-                : 'Delete Common Issue';
-
-            // Try to find the actual issue data from loaded pages
-            var actualIssue = null;
-            if (it.issue_id && it.pages && it.pages.length > 0) {
-                var firstPageId = it.pages[0];
-                if (issueData.pages[firstPageId] && issueData.pages[firstPageId].final) {
-                    actualIssue = issueData.pages[firstPageId].final.find(function (i) {
-                        return String(i.id) === String(it.issue_id);
-                    });
-                }
-            }
-
-            // Main row with expand button
-            var mainRow = '<tr class="align-middle issue-expandable-row" data-collapse-target="#' + uniqueId + '">';
+            var rawDesc = it.description || it.details || '';
+            var descriptionPreview = stripHtml(rawDesc).substring(0, 100);
+            if (descriptionPreview && stripHtml(rawDesc).length > 100) descriptionPreview += '...';
             
-            // Checkbox column - hide for client
+            var severity = it.severity || 'N/A';
+            var priority = it.priority || 'N/A';
+            var status = it.status_name || it.status || 'open';
+            var statusId = it.status_id || null;
+            var qaStatusHtml = getReporterQaStatusHtml(it);
+            var pageCount = (it.pages || []).length;
+            var displayKey = it.issue_key || it.key || ((window.ProjectConfig ? window.ProjectConfig.projectCode : 'ISS') + '-' + (it.issue_id || it.id));
+
+            var mainRow = '<tr class="align-middle issue-expandable-row" data-collapse-target="#' + uniqueId + '" style="cursor: pointer;">';
+            
+            // 1. Checkbox (non-client)
             if (userRole !== 'client') {
-                mainRow += '<td class="text-center checkbox-cell">' +
-                    '<input type="checkbox" class="form-check-input common-select" data-id="' + it.id + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
+                mainRow += '<td class="text-center checkbox-cell" style="width: 40px;">' +
+                    '<input type="checkbox" class="form-check-input common-select" data-id="' + it.id + '">' +
                     '</td>';
             }
-            
-            // Issue Key column
-            mainRow += '<td><span class="badge bg-primary">' + escapeHtml(it.issue_key || ((window.ProjectConfig ? window.ProjectConfig.projectCode : 'ISS') + '-' + it.issue_id)) + '</span></td>';
 
-            mainRow += '<td style="min-width: 250px;">' +
+            // 2. Issue Key
+            mainRow += '<td style="width: 115px;"><span class="badge bg-primary">' + escapeHtml(displayKey) + '</span></td>';
+
+            // 3. Title + Description
+            mainRow += '<td>' +
                 '<div class="d-flex align-items-center">' +
-                '<button class="btn btn-link p-0 me-2 text-muted chevron-toggle-btn" ' +
-                'data-collapse-target="#' + uniqueId + '" ' +
-                'aria-label="Expand details for ' + escapeHtml(it.title) + '" ' +
-                'style="border: none; background: none; font-size: 1rem;">' +
-                '<i class="fas fa-chevron-right chevron-icon"></i>' +
-                '</button>' +
+                '<div class="me-2 text-muted" style="width: 20px;"><i class="fas fa-chevron-right chevron-icon"></i></div>' +
                 '<div>' +
                 '<div class="fw-bold text-dark text-truncate-cell" title="' + escapeAttr(it.title) + '">' + escapeHtml(it.title) + '</div>' +
-                (descriptionPreview ? '<div class="small text-muted text-truncate-cell" title="' + escapeAttr(stripHtml(it.description || '')) + '">' + escapeHtml(descriptionPreview) + '</div>' : '') +
+                (descriptionPreview ? '<div class="small text-muted text-truncate-cell" title="' + escapeAttr(stripHtml(rawDesc)) + '">' + escapeHtml(descriptionPreview) + '</div>' : '') +
                 '</div>' +
                 '</div>' +
-                '</td>' +
-                '<td class="small text-muted">' +
-                '<span class="badge bg-secondary">' + pageCount + ' page(s)</span>' +
                 '</td>';
-            
-            // Actions column - hide for client
+
+            // 4. Page(s)
+            mainRow += '<td style="width: 125px;"><span class="badge bg-secondary">' + pageCount + ' page(s)</span></td>';
+
+            // 5. Actions (non-client)
             if (userRole !== 'client') {
-                mainRow += '<td class="text-end action-buttons-cell">' +
+                mainRow += '<td class="text-end action-buttons-cell" style="width: 105px;">' +
                     '<div class="btn-group">' +
-                    '<button class="btn btn-sm btn-outline-primary common-edit bg-white" data-id="' + it.id + '" title="Edit Common Issue">' +
-                    '<i class="fas fa-pencil-alt"></i>' +
-                    '</button>' +
-                    '<button class="btn btn-sm btn-outline-danger common-delete bg-white" data-id="' + it.id + '" title="' + escapeAttr(deleteTitle) + '"' + (testerDeleteBlocked ? ' disabled' : '') + '>' +
-                    '<i class="far fa-trash-alt"></i>' +
-                    '</button>' +
+                    '<button class="btn btn-sm btn-outline-primary common-edit bg-white" data-id="' + it.id + '" title="Edit Common Issue"><i class="fas fa-pencil-alt"></i></button>' +
+                    '<button class="btn btn-sm btn-outline-danger common-delete bg-white" data-id="' + it.id + '" title="Delete Common Issue"><i class="fas fa-trash"></i></button>' +
                     '</div>' +
                     '</td>';
             }
-            
+
             mainRow += '</tr>';
 
-            // Build metadata section if actual issue is found
-            var metadataHtml = '';
-            if (actualIssue) {
-                var severity = actualIssue.severity || 'N/A';
-                var priority = actualIssue.priority || 'N/A';
-                var status = actualIssue.status_name || actualIssue.status || 'open';
-                var statusId = actualIssue.status_id || null;
-                var qaStatusHtml = getReporterQaStatusHtml(actualIssue);
-
-                // Reporters - handle both IDs and names
-                var reportersArray = [];
-
-                // First, add reporters from reporters array (these are IDs)
-                if (Array.isArray(actualIssue.reporters) && actualIssue.reporters.length > 0) {
-                    reportersArray = actualIssue.reporters;
-                }
-
-                // If no reporters array, use reporter_name (this is already a name string)
-                var reporterHtml = '';
-                if (reportersArray.length > 0) {
-                    // These are IDs, convert to names
-                    reporterHtml = reportersArray.map(function (reporterId) {
-                        var reporterName = 'Unknown';
-                        if (ProjectConfig.projectUsers) {
-                            var found = ProjectConfig.projectUsers.find(function (u) { return u.id == reporterId; });
-                            if (found) reporterName = found.full_name;
-                        }
-                        return '<span class="badge bg-info me-1">' + escapeHtml(reporterName) + '</span>';
-                    }).join('');
-                } else if (actualIssue.reporter_name) {
-                    // This is already a name string
-                    reporterHtml = '<span class="badge bg-info me-1">' + escapeHtml(actualIssue.reporter_name) + '</span>';
-                } else {
-                    reporterHtml = '<span class="text-muted">N/A</span>';
-                }
-
-                // Grouped URLs - same as issues-all.js
-                var urlsHtml = '';
-                if (actualIssue.grouped_urls && actualIssue.grouped_urls.length > 0) {
-                    urlsHtml = '<div class="mb-2"><strong>Grouped URLs:</strong> <span class="badge bg-info ms-1">' + actualIssue.grouped_urls.length + '</span>' +
-                        '<button class="btn btn-link p-0 ms-1 text-primary" style="font-size:12px;text-decoration:none;" onclick="toggleGroupedUrls(\'' + it.id + '\',event)"><small>Show/Hide</small></button>' +
-                        '<div id="grouped-urls-content-' + it.id + '" style="display:none;margin-top:4px;">' +
-                        '<div class="border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
-                        '<ul class="list-unstyled mb-0 small">';
-                    actualIssue.grouped_urls.forEach(function (urlString) {
-                        var urlData = (ProjectConfig.groupedUrls || []).find(function (u) {
-                            return u.url === urlString || u.normalized_url === urlString;
-                        });
-                        var displayUrl = urlData ? urlData.url : urlString;
-                        if (displayUrl) {
-                            urlsHtml += '<li class="mb-1 text-break"><a href="' + escapeHtml(displayUrl) + '" target="_blank" class="text-decoration-none"><i class="fas fa-link me-1 text-primary"></i>' + escapeHtml(displayUrl) + '</a></li>';
-                        }
-                    });
-                    urlsHtml += '</ul></div></div></div>';
-                }
-
-                // Build metadata HTML - structured like the sidebar in Page Detail
-                metadataHtml = '';
-                
-                // 1. Title
-                var displayTitle = actualIssue.common_title || it.title || 'Shared Issue';
-                metadataHtml += '<div class="mb-3"><strong>Title:</strong> ' + escapeHtml(displayTitle) + '</div>';
-
-                // 2. Issue ID
-                metadataHtml += '<div class="mb-3"><strong>Issue ID:</strong> ' + (actualIssue.id || it.issue_id || 'N/A') + '</div>';
-
-                // 3. Status, Severity, Priority
-                metadataHtml += '<div class="mb-3">' +
-                    '<strong>Status:</strong> ' + getStatusBadge(statusId, status) + 
-                    '<span class="mx-2 text-muted">|</span>' +
-                    '<strong>Severity:</strong> <span class="badge bg-warning text-dark">' + escapeHtml((severity || 'N/A').toUpperCase()) + '</span>' +
-                    '</div>';
-
-                // 4. Pages List
-                metadataHtml += '<div class="mb-3"><strong>Pages:</strong> <span class="badge bg-secondary ms-1">' + (it.pages || []).length + '</span>' +
-                    '<div class="mt-2 border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
-                    '<ul class="list-unstyled mb-0 small">' +
-                    (it.pages || []).map(function(pageId) {
-                        return '<li class="mb-1"><i class="fas fa-file-alt text-muted me-2"></i>' + escapeHtml(getPageName(pageId)) + '</li>';
-                    }).join('') +
-                    '</ul></div></div>';
-
-                // 5. Grouped URLs (if any)
-                if (urlsHtml) metadataHtml += urlsHtml;
-
-                // 6. Extra Metadata fields (hide for client)
-                if (userRole !== 'client' && typeof issueMetadataFields !== 'undefined') {
-                    var extraFieldsHtml = '';
-                    issueMetadataFields.forEach(function (f) {
-                        if (f.field_key === 'severity' || f.field_key === 'priority') return;
-                        var value = actualIssue[f.field_key];
-                        if (value && value.length > 0) {
-                            var displayValue = Array.isArray(value) ? value.join(', ') : value;
-                            extraFieldsHtml += '<div class="mb-1 small"><strong>' + escapeHtml(f.field_label) + ':</strong> ' + escapeHtml(displayValue) + '</div>';
-                        }
-                    });
-                    if (extraFieldsHtml) {
-                        metadataHtml += '<div class="mb-3 pt-2 border-top">' + extraFieldsHtml + '</div>';
-                    }
-                }
-
-                // 7. Created/Updated (Small footer style)
-                if (userRole !== 'client' && (actualIssue.created_at || actualIssue.updated_at)) {
-                    metadataHtml += '<div class="mt-3 pt-2 border-top small text-muted">';
-                    if (actualIssue.created_at) metadataHtml += '<div>Created: ' + new Date(actualIssue.created_at).toLocaleString() + '</div>';
-                    if (actualIssue.updated_at) metadataHtml += '<div>Updated: ' + new Date(actualIssue.updated_at).toLocaleString() + '</div>';
-                    metadataHtml += '</div>';
-                }
-
-                // 8. Footer Notice (Matching screenshot)
-                metadataHtml += '<div class="alert alert-info small mt-3 mb-0 py-2">' +
-                    '<i class="fas fa-info-circle me-2"></i>Load the page to see full issue details' +
-                    '</div>';
-
-            } else {
-                // Fallback style when actualIssue is not loaded yet
-                metadataHtml = '<div class="mb-3"><strong>Title:</strong> ' + escapeHtml(it.title) + '</div>' +
-                    '<div class="mb-3"><strong>Pages:</strong> <span class="badge bg-secondary ms-1">' + pageCount + '</span>' +
-                    '<div class="mt-2 border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
-                    '<ul class="list-unstyled mb-0 small">' +
-                    (it.pages || []).map(function(pageId) {
-                        return '<li class="mb-1"><i class="fas fa-file-alt text-muted me-2"></i>' + escapeHtml(getPageName(pageId)) + '</li>';
-                    }).join('') +
-                    '</ul></div></div>' +
-                    (it.issue_id ? '<div class="mb-3"><strong>Issue ID:</strong> ' + escapeHtml(it.issue_id) + '</div>' : '') +
-                    '<div class="alert alert-info small mt-3 mb-0 py-2">' +
-                    '<i class="fas fa-info-circle me-2"></i>Load the page to see full issue details' +
-                    '</div>';
-            }
-
-            // Expandable details row
+            // Details Row (Expanded) - Matching Issues All Style
             var detailsRow = '<tr class="collapse" id="' + uniqueId + '">' +
-                '<td colspan="' + colspanCount + '" class="p-0 border-0">' +
+                '<td colspan="' + colspan + '" class="p-0 border-0">' +
                 '<div class="bg-light p-4 border-top">' +
                 '<div class="row g-3">' +
+                // Left Column: Details/Description
                 '<div class="col-md-8">' +
-                '<h6 class="fw-bold mb-3"><i class="fas fa-file-alt me-2"></i>Description</h6>' +
+                '<h6 class="fw-bold mb-3"><i class="fas fa-file-alt me-2"></i>Issue Details</h6>' +
                 '<div class="card">' +
-                '<div class="card-body">' +
-                (decorateIssueImages(it.description) || actualIssue && decorateIssueImages(actualIssue.details) || '<p class="text-muted">No description provided.</p>') +
+                '<div class="card-body issue-content">' + (decorateIssueImages(rawDesc) || '<p class="text-muted">No details provided.</p>') + '</div>' +
                 '</div>' +
                 '</div>' +
-                '</div>' +
+                // Right Column: Metadata
                 '<div class="col-md-4">' +
-                '<h6 class="fw-bold mb-3"><i class="fas fa-info-circle me-2"></i>Details</h6>' +
+                '<h6 class="fw-bold mb-3"><i class="fas fa-info-circle me-2"></i>Metadata</h6>' +
                 '<div class="card">' +
                 '<div class="card-body">' +
-                metadataHtml +
+                '<div class="mb-2"><strong>Issue Key:</strong><br><span class="badge bg-primary">' + escapeHtml(displayKey) + '</span></div>' +
+                '<div class="mb-2"><strong>Status:</strong><br>' + getStatusBadge(statusId, status) + '</div>' +
+                (userRole !== 'client' ? '<div class="mb-2"><strong>QA Status:</strong><br>' + qaStatusHtml + '</div>' : '') +
+                '<div class="mb-2"><strong>Severity:</strong><br><span class="badge bg-warning text-dark">' + escapeHtml((severity || 'N/A').toUpperCase()) + '</span></div>' +
+                '<div class="mb-2"><strong>Priority:</strong><br><span class="badge bg-info text-dark">' + escapeHtml((priority || 'N/A').toUpperCase()) + '</span></div>' +
+                (userRole !== 'client' ? '<div class="mb-2"><strong>Reporter(s):</strong><br>' + (it.reporters ? escapeHtml(it.reporters) : '<span class="text-muted">N/A</span>') + '</div>' : '') +
+                    (function() {
+                        // Pages section
+                        var pagesHtml = '<div class="mb-2"><strong>Pages:</strong> <span class="badge bg-secondary ms-1">' + pageCount + '</span>' +
+                            '<div class="mt-1 border rounded bg-white p-2" style="max-height:120px;overflow-y:auto;">' +
+                            '<ul class="list-unstyled mb-0 small">';
+                        (it.pages || []).forEach(function(pageId) {
+                            pagesHtml += '<li><i class="fas fa-file-alt text-muted me-1"></i>' + escapeHtml(getPageName(pageId)) + '</li>';
+                        });
+                        pagesHtml += '</ul></div></div>';
+
+                        // Grouped URLs section
+                        if (it.grouped_urls && it.grouped_urls.length > 0) {
+                            pagesHtml += '<div class="mb-2"><strong>Grouped URLs:</strong> <span class="badge bg-info ms-1">' + it.grouped_urls.length + '</span>' +
+                                '<button class="btn btn-link p-0 ms-1 text-primary grouped-urls-toggle" style="font-size:12px;text-decoration:none;" data-bs-target="#common-grouped-urls-list-' + it.id + '"><small>Show/Hide</small></button>' +
+                                '<div id="common-grouped-urls-list-' + it.id + '" class="mt-1 border rounded bg-white p-2" style="display:none; max-height:150px; overflow-y:auto;">' +
+                                '<ul class="list-unstyled mb-0 small" style="word-break: break-all;">';
+                            it.grouped_urls.forEach(function (url) {
+                                pagesHtml += '<li class="mb-1 pb-1 border-bottom last-child-border-0">' +
+                                    '<i class="fas fa-link text-muted me-1"></i>' +
+                                    '<a href="' + escapeAttr(url) + '" target="_blank" class="text-decoration-none">' + escapeHtml(url) + '</a>' +
+                                    '</li>';
+                            });
+                            pagesHtml += '</ul></div></div>';
+                        }
+
+                        return pagesHtml;
+                    })() +
+                (function () {
+                    var metaHtml = '';
+                    if (typeof issueMetadataFields !== 'undefined') {
+                        issueMetadataFields.forEach(function (f) {
+                            if (f.field_key === 'severity' || f.field_key === 'priority') return;
+                            var value = (it.metadata && it.metadata[f.field_key]) || it[f.field_key];
+                            if (value && value.length > 0) {
+                                var displayValue = Array.isArray(value) ? value.join(', ') : value;
+                                metaHtml += '<div class="mb-2 small"><strong>' + escapeHtml(f.field_label) + ':</strong> ' + escapeHtml(displayValue) + '</div>';
+                            }
+                        });
+                    }
+                    if (userRole !== 'client' && it.updated_at) {
+                        metaHtml += '<div class="mt-3 pt-2 border-top small text-muted">Updated: ' + new Date(it.updated_at).toLocaleString() + '</div>';
+                    }
+                    return metaHtml;
+                })() +
                 '</div>' +
                 '</div>' +
                 '</div>' +
@@ -5563,123 +5448,29 @@
             return mainRow + detailsRow;
         }).join('');
 
-        // Add click handlers for chevron toggle buttons in common issues
-        document.querySelectorAll('#commonIssuesBody .chevron-toggle-btn').forEach(function (btn) {
-            // Click handler for chevron button
-            btn.addEventListener('click', function (e) {
-                e.stopPropagation();
-                toggleCommonIssueRow(this);
-            });
-
-            // Keyboard handler (Enter or Space)
-            btn.addEventListener('keydown', function (e) {
-                if (e.keyCode === 13 || e.keyCode === 32) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    toggleCommonIssueRow(this);
-                }
-            });
-        });
-
-        // Add click handler for entire row
+        // Re-attach listeners for expandable behavior
         document.querySelectorAll('#commonIssuesBody .issue-expandable-row').forEach(function (row) {
-            row.style.cursor = 'pointer';
-
             row.addEventListener('click', function (e) {
-                // Don't expand if clicking on buttons, checkbox, inputs, or action buttons
-                if (e.target.closest('button') ||
-                    e.target.closest('input') ||
-                    e.target.closest('select') ||
-                    e.target.closest('.action-buttons-cell') ||
-                    e.target.closest('.checkbox-cell')) {
-                    return;
-                }
-
-                // Find the chevron button in this row and trigger it
-                var chevronBtn = this.querySelector('.chevron-toggle-btn');
-                if (chevronBtn) {
-                    toggleCommonIssueRow(chevronBtn);
-                }
-            });
-        });
-
-        // Helper function to toggle common issue row expansion
-        function toggleCommonIssueRow(btn) {
-            var targetId = btn.getAttribute('data-collapse-target');
-            if (targetId) {
-                var collapseEl = document.querySelector(targetId);
-                var chevronIcon = btn.querySelector('.chevron-icon');
-
-                if (collapseEl) {
-                    var isExpanded = collapseEl.classList.contains('show');
-
-                    if (isExpanded) {
-                        collapseEl.classList.remove('show');
-                        if (chevronIcon) chevronIcon.className = 'fas fa-chevron-right chevron-icon';
-                    } else {
-                        // Before expanding, check if we need to load issue details
-                        var commonIssueId = targetId.replace('#common-issue-details-', '');
-                        var commonIssue = issueData.common.find(function (ci) { return String(ci.id) === String(commonIssueId); });
-
-                        if (commonIssue && commonIssue.issue_id && commonIssue.pages && commonIssue.pages.length > 0) {
-                            var firstPageId = commonIssue.pages[0];
-
-                            // Check if page data is already loaded
-                            if (!issueData.pages[firstPageId] || !issueData.pages[firstPageId].final) {
-                                // Load the page data first
-                                loadFinalIssues(firstPageId).then(function () {
-                                    // Re-render common issues with updated data
-                                    renderCommonIssues();
-                                    // Now expand the row
-                                    var newCollapseEl = document.querySelector(targetId);
-                                    if (newCollapseEl) {
-                                        newCollapseEl.classList.add('show');
-                                        var newChevronIcon = document.querySelector('[data-collapse-target="' + targetId + '"] .chevron-icon');
-                                        if (newChevronIcon) newChevronIcon.className = 'fas fa-chevron-down chevron-icon';
-                                    }
-                                }).catch(function (err) {
-                                    // Expand anyway with basic info
-                                    collapseEl.classList.add('show');
-                                    if (chevronIcon) chevronIcon.className = 'fas fa-chevron-down chevron-icon';
-                                });
-                                return; // Don't expand yet, wait for data to load
-                            }
-                        }
-
-                        // Expand normally if data is already loaded
-                        collapseEl.classList.add('show');
-                        if (chevronIcon) chevronIcon.className = 'fas fa-chevron-down chevron-icon';
-                    }
-                }
-            }
-        }
-        
-        // Add event listeners for grouped URLs toggle buttons
-        document.querySelectorAll('#commonIssuesBody .grouped-urls-toggle-btn').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                var targetId = this.getAttribute('data-target');
-                var targetEl = document.getElementById(targetId);
-                var icon = this.querySelector('i');
+                if (e.target.closest('button') || e.target.closest('input') || e.target.closest('.action-buttons-cell')) return;
+                var targetId = this.getAttribute('data-collapse-target');
+                var detailsRow = document.querySelector(targetId);
+                var chevron = this.querySelector('.chevron-icon');
+                if (!detailsRow) return;
                 
-                if (targetEl) {
-                    if (targetEl.classList.contains('show')) {
-                        targetEl.classList.remove('show');
-                        if (icon) {
-                            icon.classList.remove('fa-chevron-up');
-                            icon.classList.add('fa-chevron-down');
-                        }
-                    } else {
-                        targetEl.classList.add('show');
-                        if (icon) {
-                            icon.classList.remove('fa-chevron-down');
-                            icon.classList.add('fa-chevron-up');
-                        }
-                    }
+                if (detailsRow.classList.contains('show')) {
+                    detailsRow.classList.remove('show');
+                    if (chevron) { chevron.classList.remove('fa-chevron-down'); chevron.classList.add('fa-chevron-right'); }
+                } else {
+                    detailsRow.classList.add('show');
+                    if (chevron) { chevron.classList.remove('fa-chevron-right'); chevron.classList.add('fa-chevron-down'); }
                 }
             });
         });
+
+        // Attach action listeners
+        document.querySelectorAll('.common-select').forEach(function(el) { el.addEventListener('click', function(e) { e.stopPropagation(); }); });
+        document.querySelectorAll('.common-edit').forEach(function(el) { el.addEventListener('click', function(e) { e.stopPropagation(); if(window.loadCommonIssues) editCommonIssue(this.dataset.id); }); });
+        document.querySelectorAll('.common-delete').forEach(function(el) { el.addEventListener('click', function(e) { e.stopPropagation(); if(window.loadCommonIssues) deleteCommonIssue(this.dataset.id); }); });
 
         document.dispatchEvent(new CustomEvent('pms:issueTableUpdated'));
     }
