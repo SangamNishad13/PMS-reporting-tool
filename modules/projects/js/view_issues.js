@@ -5469,8 +5469,42 @@
 
         // Attach action listeners
         document.querySelectorAll('.common-select').forEach(function(el) { el.addEventListener('click', function(e) { e.stopPropagation(); }); });
-        document.querySelectorAll('.common-edit').forEach(function(el) { el.addEventListener('click', function(e) { e.stopPropagation(); if(window.loadCommonIssues) editCommonIssue(this.dataset.id); }); });
-        document.querySelectorAll('.common-delete').forEach(function(el) { el.addEventListener('click', function(e) { e.stopPropagation(); if(window.loadCommonIssues) deleteCommonIssue(this.dataset.id); }); });
+
+        document.querySelectorAll('.common-edit').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var id = this.dataset.id;
+                var issue = (issueData.common || []).find(function(ci) { return String(ci.id) === String(id); });
+                if (issue) openCommonEditor(issue);
+            });
+        });
+
+        document.querySelectorAll('.common-delete').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var id = this.dataset.id;
+                if (!canEdit()) return;
+                if (!confirm('Delete this common issue? This cannot be undone.')) return;
+                var fd = new FormData();
+                fd.append('action', 'delete');
+                fd.append('project_id', projectId);
+                fd.append('ids', id);
+                fetch(issuesApiBase, { method: 'POST', body: fd, credentials: 'same-origin' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(res) {
+                        if (res && res.success) {
+                            if (typeof showToast === 'function') showToast('Common issue deleted.', 'success');
+                            if (window.loadCommonIssues) window.loadCommonIssues({ preserveFilters: true, keepPage: true });
+                        } else {
+                            if (typeof showToast === 'function') showToast((res && res.error) ? res.error : 'Failed to delete.', 'danger');
+                        }
+                    })
+                    .catch(function() {
+                        if (typeof showToast === 'function') showToast('Failed to delete.', 'danger');
+                    });
+            });
+        });
+
 
         document.dispatchEvent(new CustomEvent('pms:issueTableUpdated'));
     }
