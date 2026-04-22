@@ -883,14 +883,12 @@ echo '<script>(function(){try{function focusClose(){var container=document.query
                                         data-bs-target="#editUserModal<?php echo $user['id']; ?>">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <?php if ((int)($user['login_attempt_count'] ?? 0) >= 5): ?>
-                                <button type="button" class="btn btn-sm btn-danger unlock-user-btn"
+                                <button type="button" class="btn btn-sm <?php echo ((int)($user['login_attempt_count'] ?? 0) >= 5) ? 'btn-danger' : 'btn-outline-secondary'; ?> unlock-user-btn"
                                         data-username="<?php echo htmlspecialchars($user['username']); ?>"
                                         data-username-hash="<?php echo md5(strtolower($user['username'])); ?>"
-                                        title="Account Locked - Click to Unlock">
-                                    <i class="fas fa-lock"></i>
+                                        title="<?php echo ((int)($user['login_attempt_count'] ?? 0) >= 5) ? 'Account Locked - Click to Unlock' : 'Unlock / Clear Login Attempts'; ?>">
+                                    <i class="fas fa-<?php echo ((int)($user['login_attempt_count'] ?? 0) >= 5) ? 'lock' : 'unlock'; ?>"></i>
                                 </button>
-                                <?php endif; ?>
                                 <button type="button" class="btn btn-sm btn-info send-reset-email-btn" 
                                         data-user-id="<?php echo $user['id']; ?>"
                                         data-username="<?php echo htmlspecialchars($user['username']); ?>"
