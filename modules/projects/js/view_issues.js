@@ -5322,8 +5322,8 @@
                 return '<tr>' +
                     '<td><span class="badge bg-primary">' + escapeHtml(it.issue_key || ('ISS-' + it.issue_id)) + '</span></td>' +
                     '<td>' +
-                    '<div class="fw-semibold">' + escapeHtml(it.title || 'Shared issue') + '</div>' +
-                    (descriptionPreview ? '<div class="small text-muted mt-1">' + escapeHtml(descriptionPreview) + '</div>' : '') +
+                    '<div class="fw-semibold text-truncate-cell" title="' + escapeAttr(it.title || 'Shared issue') + '">' + escapeHtml(it.title || 'Shared issue') + '</div>' +
+                    (descriptionPreview ? '<div class="small text-muted mt-1 text-truncate-cell" title="' + escapeAttr(stripHtml(it.description || '')) + '">' + escapeHtml(descriptionPreview) + '</div>' : '') +
                     '</td>' +
                     '<td>' +
                     '<div class="d-flex flex-wrap gap-1">' +
@@ -5377,8 +5377,8 @@
                 '<i class="fas fa-chevron-right chevron-icon"></i>' +
                 '</button>' +
                 '<div>' +
-                '<div class="fw-bold text-dark">' + escapeHtml(it.title) + '</div>' +
-                (descriptionPreview ? '<div class="small text-muted">' + escapeHtml(descriptionPreview) + '</div>' : '') +
+                '<div class="fw-bold text-dark text-truncate-cell" title="' + escapeAttr(it.title) + '">' + escapeHtml(it.title) + '</div>' +
+                (descriptionPreview ? '<div class="small text-muted text-truncate-cell" title="' + escapeAttr(stripHtml(it.description || '')) + '">' + escapeHtml(descriptionPreview) + '</div>' : '') +
                 '</div>' +
                 '</div>' +
                 '</td>' +

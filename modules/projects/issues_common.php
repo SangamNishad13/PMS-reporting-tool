@@ -230,6 +230,9 @@ include __DIR__ . '/../../includes/header.php';
                 <button class="btn btn-outline-secondary btn-sm" id="commonIssuesRefreshBtn" title="Refresh issues">
                     <i class="fas fa-sync-alt"></i> Refresh
                 </button>
+                <button class="btn btn-sm btn-outline-secondary" id="kbShortcutsBtn" title="Keyboard Shortcuts">
+                    <i class="fas fa-keyboard me-1"></i><span class="d-none d-md-inline">Shortcuts</span>
+                </button>
                 <?php if ($_SESSION['role'] !== 'client'): ?>
                 <button class="btn btn-primary" id="commonAddBtn">
                     <i class="fas fa-plus me-1"></i> Add Common Issue
@@ -247,17 +250,32 @@ include __DIR__ . '/../../includes/header.php';
             </div>
             <?php endif; ?>
             <div class="table-responsive">
-                <table class="table table-hover align-middle">
+                <table class="table table-hover align-middle fixed-issue-table resizable-table" id="commonIssuesTable">
+                    <?php if ($_SESSION['role'] !== 'client'): ?>
+                    <colgroup>
+                        <col style="width:36px;">
+                        <col style="width:120px;">
+                        <col><!-- Title -->
+                        <col style="width:150px;">
+                        <col style="width:120px;">
+                    </colgroup>
+                    <?php else: ?>
+                    <colgroup>
+                        <col style="width:120px;">
+                        <col><!-- Title -->
+                        <col style="width:150px;">
+                    </colgroup>
+                    <?php endif; ?>
                     <thead class="table-light">
                         <tr>
                             <?php if ($_SESSION['role'] !== 'client'): ?>
-                            <th style="width:30px;"><input type="checkbox" id="commonSelectAll"></th>
+                            <th style="width:36px; position:relative;"><input type="checkbox" id="commonSelectAll"><div class="col-resizer"></div></th>
                             <?php endif; ?>
-                            <th style="width:120px;">Issue Key</th>
-                            <th>Common Issue Title</th>
-                            <th style="width:150px;">Pages</th>
+                            <th style="width:120px; position:relative;">Issue Key<div class="col-resizer"></div></th>
+                            <th style="position:relative;">Common Issue Title<div class="col-resizer"></div></th>
+                            <th style="width:150px; position:relative;">Pages<div class="col-resizer"></div></th>
                             <?php if ($_SESSION['role'] !== 'client'): ?>
-                            <th style="width:120px;">Actions</th>
+                            <th style="width:120px; position:relative;">Actions<div class="col-resizer"></div></th>
                             <?php endif; ?>
                         </tr>
                     </thead>
@@ -361,7 +379,19 @@ include __DIR__ . '/partials/issues_modals.php';
 
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/regression-panel.js?v=<?php echo time(); ?>"></script>
+<script src="<?php echo $baseDir; ?>/modules/projects/js/issue_navigation.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/assets/js/issues-common.js?v=<?php echo time(); ?>"></script>
+
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.IssueNavigation) {
+        window.IssueNavigation.init({
+            rowSelector: '.issue-expandable-row',
+            editBtnSelector: '.common-edit, .issue-open'
+        });
+    }
+});
+</script>
 
 <?php if ($_SESSION['role'] !== 'client'): ?>
 <!-- Floating Project Chat -->

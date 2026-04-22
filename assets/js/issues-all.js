@@ -322,7 +322,7 @@ function renderIssues() {
         mainRow +=
             '<td><button class="btn btn-link p-0 me-2 text-muted chevron-toggle" style="border:none;background:none;"><i class="fas fa-chevron-right chevron-icon" id="chevron-' + issue.id + '"></i></button>' +
             '<span class="badge bg-primary">' + escapeHtml(issue.issue_key) + '</span></td>' +
-            '<td>' + (issue.common_title ? '<div>' + escapeHtml(issue.common_title) + '</div><small class="text-muted">' + escapeHtml(issue.title) + '</small>' : '<div>' + escapeHtml(issue.title) + '</div>') + '</td>' +
+            '<td>' + (issue.common_title ? '<div class="text-truncate-cell" title="' + escapeAttr(issue.common_title) + '">' + escapeHtml(issue.common_title) + '</div><small class="text-muted text-truncate-cell" title="' + escapeAttr(issue.title) + '">' + escapeHtml(issue.title) + '</small>' : '<div class="text-truncate-cell" title="' + escapeAttr(issue.title) + '">' + escapeHtml(issue.title) + '</div>') + '</td>' +
             '<td><small>' + pagesHtml + '</small></td>' +
             '<td><span class="status-badge" style="background-color:' + issue.status_color + ';color:white;">' + escapeHtml(issue.status_name) + '</span></td>';
 

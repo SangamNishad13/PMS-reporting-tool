@@ -953,6 +953,9 @@ include __DIR__ . '/../../includes/header.php';
                                 <i class="fas fa-check"></i> Mark Client Ready
                             </button>
                             <button class="btn btn-sm btn-outline-secondary" id="finalDeleteSelected" disabled>Delete Selected</button>
+                            <button class="btn btn-sm btn-outline-secondary ms-1" id="kbShortcutsBtn" title="Keyboard Shortcuts">
+                                <i class="fas fa-keyboard me-1"></i><span class="d-none d-md-inline">Shortcuts</span>
+                            </button>
                         </div>
                     </div>
                     <?php else: ?>
@@ -980,23 +983,45 @@ include __DIR__ . '/../../includes/header.php';
                     </div>
                     <?php endif; ?>
                     <div class="final-issues-table-wrap">
-                        <table class="table table-sm table-hover align-middle mb-0">
+                        <table class="table table-sm table-hover align-middle mb-0 fixed-issue-table resizable-table" id="finalIssuesTable">
+                            <?php if ($_SESSION['role'] !== 'client'): ?>
+                            <colgroup>
+                                <col style="width:30px;">
+                                <col style="width:105px;">
+                                <col><!-- Title -->
+                                <col style="width:100px;">
+                                <col style="width:110px;">
+                                <col style="width:105px;">
+                                <col style="width:105px;">
+                                <col style="width:90px;">
+                                <col style="width:85px;">
+                                <col style="width:100px;">
+                            </colgroup>
+                            <?php else: ?>
+                            <colgroup>
+                                <col style="width:105px;">
+                                <col><!-- Title -->
+                                <col style="width:100px;">
+                                <col style="width:85px;">
+                                <col style="width:100px;">
+                            </colgroup>
+                            <?php endif; ?>
                             <thead class="table-light">
                                 <tr>
                                     <?php if ($_SESSION['role'] !== 'client'): ?>
-                                    <th style="width:30px;"><input type="checkbox" id="finalSelectAll"></th>
+                                    <th style="width:30px; position:relative;"><input type="checkbox" id="finalSelectAll"><div class="col-resizer"></div></th>
                                     <?php endif; ?>
-                                    <th style="width:110px;">Issue Key</th>
-                                    <th style="min-width:200px;">Issue Title</th>
-                                    <th style="width:110px;">Status</th>
+                                    <th style="width:105px; position:relative;">Issue Key<div class="col-resizer"></div></th>
+                                    <th style="position:relative;">Issue Title<div class="col-resizer"></div></th>
+                                    <th style="width:100px; position:relative;">Status<div class="col-resizer"></div></th>
                                     <?php if ($_SESSION['role'] !== 'client'): ?>
-                                    <th style="width:120px;">QA Status</th>
-                                    <th style="width:110px;">Reporter</th>
-                                    <th style="width:110px;">QA Name</th>
-                                    <th style="width:95px;">Client Ready</th>
+                                    <th style="width:110px; position:relative;">QA Status<div class="col-resizer"></div></th>
+                                    <th style="width:105px; position:relative;">Reporter<div class="col-resizer"></div></th>
+                                    <th style="width:105px; position:relative;">QA Name<div class="col-resizer"></div></th>
+                                    <th style="width:90px; position:relative;">Client Ready<div class="col-resizer"></div></th>
                                     <?php endif; ?>
-                                    <th style="width:90px;">Pages</th>
-                                    <th style="width:110px;">Actions</th>
+                                    <th style="width:85px; position:relative;">Pages<div class="col-resizer"></div></th>
+                                    <th style="width:100px; position:relative;">Actions<div class="col-resizer"></div></th>
                                 </tr>
                             </thead>
                             <tbody id="finalIssuesBody">
@@ -1295,6 +1320,18 @@ include __DIR__ . '/../../includes/header.php';
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/regression-panel.js?v=<?php echo time(); ?>"></script>
+<script src="<?php echo $baseDir; ?>/modules/projects/js/issue_navigation.js?v=<?php echo time(); ?>"></script>
+
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.IssueNavigation) {
+        window.IssueNavigation.init({
+            rowSelector: '.issue-expandable-row',
+            editBtnSelector: '.final-edit, .common-edit, .issue-open'
+        });
+    }
+});
+</script>
 
 <script nonce="<?php echo $cspNonce ?? ''; ?>">
 document.addEventListener('pms:issues-changed', function (e) {

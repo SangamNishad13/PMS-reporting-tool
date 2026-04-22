@@ -532,31 +532,55 @@ body.client-issue-sidebar-open {
                     <button class="btn btn-sm btn-outline-primary" id="refreshBtn">
                         <i class="fas fa-sync-alt"></i> Refresh
                     </button>
+                    <button class="btn btn-sm btn-outline-secondary" id="kbShortcutsBtn" title="Keyboard Shortcuts" aria-label="Show keyboard shortcuts">
+                        <i class="fas fa-keyboard me-1"></i><span class="d-none d-md-inline">Shortcuts</span>
+                    </button>
                 </div>
             </div>
 
             <div class="table-responsive">
-                <table class="table table-hover" id="issuesTable">
+                <table class="table table-hover fixed-issue-table resizable-table" id="issuesTable">
+                    <?php if ($_SESSION['role'] !== 'client'): ?>
+                    <colgroup>
+                        <col style="width:36px;">
+                        <col style="width:105px;">
+                        <col><!-- Title: takes remaining space -->
+                        <col style="width:130px;">
+                        <col style="width:110px;">
+                        <col style="width:100px;">
+                        <col style="width:120px;">
+                        <col style="width:105px;">
+                        <col style="width:95px;">
+                    </colgroup>
+                    <?php else: ?>
+                    <colgroup>
+                        <col style="width:105px;">
+                        <col><!-- Title -->
+                        <col style="width:130px;">
+                        <col style="width:110px;">
+                        <col style="width:95px;">
+                    </colgroup>
+                    <?php endif; ?>
                     <thead class="table-light">
                         <tr>
                             <?php if ($_SESSION['role'] !== 'client'): ?>
-                            <th style="width: 48px;"><input type="checkbox" id="issuesSelectAll" aria-label="Select all issues"></th>
+                            <th style="position:relative;"><input type="checkbox" id="issuesSelectAll" aria-label="Select all issues"><div class="col-resizer"></div></th>
                             <?php endif; ?>
-                            <th style="width: 100px;">Issue Key</th>
-                            <th>Title</th>
-                            <th style="width: 150px;">Page(s)</th>
-                            <th style="width: 120px;">Status</th>
+                            <th style="position:relative;">Issue Key<div class="col-resizer"></div></th>
+                            <th style="position:relative;">Title<div class="col-resizer"></div></th>
+                            <th style="position:relative;">Page(s)<div class="col-resizer"></div></th>
+                            <th style="position:relative;">Status<div class="col-resizer"></div></th>
                             <?php if ($_SESSION['role'] !== 'client'): ?>
-                            <th style="width: 110px;">Client Ready</th>
-                            <th style="width: 150px;">QA Status</th>
-                            <th style="width: 120px;">Reporter</th>
+                            <th style="position:relative;">Client Ready<div class="col-resizer"></div></th>
+                            <th style="position:relative;">QA Status<div class="col-resizer"></div></th>
+                            <th style="position:relative;">Reporter<div class="col-resizer"></div></th>
                             <?php endif; ?>
-                            <th style="width: 100px;">Actions</th>
+                            <th style="position:relative;">Actions<div class="col-resizer"></div></th>
                         </tr>
                     </thead>
                     <tbody id="issuesTableBody">
                         <tr>
-                            <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '5' : '7'; ?>" class="text-center py-5">
+                            <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '5' : '9'; ?>" class="text-center py-5">
                                 <div class="spinner-border text-primary" role="status">
                                     <span class="visually-hidden">Loading...</span>
                                 </div>
@@ -632,8 +656,20 @@ window.issueMetadataFields = <?php echo json_encode($metadataFields ?? []); ?>;
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/regression-panel.js?v=<?php echo time(); ?>"></script>
+<script src="<?php echo $baseDir; ?>/modules/projects/js/issue_navigation.js?v=<?php echo time(); ?>"></script>
 
 <script src="<?php echo $baseDir; ?>/assets/js/issues-all.js?v=<?php echo time(); ?>"></script>
+
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.IssueNavigation) {
+        window.IssueNavigation.init({
+            rowSelector: '.issue-row',
+            editBtnSelector: '.edit-btn, .issue-open'
+        });
+    }
+});
+</script>
 
 
 <?php if ($normalizedUserRole !== 'client'): ?>
