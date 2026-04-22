@@ -220,6 +220,7 @@ function openIssueImageModal(src) {
 function loadIssues(options) {
     var opts = options || {};
     var preserveFilters = !!opts.preserveFilters;
+    var keepPage        = !!opts.keepPage;
     var silentErrors    = !!opts.silentErrors;
     var immediate       = !!opts.immediate;
 
@@ -266,7 +267,14 @@ function performLoadIssues(preserveFilters, silentErrors, retryCount) {
                 }
                 return ka.localeCompare(kb);
             });
-            if (preserveFilters) { applyFilters(); } else { filteredIssues = allIssues; updateCounts(); renderIssues(); }
+            if (preserveFilters) { 
+                applyFilters({ keepPage: keepPage }); 
+            } else { 
+                filteredIssues = allIssues; 
+                if (!keepPage) currentPage = 1;
+                updateCounts(); 
+                renderIssues(); 
+            }
         } else {
             throw new Error(data.message || 'Failed to load issues');
         }
@@ -426,7 +434,8 @@ function updateCounts() {
     // totalCount and filteredCount elements removed - info shown in pagination
 }
 
-function applyFilters() {
+function applyFilters(options) {
+    var opts = options || {};
     var searchTerm    = document.getElementById('searchInput').value.toLowerCase();
     var pageFilter    = ($('#filterPage').val()   || []);
     var statusFilter  = ($('#filterStatus').val() || []);
@@ -457,7 +466,9 @@ function applyFilters() {
         }
         return true;
     });
-    currentPage = 1; // reset to first page on filter change
+    if (!opts.keepPage) {
+        currentPage = 1; // reset to first page on filter change
+    }
     updateCounts();
     renderIssues();
 }
@@ -752,7 +763,7 @@ document.addEventListener('pms:issues-changed', function (e) {
         applyFilters();
         return;
     }
-    loadIssues({ preserveFilters: true, silentErrors: true });
+    loadIssues({ preserveFilters: true, keepPage: true, silentErrors: true });
 });
 
 // ── Initialization ──

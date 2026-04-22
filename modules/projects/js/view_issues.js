@@ -8617,6 +8617,9 @@
     window.loadCommonIssues = loadCommonIssues;
     window.openFinalEditor = openFinalEditor;
     window.updateIssueTabCounts = updateIssueTabCounts;
+    window.renderFinalIssues = renderFinalIssues;
+    window.renderCommonIssues = renderCommonIssues;
+    window.renderAll = renderAll;
 
     // Expose toggleGroupedUrls globally (used by onclick in rendered HTML)
     window.toggleGroupedUrls = function(issueId, event) {

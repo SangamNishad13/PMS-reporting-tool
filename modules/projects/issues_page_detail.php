@@ -958,30 +958,80 @@ include __DIR__ . '/../../includes/header.php';
                             </button>
                         </div>
                     </div>
-                    <?php else: ?>
-                    <div class="px-3 py-2 border-bottom bg-light small text-muted">
-                        Use the Update button to change issue status or add a regression comment.
-                    </div>
-                    <div class="px-3 py-3 border-bottom bg-white">
-                        <div class="row g-2 align-items-end">
-                            <div class="col-md-6">
-                                <label for="clientIssueSearch" class="form-label">Search issues</label>
-                                <input type="search" class="form-control" id="clientIssueSearch" placeholder="Search by issue title or details">
+                    <?php endif; ?>
+
+                    <!-- Unified Filters Section -->
+                    <div class="filter-section border-bottom bg-light px-3 py-3">
+                        <div class="row align-items-end g-3">
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1 fw-bold"><i class="fas fa-search me-1"></i> Search</label>
+                                <input type="text" class="form-control form-control-sm" id="searchInput" placeholder="Search by title, key, or description...">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small mb-1 fw-bold"><i class="fas fa-flag me-1"></i> Status</label>
+                                <select class="form-select form-select-sm" id="filterStatus" multiple>
+                                    <option value="">All Statuses</option>
+                                    <?php foreach ($issueStatuses as $status): ?>
+                                        <option value="<?php echo $status['id']; ?>"><?php echo htmlspecialchars($status['name']); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <?php if ($_SESSION['role'] !== 'client'): ?>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1 fw-bold"><i class="fas fa-check-circle me-1"></i> QA Status</label>
+                                <select class="form-select form-select-sm" id="filterQAStatus" multiple>
+                                    <option value="">All QA Statuses</option>
+                                    <?php foreach ($qaStatuses as $qaStatus): ?>
+                                        <option value="<?php echo htmlspecialchars($qaStatus['status_key']); ?>">
+                                            <?php echo htmlspecialchars($qaStatus['status_label']); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
                             </div>
                             <div class="col-md-3">
-                                <label for="clientIssueStatusFilter" class="form-label">Filter by status</label>
-                                <select class="form-select" id="clientIssueStatusFilter">
-                                    <option value="">All statuses</option>
-                                    <option value="open">Open</option>
-                                    <option value="in_progress">In Progress</option>
-                                    <option value="fixed">Fixed</option>
-                                    <option value="resolved">Resolved</option>
-                                    <option value="reopened">Reopened</option>
+                                <label class="form-label small mb-1 fw-bold"><i class="fas fa-user me-1"></i> Reporter</label>
+                                <select class="form-select form-select-sm" id="filterReporter" multiple>
+                                    <option value="">All Reporters</option>
+                                    <?php foreach ($projectUsers as $reporter): ?>
+                                        <option value="<?php echo $reporter['id']; ?>"><?php echo htmlspecialchars($reporter['full_name']); ?></option>
+                                    <?php endforeach; ?>
                                 </select>
+                            </div>
+                            <?php endif; ?>
+                            <div class="col-md-1">
+                                <button class="btn btn-sm btn-secondary w-100" id="clearFilters">
+                                    <i class="fas fa-times"></i> Clear
+                                </button>
                             </div>
                         </div>
                     </div>
-                    <?php endif; ?>
+
+                    <!-- Pagination Top -->
+                    <div class="px-3 py-2 border-bottom bg-white">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <div class="d-flex align-items-center gap-1">
+                                    <label class="text-muted small mb-0">Per page:</label>
+                                    <select id="perPageSelect" class="form-select form-select-sm" style="width:auto; min-width:75px;">
+                                        <option value="25" selected>25</option>
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                        <option value="250">250</option>
+                                        <option value="500">500</option>
+                                    </select>
+                                </div>
+                                <span class="text-muted small" id="paginationInfoTop"></span>
+                                <nav aria-label="Issues pagination top">
+                                    <ul class="pagination pagination-sm mb-0" id="paginationControlsTop"></ul>
+                                </nav>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary" id="refreshBtn">
+                                    <i class="fas fa-sync-alt"></i> Refresh
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                     <div class="final-issues-table-wrap">
                         <table class="table table-sm table-hover align-middle mb-0 fixed-issue-table resizable-table" id="finalIssuesTable">
                             <?php if ($_SESSION['role'] !== 'client'): ?>
@@ -1032,6 +1082,13 @@ include __DIR__ . '/../../includes/header.php';
                                 </td></tr>
                             </tbody>
                         </table>
+                    </div>
+                    <!-- Pagination Bottom -->
+                    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top bg-white flex-wrap gap-2" id="paginationBar">
+                        <div class="text-muted small" id="paginationInfo"></div>
+                        <nav aria-label="Issues pagination">
+                            <ul class="pagination pagination-sm mb-0" id="paginationControls"></ul>
+                        </nav>
                     </div>
                 </div>
                 <?php if ($_SESSION['role'] !== 'client'): ?>
@@ -1091,6 +1148,13 @@ include __DIR__ . '/../../includes/header.php';
                                 <tr><td colspan="14" class="text-muted text-center py-4">No automated findings yet. Run scan first.</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                    <!-- Pagination Bottom -->
+                    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top bg-white flex-wrap gap-2" id="paginationBar">
+                        <div class="text-muted small" id="paginationInfo"></div>
+                        <nav aria-label="Issues pagination">
+                            <ul class="pagination pagination-sm mb-0" id="paginationControls"></ul>
+                        </nav>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -1320,6 +1384,7 @@ include __DIR__ . '/../../includes/header.php';
 
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_title_field.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
+<script src="<?php echo $baseDir; ?>/assets/js/issues-page-detail.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/regression-panel.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_navigation.js?v=<?php echo time(); ?>"></script>
 
@@ -1334,32 +1399,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<script nonce="<?php echo $cspNonce ?? ''; ?>">
-document.addEventListener('pms:issues-changed', function (e) {
-    var detail = e.detail || {};
-    if (detail.source === 'internal') {
-        // view_issues.js already updated in-memory data and called renderAll()
-        // Just reload common issues from API to stay in sync
-        if (typeof window.loadCommonIssues === 'function') {
-            window.loadCommonIssues({ silent: true });
-        }
-    } else {
-        // External change (another tab/page) — reload everything from API
-        if (typeof window.loadFinalIssues === 'function') {
-            window.loadFinalIssues(<?php echo (int)$pageId; ?>, { silent: true });
-        }
-        if (typeof window.loadCommonIssues === 'function') {
-            window.loadCommonIssues({ silent: true });
-        }
-    }
-});
-
-document.getElementById('pageIssuesRefreshBtn').addEventListener('click', function () {
-    if (typeof window.loadFinalIssues === 'function') {
-        window.loadFinalIssues(<?php echo (int)$pageId; ?>);
-    }
-});
-</script>
 
 <script nonce="<?php echo $cspNonce ?? ''; ?>">
 // Automated findings -> Needs Review tab

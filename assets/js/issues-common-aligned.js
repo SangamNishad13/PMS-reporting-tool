@@ -163,6 +163,7 @@ function decorateIssueImages(html) {
 function loadIssues(options) {
     var opts = options || {};
     var preserveFilters = !!opts.preserveFilters;
+    var keepPage = !!opts.keepPage;
     var silentErrors    = !!opts.silentErrors;
     var immediate       = !!opts.immediate;
 
@@ -206,7 +207,14 @@ function performLoadIssues(preserveFilters, silentErrors, retryCount) {
                 }
                 return ka.localeCompare(kb);
             });
-            if (preserveFilters) { applyFilters(); } else { filteredIssues = allIssues; updateCounts(); renderIssues(); }
+            if (preserveFilters) {
+                applyFilters({ keepPage: keepPage });
+            } else {
+                filteredIssues = allIssues;
+                if (!keepPage) currentPage = 1;
+                updateCounts();
+                renderIssues();
+            }
         } else {
             throw new Error(data.message || 'Failed to load issues');
         }
@@ -331,7 +339,8 @@ function renderIssues() {
 
 function updateCounts() {}
 
-function applyFilters() {
+function applyFilters(options) {
+    var opts = options || {};
     var searchTerm    = document.getElementById('searchInput').value.toLowerCase();
     var statusFilter  = ($('#filterStatus').val() || []);
     var qaStatusFilterEl  = document.getElementById('filterQAStatus');
@@ -357,7 +366,9 @@ function applyFilters() {
         }
         return true;
     });
-    currentPage = 1;
+    if (!opts.keepPage) {
+        currentPage = 1;
+    }
     renderIssues();
 }
 
@@ -526,7 +537,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Listen for changes from the main issue editor (view_issues.js)
     document.addEventListener('pms:issues-changed', function(e) {
         // Refresh the list to pick up the changes and ensure correct rendering
-        loadIssues({ preserveFilters: true });
+        loadIssues({ preserveFilters: true, keepPage: true });
     });
 
     loadIssues({ immediate: true });
