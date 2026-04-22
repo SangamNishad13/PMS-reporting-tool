@@ -95,6 +95,14 @@ window.IssueNavigation = (function() {
                 transform: translate(-50%, -50%);
                 pointer-events: none;
                 text-transform: uppercase;
+                /* Fix truncation "..." artifacts */
+                white-space: nowrap !important;
+                overflow: visible !important;
+                text-overflow: clip !important;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                line-height: 1;
             }
             .${config.badgeClass}.badge-expand {
                 background: #198754; /* Green for expand */

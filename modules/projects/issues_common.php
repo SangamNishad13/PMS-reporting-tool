@@ -220,27 +220,91 @@ include __DIR__ . '/../../includes/header.php';
 
     <?php include __DIR__ . '/partials/regression_panel.php'; ?>
 
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <div>
-                <h5 class="mb-0">Common Issues</h5>
-                <div class="small text-muted">Issues that apply across multiple pages</div>
+    <!-- Filters Section -->
+    <div class="filter-section">
+        <div class="row align-items-end g-3">
+            <div class="col-md-3">
+                <label class="form-label"><i class="fas fa-search me-1"></i> Search</label>
+                <input type="text" class="form-control" id="searchInput" placeholder="Search by title, key, or description...">
             </div>
-            <div class="d-flex gap-2">
-                <button class="btn btn-outline-secondary btn-sm" id="commonIssuesRefreshBtn" title="Refresh issues">
-                    <i class="fas fa-sync-alt"></i> Refresh
+            <div class="col-md-2">
+                <label class="form-label"><i class="fas fa-flag me-1"></i> Status</label>
+                <select class="form-select" id="filterStatus" multiple>
+                    <option value="">All Statuses</option>
+                    <?php foreach ($issueStatuses as $status): ?>
+                        <option value="<?php echo (int)$status['id']; ?>"><?php echo htmlspecialchars($status['name']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php if ($_SESSION['role'] !== 'client'): ?>
+            <div class="col-md-3">
+                <label class="form-label"><i class="fas fa-check-circle me-1"></i> QA Status</label>
+                <select class="form-select" id="filterQAStatus" multiple>
+                    <option value="">All QA Statuses</option>
+                    <?php foreach ($qaStatuses as $qaStatus): ?>
+                        <option value="<?php echo htmlspecialchars($qaStatus['status_key']); ?>">
+                            <?php echo htmlspecialchars($qaStatus['status_label']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label"><i class="fas fa-user me-1"></i> Reporter</label>
+                <select class="form-select" id="filterReporter" multiple>
+                    <option value="">All Reporters</option>
+                    <?php foreach ($projectUsers as $reporter): ?>
+                        <option value="<?php echo (int)$reporter['id']; ?>"><?php echo htmlspecialchars($reporter['full_name']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
+            <div class="col-md-1">
+                <button class="btn btn-secondary w-100" id="clearFilters">
+                    <i class="fas fa-times"></i> Clear
                 </button>
-                <button class="btn btn-sm btn-outline-secondary" id="kbShortcutsBtn" title="Keyboard Shortcuts">
-                    <i class="fas fa-keyboard me-1"></i><span class="d-none d-md-inline">Shortcuts</span>
-                </button>
-                <?php if ($_SESSION['role'] !== 'client'): ?>
-                <button class="btn btn-primary" id="commonAddBtn">
-                    <i class="fas fa-plus me-1"></i> Add Common Issue
-                </button>
-                <?php endif; ?>
             </div>
         </div>
+    </div>
+
+    <div class="card">
         <div class="card-body">
+            <!-- Toolbar: per page + info + pagination + actions -->
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <div class="d-flex align-items-center gap-1">
+                        <label class="text-muted small mb-0">Per page:</label>
+                        <select id="perPageSelect" class="form-select form-select-sm" style="width:auto; min-width:75px; padding-right:1.75rem;">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                            <option value="250">250</option>
+                            <option value="500">500</option>
+                            <option value="1000">1000</option>
+                        </select>
+                    </div>
+                    <span class="text-muted small" id="paginationInfoTop"></span>
+                    <nav aria-label="Issues pagination top">
+                        <ul class="pagination pagination-sm mb-0" id="paginationControlsTop"></ul>
+                    </nav>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <?php if ($_SESSION['role'] !== 'client'): ?>
+                    <button class="btn btn-sm btn-primary" id="addIssueBtn">
+                        <i class="fas fa-plus me-1"></i> Add Issue
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" id="allIssuesMarkClientReadyBtn" disabled>
+                        <i class="fas fa-check me-1"></i> Mark Client Ready
+                    </button>
+                    <?php endif; ?>
+                    <button class="btn btn-sm btn-outline-primary" id="commonIssuesRefreshBtn">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" id="kbShortcutsBtn" title="Keyboard Shortcuts">
+                        <i class="fas fa-keyboard me-1"></i><span class="d-none d-md-inline">Shortcuts</span>
+                    </button>
+                </div>
+            </div>
+
             <?php if ($_SESSION['role'] === 'client'): ?>
             <div class="alert alert-info d-flex align-items-start gap-2">
                 <i class="fas fa-circle-info mt-1"></i>
@@ -249,55 +313,56 @@ include __DIR__ . '/../../includes/header.php';
                 </div>
             </div>
             <?php endif; ?>
+
             <div class="table-responsive">
                 <table class="table table-hover align-middle fixed-issue-table resizable-table" id="commonIssuesTable">
                     <?php if ($_SESSION['role'] !== 'client'): ?>
                     <colgroup>
                         <col style="width:36px;">
-                        <col style="width:120px;">
+                        <col style="width:115px;">
                         <col><!-- Title -->
-                        <col style="width:150px;">
-                        <col style="width:120px;">
+                        <col style="width:125px;">
+                        <col style="width:105px;">
                     </colgroup>
                     <?php else: ?>
                     <colgroup>
-                        <col style="width:120px;">
+                        <col style="width:115px;">
                         <col><!-- Title -->
-                        <col style="width:150px;">
+                        <col style="width:125px;">
                     </colgroup>
                     <?php endif; ?>
                     <thead class="table-light">
                         <tr>
                             <?php if ($_SESSION['role'] !== 'client'): ?>
-                            <th style="width:36px; position:relative;"><input type="checkbox" id="commonSelectAll"><div class="col-resizer"></div></th>
+                            <th style="position:relative;"><input type="checkbox" id="commonSelectAll" aria-label="Select all issues"><div class="col-resizer"></div></th>
                             <?php endif; ?>
-                            <th style="width:120px; position:relative;">Issue Key<div class="col-resizer"></div></th>
+                            <th style="position:relative;">Issue Key<div class="col-resizer"></div></th>
                             <th style="position:relative;">Common Issue Title<div class="col-resizer"></div></th>
-                            <th style="width:150px; position:relative;">Pages<div class="col-resizer"></div></th>
+                            <th style="position:relative;">Page(s)<div class="col-resizer"></div></th>
                             <?php if ($_SESSION['role'] !== 'client'): ?>
-                            <th style="width:120px; position:relative;">Actions<div class="col-resizer"></div></th>
+                            <th style="position:relative;">Actions<div class="col-resizer"></div></th>
                             <?php endif; ?>
                         </tr>
                     </thead>
                     <tbody id="commonIssuesBody">
                         <tr>
-                            <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '3' : '5'; ?>" class="text-center text-muted py-5">
-                                <i class="fas fa-layer-group fa-3x mb-3 opacity-25"></i>
-                                <div>No common issues added yet.</div>
-                                <?php if ($_SESSION['role'] !== 'client'): ?>
-                                <div class="small mt-2">Click "Add Common Issue" to create one</div>
-                                <?php endif; ?>
+                            <td colspan="<?php echo ($_SESSION['role'] === 'client') ? '3' : '5'; ?>" class="text-center py-5">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2 text-muted">Loading common issues...</p>
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-            <div class="alert alert-info small mt-3 mb-0">
-                <i class="fas fa-info-circle me-1"></i>
-                <strong><?php echo $_SESSION['role'] === 'client' ? 'Note:' : 'Tip:'; ?></strong>
-                <?php echo $_SESSION['role'] === 'client'
-                    ? 'These issues are maintained by the delivery team when the same problem appears on multiple pages.'
-                    : 'If a final issue applies to more than one page, fill the "Common Issue Title" field while adding it.'; ?>
+
+            <!-- Pagination Bottom -->
+            <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2" id="paginationBar">
+                <div class="text-muted small" id="paginationInfo"></div>
+                <nav aria-label="Issues pagination">
+                    <ul class="pagination pagination-sm mb-0" id="paginationControls"></ul>
+                </nav>
             </div>
         </div>
     </div>
@@ -307,46 +372,6 @@ include __DIR__ . '/../../includes/header.php';
 // Include the final issue modal from issues_modals.php
 include __DIR__ . '/partials/issues_modals.php'; 
 ?>
-
-<!-- Common Issue Modal -->
-<div class="modal fade" id="commonIssueModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <div>
-                    <h5 class="modal-title" id="commonEditorTitle">New Common Issue</h5>
-                    <div class="small text-muted">Title + pages + details.</div>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="commonIssueEditId" value="">
-                <div class="row g-3">
-                    <div class="col-lg-6">
-                        <label class="form-label">Common Issue Title</label>
-                        <input type="text" class="form-control" id="commonIssueTitle" placeholder="Common issue title">
-                    </div>
-                    <div class="col-lg-6">
-                        <label class="form-label">Page Name(s)</label>
-                        <select id="commonIssuePages" class="form-select issue-select2" multiple>
-                            <?php foreach ($projectPages as $p): ?>
-                                <option value="<?php echo (int)$p['id']; ?>"><?php echo htmlspecialchars($p['page_name']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Details</label>
-                        <textarea id="commonIssueDetails" class="issue-summernote"></textarea>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button class="btn btn-primary" id="commonIssueSaveBtn">Save</button>
-            </div>
-        </div>
-    </div>
-</div>
 
 <!-- Summernote JS -->
 <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
@@ -381,7 +406,7 @@ include __DIR__ . '/partials/issues_modals.php';
 <script src="<?php echo $baseDir; ?>/modules/projects/js/view_issues.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/regression-panel.js?v=<?php echo time(); ?>"></script>
 <script src="<?php echo $baseDir; ?>/modules/projects/js/issue_navigation.js?v=<?php echo time(); ?>"></script>
-<script src="<?php echo $baseDir; ?>/assets/js/issues-common.js?v=<?php echo time(); ?>"></script>
+<script src="<?php echo $baseDir; ?>/assets/js/issues-common-aligned.js?v=<?php echo time(); ?>"></script>
 
 <script nonce="<?php echo $cspNonce ?? ''; ?>">
 document.addEventListener('DOMContentLoaded', function() {

@@ -908,6 +908,179 @@ try {
         jsonResponse(['success' => true, 'issues' => $out]);
     }
 
+    if ($method === 'GET' && $action === 'common_get_all') {
+        // Cache key based on project + role
+        $cacheKey = "issues_common_all_{$projectId}_" . ($userRole === 'client' ? 'client' : 'staff');
+        $cacheTtl = 120; // 2 minutes
+
+        // Try APCu first
+        $cached = false;
+        if (function_exists('apcu_fetch')) {
+            $data = apcu_fetch($cacheKey, $cached);
+            if ($cached) {
+                jsonResponse(['success' => true, 'issues' => $data, 'cached' => true]);
+            }
+        }
+
+        // Fetch all COMMON issues for the project with complete information
+        // We join with common_issues table to only get shared ones.
+        $sql = "SELECT DISTINCT i.*, 
+                       s.name as status_name,
+                       s.color as status_color,
+                       reporter.full_name as reporter_name,
+                       (SELECT COALESCE(MAX(ih.id), 0) FROM issue_history ih WHERE ih.issue_id = i.id) AS latest_history_id
+                FROM issues i
+                INNER JOIN common_issues ci ON i.id = ci.issue_id
+                LEFT JOIN issue_statuses s ON i.status_id = s.id
+                LEFT JOIN users reporter ON i.reporter_id = reporter.id
+                WHERE i.project_id = ?";
+        
+        if ($userRole === 'client') {
+            $sql .= " AND i.client_ready = 1";
+        }
+        
+        $sql .= " ORDER BY i.issue_key ASC";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$projectId]);
+        $issues = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fetch all metadata, pages, etc. for these specific common issues
+        $issueIds = array_map(function($r){ return (int)$r['id']; }, $issues);
+        $metaMap = [];
+        $pageMap = [];
+        $reporterQaStatusByIssue = [];
+        
+        if (!empty($issueIds)) {
+            $placeholders = implode(',', array_fill(0, count($issueIds), '?'));
+            
+            // Metadata
+            $metaStmt = $db->prepare("SELECT issue_id, meta_key, meta_value FROM issue_metadata WHERE issue_id IN ($placeholders)");
+            $metaStmt->execute($issueIds);
+            while ($m = $metaStmt->fetch(PDO::FETCH_ASSOC)) {
+                $iid = (int)$m['issue_id'];
+                if (!isset($metaMap[$iid])) $metaMap[$iid] = [];
+                if (!isset($metaMap[$iid][$m['meta_key']])) $metaMap[$iid][$m['meta_key']] = [];
+                $metaMap[$iid][$m['meta_key']][] = $m['meta_value'];
+            }
+            
+            // Page names
+            $pageStmt = $db->prepare("
+                SELECT ip.issue_id, pp.id, pp.page_name, pp.page_number
+                FROM issue_pages ip
+                INNER JOIN project_pages pp ON ip.page_id = pp.id
+                WHERE ip.issue_id IN ($placeholders)
+            ");
+            $pageStmt->execute($issueIds);
+            while ($p = $pageStmt->fetch(PDO::FETCH_ASSOC)) {
+                $iid = (int)$p['issue_id'];
+                if (!isset($pageMap[$iid])) $pageMap[$iid] = [];
+                $pageMap[$iid][] = ['id' => (int)$p['id'], 'name' => $p['page_name'], 'number' => $p['page_number']];
+            }
+            
+            $reporterQaStatusByIssue = loadReporterQaStatusMapByIssueIds($db, $issueIds);
+        }
+        
+        $qaStatusStmt = $db->query("SELECT status_key, status_label, badge_color FROM qa_status_master WHERE is_active = 1");
+        $qaStatusMaster = [];
+        while ($qs = $qaStatusStmt->fetch(PDO::FETCH_ASSOC)) {
+            $qaStatusMaster[$qs['status_key']] = ['label' => $qs['status_label'], 'color' => $qs['badge_color']];
+        }
+
+        $out = [];
+        foreach ($issues as $i) {
+            $iid = (int)$i['id'];
+            $meta = $metaMap[$iid] ?? [];
+            $reporterQaStatusMap = $reporterQaStatusByIssue[$iid] ?? [];
+            if (empty($reporterQaStatusMap) && isset($meta['reporter_qa_status_map'])) {
+                $reporterQaStatusMap = parseReporterQaStatusMapFromMetaValues($meta['reporter_qa_status_map']);
+            }
+            
+            $pages = $pageMap[$iid] ?? [];
+            $pageNames = array_map(function($p) { return $p['number'] . ' - ' . $p['name']; }, $pages);
+            $pageIds = array_map(function($p) { return $p['id']; }, $pages);
+            
+            // Sync with page_ids metadata if necessary
+            if (empty($pages) && isset($meta['page_ids'])) {
+                $pIds = is_array($meta['page_ids']) ? $meta['page_ids'] : explode(',', $meta['page_ids']);
+                $pageIds = array_values(array_filter(array_map('intval', $pIds)));
+                if (!empty($pageIds)) {
+                     $pageStmt = $db->prepare("SELECT id, page_name, page_number FROM project_pages WHERE id IN (".implode(',', array_fill(0, count($pageIds), '?')).")");
+                     $pageStmt->execute($pageIds);
+                     $pageData = $pageStmt->fetchAll(PDO::FETCH_ASSOC);
+                     $pageNames = array_map(function($p) { return $p['page_number'] . ' - ' . $p['page_name']; }, $pageData);
+                     $pageIds = array_map(function($p) { return (int)$p['id']; }, $pageData);
+                }
+            }
+
+            $qaStatuses = []; $qaStatusKeys = [];
+            if (!empty($reporterQaStatusMap)) {
+                foreach ($reporterQaStatusMap as $statusValues) {
+                    foreach ((array)$statusValues as $sk) {
+                        $key = strtolower(trim((string)$sk)); if ($key !== '') $qaStatusKeys[] = $key;
+                    }
+                }
+                $qaStatusKeys = array_values(array_unique($qaStatusKeys));
+            }
+            if (empty($qaStatusKeys) && isset($meta['qa_status'])) {
+                 $qaStatusKeys = is_array($meta['qa_status']) ? $meta['qa_status'] : explode(',', $meta['qa_status']);
+                 $qaStatusKeys = array_values(array_filter(array_map('trim', $qaStatusKeys)));
+            }
+            foreach ($qaStatusKeys as $key) {
+                if (isset($qaStatusMaster[$key])) {
+                    $qaStatuses[] = ['key' => $key, 'label' => $qaStatusMaster[$key]['label'], 'color' => $qaStatusMaster[$key]['color']];
+                }
+            }
+            
+            $reporters = []; $reporterIds = [];
+            if (!empty($i['reporter_name'])) { $reporters[] = $i['reporter_name']; $reporterIds[] = (int)$i['reporter_id']; }
+            if (isset($meta['reporter_ids'])) {
+                $rIds = array_values(array_filter(array_map('intval', (array)$meta['reporter_ids'])));
+                if (!empty($rIds)) {
+                    $rStmt = $db->prepare("SELECT id, full_name FROM users WHERE id IN (".implode(',', array_fill(0, count($rIds), '?')).")");
+                    $rStmt->execute($rIds);
+                    while ($r = $rStmt->fetch(PDO::FETCH_ASSOC)) {
+                        if (!in_array($r['full_name'], $reporters)) { $reporters[] = $r['full_name']; $reporterIds[] = (int)$r['id']; }
+                    }
+                }
+            }
+
+            $out[] = [
+                'id' => $iid,
+                'issue_key' => $i['issue_key'] ?? 'ISS-' . $iid,
+                'title' => $i['title'],
+                'description' => $i['description'],
+                'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : ($meta['common_title'] ?? ''),
+                'status_id' => (int)$i['status_id'],
+                'status_name' => $i['status_name'] ?? '',
+                'status_color' => $i['status_color'] ?? '#6c757d',
+                'pages' => implode(', ', $pageNames),
+                'page_ids' => $pageIds,
+                'qa_statuses' => $qaStatuses,
+                'qa_status_keys' => $qaStatusKeys,
+                'reporter_qa_status_map' => $reporterQaStatusMap,
+                'reporters' => implode(', ', $reporters),
+                'reporter_ids' => $reporterIds,
+                'assignee_id' => (int)($i['assignee_id'] ?? 0) ?: null,
+                'assignee_ids' => isset($meta['assignee_ids']) ? array_values(array_filter(array_map('intval', $meta['assignee_ids']), function($v){ return $v > 0; })) : ((int)($i['assignee_id'] ?? 0) ? [(int)$i['assignee_id']] : []),
+                'severity' => isset($meta['severity']) ? (is_array($meta['severity']) ? $meta['severity'][0] : $meta['severity']) : 'medium',
+                'priority' => isset($meta['priority']) ? (is_array($meta['priority']) ? $meta['priority'][0] : $meta['priority']) : 'medium',
+                'grouped_urls' => isset($meta['grouped_urls']) && is_array($meta['grouped_urls']) ? $meta['grouped_urls'] : [],
+                'client_ready' => (int)($i['client_ready'] ?? 0),
+                'metadata' => $meta,
+                'created_at' => $i['created_at'],
+                'updated_at' => $i['updated_at'],
+                'latest_history_id' => (int)($i['latest_history_id'] ?? 0)
+            ];
+        }
+
+        if (function_exists('apcu_store')) {
+            apcu_store($cacheKey, $out, $cacheTtl);
+        }
+
+        jsonResponse(['success' => true, 'issues' => $out]);
+    }
+
     if ($method === 'GET' && $action === 'presence_list') {
         $issueId = (int)($_GET['issue_id'] ?? 0);
         if (!$issueId) jsonError('issue_id is required', 400);
