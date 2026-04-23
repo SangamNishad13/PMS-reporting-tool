@@ -135,8 +135,7 @@ try {
             $projectId = (int)($_GET['project_id'] ?? 0);
             if (!$projectId) jsonRes(['error' => 'project_id required'], 400);
 
-                    // Inclusively fetch global pages (project_id = 0)
-                    $stmt = $db->prepare('SELECT id, page_name AS name, page_number, url AS canonical_url, created_at FROM project_pages WHERE (project_id = ? OR project_id = 0) ORDER BY page_name');
+                    $stmt = $db->prepare('SELECT id, page_name AS name, page_number, url AS canonical_url, created_at FROM project_pages WHERE project_id = ? ORDER BY page_name');
                     $stmt->execute([$projectId]);
                     $rows = $stmt->fetchAll();
                     foreach ($rows as &$row) {

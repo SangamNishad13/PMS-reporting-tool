@@ -1232,7 +1232,7 @@ if (!$projectId) {
     $pagesStmt = $db->prepare("
         SELECT id, page_name, page_number, url, screen_name, at_tester_id, ft_tester_id, qa_id 
         FROM project_pages 
-        WHERE (project_id = ? OR project_id = 0) 
+        WHERE project_id = ? 
         ORDER BY 
             CASE 
                 WHEN page_number LIKE 'Global%' THEN 0
