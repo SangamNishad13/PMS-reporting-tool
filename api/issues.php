@@ -876,7 +876,7 @@ try {
                 'issue_key' => $i['issue_key'] ?? ($projectCode . '-' . $iid), // Fallback if column doesn't exist
                 'title' => $i['title'],
                 'description' => $i['description'],
-                'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : ($meta['common_title'] ?? ''),
+                'common_title' => (string)($i['common_title_val'] ?? (isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : ($meta['common_title'] ?? ''))),
                 'status_id' => (int)$i['status_id'],
                 'status_name' => $i['status_name'] ?? '',
                 'status_color' => $i['status_color'] ?? '#6c757d',
@@ -925,6 +925,7 @@ try {
         // Fetch all COMMON issues for the project with complete information
         // We join with common_issues table to only get shared ones.
         $sql = "SELECT DISTINCT i.*, 
+                       ci.title AS common_title_val,
                        s.name as status_name,
                        s.color as status_color,
                        reporter.full_name as reporter_name,
@@ -1050,7 +1051,7 @@ try {
                 'issue_key' => $i['issue_key'] ?? ($projectCode . '-' . $iid),
                 'title' => $i['title'],
                 'description' => $i['description'],
-                'common_title' => isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : ($meta['common_title'] ?? ''),
+                'common_title' => (string)($i['common_title_val'] ?? (isset($meta['common_title']) && is_array($meta['common_title']) ? $meta['common_title'][0] : ($meta['common_title'] ?? ''))),
                 'status_id' => (int)$i['status_id'],
                 'status_name' => $i['status_name'] ?? '',
                 'status_color' => $i['status_color'] ?? '#6c757d',

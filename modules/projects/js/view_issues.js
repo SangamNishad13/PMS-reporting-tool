@@ -4194,7 +4194,7 @@
                     '<div class="fw-bold">' + escapeHtml(issue.common_title) + '</div>' +
                     '<div class="small text-muted">' + escapeHtml(issue.title) + '</div>'
                     :
-                    '<div class="fw-bold">' + escapeHtml(issue.title) + '</div>' +
+                    '<div>' + escapeHtml(issue.title) + '</div>' +
                     (titlePreview ? '<div class="small text-muted">' + escapeHtml(titlePreview) + '</div>' : '')
                 ) +
                 '</div>' +
@@ -4916,7 +4916,7 @@
                     '<div class="fw-bold">' + escapeHtml(issue.common_title) + '</div>' +
                     '<div class="small text-muted">' + escapeHtml(issue.title) + '</div>'
                     :
-                    '<div class="fw-bold">' + escapeHtml(issue.title) + '</div>' +
+                    '<div>' + escapeHtml(issue.title) + '</div>' +
                     (titlePreview ? '<div class="small text-muted">' + escapeHtml(titlePreview) + '</div>' : '')
                 ) +
                 '</div>' +
@@ -5355,7 +5355,8 @@
                 '<div class="d-flex align-items-center">' +
                 '<div class="me-2 text-muted" style="width: 20px;"><i class="fas fa-chevron-right chevron-icon"></i></div>' +
                 '<div>' +
-                '<div class="fw-bold text-dark text-truncate-cell" title="' + escapeAttr(it.title) + '">' + escapeHtml(it.title) + '</div>' +
+                '<div class="fw-bold text-dark text-truncate-cell" title="' + escapeAttr(it.common_title || it.title) + '">' + escapeHtml(it.common_title || it.title) + '</div>' +
+                (it.common_title && it.common_title !== it.title ? '<div class="small text-muted text-truncate-cell" title="' + escapeAttr(it.title) + '">Issue Title: ' + escapeHtml(it.title) + '</div>' : '') +
                 (descriptionPreview ? '<div class="small text-muted text-truncate-cell" title="' + escapeAttr(stripHtml(rawDesc)) + '">' + escapeHtml(descriptionPreview) + '</div>' : '') +
                 '</div>' +
                 '</div>' +
