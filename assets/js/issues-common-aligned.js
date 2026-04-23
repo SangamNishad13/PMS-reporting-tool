@@ -146,6 +146,7 @@
                         reporters: it.reporter_names || '',
                         reporter_ids: it.reporter_ids || [],
                         metadata: it.metadata || {},
+                        common_title: it.common_title || it.title || '',
                         grouped_urls: Array.isArray(it.grouped_urls) ? it.grouped_urls : [],
                         updated_at: it.updated_at || null,
                         latest_history_id: (it.latest_history_id != null ? it.latest_history_id : 0)

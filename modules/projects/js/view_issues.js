@@ -3406,6 +3406,17 @@
             }
         }
 
+        // Set common title earlier so toggleCommonTitle (triggered by pages change) can see it
+        var commonTitleVal = issue ? (issue.common_title || '') : (draftData ? draftData.common_title : '');
+        // For common issues being edited from the common issues page, if common_title is missing, use title
+        if (issue && !commonTitleVal && issue.issue_key && (issueData.common || []).some(function(ci) { return ci.id === issue.id; })) {
+            commonTitleVal = issue.title || '';
+        }
+        var commonTitleInput = document.getElementById('finalIssueCommonTitle');
+        if (commonTitleInput) {
+            commonTitleInput.value = commonTitleVal;
+        }
+
         // Set pages immediately (this usually works)
         jQuery('#finalIssuePages').val(pageIds).trigger('change');
 
@@ -3500,9 +3511,6 @@
         }
         onMetadataReady(applyMetadataFieldValues);
 
-        var commonTitleVal = issue ? (issue.common_title || '') : (draftData ? draftData.common_title : '');
-        document.getElementById('finalIssueCommonTitle').value = commonTitleVal;
-        
         // Set client_ready checkbox
         var clientReadyCheckbox = document.getElementById('finalIssueClientReady');
         if (clientReadyCheckbox) {
@@ -3608,19 +3616,17 @@
         var sel = jQuery('#finalIssuePages').val() || [];
         var wrap = document.getElementById('finalIssueCommonTitleWrap');
         var input = document.getElementById('finalIssueCommonTitle');
-        if (!wrap) return;
-        if (sel.length > 1) {
+        if (!wrap || !input) return;
+
+        // Show if multiple pages selected OR if it already has a value (editing an existing common issue)
+        if (sel.length > 1 || (input.value && input.value.trim() !== '')) {
             wrap.classList.remove('d-none');
-            if (input) {
-                input.required = true;
-                input.setAttribute('aria-required', 'true');
-            }
+            input.required = true;
+            input.setAttribute('aria-required', 'true');
         } else {
             wrap.classList.add('d-none');
-            if (input) {
-                input.required = false;
-                input.removeAttribute('aria-required');
-            }
+            input.required = false;
+            input.removeAttribute('aria-required');
         }
     }
 
