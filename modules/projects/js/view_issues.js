@@ -8462,11 +8462,12 @@
     window.toggleGroupedUrls = function(issueId, event) {
         if (event) event.stopPropagation();
         var content = document.getElementById('grouped-urls-content-' + issueId);
-        if (!content) return;
-        if (content.style.display === 'none' || !content.style.display) {
-            content.style.display = 'block';
-        } else {
-            content.style.display = 'none';
+        if (content) {
+            if (content.style.display === 'none' || !content.style.display) {
+                content.style.display = 'block';
+            } else {
+                content.style.display = 'none';
+            }
         }
     };
-})(); // IIFE invocation - this actually executes the function
+})();

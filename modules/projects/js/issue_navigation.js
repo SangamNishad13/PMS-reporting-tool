@@ -14,7 +14,8 @@ window.IssueNavigation = (function() {
     var state = {
         zapModeTarget: 'none', // 'none', 'edit', 'expand'
         activeIndex: -1,
-        badges: []
+        badges: [],
+        navigationShortcutsActive: false
     };
 
     var ZAP_KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -50,6 +51,7 @@ window.IssueNavigation = (function() {
             }
             if (!e.target.closest(config.rowSelector)) {
                 clearActiveRow();
+                deactivateShortcuts();
             }
         });
 
@@ -154,8 +156,18 @@ window.IssueNavigation = (function() {
         `;
         document.head.appendChild(style);
     }
-
     function handleGlobalKeydown(e) {
+        // Alt + J or Alt + K: Activate shortcuts and move
+        if (e.altKey && (e.key.toLowerCase() === 'j' || e.key.toLowerCase() === 'k')) {
+            e.preventDefault();
+            if (!state.navigationShortcutsActive) {
+                state.navigationShortcutsActive = true;
+                if (window.showToast) window.showToast('Navigation shortcuts enabled (J/K)', 'success');
+            }
+            handleArrowKeydown(e);
+            return;
+        }
+
         // Alt + E toggles Zap Mode for Edit
         if (e.altKey && e.code === 'KeyE') {
             e.preventDefault();
@@ -195,6 +207,12 @@ window.IssueNavigation = (function() {
             }
         }
 
+        // Deactivation: Escape
+        if (e.key === 'Escape' && state.navigationShortcutsActive) {
+            deactivateShortcuts();
+            // Don't return, might want to clear other things
+        }
+
         if (state.zapModeTarget !== 'none') {
             handleZapKeydown(e);
             return;
@@ -202,6 +220,13 @@ window.IssueNavigation = (function() {
 
         // Standard Arrow Navigation
         handleArrowKeydown(e);
+    }
+
+    function deactivateShortcuts() {
+        if (!state.navigationShortcutsActive) return;
+        state.navigationShortcutsActive = false;
+        clearActiveRow();
+        if (window.showToast) window.showToast('Navigation shortcuts disabled', 'info');
     }
 
     function scrollToTable() {
@@ -386,12 +411,12 @@ window.IssueNavigation = (function() {
         
         if (rows.length === 0) return;
 
-        if (e.key === 'ArrowDown' || e.key === 'j') {
+        if (e.key === 'ArrowDown' || (e.key === 'j' && (e.altKey || state.navigationShortcutsActive))) {
             e.preventDefault();
             if (state.activeIndex === -1) scrollToTable();
             state.activeIndex = Math.min(state.activeIndex + 1, rows.length - 1);
             updateActiveRow(rows);
-        } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        } else if (e.key === 'ArrowUp' || (e.key === 'k' && (e.altKey || state.navigationShortcutsActive))) {
             e.preventDefault();
             if (state.activeIndex === -1) scrollToTable();
             state.activeIndex = Math.max(state.activeIndex - 1, 0);
