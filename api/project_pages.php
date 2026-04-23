@@ -367,18 +367,13 @@ try {
                 $name = $pageLabel;
             }
 
-            // If requesting a GLOBAL page, we force project_id to 0 so it's shared
-            if (strtoupper($requestedPageNumber) === 'GLOBAL') {
-                $saveProjectId = 0;
-            } else {
-                $saveProjectId = $projectId;
-            }
+            $saveProjectId = $projectId;
 
-            // Check for existing page with same name or URL in the target project (or global)
+            // Check for existing page with same name or URL in the same project
             $checkStmt = $db->prepare("SELECT id FROM project_pages WHERE project_id = ? AND (page_name = ? OR (url IS NOT NULL AND url = ?)) LIMIT 1");
-            $checkStmt->execute([$saveProjectId, $name, $canonical ?: null]);
+            $checkStmt->execute([$projectId, $name, $canonical ?: null]);
             if ($checkStmt->fetch()) {
-                jsonRes(['error' => 'A page with this name or URL already exists.'], 409);
+                jsonRes(['error' => 'A page with this name or URL already exists in this project.'], 409);
             }
 
             try {
