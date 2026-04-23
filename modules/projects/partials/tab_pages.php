@@ -29,7 +29,7 @@
             $pages = $db->prepare("
                 SELECT pp.* 
                 FROM project_pages pp 
-                WHERE pp.project_id = ? 
+                WHERE (pp.project_id = ? OR pp.project_id = 0) 
                 ORDER BY 
                     CASE 
                         WHEN pp.page_number LIKE 'Global%' THEN 0

@@ -41,9 +41,10 @@ function isProjectPagesView($db) {
 }
 
 function ensureProjectPagesTable($db) {
+    // [DISABLED] This migration was found to be destructive if the view was scoped.
+    return;
+    /*
     if (!isProjectPagesView($db)) {
-        return;
-    }
 
     $db->exec("
         CREATE TABLE IF NOT EXISTS project_pages_tmp_no_view (
@@ -95,6 +96,8 @@ function ensureProjectPagesTable($db) {
 
     $db->exec("DROP VIEW project_pages");
     $db->exec("RENAME TABLE project_pages_tmp_no_view TO project_pages");
+    }
+    */
 }
 
 // Helper: delete grouped urls by ids (ensures permission and logs activity)
@@ -113,7 +116,7 @@ function delete_grouped_ids($db, $userId, $projectId, array $idsArr) {
 }
 
 try {
-    ensureProjectPagesTable($db);
+    // ensureProjectPagesTable($db);
     // Read raw input early so JSON POST bodies can provide an action
     $rawBody = @file_get_contents('php://input');
     $jsonBody = null;
@@ -132,7 +135,8 @@ try {
             $projectId = (int)($_GET['project_id'] ?? 0);
             if (!$projectId) jsonRes(['error' => 'project_id required'], 400);
 
-                    $stmt = $db->prepare('SELECT id, page_name AS name, page_number, url AS canonical_url, created_at FROM project_pages WHERE project_id = ? ORDER BY page_name');
+                    // Inclusively fetch global pages (project_id = 0)
+                    $stmt = $db->prepare('SELECT id, page_name AS name, page_number, url AS canonical_url, created_at FROM project_pages WHERE (project_id = ? OR project_id = 0) ORDER BY page_name');
                     $stmt->execute([$projectId]);
                     $rows = $stmt->fetchAll();
                     foreach ($rows as &$row) {
@@ -364,16 +368,23 @@ try {
                 $name = $pageLabel;
             }
 
-            // Check for existing page with same name or URL in the same project
+            // If requesting a GLOBAL page, we force project_id to 0 so it's shared
+            if (strtoupper($requestedPageNumber) === 'GLOBAL') {
+                $saveProjectId = 0;
+            } else {
+                $saveProjectId = $projectId;
+            }
+
+            // Check for existing page with same name or URL in the target project (or global)
             $checkStmt = $db->prepare("SELECT id FROM project_pages WHERE project_id = ? AND (page_name = ? OR (url IS NOT NULL AND url = ?)) LIMIT 1");
-            $checkStmt->execute([$projectId, $name, $canonical ?: null]);
+            $checkStmt->execute([$saveProjectId, $name, $canonical ?: null]);
             if ($checkStmt->fetch()) {
-                jsonRes(['error' => 'A page with this name or URL already exists in this project.'], 409);
+                jsonRes(['error' => 'A page with this name or URL already exists.'], 409);
             }
 
             try {
                 $ins = $db->prepare('INSERT INTO project_pages (project_id, page_name, page_number, url, created_by, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
-                $ins->execute([$projectId, $name, $pageLabel, $canonical ?: null, $_SESSION['user_id'] ?? null]);
+                $ins->execute([$saveProjectId, $name, $pageLabel, $canonical ?: null, $_SESSION['user_id'] ?? null]);
                 $id = (int)$db->lastInsertId();
             } catch (PDOException $e) {
                 if ($e->getCode() === '23000') {

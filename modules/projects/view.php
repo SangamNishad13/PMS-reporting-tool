@@ -183,8 +183,8 @@ $teamMembers = $teamMemberStmt->fetchAll(PDO::FETCH_ASSOC);
 // Environment list for assignment modal
 $allEnvironments = $db->query("SELECT id, name FROM testing_environments ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 
-// Pre-fetch project pages
-$pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_pages WHERE project_id = ? ORDER BY page_name");
+// Pre-fetch project pages (Inclusively fetch global pages)
+$pagesStmt = $db->prepare("SELECT id, page_name, page_number, url FROM project_pages WHERE (project_id = ? OR project_id = 0) ORDER BY page_name");
 $pagesStmt->execute([$projectId]);
 $projectPages = $pagesStmt->fetchAll(PDO::FETCH_ASSOC);
 // Natural sort by page_number
@@ -211,7 +211,7 @@ try {
              )
             ) AS issues_count
         FROM project_pages pp
-        WHERE pp.project_id = ?
+        WHERE (pp.project_id = ? OR pp.project_id = 0)
         ORDER BY pp.page_name
     ");
     $issuePageStmt->execute([$projectId]);
@@ -220,8 +220,8 @@ try {
     }
 } catch (Exception $e) { $issuePageSummaries = []; }
 
-// Fetch unique pages (project_pages) and grouped URLs for the project
-$uniqueStmt = $db->prepare("SELECT up.id, up.project_id, up.page_name AS name, up.page_number, up.url AS canonical_url, up.screen_name, up.notes, up.created_at, up.status, up.at_tester_id, up.ft_tester_id, up.qa_id, COUNT(gu.id) as url_count FROM project_pages up LEFT JOIN grouped_urls gu ON up.id = gu.unique_page_id WHERE up.project_id = ? GROUP BY up.id ORDER BY up.created_at ASC");
+// Fetch unique pages (project_pages) and grouped URLs for the project (Inclusively fetch global pages)
+$uniqueStmt = $db->prepare("SELECT up.id, up.project_id, up.page_name AS name, up.page_number, up.url AS canonical_url, up.screen_name, up.notes, up.created_at, up.status, up.at_tester_id, up.ft_tester_id, up.qa_id, COUNT(gu.id) as url_count FROM project_pages up LEFT JOIN grouped_urls gu ON up.id = gu.unique_page_id WHERE (up.project_id = ? OR up.project_id = 0) GROUP BY up.id ORDER BY up.created_at ASC");
 $uniqueStmt->execute([$projectId]);
 $uniquePages = $uniqueStmt->fetchAll(PDO::FETCH_ASSOC);
 

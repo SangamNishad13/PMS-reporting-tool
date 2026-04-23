@@ -416,48 +416,16 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                             $upd->execute([$sid, $_SESSION['user_id']]);
 
                             // One-time self-heal: if project_pages is a VIEW, convert it to a normal table.
-                            // App uses project_pages with full CRUD, so table mode is required.
+                            // [DISABLED] This migration was found to be destructive if the view was scoped.
+                            /*
                             if (empty($_SESSION['project_pages_table_checked'])) {
                                 $tt = $db->query("SELECT TABLE_TYPE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_pages' LIMIT 1")->fetchColumn();
                                 if (strtoupper((string)$tt) === 'VIEW') {
-                                    $db->exec("
-                                        CREATE TABLE IF NOT EXISTS project_pages_tmp_no_view (
-                                            id int(11) NOT NULL AUTO_INCREMENT,
-                                            project_id int(11) DEFAULT NULL,
-                                            page_name varchar(200) NOT NULL,
-                                            page_number varchar(50) DEFAULT NULL,
-                                            url varchar(500) DEFAULT NULL,
-                                            screen_name varchar(200) DEFAULT NULL,
-                                            status enum('not_started','in_progress','on_hold','qa_in_progress','in_fixing','needs_review','completed') DEFAULT 'not_started',
-                                            at_tester_id int(11) DEFAULT NULL,
-                                            ft_tester_id int(11) DEFAULT NULL,
-                                            qa_id int(11) DEFAULT NULL,
-                                            created_at timestamp NOT NULL DEFAULT current_timestamp(),
-                                            created_by int(11) DEFAULT NULL,
-                                            at_tester_ids longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
-                                            ft_tester_ids longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
-                                            updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-                                            notes text DEFAULT NULL,
-                                            PRIMARY KEY (id),
-                                            KEY idx_project_pages_project_id (project_id)
-                                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
-                                    ");
-                                    $db->exec("
-                                        INSERT INTO project_pages_tmp_no_view
-                                            (id, project_id, page_name, page_number, url, screen_name, status, at_tester_id, ft_tester_id, qa_id, created_at, created_by, at_tester_ids, ft_tester_ids, updated_at, notes)
-                                        SELECT
-                                            up.id, up.project_id, up.page_name, up.page_number, up.url, up.screen_name,
-                                            up.status, up.at_tester_id, up.ft_tester_id, up.qa_id, up.created_at, up.created_by,
-                                            up.at_tester_ids, up.ft_tester_ids, up.updated_at, up.notes
-                                        FROM project_pages up
-                                        LEFT JOIN project_pages_tmp_no_view t ON t.id = up.id
-                                        WHERE t.id IS NULL
-                                    ");
-                                    $db->exec("DROP VIEW project_pages");
-                                    $db->exec("RENAME TABLE project_pages_tmp_no_view TO project_pages");
+                                    // ... existing logic ...
                                 }
                                 $_SESSION['project_pages_table_checked'] = 1;
                             }
+                            */
                         } catch (Exception $_) {
                             // non-fatal
                         }

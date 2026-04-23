@@ -22,9 +22,10 @@ function isProjectPagesView($db) {
 }
 
 function ensureProjectPagesTable($db) {
+    // [DISABLED] This migration was found to be destructive if the view was scoped.
+    return;
+    /*
     if (!isProjectPagesView($db)) {
-        return;
-    }
 
     $db->exec("
         CREATE TABLE IF NOT EXISTS project_pages_tmp_no_view (
@@ -74,8 +75,7 @@ function ensureProjectPagesTable($db) {
         WHERE t.id IS NULL
     ");
 
-    $db->exec("DROP VIEW project_pages");
-    $db->exec("RENAME TABLE project_pages_tmp_no_view TO project_pages");
+    */
 }
 
 $db = Database::getInstance();
@@ -942,7 +942,7 @@ if (!$projectId) {
         if (!empty($pageIds)) {
             try {
                 // Ensure project_pages is a table, not a view
-                ensureProjectPagesTable($db);
+                // ensureProjectPagesTable($db);
                 
                 // Check if pages exist before deletion
                 $placeholders = implode(',', array_fill(0, count($pageIds), '?'));
@@ -1225,15 +1225,14 @@ if (!$projectId) {
     $syncUniqueToProjectPages->execute([$userId, $projectId]);
     */
 
-    // Ensure project_pages is a table, not a view (required for deletions)
-    ensureProjectPagesTable($db);
+    // ensureProjectPagesTable($db);
 
     // Fetch pages for this project (now using only project_pages table)
     // Order: Global pages first (Global 1, Global 2, ...), then Page pages (Page 1, Page 2, ..., Page 10, ...)
     $pagesStmt = $db->prepare("
         SELECT id, page_name, page_number, url, screen_name, at_tester_id, ft_tester_id, qa_id 
         FROM project_pages 
-        WHERE project_id = ? 
+        WHERE (project_id = ? OR project_id = 0) 
         ORDER BY 
             CASE 
                 WHEN page_number LIKE 'Global%' THEN 0
