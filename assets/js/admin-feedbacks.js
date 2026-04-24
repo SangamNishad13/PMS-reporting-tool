@@ -78,27 +78,31 @@
 
     // Delete feedback
     window.deleteFeedback = function (feedbackId) {
-        confirmModal('Are you sure you want to delete this feedback? This action cannot be undone.', function () {
+        var doDelete = function() {
             fetch(baseDir + '/api/feedback.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'action=delete_feedback&feedback_id=' + encodeURIComponent(feedbackId)
+                body: 'action=delete_feedback&feedback_id=' + encodeURIComponent(feedbackId) + '&csrf_token=' + encodeURIComponent(window._csrfToken || '')
             })
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (data.success) {
                     var row = document.querySelector('[data-feedback-id="' + feedbackId + '"]').closest('tr');
-                    row.remove();
+                    if (row) row.remove();
                     showToast('Feedback deleted successfully', 'success');
                 } else {
                     showToast('Failed to delete feedback: ' + (data.message || 'Unknown error'), 'danger');
                 }
             })
-            .catch(function (error) {
-                console.error('Error:', error);
+            .catch(function () {
                 showToast('Error deleting feedback', 'danger');
             });
-        });
+        };
+        if (typeof confirmModal === 'function') {
+            confirmModal('Are you sure you want to delete this feedback? This action cannot be undone.', doDelete);
+        } else if (confirm('Are you sure you want to delete this feedback?')) {
+            doDelete();
+        }
     };
 
     // Export feedbacks
