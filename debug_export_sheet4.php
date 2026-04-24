@@ -1,12 +1,10 @@
 <?php
 /**
- * Debug script for Final Report sheet blank issue - Project 34
+ * Debug script v2 - check XML generation for sheet4
  * DELETE THIS FILE AFTER DEBUGGING
  */
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/auth.php';
-require_once __DIR__ . '/includes/functions.php';
-require_once __DIR__ . '/includes/client_issue_snapshots.php';
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) { exit('Not logged in'); }
@@ -14,146 +12,140 @@ if (!$auth->isLoggedIn()) { exit('Not logged in'); }
 $db = Database::getInstance();
 $projectId = (int)($_GET['project_id'] ?? 34);
 
-echo "<h2>Debug: Export Final Report - Project $projectId</h2>";
-echo "<style>body{font-family:monospace;padding:20px} table{border-collapse:collapse} td,th{border:1px solid #ccc;padding:4px 8px;font-size:12px}</style>";
+echo "<h2>Debug v2: Sheet4 XML Check - Project $projectId</h2>";
+echo "<style>body{font-family:monospace;padding:20px;font-size:13px} pre{background:#f5f5f5;padding:10px;overflow:auto;max-height:400px}</style>";
 
-// 1. Check issues count
-$issueStmt = $db->prepare("SELECT COUNT(*) FROM issues WHERE project_id = ?");
-$issueStmt->execute([$projectId]);
-$totalIssues = $issueStmt->fetchColumn();
-echo "<p><strong>Total issues in DB:</strong> $totalIssues</p>";
-
-// 2. Fetch all issues
-$issueStmt = $db->prepare("SELECT i.id, i.title, i.severity, i.issue_key, s.name as status_name FROM issues i LEFT JOIN issue_statuses s ON s.id = i.status_id WHERE i.project_id = ? ORDER BY i.id ASC");
-$issueStmt->execute([$projectId]);
-$allIssues = $issueStmt->fetchAll(PDO::FETCH_ASSOC);
-echo "<p><strong>Fetched issues:</strong> " . count($allIssues) . "</p>";
-
-if (empty($allIssues)) {
-    echo "<p style='color:red'>NO ISSUES FOUND for project $projectId</p>";
-    exit;
+// 1. Check issue_comments table structure
+echo "<h3>1. issue_comments columns</h3>";
+try {
+    $cols = $db->query("SHOW COLUMNS FROM issue_comments")->fetchAll(PDO::FETCH_ASSOC);
+    $colNames = array_column($cols, 'Field');
+    echo "<p>Columns: " . implode(', ', $colNames) . "</p>";
+    echo "<p>Has comment_type: " . (in_array('comment_type', $colNames) ? '<strong style="color:green">YES</strong>' : '<strong style="color:red">NO</strong>') . "</p>";
+} catch (Exception $e) {
+    echo "<p style='color:red'>Error: " . $e->getMessage() . "</p>";
 }
 
-$issueIds = array_column($allIssues, 'id');
-$ph = implode(',', array_fill(0, count($issueIds), '?'));
-
-// 3. Fetch metadata
-$metaMap = [];
-$ms = $db->prepare("SELECT issue_id, meta_key, meta_value FROM issue_metadata WHERE issue_id IN ($ph) ORDER BY id ASC");
-$ms->execute($issueIds);
-while ($m = $ms->fetch(PDO::FETCH_ASSOC)) {
-    $metaMap[(int)$m['issue_id']][$m['meta_key']][] = $m['meta_value'];
+// 2. Check regression_rounds table structure
+echo "<h3>2. regression_rounds columns</h3>";
+try {
+    $cols = $db->query("SHOW COLUMNS FROM regression_rounds")->fetchAll(PDO::FETCH_ASSOC);
+    $colNames = array_column($cols, 'Field');
+    echo "<p>Columns: " . implode(', ', $colNames) . "</p>";
+    echo "<p>Has started_at: " . (in_array('started_at', $colNames) ? '<strong style="color:green">YES</strong>' : '<strong style="color:red">NO</strong>') . "</p>";
+    echo "<p>Has ended_at: " . (in_array('ended_at', $colNames) ? '<strong style="color:green">YES</strong>' : '<strong style="color:red">NO</strong>') . "</p>";
+} catch (Exception $e) {
+    echo "<p style='color:red'>Error: " . $e->getMessage() . "</p>";
 }
 
-// 4. Fetch QA statuses
-$qaStatusByIssue = [];
-foreach ($issueIds as $iid) {
-    $meta = $metaMap[$iid] ?? [];
-    $keys = [];
-    if (!empty($meta['reporter_qa_status_map'])) {
-        foreach ($meta['reporter_qa_status_map'] as $v) {
-            $d = json_decode($v, true);
-            if (is_array($d)) {
-                foreach ($d as $statuses) {
-                    foreach ((array)$statuses as $sk) {
-                        $sk = strtolower(trim((string)$sk));
-                        if ($sk !== '') $keys[] = $sk;
-                    }
+// 3. Test commentStmt prepare
+echo "<h3>3. commentStmt prepare test</h3>";
+try {
+    $commentStmt = $db->prepare("SELECT comment_html FROM issue_comments WHERE issue_id = ? AND comment_type = 'regression' AND created_at >= (SELECT started_at FROM regression_rounds WHERE id = ?) AND (created_at <= (SELECT ended_at FROM regression_rounds WHERE id = ?) OR (SELECT ended_at FROM regression_rounds WHERE id = ?) IS NULL) ORDER BY created_at DESC LIMIT 1");
+    echo "<p style='color:green'>commentStmt prepare: OK</p>";
+} catch (Exception $e) {
+    echo "<p style='color:red'>commentStmt prepare FAILED: " . $e->getMessage() . "</p>";
+}
+
+// 4. Test rrivStmt prepare
+echo "<h3>4. rrivStmt prepare test</h3>";
+try {
+    $rrivStmt = $db->prepare("SELECT latest_payload FROM regression_round_issue_versions WHERE project_id = ? AND round_id = ? AND issue_id = ?");
+    echo "<p style='color:green'>rrivStmt prepare: OK</p>";
+} catch (Exception $e) {
+    echo "<p style='color:red'>rrivStmt prepare FAILED: " . $e->getMessage() . "</p>";
+}
+
+// 5. Simulate rows4 generation for first 3 issues
+echo "<h3>5. rows4 XML generation test (first 3 issues)</h3>";
+require_once __DIR__ . '/includes/functions.php';
+
+function xstr_test(string $v): string {
+    $v = mb_convert_encoding($v, 'UTF-8', 'UTF-8');
+    $v = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $v);
+    $v = str_replace(["\r\n", "\r"], "\n", $v);
+    $v = htmlspecialchars($v, ENT_XML1 | ENT_SUBSTITUTE, 'UTF-8');
+    $v = str_replace("\n", '&#10;', $v);
+    return $v;
+}
+function xcell_test(string $col, int $row, string $val): string {
+    return '<c r="' . $col . $row . '" t="inlineStr"><is><t xml:space="preserve">' . xstr_test($val) . '</t></is></c>';
+}
+
+$issueStmt = $db->prepare("SELECT i.id, i.title, i.description, i.severity, i.issue_key, s.name as status_name FROM issues i LEFT JOIN issue_statuses s ON s.id = i.status_id WHERE i.project_id = ? ORDER BY i.id ASC LIMIT 3");
+$issueStmt->execute([$projectId]);
+$testIssues = $issueStmt->fetchAll(PDO::FETCH_ASSOC);
+
+$rows4 = '';
+$srNo = 1;
+foreach ($testIssues as $iss) {
+    $rn = $srNo + 1;
+    $rows4 .= '<row r="' . $rn . '" spans="1:23">'
+        . '<c r="A' . $rn . '"><v>' . $srNo . '</v></c>'
+        . xcell_test('B', $rn, $iss['issue_key'] ?? '')
+        . xcell_test('F', $rn, $iss['title'] ?? '')
+        . '</row>';
+    $srNo++;
+}
+
+echo "<p>rows4 length: " . strlen($rows4) . " chars</p>";
+echo "<p>rows4 empty: " . (empty($rows4) ? '<strong style="color:red">YES - BUG!</strong>' : '<strong style="color:green">NO - has data</strong>') . "</p>";
+echo "<pre>" . htmlspecialchars(substr($rows4, 0, 500)) . "</pre>";
+
+// 6. Check ZipArchive and template
+echo "<h3>6. Template & ZipArchive check</h3>";
+$templatePath = __DIR__ . '/assets/templates/report_template.xlsx';
+echo "<p>Template exists: " . (file_exists($templatePath) ? '<strong style="color:green">YES</strong>' : '<strong style="color:red">NO</strong>') . "</p>";
+echo "<p>ZipArchive class: " . (class_exists('ZipArchive') ? '<strong style="color:green">YES</strong>' : '<strong style="color:red">NO</strong>') . "</p>";
+
+if (file_exists($templatePath) && class_exists('ZipArchive')) {
+    $zip = new ZipArchive();
+    $tmpFile = tempnam(sys_get_temp_dir(), 'pms_test_') . '.xlsx';
+    copy($templatePath, $tmpFile);
+    if ($zip->open($tmpFile) === true) {
+        $sh4 = $zip->getFromName('xl/worksheets/sheet4.xml');
+        echo "<p>sheet4.xml from template: " . ($sh4 !== false ? '<strong style="color:green">OK (' . strlen($sh4) . ' bytes)</strong>' : '<strong style="color:red">NOT FOUND</strong>') . "</p>";
+        
+        if ($sh4 !== false) {
+            $hasSheetData = strpos($sh4, '<sheetData>') !== false;
+            $hasSelfClose = strpos($sh4, '<sheetData/>') !== false;
+            echo "<p>Has &lt;sheetData&gt;: " . ($hasSheetData ? 'YES' : 'NO') . "</p>";
+            echo "<p>Has &lt;sheetData/&gt;: " . ($hasSelfClose ? 'YES' : 'NO') . "</p>";
+            
+            // Simulate the header injection
+            $pos = strpos($sh4, '<sheetData>');
+            $endPos = strpos($sh4, '</sheetData>');
+            if ($pos !== false && $endPos !== false) {
+                $before = substr($sh4, 0, $pos + 11);
+                $after  = substr($sh4, $endPos);
+                $headerRow = '<row r="1" spans="1:23"><c r="A1" t="inlineStr"><is><t>Sr.No</t></is></c></row>';
+                $sh4mod = $before . $headerRow . $after;
+                
+                // Inject rows4
+                $sh4mod = preg_replace('/<\/sheetData>/', $rows4 . '</sheetData>', $sh4mod, 1);
+                
+                // Check result
+                $rowCount = substr_count($sh4mod, '<row ');
+                echo "<p>After injection - row count in XML: <strong>$rowCount</strong> (expected: " . (count($testIssues) + 1) . ")</p>";
+                
+                if ($rowCount === count($testIssues) + 1) {
+                    echo "<p style='color:green'><strong>XML injection working correctly!</strong></p>";
+                } else {
+                    echo "<p style='color:red'><strong>XML injection issue! Expected " . (count($testIssues) + 1) . " rows but got $rowCount</strong></p>";
                 }
             }
         }
+        $zip->close();
+    } else {
+        echo "<p style='color:red'>Cannot open template zip</p>";
     }
-    if (empty($keys) && !empty($meta['qa_status'])) {
-        foreach ($meta['qa_status'] as $v) {
-            $d = json_decode($v, true);
-            if (is_array($d)) { foreach ($d as $sk) $keys[] = strtolower(trim((string)$sk)); }
-            else { $keys[] = strtolower(trim($v)); }
-        }
-    }
-    $qaStatusByIssue[$iid] = array_values(array_unique(array_filter($keys)));
+    @unlink($tmpFile);
 }
 
-// 5. QA status labels
-$qaStatusLabels = [];
-try {
-    $qsm = $db->query("SELECT status_key, status_label FROM qa_status_master WHERE is_active = 1");
-    while ($qs = $qsm->fetch(PDO::FETCH_ASSOC)) {
-        $qaStatusLabels[strtolower($qs['status_key'])] = strtolower($qs['status_label']);
-    }
-    echo "<p><strong>QA Status Labels:</strong> " . json_encode($qaStatusLabels) . "</p>";
-} catch (Exception $e) {
-    echo "<p style='color:orange'>qa_status_master table error: " . $e->getMessage() . "</p>";
-}
+// 7. PHP error log check
+echo "<h3>7. PHP info</h3>";
+echo "<p>PHP version: " . PHP_VERSION . "</p>";
+echo "<p>Memory limit: " . ini_get('memory_limit') . "</p>";
+echo "<p>Max execution time: " . ini_get('max_execution_time') . "</p>";
 
-// 6. shouldSkipIssueForExport logic
-function shouldSkipDebug(array $qaStatusKeys, array $qaStatusLabels): array {
-    if (empty($qaStatusKeys)) return ['skip' => false, 'reason' => 'no qa status keys'];
-    $deleteOrDuplicateCount = 0;
-    $meaningfulStatusCount = 0;
-    $details = [];
-    foreach ($qaStatusKeys as $qk) {
-        $normalized = strtolower(str_replace([' ', '-'], '_', trim((string) $qk)));
-        $label = strtolower(trim((string) ($qaStatusLabels[strtolower(trim((string) $qk))] ?? $normalized)));
-        if ($normalized === '' && $label === '') continue;
-        $meaningfulStatusCount++;
-        $isDelDup = strpos($normalized, 'delete') !== false || strpos($normalized, 'duplicate') !== false
-            || strpos($label, 'delete') !== false || strpos($label, 'duplicate') !== false;
-        if ($isDelDup) $deleteOrDuplicateCount++;
-        $details[] = "key=$qk normalized=$normalized label=$label isDelDup=" . ($isDelDup ? 'YES' : 'no');
-    }
-    $skip = $meaningfulStatusCount > 0 && $deleteOrDuplicateCount === $meaningfulStatusCount;
-    return ['skip' => $skip, 'meaningful' => $meaningfulStatusCount, 'deldup' => $deleteOrDuplicateCount, 'details' => $details];
-}
-
-// 7. Show per-issue analysis
-$skippedCount = 0;
-$includedCount = 0;
-
-echo "<table><tr><th>ID</th><th>Title</th><th>QA Status Keys</th><th>Skip?</th><th>Reason</th></tr>";
-foreach ($allIssues as $iss) {
-    $iid = (int)$iss['id'];
-    $qaKeys = $qaStatusByIssue[$iid] ?? [];
-    $result = shouldSkipDebug($qaKeys, $qaStatusLabels);
-    if ($result['skip']) $skippedCount++; else $includedCount++;
-    $color = $result['skip'] ? 'background:#ffe0e0' : '';
-    echo "<tr style='$color'>";
-    echo "<td>{$iid}</td>";
-    echo "<td>" . htmlspecialchars(substr($iss['title'] ?? '', 0, 50)) . "</td>";
-    echo "<td>" . htmlspecialchars(implode(', ', $qaKeys)) . "</td>";
-    echo "<td>" . ($result['skip'] ? '<strong style="color:red">SKIP</strong>' : 'include') . "</td>";
-    echo "<td style='font-size:11px'>" . htmlspecialchars(implode(' | ', $result['details'] ?? [$result['reason'] ?? ''])) . "</td>";
-    echo "</tr>";
-}
-echo "</table>";
-
-echo "<br><p><strong>Summary:</strong> Included: $includedCount | Skipped: $skippedCount</p>";
-
-// 8. Check filteredIssues fallback
-if ($includedCount === 0 && count($allIssues) > 0) {
-    echo "<p style='color:orange'><strong>All issues skipped! Fallback will use allIssues (" . count($allIssues) . " issues)</strong></p>";
-    echo "<p>So filteredIssues = allIssues = " . count($allIssues) . " issues - data SHOULD appear in sheet.</p>";
-}
-
-// 9. Check if issue_metadata table has data
-$metaCount = $db->prepare("SELECT COUNT(*) FROM issue_metadata WHERE issue_id IN ($ph)");
-$metaCount->execute($issueIds);
-echo "<p><strong>Total metadata rows for these issues:</strong> " . $metaCount->fetchColumn() . "</p>";
-
-// 10. Check regression_rounds table
-try {
-    $rrCheck = $db->prepare("SELECT COUNT(*) FROM regression_rounds WHERE project_id = ?");
-    $rrCheck->execute([$projectId]);
-    echo "<p><strong>Regression rounds:</strong> " . $rrCheck->fetchColumn() . "</p>";
-} catch (Exception $e) {
-    echo "<p style='color:red'>regression_rounds table error: " . $e->getMessage() . "</p>";
-}
-
-// 11. Check regression_round_issue_versions table
-try {
-    $rrivCheck = $db->query("SELECT COUNT(*) FROM regression_round_issue_versions LIMIT 1");
-    echo "<p><strong>regression_round_issue_versions table:</strong> exists</p>";
-} catch (Exception $e) {
-    echo "<p style='color:red'><strong>regression_round_issue_versions table MISSING:</strong> " . $e->getMessage() . "</p>";
-}
-
-echo "<hr><p style='color:gray'>Delete this file after debugging: debug_export_sheet4.php</p>";
+echo "<hr><p style='color:gray'>Delete this file: debug_export_sheet4.php</p>";
