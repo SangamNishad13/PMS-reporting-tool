@@ -211,6 +211,28 @@ try {
         
         echo json_encode(['success' => true, 'feedback' => $feedback]);
     }
+    elseif ($action === 'list_my_feedbacks') {
+        // List feedbacks sent by or received by the current user
+        $stmt = $db->prepare("
+            SELECT DISTINCT f.id, f.content, f.status, f.created_at,
+                   p.title as project_title,
+                   GROUP_CONCAT(DISTINCT ru.full_name SEPARATOR ', ') as recipients
+            FROM feedbacks f
+            LEFT JOIN projects p ON f.project_id = p.id
+            LEFT JOIN feedback_recipients fr ON f.id = fr.feedback_id
+            LEFT JOIN users ru ON fr.user_id = ru.id
+            WHERE f.sender_id = ?
+               OR fr.user_id = ?
+               OR (f.send_to_admin = 1 AND ? = 1)
+            GROUP BY f.id
+            ORDER BY f.created_at DESC
+            LIMIT 50
+        ");
+        $isAdmin = in_array($userRole, ['admin']) ? 1 : 0;
+        $stmt->execute([$userId, $userId, $isAdmin]);
+        $feedbacks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode(['success' => true, 'feedbacks' => $feedbacks]);
+    }
     elseif ($action === 'get_user_feedback') {
         // User functionality to get their own feedback details
         $feedbackId = $_GET['feedback_id'] ?? '';

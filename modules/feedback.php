@@ -148,33 +148,37 @@ $(document).ready(function() {
     });
 
     // Load feedback history
-    fetch(baseDir + '/api/feedback.php?action=get_user_feedback')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            var tbody = document.getElementById('myFeedbackTableBody');
-            if (!data.success || !data.feedbacks || data.feedbacks.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No feedback submitted yet.</td></tr>';
-                document.getElementById('myFeedbackVisibleCount').textContent = '0';
-                return;
-            }
-            var rows = '';
-            data.feedbacks.forEach(function(fb) {
-                var preview = fb.content ? fb.content.replace(/<[^>]+>/g, '').substring(0, 80) : '';
-                var date = new Date(fb.created_at).toLocaleDateString();
-                var status = fb.status || 'open';
-                rows += '<tr data-search="' + (preview + ' ' + date).toLowerCase() + '" data-status="' + status + '" data-type="">'
-                    + '<td class="text-nowrap">' + date + '</td>'
-                    + '<td>' + preview + (preview.length >= 80 ? '...' : '') + '</td>'
-                    + '<td><span class="badge bg-secondary">' + status + '</span></td>'
-                    + '<td><button class="btn btn-sm btn-outline-primary" onclick="viewFeedbackDetails(' + fb.id + ')">View</button></td>'
-                    + '</tr>';
+    function loadFeedbackHistory() {
+        fetch(baseDir + '/api/feedback.php?action=list_my_feedbacks')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var tbody = document.getElementById('myFeedbackTableBody');
+                if (!data.success || !data.feedbacks || data.feedbacks.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No feedback submitted yet.</td></tr>';
+                    document.getElementById('myFeedbackVisibleCount').textContent = '0';
+                    return;
+                }
+                var rows = '';
+                data.feedbacks.forEach(function(fb) {
+                    var preview = fb.content ? fb.content.replace(/<[^>]+>/g, '').substring(0, 80) : '';
+                    var date = new Date(fb.created_at).toLocaleDateString();
+                    var status = fb.status || 'open';
+                    rows += '<tr data-search="' + (preview + ' ' + date).toLowerCase() + '" data-status="' + status + '" data-type="">'
+                        + '<td class="text-nowrap">' + date + '</td>'
+                        + '<td>' + preview + (preview.length >= 80 ? '...' : '') + '</td>'
+                        + '<td><span class="badge bg-secondary">' + status + '</span></td>'
+                        + '<td><button class="btn btn-sm btn-outline-primary" onclick="viewFeedbackDetails(' + fb.id + ')">View</button></td>'
+                        + '</tr>';
+                });
+                tbody.innerHTML = rows;
+                document.getElementById('myFeedbackVisibleCount').textContent = data.feedbacks.length;
+            })
+            .catch(function() {
+                document.getElementById('myFeedbackTableBody').innerHTML = '<tr><td colspan="4" class="text-center text-muted">Failed to load history.</td></tr>';
             });
-            tbody.innerHTML = rows;
-            document.getElementById('myFeedbackVisibleCount').textContent = data.feedbacks.length;
-        })
-        .catch(function() {
-            document.getElementById('myFeedbackTableBody').innerHTML = '<tr><td colspan="4" class="text-center text-muted">Failed to load history.</td></tr>';
-        });
+    }
+
+    loadFeedbackHistory();
 
     // Submit form
     $('#globalFeedbackForm').on('submit', function(e) {
@@ -204,11 +208,12 @@ $(document).ready(function() {
                 btn.disabled = false;
                 if (data.success) {
                     $('#feedbackContent').summernote('code', '');
+                    $('#recipientSelect').val(null).trigger('change');
                     document.getElementById('feedbackSuccessAlert').classList.remove('d-none');
                     setTimeout(function() {
                         document.getElementById('feedbackSuccessAlert').classList.add('d-none');
                     }, 5000);
-                    location.reload();
+                    loadFeedbackHistory();
                 } else {
                     showToast(data.message || 'Failed to submit feedback.', 'danger');
                 }
