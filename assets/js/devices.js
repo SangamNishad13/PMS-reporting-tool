@@ -174,12 +174,12 @@ function quickApprove(requestId) {
             response_notes: 'Quick approved by admin'
         }, function(response) {
             if (response.success) {
-                alert(response.message);
+                showToast(response.message, 'success');
                 loadRequests();
                 loadDevices();
                 loadRotationHistory();
             } else {
-                alert('Error: ' + response.message);
+                showToast('Error: ' + response.message, 'danger');
             }
         });
     });
@@ -195,10 +195,10 @@ function quickReject(requestId) {
         response_notes: reason || 'Rejected by admin'
     }, function(response) {
         if (response.success) {
-            alert(response.message);
+            showToast(response.message, 'success');
             loadRequests();
         } else {
-            alert('Error: ' + response.message);
+            showToast('Error: ' + response.message, 'danger');
         }
     });
 }
