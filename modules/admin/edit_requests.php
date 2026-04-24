@@ -701,59 +701,6 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
 
-    <!-- Recent Processed Requests -->
-    <div class="card">
-        <div class="card-header bg-secondary text-white">
-            <h5 class="mb-0">
-                <i class="fas fa-history"></i> Recent Processed Requests (Last 30 days)
-            </h5>
-        </div>
-        <div class="card-body">
-            <?php if (empty($recentRequests)): ?>
-                <p class="text-muted">No recent processed requests.</p>
-            <?php else: ?>
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>User</th>
-                                <th>Date Requested</th>
-                                <th>Request Date</th>
-                                <th>Status</th>
-                                <th>Processed Date</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($recentRequests as $req): ?>
-                                <tr>
-                                    <td>
-                                        <strong><?php echo htmlspecialchars($req['full_name'], ENT_QUOTES, 'UTF-8'); ?></strong><br>
-                                        <small class="text-muted">@<?php echo htmlspecialchars($req['username'], ENT_QUOTES, 'UTF-8'); ?></small>
-                                    </td>
-                                    <td><?php echo date('M d, Y H:i', strtotime($req['created_at'])); ?></td>
-                                    <td>
-                                        <strong><?php echo date('M d, Y', strtotime($req['req_date'])); ?></strong><br>
-                                        <small class="text-muted"><?php echo date('l', strtotime($req['req_date'])); ?></small>
-                                    </td>
-                                    <td>
-                                        <?php if ($req['status'] === 'approved'): ?>
-                                            <span class="badge bg-success">Approved</span>
-                                        <?php elseif ($req['status'] === 'used'): ?>
-                                            <span class="badge bg-success">Approved & Applied</span>
-                                        <?php else: ?>
-                                            <span class="badge bg-danger">Rejected</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><?php echo date('M d, Y H:i', strtotime($req['updated_at'])); ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
-        </div>
-    </div>
-
     <!-- Pending Log Edit Items -->
     <?php if (!empty($pendingLogEdits)): ?>
     <div class="card mb-4">
@@ -883,6 +830,60 @@ include __DIR__ . '/../../includes/header.php';
         </div>
     </div>
     <?php endif; ?>
+
+    <!-- Recent Processed Requests -->
+    <div class="card">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-history"></i> Recent Processed Requests (Last 30 days)
+            </h5>
+        </div>
+        <div class="card-body">
+            <?php if (empty($recentRequests)): ?>
+                <p class="text-muted">No recent processed requests.</p>
+            <?php else: ?>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Date Requested</th>
+                                <th>Request Date</th>
+                                <th>Status</th>
+                                <th>Processed Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($recentRequests as $req): ?>
+                                <tr>
+                                    <td>
+                                        <strong><?php echo htmlspecialchars($req['full_name'], ENT_QUOTES, 'UTF-8'); ?></strong><br>
+                                        <small class="text-muted">@<?php echo htmlspecialchars($req['username'], ENT_QUOTES, 'UTF-8'); ?></small>
+                                    </td>
+                                    <td><?php echo date('M d, Y H:i', strtotime($req['created_at'])); ?></td>
+                                    <td>
+                                        <strong><?php echo date('M d, Y', strtotime($req['req_date'])); ?></strong><br>
+                                        <small class="text-muted"><?php echo date('l', strtotime($req['req_date'])); ?></small>
+                                    </td>
+                                    <td>
+                                        <?php if ($req['status'] === 'approved'): ?>
+                                            <span class="badge bg-success">Approved</span>
+                                        <?php elseif ($req['status'] === 'used'): ?>
+                                            <span class="badge bg-success">Approved & Applied</span>
+                                        <?php else: ?>
+                                            <span class="badge bg-danger">Rejected</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?php echo date('M d, Y H:i', strtotime($req['updated_at'])); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
 </div>
 
 <!-- Admin View Modal (same as calendar modal but with admin actions) -->
