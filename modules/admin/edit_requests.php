@@ -301,6 +301,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? null;
     $userId = $_POST['user_id'] ?? null;
     $date = $_POST['date'] ?? null;
+
+    // Handle log edit approve/reject
+    if ($action === 'approve_log_edit' || $action === 'reject_log_edit') {
+        $logEditId = (int)($_POST['log_edit_id'] ?? 0);
+        $leUserId = (int)($_POST['user_id'] ?? 0);
+        $leDate = $_POST['req_date'] ?? '';
+        try {
+            if ($action === 'approve_log_edit') {
+                // Apply the edit
+                $leStmt = $db->prepare("SELECT * FROM user_pending_log_edits WHERE id = ? AND status = 'pending'");
+                $leStmt->execute([$logEditId]);
+                $pe = $leStmt->fetch(PDO::FETCH_ASSOC);
+                if ($pe) {
+                    $colRows = $db->query("SHOW COLUMNS FROM project_time_logs")->fetchAll(PDO::FETCH_ASSOC);
+                    $columns = array_column($colRows, 'Field');
+                    $set = []; $params = [];
+                    if (in_array('hours_spent', $columns)) { $set[] = "hours_spent = ?"; $params[] = (float)$pe['new_hours']; }
+                    if (in_array('description', $columns)) { $set[] = "description = ?"; $params[] = $pe['new_description']; }
+                    if (in_array('project_id', $columns) && $pe['new_project_id']) { $set[] = "project_id = ?"; $params[] = (int)$pe['new_project_id']; }
+                    if (!empty($set)) {
+                        $set[] = "updated_at = NOW()";
+                        $sql = "UPDATE project_time_logs SET " . implode(', ', $set) . " WHERE id = ? AND user_id = ?";
+                        $params[] = (int)$pe['log_id']; $params[] = $leUserId;
+                        $db->prepare($sql)->execute($params);
+                    }
+                    $db->prepare("UPDATE user_pending_log_edits SET status = 'approved', updated_at = NOW() WHERE id = ?")->execute([$logEditId]);
+                    $_SESSION['success'] = 'Log edit approved and applied successfully.';
+                }
+            } else {
+                $db->prepare("UPDATE user_pending_log_edits SET status = 'rejected', updated_at = NOW() WHERE id = ?")->execute([$logEditId]);
+                $_SESSION['success'] = 'Log edit rejected.';
+            }
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Failed: ' . $e->getMessage();
+        }
+        header('Location: edit_requests.php');
+        exit;
+    }
     
     // Handle bulk actions
     if (isset($_POST['bulk_action']) && isset($_POST['request_ids']) && is_array($_POST['request_ids'])) {
@@ -395,6 +433,26 @@ $stmt = $db->prepare("
 ");
 $stmt->execute();
 $pendingRequests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Fetch pending log edits (from user_pending_log_edits table)
+$pendingLogEdits = [];
+try {
+    $leStmt = $db->prepare("
+        SELECT ple.*, u.full_name, u.username,
+               ptl.hours_spent as old_hours, ptl.description as old_description,
+               p.title as project_title
+        FROM user_pending_log_edits ple
+        JOIN users u ON ple.user_id = u.id
+        LEFT JOIN project_time_logs ptl ON ple.log_id = ptl.id
+        LEFT JOIN projects p ON ple.new_project_id = p.id
+        WHERE ple.status = 'pending'
+        ORDER BY ple.created_at DESC
+    ");
+    $leStmt->execute();
+    $pendingLogEdits = $leStmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log('Failed loading pending log edits: ' . $e->getMessage());
+}
 
 // Fetch recent processed requests (last 30 days)
 $stmt = $db->prepare("
@@ -610,6 +668,72 @@ include __DIR__ . '/../../includes/header.php';
             <?php endif; ?>
         </div>
     </div>
+
+    <!-- Pending Log Edit Items -->
+    <?php if (!empty($pendingLogEdits)): ?>
+    <div class="card mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-edit"></i> Pending Log Edit Items
+                <span class="badge bg-dark"><?php echo count($pendingLogEdits); ?></span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>User</th>
+                            <th>Date</th>
+                            <th>Project</th>
+                            <th>Old Hours</th>
+                            <th>New Hours</th>
+                            <th>New Description</th>
+                            <th>Reason</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($pendingLogEdits as $le): ?>
+                        <tr>
+                            <td>
+                                <strong><?php echo htmlspecialchars($le['full_name'], ENT_QUOTES, 'UTF-8'); ?></strong><br>
+                                <small class="text-muted">@<?php echo htmlspecialchars($le['username'], ENT_QUOTES, 'UTF-8'); ?></small>
+                            </td>
+                            <td><?php echo date('M d, Y', strtotime($le['req_date'])); ?></td>
+                            <td><?php echo htmlspecialchars($le['project_title'] ?? 'N/A', ENT_QUOTES, 'UTF-8'); ?></td>
+                            <td><?php echo number_format((float)($le['old_hours'] ?? 0), 2); ?>h</td>
+                            <td><strong><?php echo number_format((float)$le['new_hours'], 2); ?>h</strong></td>
+                            <td><small><?php echo htmlspecialchars(substr($le['new_description'] ?? '', 0, 80), ENT_QUOTES, 'UTF-8'); ?><?php if (strlen($le['new_description'] ?? '') > 80): ?>...<?php endif; ?></small></td>
+                            <td><small class="text-muted"><?php echo htmlspecialchars($le['reason'] ?? '', ENT_QUOTES, 'UTF-8'); ?></small></td>
+                            <td>
+                                <form method="POST" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="hidden" name="action" value="approve_log_edit">
+                                    <input type="hidden" name="log_edit_id" value="<?php echo (int)$le['id']; ?>">
+                                    <input type="hidden" name="user_id" value="<?php echo (int)$le['user_id']; ?>">
+                                    <input type="hidden" name="req_date" value="<?php echo htmlspecialchars($le['req_date'], ENT_QUOTES, 'UTF-8'); ?>">
+                                    <button type="submit" class="btn btn-sm btn-success me-1" onclick="return confirm('Approve this log edit?')">
+                                        <i class="fas fa-check"></i> Approve
+                                    </button>
+                                </form>
+                                <form method="POST" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="hidden" name="action" value="reject_log_edit">
+                                    <input type="hidden" name="log_edit_id" value="<?php echo (int)$le['id']; ?>">
+                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Reject this log edit?')">
+                                        <i class="fas fa-times"></i> Reject
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <!-- Admin View Modal (same as calendar modal but with admin actions) -->
