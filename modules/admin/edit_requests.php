@@ -768,14 +768,14 @@ include __DIR__ . '/../../includes/header.php';
                 <table class="table table-striped mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th>User</th>
-                            <th>Date</th>
-                            <th>Project</th>
-                            <th>Old Hours</th>
-                            <th>New Hours</th>
-                            <th>New Description</th>
-                            <th>Reason</th>
-                            <th>Actions</th>
+                            <th style="min-width: 150px;">User</th>
+                            <th style="min-width: 100px;">Date</th>
+                            <th style="min-width: 150px;">Project</th>
+                            <th style="min-width: 80px;">Old Hours</th>
+                            <th style="min-width: 80px;">New Hours</th>
+                            <th style="min-width: 200px;">New Description</th>
+                            <th style="min-width: 150px;">Reason</th>
+                            <th style="min-width: 200px; white-space: nowrap;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -791,7 +791,7 @@ include __DIR__ . '/../../includes/header.php';
                             <td><strong><?php echo number_format((float)$le['new_hours'], 2); ?>h</strong></td>
                             <td><small><?php echo htmlspecialchars(substr($le['new_description'] ?? '', 0, 80), ENT_QUOTES, 'UTF-8'); ?><?php if (strlen($le['new_description'] ?? '') > 80): ?>...<?php endif; ?></small></td>
                             <td><small class="text-muted"><?php echo htmlspecialchars($le['reason'] ?? '', ENT_QUOTES, 'UTF-8'); ?></small></td>
-                            <td>
+                            <td style="white-space: nowrap;">
                                 <form method="POST" class="d-inline">
                                     <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
                                     <input type="hidden" name="action" value="approve_log_edit">
