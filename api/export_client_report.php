@@ -216,8 +216,8 @@ function injectCell(string &$xml, int $rowNum, string $ref, string $value, strin
  */
 function injectRows(string &$xml, string $rows): void {
     if (strpos($xml, '</sheetData>') !== false) {
-        // Replace only the FIRST occurrence to avoid double-injection
-        $xml = preg_replace('/<\/sheetData>/', $rows . '</sheetData>', $xml, 1);
+        // Use str_replace instead of preg_replace to avoid $ backreference issues in $rows
+        $xml = str_replace('</sheetData>', $rows . '</sheetData>', $xml);
     } else {
         $xml = preg_replace('/<sheetData\s*\/>/s', '<sheetData>' . $rows . '</sheetData>', $xml, 1);
     }
