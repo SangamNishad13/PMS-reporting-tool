@@ -111,6 +111,10 @@ include __DIR__ . '/../includes/header.php';
                 </tbody>
             </table>
         </div>
+        <!-- Pagination -->
+        <nav aria-label="Feedback pagination" id="feedbackPaginationNav" style="display: none;">
+            <ul class="pagination pagination-sm justify-content-center" id="feedbackPagination"></ul>
+        </nav>
     </div>
 </div>
 
@@ -143,14 +147,18 @@ $(document).ready(function() {
     });
 
     // Load feedback history
-    function loadFeedbackHistory() {
-        fetch(baseDir + '/api/feedback.php?action=list_my_feedbacks')
+    var currentPage = 1;
+    function loadFeedbackHistory(page) {
+        page = page || 1;
+        currentPage = page;
+        fetch(baseDir + '/api/feedback.php?action=list_my_feedbacks&page=' + page)
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 var tbody = document.getElementById('myFeedbackTableBody');
                 if (!data.success || !data.feedbacks || data.feedbacks.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No feedback submitted yet.</td></tr>';
                     document.getElementById('myFeedbackVisibleCount').textContent = '0';
+                    document.getElementById('feedbackPaginationNav').style.display = 'none';
                     return;
                 }
                 var rows = '';
@@ -169,11 +177,63 @@ $(document).ready(function() {
                         + '</tr>';
                 });
                 tbody.innerHTML = rows;
-                document.getElementById('myFeedbackVisibleCount').textContent = data.feedbacks.length;
+                
+                // Update pagination
+                if (data.pagination && data.pagination.total_pages > 1) {
+                    renderPagination(data.pagination);
+                    document.getElementById('feedbackPaginationNav').style.display = 'block';
+                } else {
+                    document.getElementById('feedbackPaginationNav').style.display = 'none';
+                }
+                
+                document.getElementById('myFeedbackVisibleCount').textContent = data.pagination ? data.pagination.total_count : data.feedbacks.length;
             })
             .catch(function() {
                 document.getElementById('myFeedbackTableBody').innerHTML = '<tr><td colspan="4" class="text-center text-muted">Failed to load history.</td></tr>';
             });
+    }
+    
+    function renderPagination(pagination) {
+        var paginationEl = document.getElementById('feedbackPagination');
+        var html = '';
+        var currentPage = pagination.current_page;
+        var totalPages = pagination.total_pages;
+        
+        // Previous button
+        html += '<li class="page-item' + (currentPage === 1 ? ' disabled' : '') + '">';
+        html += '<a class="page-link" href="#" onclick="loadFeedbackHistory(' + (currentPage - 1) + '); return false;">Previous</a>';
+        html += '</li>';
+        
+        // Page numbers
+        var startPage = Math.max(1, currentPage - 2);
+        var endPage = Math.min(totalPages, currentPage + 2);
+        
+        if (startPage > 1) {
+            html += '<li class="page-item"><a class="page-link" href="#" onclick="loadFeedbackHistory(1); return false;">1</a></li>';
+            if (startPage > 2) {
+                html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+            }
+        }
+        
+        for (var i = startPage; i <= endPage; i++) {
+            html += '<li class="page-item' + (i === currentPage ? ' active' : '') + '">';
+            html += '<a class="page-link" href="#" onclick="loadFeedbackHistory(' + i + '); return false;">' + i + '</a>';
+            html += '</li>';
+        }
+        
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+            }
+            html += '<li class="page-item"><a class="page-link" href="#" onclick="loadFeedbackHistory(' + totalPages + '); return false;">' + totalPages + '</a></li>';
+        }
+        
+        // Next button
+        html += '<li class="page-item' + (currentPage === totalPages ? ' disabled' : '') + '">';
+        html += '<a class="page-link" href="#" onclick="loadFeedbackHistory(' + (currentPage + 1) + '); return false;">Next</a>';
+        html += '</li>';
+        
+        paginationEl.innerHTML = html;
     }
 
     loadFeedbackHistory();

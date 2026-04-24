@@ -213,6 +213,25 @@ try {
     }
     elseif ($action === 'list_my_feedbacks') {
         // List feedbacks sent by or received by the current user
+        $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+        $perPage = 10;
+        $offset = ($page - 1) * $perPage;
+        
+        // Get total count
+        $countStmt = $db->prepare("
+            SELECT COUNT(DISTINCT f.id) as total
+            FROM feedbacks f
+            LEFT JOIN feedback_recipients fr ON f.id = fr.feedback_id
+            WHERE f.sender_id = ?
+               OR fr.user_id = ?
+               OR (f.send_to_admin = 1 AND ? = 1)
+        ");
+        $isAdmin = in_array($userRole, ['admin']) ? 1 : 0;
+        $countStmt->execute([$userId, $userId, $isAdmin]);
+        $totalCount = (int)$countStmt->fetchColumn();
+        $totalPages = ceil($totalCount / $perPage);
+        
+        // Get paginated results
         $stmt = $db->prepare("
             SELECT DISTINCT f.id, f.content, f.status, f.created_at,
                    p.title as project_title,
@@ -226,12 +245,20 @@ try {
                OR (f.send_to_admin = 1 AND ? = 1)
             GROUP BY f.id
             ORDER BY f.created_at DESC
-            LIMIT 50
+            LIMIT ? OFFSET ?
         ");
-        $isAdmin = in_array($userRole, ['admin']) ? 1 : 0;
-        $stmt->execute([$userId, $userId, $isAdmin]);
+        $stmt->execute([$userId, $userId, $isAdmin, $perPage, $offset]);
         $feedbacks = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        echo json_encode(['success' => true, 'feedbacks' => $feedbacks]);
+        echo json_encode([
+            'success' => true, 
+            'feedbacks' => $feedbacks,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total_count' => $totalCount,
+                'total_pages' => $totalPages
+            ]
+        ]);
     }
     elseif ($action === 'get_user_feedback') {
         // User functionality to get their own feedback details
