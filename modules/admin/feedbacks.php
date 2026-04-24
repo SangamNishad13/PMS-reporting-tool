@@ -284,7 +284,7 @@ include __DIR__ . '/../../includes/header.php';
                                     ?>
                                 </div>
                                 <?php if ($feedback['is_generic']): ?>
-                                <span class="badge bg-info small mt-1">Project-wide</span>
+                                <span class="badge bg-info small mt-1">General</span>
                                 <?php endif; ?>
                             </td>
                             <td>
