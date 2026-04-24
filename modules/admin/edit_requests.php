@@ -339,6 +339,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: edit_requests.php');
         exit;
     }
+
+    // Handle log deletion approve/reject
+    if ($action === 'approve_log_deletion' || $action === 'reject_log_deletion') {
+        $logDeletionId = (int)($_POST['log_deletion_id'] ?? 0);
+        $delUserId = (int)($_POST['user_id'] ?? 0);
+        $delDate = $_POST['req_date'] ?? '';
+        try {
+            if ($action === 'approve_log_deletion') {
+                // Apply the deletion
+                $delStmt = $db->prepare("SELECT * FROM user_pending_log_deletions WHERE id = ? AND status = 'pending'");
+                $delStmt->execute([$logDeletionId]);
+                $pd = $delStmt->fetch(PDO::FETCH_ASSOC);
+                if ($pd) {
+                    $logId = (int)($pd['log_id'] ?? 0);
+                    if ($logId > 0) {
+                        $db->prepare("DELETE FROM project_time_logs WHERE id = ? AND user_id = ?")->execute([$logId, $delUserId]);
+                    }
+                    $db->prepare("UPDATE user_pending_log_deletions SET status = 'approved', updated_at = NOW() WHERE id = ?")->execute([$logDeletionId]);
+                    $_SESSION['success'] = 'Log deletion approved and applied successfully.';
+                }
+            } else {
+                $db->prepare("UPDATE user_pending_log_deletions SET status = 'rejected', updated_at = NOW() WHERE id = ?")->execute([$logDeletionId]);
+                $_SESSION['success'] = 'Log deletion rejected.';
+            }
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Failed: ' . $e->getMessage();
+        }
+        header('Location: edit_requests.php');
+        exit;
+    }
     
     // Handle bulk actions
     if (isset($_POST['bulk_action']) && isset($_POST['request_ids']) && is_array($_POST['request_ids'])) {
@@ -454,6 +484,28 @@ try {
     error_log('Failed loading pending log edits: ' . $e->getMessage());
 }
 
+// Fetch pending log deletions
+$pendingLogDeletions = [];
+try {
+    $delStmt = $db->prepare("
+        SELECT pld.*, u.full_name, u.username,
+               ptl.hours_spent, ptl.description, p.title as project_title
+        FROM user_pending_log_deletions pld
+        JOIN users u ON pld.user_id = u.id
+        LEFT JOIN project_time_logs ptl ON pld.log_id = ptl.id
+        LEFT JOIN projects p ON ptl.project_id = p.id
+        WHERE pld.status = 'pending'
+        ORDER BY pld.created_at DESC
+    ");
+    $delStmt->execute();
+    $pendingLogDeletions = $delStmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log('Failed loading pending log deletions: ' . $e->getMessage());
+}
+
+// Calculate total pending count
+$totalPendingCount = count($pendingRequests) + count($pendingLogEdits) + count($pendingLogDeletions);
+
 // Fetch recent processed requests (last 30 days)
 $stmt = $db->prepare("
     SELECT uer.*, u.full_name, u.username 
@@ -503,6 +555,39 @@ include __DIR__ . '/../../includes/header.php';
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     <?php endif; ?>
+
+    <!-- Summary Card -->
+    <div class="card mb-4 border-warning">
+        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-inbox"></i> All Pending Requests</h5>
+            <span class="badge bg-dark fs-6"><?php echo $totalPendingCount; ?> Total</span>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="border rounded p-3 h-100 <?php echo count($pendingRequests) > 0 ? 'border-warning' : ''; ?>">
+                        <div class="text-muted small">Edit Access Requests</div>
+                        <div class="h4 mb-0"><?php echo count($pendingRequests); ?></div>
+                        <small class="text-muted">From user_edit_requests table</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="border rounded p-3 h-100 <?php echo count($pendingLogEdits) > 0 ? 'border-info' : ''; ?>">
+                        <div class="text-muted small">Pending Log Edits</div>
+                        <div class="h4 mb-0"><?php echo count($pendingLogEdits); ?></div>
+                        <small class="text-muted">From user_pending_log_edits table</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="border rounded p-3 h-100 <?php echo count($pendingLogDeletions) > 0 ? 'border-danger' : ''; ?>">
+                        <div class="text-muted small">Pending Log Deletions</div>
+                        <div class="h4 mb-0"><?php echo count($pendingLogDeletions); ?></div>
+                        <small class="text-muted">From user_pending_log_deletions table</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Pending Requests -->
     <div class="card mb-4">
@@ -722,6 +807,70 @@ include __DIR__ . '/../../includes/header.php';
                                     <input type="hidden" name="action" value="reject_log_edit">
                                     <input type="hidden" name="log_edit_id" value="<?php echo (int)$le['id']; ?>">
                                     <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Reject this log edit?')">
+                                        <i class="fas fa-times"></i> Reject
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- Pending Log Deletion Items -->
+    <?php if (!empty($pendingLogDeletions)): ?>
+    <div class="card mb-4">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-trash"></i> Pending Log Deletion Items
+                <span class="badge bg-dark"><?php echo count($pendingLogDeletions); ?></span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>User</th>
+                            <th>Date</th>
+                            <th>Project</th>
+                            <th>Hours</th>
+                            <th>Description</th>
+                            <th>Reason</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($pendingLogDeletions as $del): ?>
+                        <tr>
+                            <td>
+                                <strong><?php echo htmlspecialchars($del['full_name'], ENT_QUOTES, 'UTF-8'); ?></strong><br>
+                                <small class="text-muted">@<?php echo htmlspecialchars($del['username'], ENT_QUOTES, 'UTF-8'); ?></small>
+                            </td>
+                            <td><?php echo date('M d, Y', strtotime($del['req_date'])); ?></td>
+                            <td><?php echo htmlspecialchars($del['project_title'] ?? 'N/A', ENT_QUOTES, 'UTF-8'); ?></td>
+                            <td><?php echo number_format((float)($del['hours_spent'] ?? 0), 2); ?>h</td>
+                            <td><small><?php echo htmlspecialchars(substr($del['description'] ?? '', 0, 80), ENT_QUOTES, 'UTF-8'); ?><?php if (strlen($del['description'] ?? '') > 80): ?>...<?php endif; ?></small></td>
+                            <td><small class="text-muted"><?php echo htmlspecialchars($del['reason'] ?? '', ENT_QUOTES, 'UTF-8'); ?></small></td>
+                            <td>
+                                <form method="POST" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="hidden" name="action" value="approve_log_deletion">
+                                    <input type="hidden" name="log_deletion_id" value="<?php echo (int)$del['id']; ?>">
+                                    <input type="hidden" name="user_id" value="<?php echo (int)$del['user_id']; ?>">
+                                    <input type="hidden" name="req_date" value="<?php echo htmlspecialchars($del['req_date'], ENT_QUOTES, 'UTF-8'); ?>">
+                                    <button type="submit" class="btn btn-sm btn-success me-1" onclick="return confirm('Approve this log deletion?')">
+                                        <i class="fas fa-check"></i> Approve
+                                    </button>
+                                </form>
+                                <form method="POST" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="hidden" name="action" value="reject_log_deletion">
+                                    <input type="hidden" name="log_deletion_id" value="<?php echo (int)$del['id']; ?>">
+                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Reject this log deletion?')">
                                         <i class="fas fa-times"></i> Reject
                                     </button>
                                 </form>
