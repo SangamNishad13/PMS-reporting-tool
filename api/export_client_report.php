@@ -1036,7 +1036,20 @@ if ($pos === false) {
 $endPos = strpos($sh4, '</sheetData>');
 if ($pos !== false && $endPos !== false) {
     $before = substr($sh4, 0, $pos + 11);
-    $after  = substr($sh4, $endPos);
+    // Extract only the content AFTER </sheetData> up to </worksheet>
+    // The template may have corrupt HTML/SVG content embedded in shared strings
+    // that bleeds into the worksheet XML. We rebuild the tail safely.
+    $afterRaw = substr($sh4, $endPos + 12); // everything after </sheetData>
+    // Find </worksheet> - keep only what's between </sheetData> and </worksheet>
+    $wsClosePos = strrpos($afterRaw, '</worksheet>');
+    if ($wsClosePos !== false) {
+        $betweenContent = substr($afterRaw, 0, $wsClosePos);
+        // Strip any stray <t>...</t> blocks that contain HTML/SVG (corrupt template data)
+        $betweenContent = preg_replace('/<t\b[^>]*>[\s\S]*?<\/t>/s', '', $betweenContent);
+        $after = '</sheetData>' . $betweenContent . '</worksheet>';
+    } else {
+        $after = '</sheetData></worksheet>';
+    }
     
     // Build new dynamic header row
     $headerRow = '<row r="1" spans="1:' . count($baseHeaders) . '">';
