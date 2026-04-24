@@ -565,7 +565,8 @@ try {
     }
 
     if ($method === 'DELETE') {
-        parse_str(file_get_contents('php://input'), $delVars);
+        // php://input can only be read once; reuse $rawBody already read above
+        parse_str($rawBody ?? '', $delVars);
         if ($action === 'remove_grouped') {
             $id = (int)($delVars['id'] ?? 0);
             if (!$id) jsonRes(['error' => 'id required'], 400);
