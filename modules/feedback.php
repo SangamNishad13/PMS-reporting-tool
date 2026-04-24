@@ -160,13 +160,16 @@ $(document).ready(function() {
                 }
                 var rows = '';
                 data.feedbacks.forEach(function(fb) {
-                    var preview = fb.content ? fb.content.replace(/<[^>]+>/g, '').substring(0, 80) : '';
+                    var rawText = fb.content ? fb.content.replace(/<[^>]+>/g, '') : '';
+                    var preview = rawText.substring(0, 80).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
                     var date = new Date(fb.created_at).toLocaleDateString();
                     var status = fb.status || 'open';
-                    rows += '<tr data-search="' + (preview + ' ' + date).toLowerCase() + '" data-status="' + status + '" data-type="">'
+                    var statusLabels = {'open':'Open','in_progress':'In Progress','resolved':'Resolved','closed':'Closed'};
+                    var statusColors = {'open':'secondary','in_progress':'primary','resolved':'success','closed':'dark'};
+                    rows += '<tr data-search="' + preview.toLowerCase() + '" data-status="' + status + '" data-type="">'
                         + '<td class="text-nowrap">' + date + '</td>'
-                        + '<td>' + preview + (preview.length >= 80 ? '...' : '') + '</td>'
-                        + '<td><span class="badge bg-secondary">' + status + '</span></td>'
+                        + '<td>' + preview + (rawText.length >= 80 ? '...' : '') + '</td>'
+                        + '<td><span class="badge bg-' + (statusColors[status]||'secondary') + '">' + (statusLabels[status]||status) + '</span></td>'
                         + '<td><button class="btn btn-sm btn-outline-primary" onclick="viewFeedbackDetails(' + fb.id + ')">View</button></td>'
                         + '</tr>';
                 });
