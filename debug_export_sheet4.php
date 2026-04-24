@@ -1,103 +1,79 @@
 <?php
 /**
- * Debug v4 - verify which code version is running on live
+ * Debug v5 - download actual sheet4.xml from export
  * DELETE THIS FILE AFTER DEBUGGING
  */
+ob_start();
 require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/constants.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/client_issue_snapshots.php';
+require_once __DIR__ . '/includes/models/SecurityValidator.php';
+ob_end_clean();
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) { exit('Not logged in'); }
 
-echo "<h2>Debug v4: Code version check</h2>";
-echo "<style>body{font-family:monospace;padding:20px;font-size:13px}</style>";
+$projectId = (int)($_GET['project_id'] ?? 34);
+$action = $_GET['action'] ?? 'info';
 
-// 1. Check what version of export_client_report.php is running
-$exportFile = __DIR__ . '/api/export_client_report.php';
-$content = file_get_contents($exportFile);
+// Include all functions from export file by extracting them
+// We'll just re-implement the key parts here
 
-echo "<h3>1. export_client_report.php version check</h3>";
-echo "<p>File size: " . filesize($exportFile) . " bytes</p>";
-echo "<p>Last modified: " . date('Y-m-d H:i:s', filemtime($exportFile)) . "</p>";
+$db = Database::getInstance();
 
-// Check for our latest fix
-if (strpos($content, 'built from scratch') !== false) {
-    echo "<p style='color:green'><strong>✅ Latest fix IS present (build from scratch)</strong></p>";
-} else {
-    echo "<p style='color:red'><strong>❌ Latest fix NOT present - git pull not done or failed</strong></p>";
-}
-
-if (strpos($content, 'bypass corrupt live template') !== false) {
-    echo "<p style='color:green'>✅ Bypass corrupt template fix present</p>";
-}
-
-if (strpos($content, 'memory_limit') !== false) {
-    echo "<p style='color:green'>✅ Memory limit fix present</p>";
-} else {
-    echo "<p style='color:red'>❌ Memory limit fix NOT present</p>";
-}
-
-// 2. Check git log
-echo "<h3>2. Git status</h3>";
-$gitLog = shell_exec('cd ' . escapeshellarg(__DIR__) . ' && git log --oneline -5 2>&1');
-echo "<pre>" . htmlspecialchars($gitLog) . "</pre>";
-
-$gitStatus = shell_exec('cd ' . escapeshellarg(__DIR__) . ' && git status 2>&1');
-echo "<pre>" . htmlspecialchars($gitStatus) . "</pre>";
-
-// 3. Quick simulation - does sh4 get built correctly?
-echo "<h3>3. Sheet4 build simulation</h3>";
-
-$templatePath = __DIR__ . '/assets/templates/report_template.xlsx';
-if (!file_exists($templatePath)) { echo "<p style='color:red'>Template not found!</p>"; exit; }
-
-$zip = new ZipArchive();
-$tmpFile = tempnam(sys_get_temp_dir(), 'pms_dbg_') . '.xlsx';
-copy($templatePath, $tmpFile);
-$zip->open($tmpFile);
-$sh4template = $zip->getFromName('xl/worksheets/sheet4.xml');
-$zip->close();
-@unlink($tmpFile);
-
-echo "<p>Template sheet4.xml size: " . strlen($sh4template) . " bytes</p>";
-
-// Simulate fresh build
-$colsXml = '';
-$sheetViewsXml = '';
-if ($sh4template !== false) {
-    if (preg_match('/<cols>(.*?)<\/cols>/s', $sh4template, $cm)) {
-        $colsXml = '<cols>' . $cm[1] . '</cols>';
-        echo "<p style='color:green'>✅ cols extracted: " . strlen($colsXml) . " bytes</p>";
-    } else {
-        echo "<p style='color:orange'>⚠️ No cols in template</p>";
+if ($action === 'download_sh4') {
+    // Run the actual export and capture sheet4.xml
+    // We do this by temporarily saving it
+    
+    // Replicate the export logic minimally
+    ini_set('memory_limit', '256M');
+    
+    require_once __DIR__ . '/includes/project_permissions.php';
+    
+    // Get issues
+    $issueStmt = $db->prepare("SELECT i.id, i.title, i.description, i.severity, i.issue_key, s.name as status_name FROM issues i LEFT JOIN issue_statuses s ON s.id = i.status_id WHERE i.project_id = ? ORDER BY i.id ASC");
+    $issueStmt->execute([$projectId]);
+    $allIssues = $issueStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    header('Content-Type: text/plain');
+    echo "Issues count: " . count($allIssues) . "\n";
+    echo "filteredIssues would be: " . count($allIssues) . " (approx)\n\n";
+    
+    // Check what the actual export produces
+    // Load the export file and check key variables
+    $exportContent = file_get_contents(__DIR__ . '/api/export_client_report.php');
+    
+    // Check for key markers
+    echo "=== export_client_report.php analysis ===\n";
+    echo "File size: " . strlen($exportContent) . " bytes\n";
+    echo "Has 'built from scratch': " . (strpos($exportContent, 'built from scratch') !== false ? 'YES' : 'NO') . "\n";
+    echo "Has 'bypass corrupt': " . (strpos($exportContent, 'bypass corrupt') !== false ? 'YES' : 'NO') . "\n";
+    echo "Has 'sortRows(\$sh4)' (uncommented): ";
+    // Check if sortRows($sh4) is called (not commented)
+    preg_match_all('/^[^\/\n]*sortRows\(\$sh4\)/m', $exportContent, $matches);
+    echo count($matches[0]) . " times\n";
+    echo "sortRows calls: " . implode(' | ', $matches[0]) . "\n\n";
+    
+    // Check injectRows call
+    preg_match_all('/^[^\/\n]*injectRows\(\$sh4/m', $exportContent, $m2);
+    echo "injectRows(\$sh4) calls: " . count($m2[0]) . "\n";
+    echo implode("\n", $m2[0]) . "\n\n";
+    
+    // Show the sh4 building section
+    $sh4Start = strpos($exportContent, 'SHEET 4');
+    $sh4End = strpos($exportContent, 'SHEET 5', $sh4Start);
+    if ($sh4End === false) $sh4End = strpos($exportContent, '// ── stream', $sh4Start);
+    if ($sh4Start !== false) {
+        echo "=== Sheet4 section (first 3000 chars) ===\n";
+        echo substr($exportContent, $sh4Start, min(3000, ($sh4End ?: strlen($exportContent)) - $sh4Start));
     }
-    if (preg_match('/<sheetViews>(.*?)<\/sheetViews>/s', $sh4template, $svm)) {
-        $sheetViewsXml = '<sheetViews>' . $svm[1] . '</sheetViews>';
-        echo "<p style='color:green'>✅ sheetViews extracted: " . strlen($sheetViewsXml) . " bytes</p>";
-    }
+    exit;
 }
 
-$sh4fresh = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-    . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
-    . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-    . ($sheetViewsXml ?: '<sheetViews><sheetView workbookViewId="0"/></sheetViews>')
-    . ($colsXml ?: '')
-    . '<sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Test</t></is></c></row></sheetData>'
-    . '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0" footer="0"/>'
-    . '</worksheet>';
-
-libxml_use_internal_errors(true);
-simplexml_load_string($sh4fresh);
-$errs = libxml_get_errors();
-libxml_clear_errors();
-
-if (empty($errs)) {
-    echo "<p style='color:green'><strong>✅ Fresh sheet4 XML is VALID</strong></p>";
-} else {
-    echo "<p style='color:red'><strong>❌ Fresh sheet4 XML error: " . htmlspecialchars(trim($errs[0]->message)) . "</strong></p>";
-    // The cols or sheetViews from template is corrupt!
-    echo "<p>cols XML snippet: <code>" . htmlspecialchars(substr($colsXml, 0, 200)) . "</code></p>";
-    echo "<p>sheetViews XML snippet: <code>" . htmlspecialchars(substr($sheetViewsXml, 0, 200)) . "</code></p>";
-}
-
+// Default: show info
+header('Content-Type: text/html');
+echo "<h2>Debug v5 - Project $projectId</h2>";
+echo "<p><a href='?project_id=$projectId&action=download_sh4'>View export analysis</a></p>";
 echo "<hr><p style='color:gray'>Delete: debug_export_sheet4.php</p>";
