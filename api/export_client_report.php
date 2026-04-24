@@ -1003,7 +1003,8 @@ $zip->addFromString('xl/worksheets/sheet3.xml', $sh3);
 // ══════════════════════════════════════════════════════════════════════════════
 // SHEET 4: Final Report
 // ══════════════════════════════════════════════════════════════════════════════
-$sh4 = $zip->getFromName('xl/worksheets/sheet4.xml');
+// SHEET 4: Final Report — built from scratch (bypass corrupt live template)
+// ══════════════════════════════════════════════════════════════════════════════
 
 // We need to rewrite the header row specifically to include Regression columns
 $rrStmt = $db->prepare("SELECT id, round_number FROM regression_rounds WHERE project_id = ? ORDER BY round_number ASC");
@@ -1024,34 +1025,38 @@ foreach ($regressionRounds as $rr) {
     $baseHeaders[] = "Regression Round {$rnum} Comment";
 }
 
-// Find <sheetData>
-$pos = strpos($sh4, '<sheetData>');
-if ($pos === false) {
-    $pos = strpos($sh4, '<sheetData/>');
-    if ($pos !== false) {
-        $sh4 = substr_replace($sh4, '<sheetData></sheetData>', $pos, 12);
-        $pos = strpos($sh4, '<sheetData>');
+// Build header row
+$headerRow = '<row r="1" spans="1:' . count($baseHeaders) . '">';
+foreach ($baseHeaders as $i => $hText) {
+    $headerRow .= xcell(numToCol($i), 1, $hText, '2');
+}
+$headerRow .= '</row>';
+
+// Extract column widths and sheetViews (frozen pane) from template if available
+$sh4template = $zip->getFromName('xl/worksheets/sheet4.xml');
+$colsXml = '';
+$sheetViewsXml = '';
+if ($sh4template !== false) {
+    if (preg_match('/<cols>(.*?)<\/cols>/s', $sh4template, $cm)) {
+        $colsXml = '<cols>' . $cm[1] . '</cols>';
+    }
+    if (preg_match('/<sheetViews>(.*?)<\/sheetViews>/s', $sh4template, $svm)) {
+        $sheetViewsXml = '<sheetViews>' . $svm[1] . '</sheetViews>';
     }
 }
-$endPos = strpos($sh4, '</sheetData>');
-if ($pos !== false && $endPos !== false) {
-    $before = substr($sh4, 0, $pos + 11);
-    // Hardcode a clean tail - live template may have corrupt SVG/HTML content
-    // bleeding into the worksheet XML after </sheetData>
-    $after = '</sheetData><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0" footer="0"/><pageSetup orientation="landscape"/></worksheet>';
-    
-    // Build new dynamic header row
-    $headerRow = '<row r="1" spans="1:' . count($baseHeaders) . '">';
-    foreach ($baseHeaders as $i => $hText) {
-        $colLetter = numToCol($i);
-        // Header style is usually s="2" or similar bold center string. We will just use the inline string.
-        // It's safer to use s="2" assuming template has style 2 for headers.
-        $headerRow .= xcell($colLetter, 1, $hText, '2');
-    }
-    $headerRow .= '</row>';
-    
-    $sh4 = $before . $headerRow . $after;
-}
+
+// Build completely fresh sheet4.xml - no dependency on template content
+$sh4 = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+    . ($sheetViewsXml ?: '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>')
+    . ($colsXml ?: '')
+    . '<sheetData>'
+    . $headerRow
+    . '</sheetData>'
+    . '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0" footer="0"/>'
+    . '<pageSetup orientation="landscape"/>'
+    . '</worksheet>';
 
 $rows4 = '';
 $srNo  = 1;
