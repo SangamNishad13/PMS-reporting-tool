@@ -136,6 +136,13 @@ if (!isset($baseDir)) {
     require_once __DIR__ . '/../includes/helpers.php';
     $baseDir = getBaseDir();
 }
+
+// Register in session for temporary preview access (before message is sent)
+if (!isset($_SESSION['temporary_chat_upload_paths']) || !is_array($_SESSION['temporary_chat_upload_paths'])) {
+    $_SESSION['temporary_chat_upload_paths'] = [];
+}
+$_SESSION['temporary_chat_upload_paths'][$relativePath] = time();
+
 $url = rtrim($baseDir, '/') . '/api/secure_file.php?path=' . rawurlencode($relativePath);
 
 echo json_encode(['success' => true, 'url' => $url]);

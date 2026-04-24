@@ -291,26 +291,34 @@ function userCanAccessFilePath(PDO $db, int $userId, string $role, string $relPa
 }
 
 function userCanPreviewTemporaryIssueUpload(string $relPath): bool {
-    $previewKey = 'temporary_issue_upload_paths';
     $previewTtl = 2 * 60 * 60;
-    if (!isset($_SESSION[$previewKey]) || !is_array($_SESSION[$previewKey])) {
-        return false;
-    }
 
-    $allowed = false;
-    foreach ($_SESSION[$previewKey] as $path => $timestamp) {
-        if (!is_string($path) || !is_numeric($timestamp) || ((int)$timestamp + $previewTtl) < time()) {
-            unset($_SESSION[$previewKey][$path]);
-            continue;
-        }
-        if ($path === $relPath) {
-            $allowed = true;
+    // Check issue upload paths
+    $issueKey = 'temporary_issue_upload_paths';
+    if (isset($_SESSION[$issueKey]) && is_array($_SESSION[$issueKey])) {
+        foreach ($_SESSION[$issueKey] as $path => $timestamp) {
+            if (!is_string($path) || !is_numeric($timestamp) || ((int)$timestamp + $previewTtl) < time()) {
+                unset($_SESSION[$issueKey][$path]);
+                continue;
+            }
+            if ($path === $relPath) return true;
         }
     }
 
-    return $allowed;
+    // Check chat upload paths
+    $chatKey = 'temporary_chat_upload_paths';
+    if (isset($_SESSION[$chatKey]) && is_array($_SESSION[$chatKey])) {
+        foreach ($_SESSION[$chatKey] as $path => $timestamp) {
+            if (!is_string($path) || !is_numeric($timestamp) || ((int)$timestamp + $previewTtl) < time()) {
+                unset($_SESSION[$chatKey][$path]);
+                continue;
+            }
+            if ($path === $relPath) return true;
+        }
+    }
+
+    return false;
 }
-
 try {
     if (!$allowPublicIssueImage) {
         $db = Database::getInstance();
