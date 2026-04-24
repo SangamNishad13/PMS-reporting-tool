@@ -258,9 +258,10 @@ function userCanAccessFilePath(PDO $db, int $userId, string $role, string $relPa
         return userCanAccessReferencedIssueProject($db, $userId, $role, $relPath);
     }
 
+    // Chat images: allow any logged-in non-client user
+    // Images are uploaded by authenticated users and linked in chat messages
     if (strpos($relPath, 'uploads/chat/') === 0) {
-        return userCanAccessReferencedIssueProject($db, $userId, $role, $relPath)
-            || userCanAccessReferencedChat($db, $userId, $role, $relPath);
+        return $role !== 'client';
     }
 
     if (strpos($relPath, 'assets/uploads/') === 0) {
@@ -273,8 +274,7 @@ function userCanAccessFilePath(PDO $db, int $userId, string $role, string $relPa
         }
 
         if (strpos($relPath, 'assets/uploads/chat/') === 0) {
-            return userCanAccessReferencedIssueProject($db, $userId, $role, $relPath)
-                || userCanAccessReferencedChat($db, $userId, $role, $relPath);
+            return $role !== 'client';
         }
 
         return false;
