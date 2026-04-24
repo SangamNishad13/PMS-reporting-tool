@@ -520,6 +520,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                     <i class="fas fa-briefcase me-1 opacity-50"></i> Workspace
                                 </a>
                                 <ul class="dropdown-menu shadow-sm" aria-labelledby="workspaceDropdown">
+                                    <?php if ($_SESSION['role'] !== 'admin'): ?>
                                     <li>
                                         <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/my_daily_status.php">
                                             <i class="fas fa-clock me-2 text-primary opacity-75"></i> Daily Log
@@ -531,6 +532,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                             </a>
                                     </li>
                                     <li><hr class="dropdown-divider"></li>
+                                    <?php endif; ?>
                                     <li>
                                         <a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/feedback.php">
                                             <i class="fas fa-comment-dots me-2 text-info opacity-75"></i> Feedback
@@ -569,7 +571,6 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                     <ul class="dropdown-menu shadow-sm animate slideIn" aria-labelledby="projectsDropdown">
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/projects.php">Manage Projects</a></li>
                                         <li><hr class="dropdown-divider"></li>
-                                        <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/bulk_hours_management.php">Bulk Hours</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/manage_statuses.php">Statuses</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/clients.php">Clients</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/environments.php">Environments</a></li>
