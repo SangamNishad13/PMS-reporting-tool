@@ -584,6 +584,10 @@ if (!$embed) {
     ?>
     <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
+    <?php $summernoteHelperPath = __DIR__ . '/../../assets/js/summernote_image_helper.js'; ?>
+    <?php if (file_exists($summernoteHelperPath)): ?>
+    <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/summernote_image_helper.js?v=20260202v3"></script>
+    <?php endif; ?>
     <?php
 } else {
     ?><!doctype html>
