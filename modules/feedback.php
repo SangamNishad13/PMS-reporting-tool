@@ -35,11 +35,6 @@ include __DIR__ . '/../includes/header.php';
         </div>
     </div>
 
-    <div id="feedbackSuccessAlert" class="alert alert-success d-flex align-items-center mb-4 d-none" role="alert">
-        <i class="fas fa-check-circle fs-4 me-3"></i>
-        <div>Thank you! Your feedback has been received and our team will review it shortly.</div>
-    </div>
-
     <div class="card shadow-sm border-0">
         <div class="card-body p-4">
             <form id="globalFeedbackForm">
@@ -212,10 +207,7 @@ $(document).ready(function() {
                 if (data.success) {
                     $('#feedbackContent').summernote('code', '');
                     $('#recipientSelect').val(null).trigger('change');
-                    document.getElementById('feedbackSuccessAlert').classList.remove('d-none');
-                    setTimeout(function() {
-                        document.getElementById('feedbackSuccessAlert').classList.add('d-none');
-                    }, 5000);
+                    showToast('Feedback submitted successfully!', 'success');
                     loadFeedbackHistory();
                 } else {
                     showToast(data.message || 'Failed to submit feedback.', 'danger');
