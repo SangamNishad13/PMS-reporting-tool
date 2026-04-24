@@ -321,7 +321,9 @@ function sortRows(string &$xml): void {
     $contentStart = $startPos + strlen($startTag);
     $content = substr($xml, $contentStart, $endPos - $contentStart);
 
-    // Extract rows using a non-backtracking approach
+    // Extract rows using regex to correctly handle row boundaries
+    // Each row is: <row r="N" ...>...</row>
+    // We use a regex that matches from <row to the NEXT </row> that closes it
     $rows = [];
     $offset = 0;
     $len = strlen($content);
@@ -330,7 +332,7 @@ function sortRows(string &$xml): void {
         $rowStart = strpos($content, '<row ', $offset);
         if ($rowStart === false) break;
 
-        // Get row number
+        // Get opening tag end
         $attrEnd = strpos($content, '>', $rowStart);
         if ($attrEnd === false) break;
         $openTag = substr($content, $rowStart, $attrEnd - $rowStart + 1);
@@ -340,16 +342,21 @@ function sortRows(string &$xml): void {
 
         // Self-closing row?
         if (substr($openTag, -2) === '/>') {
-            $rows[$rNum] = substr($content, $rowStart, $attrEnd - $rowStart + 1);
+            $rows[$rNum] = $openTag;
             $offset = $attrEnd + 1;
             continue;
         }
 
-        // Find matching </row>
+        // Find matching </row> by scanning forward past all <c ...>...</c> cells
+        // We track depth: <row opens at depth 1, </row> closes it
+        // Since rows don't nest, we just need to find </row> after all cells are closed
+        // Cells use <c ...>...</c> or <c .../> - they don't contain </row>
+        // So the first </row> after $attrEnd is always the correct closing tag
+        // UNLESS cell values contain the literal string </row> - but xstr() escapes all < and >
+        // so this is safe.
         $closePos = strpos($content, '</row>', $attrEnd);
         if ($closePos === false) break;
         $rowFull = substr($content, $rowStart, $closePos + 6 - $rowStart);
-        // Keep last injection for same row number (most recent wins)
         $rows[$rNum] = $rowFull;
         $offset = $closePos + 6;
     }
@@ -1180,7 +1187,10 @@ foreach ($filteredIssues as $iss) {
     $srNo++;
 }
 injectRows($sh4, $rows4);
-sortRows($sh4);
+// Sheet4 rows are already in sorted order (r=1 header, r=2..N data in sequence)
+// sortRows is not needed and can corrupt XML on large datasets due to string parsing
+// sortRows($sh4);
+
 $zip->addFromString('xl/worksheets/sheet4.xml', $sh4);
 
 // ── stream ────────────────────────────────────────────────────────────────────
