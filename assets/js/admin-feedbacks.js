@@ -112,6 +112,7 @@
         var urlParams = new URLSearchParams(window.location.search);
         urlParams.forEach(function (value, key) { formData.append(key, value); });
         formData.append('action', 'export');
+        formData.append('csrf_token', window._csrfToken || '');
 
         var tempForm = document.createElement('form');
         tempForm.method = 'POST';
