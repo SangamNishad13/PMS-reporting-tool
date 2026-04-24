@@ -4,6 +4,8 @@
  * Opens template xlsx, injects data into XML, streams result.
  * Preserves ALL formatting, charts, images, and formulas.
  */
+// Increase memory limit for large exports (70+ issues with metadata)
+ini_set('memory_limit', '256M');
 ob_start();
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/constants.php';
