@@ -321,7 +321,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (in_array('description', $columns)) { $set[] = "description = ?"; $params[] = $pe['new_description']; }
                     if (in_array('project_id', $columns) && $pe['new_project_id']) { $set[] = "project_id = ?"; $params[] = (int)$pe['new_project_id']; }
                     if (!empty($set)) {
-                        $set[] = "updated_at = NOW()";
+                        // Only add updated_at if column exists
+                        if (in_array('updated_at', $columns)) {
+                            $set[] = "updated_at = NOW()";
+                        }
                         $sql = "UPDATE project_time_logs SET " . implode(', ', $set) . " WHERE id = ? AND user_id = ?";
                         $params[] = (int)$pe['log_id']; $params[] = $leUserId;
                         $db->prepare($sql)->execute($params);
