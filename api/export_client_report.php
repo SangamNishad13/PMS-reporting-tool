@@ -1032,28 +1032,12 @@ foreach ($baseHeaders as $i => $hText) {
 }
 $headerRow .= '</row>';
 
-// Extract only sheetViews (frozen pane) from template - skip cols as live template may be corrupt
-$sh4template = $zip->getFromName('xl/worksheets/sheet4.xml');
-$sheetViewsXml = '';
-if ($sh4template !== false) {
-    if (preg_match('/<sheetViews>(.*?)<\/sheetViews>/s', $sh4template, $svm)) {
-        // Validate extracted sheetViews XML before using
-        libxml_use_internal_errors(true);
-        $testXml = '<?xml version="1.0" encoding="UTF-8"?><root xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' . '<sheetViews>' . $svm[1] . '</sheetViews></root>';
-        simplexml_load_string($testXml);
-        $svErrors = libxml_get_errors();
-        libxml_clear_errors();
-        if (empty($svErrors)) {
-            $sheetViewsXml = '<sheetViews>' . $svm[1] . '</sheetViews>';
-        }
-    }
-}
-
-// Build completely fresh sheet4.xml - no cols (avoids corrupt live template data)
+// Build completely fresh sheet4.xml - no dependency on template at all
+// (live template has corrupt cols/sheetViews content)
 $sh4 = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
     . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-    . ($sheetViewsXml ?: '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>')
+    . '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft"/></sheetView></sheetViews>'
     . '<sheetData>'
     . $headerRow
     . '</sheetData>'
