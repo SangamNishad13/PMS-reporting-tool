@@ -1,10 +1,5 @@
 <?php
-// Start session if not already started
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Clear any output buffers
+// DO NOT call session_start() here - let auth.php handle it with correct session name (PMS_SESSION)
 ob_start();
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
@@ -13,22 +8,9 @@ ob_end_clean();
 
 header('Content-Type: application/json');
 
-// Debug: Log session state
-error_log('Chat image upload - Session ID: ' . session_id());
-error_log('Chat image upload - User ID: ' . ($_SESSION['user_id'] ?? 'NOT SET'));
-error_log('Chat image upload - Role: ' . ($_SESSION['role'] ?? 'NOT SET'));
-
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
-    echo json_encode([
-        'error' => 'Unauthorized - No session',
-        'debug' => [
-            'session_id' => session_id(),
-            'session_status' => session_status(),
-            'has_session_data' => !empty($_SESSION),
-            'cookies_sent' => !empty($_COOKIE)
-        ]
-    ]);
+    echo json_encode(['error' => 'Unauthorized']);
     exit;
 }
 
@@ -41,20 +23,8 @@ if ($viewerRole === 'client') {
     exit;
 }
 
-// CSRF protection for file uploads - check both header and POST
-$csrfToken = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
-if (!verifyCsrfToken($csrfToken)) {
-    http_response_code(403);
-    echo json_encode([
-        'error' => 'Invalid or missing CSRF token',
-        'debug' => [
-            'post_token' => !empty($_POST['csrf_token']) ? 'present' : 'missing',
-            'header_token' => !empty($_SERVER['HTTP_X_CSRF_TOKEN']) ? 'present' : 'missing',
-            'session_exists' => isset($_SESSION['csrf_token']) ? 'yes' : 'no'
-        ]
-    ]);
-    exit;
-}
+// CSRF protection for file uploads
+enforceApiCsrf();
 
 // Removed rate limiting as per user request to allow unlimited uploads.
 
