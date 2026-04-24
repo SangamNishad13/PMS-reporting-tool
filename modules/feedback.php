@@ -13,6 +13,9 @@ $pageTitle = 'Send Feedback';
 
 include __DIR__ . '/../includes/header.php';
 ?>
+<!-- Summernote -->
+<link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
 
 <div class="container mt-4 mb-5" style="max-width: 800px;" id="feedbackApp" data-base-dir="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>">
     <div class="row mb-4">
