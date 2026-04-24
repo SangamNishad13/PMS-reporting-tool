@@ -14,7 +14,7 @@ $projectFilter = $_GET['project_id'] ?? '';
 $userFilter = $_GET['user_id'] ?? '';
 $searchText = $_GET['search'] ?? '';
 $statusFilter = $_GET['status'] ?? '';
-$dateFrom = $_GET['date_from'] ?? '';
+$dateFrom = $_GET['date_from'] ?? date('Y-m-01'); // default: first day of current month
 $dateTo = $_GET['date_to'] ?? '';
 
 // Build query with filters
@@ -211,7 +211,7 @@ include __DIR__ . '/../../includes/header.php';
                         <button type="submit" class="btn btn-primary me-2">
                             <i class="fas fa-search"></i> Apply Filters
                         </button>
-                        <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-secondary">
+                        <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>?date_from=<?php echo date('Y-m-01'); ?>" class="btn btn-secondary">
                             <i class="fas fa-times"></i> Clear Filters
                         </a>
                     </div>
