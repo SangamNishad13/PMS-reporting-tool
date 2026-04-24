@@ -12,7 +12,7 @@ header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized']);
+    echo json_encode(['error' => 'Unauthorized - No session']);
     exit;
 }
 
@@ -25,8 +25,20 @@ if ($viewerRole === 'client') {
     exit;
 }
 
-// CSRF protection for file uploads
-enforceApiCsrf();
+// CSRF protection for file uploads - check both header and POST
+$csrfToken = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+if (!verifyCsrfToken($csrfToken)) {
+    http_response_code(403);
+    echo json_encode([
+        'error' => 'Invalid or missing CSRF token',
+        'debug' => [
+            'post_token' => !empty($_POST['csrf_token']) ? 'present' : 'missing',
+            'header_token' => !empty($_SERVER['HTTP_X_CSRF_TOKEN']) ? 'present' : 'missing',
+            'session_exists' => isset($_SESSION['csrf_token']) ? 'yes' : 'no'
+        ]
+    ]);
+    exit;
+}
 
 // Removed rate limiting as per user request to allow unlimited uploads.
 
