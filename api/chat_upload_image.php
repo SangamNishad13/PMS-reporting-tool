@@ -1,7 +1,10 @@
 <?php
-if (session_status() !== PHP_SESSION_ACTIVE) {
+// Start session if not already started
+if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+
+// Clear any output buffers
 ob_start();
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
@@ -10,9 +13,22 @@ ob_end_clean();
 
 header('Content-Type: application/json');
 
+// Debug: Log session state
+error_log('Chat image upload - Session ID: ' . session_id());
+error_log('Chat image upload - User ID: ' . ($_SESSION['user_id'] ?? 'NOT SET'));
+error_log('Chat image upload - Role: ' . ($_SESSION['role'] ?? 'NOT SET'));
+
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized - No session']);
+    echo json_encode([
+        'error' => 'Unauthorized - No session',
+        'debug' => [
+            'session_id' => session_id(),
+            'session_status' => session_status(),
+            'has_session_data' => !empty($_SESSION),
+            'cookies_sent' => !empty($_COOKIE)
+        ]
+    ]);
     exit;
 }
 
