@@ -124,25 +124,6 @@ endif; ?>
             </div>
         </div>
         <?php if ($userRole !== 'client'): ?>
-        <!-- Export Issues Card -->
-        <div class="col-md-6">
-            <div class="card h-100 border-success">
-                <div class="card-body text-center">
-                    <div class="mb-3">
-                        <i class="fas fa-file-export fa-4x text-success"></i>
-                    </div>
-                    <h4 class="card-title">Export Issues</h4>
-                    <p class="card-text text-muted">
-                        Export issues to Excel or PDF with customizable columns and filters
-                    </p>
-                    <a href="<?php echo $baseDir; ?>/modules/projects/export_issues.php?project_id=<?php echo $projectId; ?>" 
-                       class="btn btn-success btn-lg">
-                        <i class="fas fa-download me-1"></i> Export Issues
-                    </a>
-                </div>
-            </div>
-        </div>
-
         <!-- Import Issues Card -->
         <div class="col-md-6">
             <div class="card h-100 border-secondary">

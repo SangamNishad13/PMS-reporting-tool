@@ -181,19 +181,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     if ($storageKey === 'uploads') {
                         $dbPath = 'uploads/' . $relativeUnix;
-                        if (strpos($relativeUnix, 'pdf_export_templates/') === 0) {
-                            $cfgPath = __DIR__ . '/../../storage/pdf_export_template.json';
-                            if (is_file($cfgPath)) {
-                                $raw = @file_get_contents($cfgPath);
-                                $cfg = $raw ? json_decode($raw, true) : null;
-                                if (is_array($cfg) && (string)($cfg['logo_url'] ?? '') === $dbPath) {
-                                    $cfg['logo_url'] = '';
-                                    $cfg['logo_alt'] = '';
-                                    @file_put_contents($cfgPath, json_encode($cfg, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-                                    $cleanupNotes[] = 'cleared PDF template logo reference';
-                                }
-                            }
-                        }
                     }
 
                     $msg = 'File deleted successfully.';

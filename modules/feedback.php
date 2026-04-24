@@ -2,7 +2,6 @@
 /**
  * Global User Feedback Form
  */
-
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
@@ -12,17 +11,10 @@ $auth->requireLogin();
 $baseDir = getBaseDir();
 $pageTitle = 'Send Feedback';
 
-$successMsg = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_feedback'])) {
-    // In a fully built backend, we would write this to a `feedback` table or send an email.
-    // For now, we simulate success.
-    $successMsg = "Thank you! Your feedback has been received and our team will review it shortly.";
-}
-
 include __DIR__ . '/../includes/header.php';
 ?>
 
-<div class="container mt-4 mb-5" style="max-width: 800px;">
+<div class="container mt-4 mb-5" style="max-width: 800px;" id="feedbackApp" data-base-dir="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>">
     <div class="row mb-4">
         <div class="col-12 text-center">
             <h2><i class="fas fa-comment-dots text-primary"></i> Send Feedback</h2>
@@ -30,46 +22,160 @@ include __DIR__ . '/../includes/header.php';
         </div>
     </div>
 
-    <?php if ($successMsg): ?>
-        <div class="alert alert-success d-flex align-items-center mb-4" role="alert">
-            <i class="fas fa-check-circle fs-4 me-3"></i>
-            <div><?php echo $successMsg; ?></div>
-        </div>
-    <?php endif; ?>
+    <div id="feedbackSuccessAlert" class="alert alert-success d-flex align-items-center mb-4 d-none" role="alert">
+        <i class="fas fa-check-circle fs-4 me-3"></i>
+        <div>Thank you! Your feedback has been received and our team will review it shortly.</div>
+    </div>
 
     <div class="card shadow-sm border-0">
         <div class="card-body p-4">
-            <form method="POST" action="">
-                <div class="mb-3">
-                    <label for="feedback_type" class="form-label fw-bold">Feedback Category</label>
-                    <select class="form-select" id="feedback_type" name="feedback_type" required>
-                        <option value="" disabled selected>Select a category...</option>
-                        <option value="bug">Report a Bug/Issue</option>
-                        <option value="feature">Feature Request</option>
-                        <option value="dashboard_data">Question about Dashboard Data</option>
-                        <option value="other">Other Feedback</option>
-                    </select>
-                </div>
-                
-                <div class="mb-3">
-                    <label for="subject" class="form-label fw-bold">Subject</label>
-                    <input type="text" class="form-control" id="subject" name="subject" placeholder="Brief summary of your feedback" required>
-                </div>
+            <form id="globalFeedbackForm">
+                <input type="hidden" name="action" value="submit_feedback">
+                <input type="hidden" name="is_generic" value="1">
+                <input type="hidden" name="send_to_admin" value="1">
 
                 <div class="mb-4">
-                    <label for="message" class="form-label fw-bold">Message</label>
-                    <textarea class="form-control" id="message" name="message" rows="6" placeholder="Provide as much detail as possible..." required></textarea>
+                    <label for="feedbackContent" class="form-label fw-bold">Message</label>
+                    <div id="feedbackContent"></div>
                 </div>
 
                 <div class="d-flex justify-content-end">
                     <a href="javascript:history.back()" class="btn btn-outline-secondary me-2">Cancel</a>
-                    <button type="submit" name="submit_feedback" class="btn btn-primary px-4">
+                    <button type="submit" id="submitFeedbackBtn" class="btn btn-primary px-4">
                         <i class="fas fa-paper-plane me-1"></i> Submit Feedback
                     </button>
                 </div>
             </form>
         </div>
     </div>
+
+    <!-- My Feedback History -->
+    <div class="mt-5" id="myFeedbackSection">
+        <h5><i class="fas fa-history me-2"></i>My Feedback History</h5>
+        <div class="row g-2 mb-3">
+            <div class="col-md-4">
+                <input type="text" id="myFeedbackSearch" class="form-control form-control-sm" placeholder="Search feedback...">
+            </div>
+            <div class="col-md-3">
+                <select id="myFeedbackStatusFilter" class="form-select form-select-sm">
+                    <option value="">All Status</option>
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button id="myFeedbackClearFilters" class="btn btn-sm btn-outline-secondary w-100">Clear</button>
+            </div>
+            <div class="col-md-3 text-end text-muted small pt-2">
+                Showing <span id="myFeedbackVisibleCount">-</span> items
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover" id="myFeedbackTable">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Preview</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="myFeedbackTableBody">
+                    <tr><td colspan="4" class="text-center text-muted py-3">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
+
+<!-- View Feedback Details Modal -->
+<div class="modal fade" id="viewFeedbackDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Feedback Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="feedbackDetailsContent"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="<?php echo $baseDir; ?>/assets/js/feedback.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/feedback.js'); ?>"></script>
+<script nonce="<?php echo htmlspecialchars($_SESSION['csp_nonce'] ?? '', ENT_QUOTES); ?>">
+$(document).ready(function() {
+    var baseDir = document.getElementById('feedbackApp').dataset.baseDir || '';
+
+    // Load feedback history
+    fetch(baseDir + '/api/feedback.php?action=get_user_feedback')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var tbody = document.getElementById('myFeedbackTableBody');
+            if (!data.success || !data.feedbacks || data.feedbacks.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No feedback submitted yet.</td></tr>';
+                document.getElementById('myFeedbackVisibleCount').textContent = '0';
+                return;
+            }
+            var rows = '';
+            data.feedbacks.forEach(function(fb) {
+                var preview = fb.content ? fb.content.replace(/<[^>]+>/g, '').substring(0, 80) : '';
+                var date = new Date(fb.created_at).toLocaleDateString();
+                var status = fb.status || 'open';
+                rows += '<tr data-search="' + (preview + ' ' + date).toLowerCase() + '" data-status="' + status + '" data-type="">'
+                    + '<td class="text-nowrap">' + date + '</td>'
+                    + '<td>' + preview + (preview.length >= 80 ? '...' : '') + '</td>'
+                    + '<td><span class="badge bg-secondary">' + status + '</span></td>'
+                    + '<td><button class="btn btn-sm btn-outline-primary" onclick="viewFeedbackDetails(' + fb.id + ')">View</button></td>'
+                    + '</tr>';
+            });
+            tbody.innerHTML = rows;
+            document.getElementById('myFeedbackVisibleCount').textContent = data.feedbacks.length;
+        })
+        .catch(function() {
+            document.getElementById('myFeedbackTableBody').innerHTML = '<tr><td colspan="4" class="text-center text-muted">Failed to load history.</td></tr>';
+        });
+
+    // Submit form
+    $('#globalFeedbackForm').on('submit', function(e) {
+        e.preventDefault();
+        var content = $('#feedbackContent').summernote('code');
+        if (!content || content === '<p><br></p>') {
+            showToast('Please enter your feedback message.', 'warning');
+            return;
+        }
+        var btn = document.getElementById('submitFeedbackBtn');
+        btn.disabled = true;
+
+        var fd = new FormData();
+        fd.append('action', 'submit_feedback');
+        fd.append('is_generic', '1');
+        fd.append('send_to_admin', '1');
+        fd.append('content', content);
+        fd.append('csrf_token', window.csrfToken || '');
+
+        fetch(baseDir + '/api/feedback.php', { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                btn.disabled = false;
+                if (data.success) {
+                    $('#feedbackContent').summernote('code', '');
+                    document.getElementById('feedbackSuccessAlert').classList.remove('d-none');
+                    setTimeout(function() {
+                        document.getElementById('feedbackSuccessAlert').classList.add('d-none');
+                    }, 5000);
+                    location.reload();
+                } else {
+                    showToast(data.message || 'Failed to submit feedback.', 'danger');
+                }
+            })
+            .catch(function() { btn.disabled = false; showToast('Request failed.', 'danger'); });
+    });
+});
+</script>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>

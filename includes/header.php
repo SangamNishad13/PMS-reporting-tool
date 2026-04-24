@@ -628,7 +628,6 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-e
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/vault.php">Admin Vault</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/devices.php">Device Management</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/device_permissions.php">Device Permissions</a></li>
-                                        <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/pdf_export_template.php">PDF Export Template</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/hours_compliance.php">Hours Compliance</a></li>
                                         <li><a class="dropdown-item" href="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/modules/admin/production_logs.php">Production Logs</a></li>
                                         <li><hr class="dropdown-divider"></li>
