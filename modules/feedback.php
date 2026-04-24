@@ -23,6 +23,9 @@ include __DIR__ . '/../includes/header.php';
 <!-- Summernote -->
 <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
+<!-- Select2 -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <div class="container mt-4 mb-5" style="max-width: 800px;" id="feedbackApp" data-base-dir="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>">
     <div class="row mb-4">
@@ -45,13 +48,11 @@ include __DIR__ . '/../includes/header.php';
 
                 <div class="mb-3">
                     <label class="form-label fw-bold">Send To</label>
-                    <div class="d-flex flex-wrap gap-2 mb-2">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="sendToAdmin" name="send_to_admin" value="1" checked>
-                            <label class="form-check-label" for="sendToAdmin">Admin</label>
-                        </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="sendToAdmin" name="send_to_admin" value="1" checked>
+                        <label class="form-check-label" for="sendToAdmin">Admin</label>
                     </div>
-                    <select id="recipientSelect" name="recipient_ids[]" multiple class="form-select" style="height: 120px;">
+                    <select id="recipientSelect" name="recipient_ids[]" multiple class="form-select">
                         <?php foreach ($activeUsers as $u): ?>
                             <option value="<?php echo (int)$u['id']; ?>">
                                 <?php echo htmlspecialchars($u['full_name'], ENT_QUOTES, 'UTF-8'); ?>
@@ -138,6 +139,13 @@ include __DIR__ . '/../includes/header.php';
 <script nonce="<?php echo htmlspecialchars($_SESSION['csp_nonce'] ?? '', ENT_QUOTES); ?>">
 $(document).ready(function() {
     var baseDir = document.getElementById('feedbackApp').dataset.baseDir || '';
+
+    // Init Select2 for recipient dropdown
+    $('#recipientSelect').select2({
+        placeholder: 'Select recipients (optional)...',
+        allowClear: true,
+        width: '100%'
+    });
 
     // Load feedback history
     fetch(baseDir + '/api/feedback.php?action=get_user_feedback')
