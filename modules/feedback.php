@@ -192,7 +192,7 @@ $(document).ready(function() {
         fd.append('is_generic', '1');
         fd.append('send_to_admin', document.getElementById('sendToAdmin').checked ? '1' : '0');
         fd.append('content', content);
-        fd.append('csrf_token', window.csrfToken || '');
+        fd.append('csrf_token', window._csrfToken || '');
         // Add selected recipients
         $('#recipientSelect option:selected').each(function() {
             fd.append('recipient_ids[]', $(this).val());
