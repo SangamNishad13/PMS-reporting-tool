@@ -742,7 +742,7 @@ try {
             
             $pdo->commit();
             echo json_encode(['success' => true, 'message' => 'Request ' . strtolower($response) . ' successfully']);
-            break;
+            exit;
 
         case 'get_incoming_requests':
             // Get requests for devices currently held by this user
