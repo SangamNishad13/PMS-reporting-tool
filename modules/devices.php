@@ -54,6 +54,9 @@ include '../includes/header.php';
                             <th>Type</th>
                             <th>Model</th>
                             <th>Version</th>
+                            <th>Ownership</th>
+                            <th>Storage</th>
+                            <th>Charger/Wire</th>
                             <th>Status</th>
                             <th>Assigned To</th>
                             <th>Action</th>
