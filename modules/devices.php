@@ -39,12 +39,44 @@ include '../includes/header.php';
 
     <!-- All Devices Section -->
     <div class="card mb-4">
-        <div class="card-header">
+        <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="fas fa-list"></i> All Devices</h5>
+            <small class="text-muted" id="devicesShowingInfo">Loading...</small>
         </div>
         <div class="card-body">
-            <div class="mb-3">
-                <input type="text" class="form-control" id="searchDevice" placeholder="Search devices...">
+            <div class="row mb-3">
+                <div class="col-md-3">
+                    <input type="text" class="form-control" id="searchDevice" placeholder="Search devices...">
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="filterType">
+                        <option value="">All Types</option>
+                        <option value="Android">Android</option>
+                        <option value="iOS">iOS</option>
+                        <option value="Mac">Mac</option>
+                        <option value="Windows">Windows</option>
+                        <option value="BT Keyboard">BT Keyboard</option>
+                        <option value="Mouse">Mouse</option>
+                        <option value="Tablet">Tablet</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="filterStatus">
+                        <option value="">All Status</option>
+                        <option value="Available">Available</option>
+                        <option value="Assigned">Assigned</option>
+                        <option value="Maintenance">Maintenance</option>
+                        <option value="Retired">Retired</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="filterOwnership">
+                        <option value="">All Ownership</option>
+                        <option value="Owned">Owned</option>
+                        <option value="Leased">Leased</option>
+                    </select>
+                </div>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover" id="devicesTable">
@@ -65,6 +97,7 @@ include '../includes/header.php';
                     <tbody></tbody>
                 </table>
             </div>
+            <div id="devicesPagination" class="mt-3"></div>
         </div>
     </div>
 

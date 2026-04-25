@@ -2,6 +2,9 @@
 let devices = [];
 let users = [];
 let requests = [];
+let filteredDevices = [];
+let currentPage = 1;
+const itemsPerPage = 10;
 
 $(document).ready(function() {
     loadUsers();
@@ -11,11 +14,14 @@ $(document).ready(function() {
     
     // Search filter for devices table
     $('#searchDevice').on('keyup', function() {
-        const searchTerm = $(this).val().toLowerCase();
-        $('#devicesTable tbody tr').each(function() {
-            const text = $(this).text().toLowerCase();
-            $(this).toggle(text.includes(searchTerm));
-        });
+        currentPage = 1;
+        applyFilters();
+    });
+    
+    // Filter dropdowns
+    $('#filterType, #filterStatus, #filterOwnership').on('change', function() {
+        currentPage = 1;
+        applyFilters();
     });
 });
 
@@ -36,11 +42,93 @@ function loadDevices() {
     $.get('../../api/devices.php?action=get_all_devices', function(response) {
         if (response.success) {
             devices = response.devices;
-            renderDevices();
+            filteredDevices = devices;
+            applyFilters();
             renderMyDevices();
             updateStats();
         }
     });
+}
+
+function applyFilters() {
+    const searchTerm = $('#searchDevice').val().toLowerCase();
+    const filterType = $('#filterType').val();
+    const filterStatus = $('#filterStatus').val();
+    const filterOwnership = $('#filterOwnership').val();
+    
+    filteredDevices = devices.filter(device => {
+        // Search filter
+        const searchText = `${device.device_name} ${device.device_type} ${device.model || ''} ${device.version || ''} ${device.assigned_to_name || ''}`.toLowerCase();
+        if (searchTerm && !searchText.includes(searchTerm)) {
+            return false;
+        }
+        
+        // Type filter
+        if (filterType && device.device_type !== filterType) {
+            return false;
+        }
+        
+        // Status filter
+        if (filterStatus && device.status !== filterStatus) {
+            return false;
+        }
+        
+        // Ownership filter
+        if (filterOwnership && (device.ownership_type || 'Owned') !== filterOwnership) {
+            return false;
+        }
+        
+        return true;
+    });
+    
+    renderDevices();
+    renderPagination();
+}
+
+function renderPagination() {
+    const totalPages = Math.ceil(filteredDevices.length / itemsPerPage);
+    const paginationDiv = $('#devicesPagination');
+    paginationDiv.empty();
+    
+    if (totalPages <= 1) {
+        return;
+    }
+    
+    let paginationHTML = '<nav><ul class="pagination justify-content-center">';
+    
+    // Previous button
+    paginationHTML += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="changePage(${currentPage - 1}); return false;">Previous</a>
+    </li>`;
+    
+    // Page numbers
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+            paginationHTML += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="changePage(${i}); return false;">${i}</a>
+            </li>`;
+        } else if (i === currentPage - 3 || i === currentPage + 3) {
+            paginationHTML += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+        }
+    }
+    
+    // Next button
+    paginationHTML += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="changePage(${currentPage + 1}); return false;">Next</a>
+    </li>`;
+    
+    paginationHTML += '</ul></nav>';
+    paginationDiv.html(paginationHTML);
+}
+
+function changePage(page) {
+    const totalPages = Math.ceil(filteredDevices.length / itemsPerPage);
+    if (page < 1 || page > totalPages) {
+        return;
+    }
+    currentPage = page;
+    renderDevices();
+    renderPagination();
 }
 
 function loadRequests() {
@@ -195,7 +283,17 @@ function renderDevices() {
     const canManage = window.DevicesConfig && window.DevicesConfig.canManageDevices;
     const currentUserId = window.DevicesConfig && window.DevicesConfig.currentUserId;
     
-    devices.forEach(device => {
+    // Calculate pagination
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedDevices = filteredDevices.slice(startIndex, endIndex);
+    
+    if (paginatedDevices.length === 0) {
+        tbody.html('<tr><td colspan="10" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> No devices found</td></tr>');
+        return;
+    }
+    
+    paginatedDevices.forEach(device => {
         const statusBadge = getStatusBadge(device.status);
         const ownershipBadge = getOwnershipBadge(device.ownership_type || 'Owned');
         const storageBadge = device.storage_capacity ? `${device.storage_capacity} GB` : '-';
@@ -245,6 +343,12 @@ function renderDevices() {
             </tr>
         `);
     });
+    
+    // Update showing info
+    const totalDevices = filteredDevices.length;
+    const showingStart = totalDevices > 0 ? startIndex + 1 : 0;
+    const showingEnd = Math.min(endIndex, totalDevices);
+    $('#devicesShowingInfo').text(`Showing ${showingStart}-${showingEnd} of ${totalDevices} devices`);
 }
 
 function renderRequests() {

@@ -277,23 +277,31 @@ try {
             break;
 
         case 'return_device':
-            if (!$can_manage_devices) {
-                throw new Exception('You do not have permission to process device returns');
+            $device_id = (int)($_POST['device_id'] ?? 0);
+            if (!$device_id) {
+                throw new Exception('Device ID is required');
             }
 
-            // Fetch device and current holder for notifications
+            // Get current assignment
+            $holderStmt = $pdo->prepare("SELECT user_id FROM device_assignments WHERE device_id = ? AND status = 'Active' LIMIT 1");
+            $holderStmt->execute([$device_id]);
+            $holderRow = $holderStmt->fetch(PDO::FETCH_ASSOC);
+            $holderId = $holderRow['user_id'] ?? null;
+
+            // Check permission: either admin/device manager OR the device is assigned to current user
+            if (!$can_manage_devices && $holderId != $user_id) {
+                throw new Exception('You do not have permission to return this device');
+            }
+
+            // Fetch device for notifications
             $deviceStmt = $pdo->prepare("SELECT device_name, device_type FROM devices WHERE id = ? LIMIT 1");
-            $deviceStmt->execute([$_POST['device_id']]);
+            $deviceStmt->execute([$device_id]);
             $deviceRow = $deviceStmt->fetch(PDO::FETCH_ASSOC);
             $deviceLabel = $deviceRow ? ($deviceRow['device_name'] . ' (' . $deviceRow['device_type'] . ')') : 'device';
             $actorStmt = $pdo->prepare("SELECT full_name FROM users WHERE id = ? LIMIT 1");
             $actorStmt->execute([$user_id]);
             $actorRow = $actorStmt->fetch(PDO::FETCH_ASSOC);
-            $actorName = $actorRow['full_name'] ?? 'Admin';
-            $holderStmt = $pdo->prepare("SELECT user_id FROM device_assignments WHERE device_id = ? AND status = 'Active' LIMIT 1");
-            $holderStmt->execute([$_POST['device_id']]);
-            $holderRow = $holderStmt->fetch(PDO::FETCH_ASSOC);
-            $holderId = $holderRow['user_id'] ?? null;
+            $actorName = $actorRow['full_name'] ?? 'User';
             
             $pdo->beginTransaction();
             
@@ -302,14 +310,24 @@ try {
                 SET status = 'Returned', returned_at = NOW()
                 WHERE device_id = ? AND status = 'Active'
             ");
-            $stmt->execute([$_POST['device_id']]);
+            $stmt->execute([$device_id]);
             
             $stmt = $pdo->prepare("UPDATE devices SET status = 'Available' WHERE id = ?");
-            $stmt->execute([$_POST['device_id']]);
+            $stmt->execute([$device_id]);
             
             $pdo->commit();
 
-            if (!empty($holderId)) {
+            // Notify the user who returned it (if not admin doing it)
+            if ($holderId && $holderId == $user_id) {
+                createNotification(
+                    $pdo,
+                    (int)$holderId,
+                    'system',
+                    'You returned ' . $deviceLabel . ' to office. Status is now Available.',
+                    $devicesLink
+                );
+            } elseif ($holderId && $holderId != $user_id) {
+                // Admin returned someone else's device
                 createNotification(
                     $pdo,
                     (int)$holderId,
@@ -318,6 +336,7 @@ try {
                     $devicesLink
                 );
             }
+            
             notifyAdmins(
                 $pdo,
                 'Device returned to office: ' . $deviceLabel . ' (by ' . $actorName . ')',
