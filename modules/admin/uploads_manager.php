@@ -52,6 +52,43 @@ function isWithinRoot(string $root, string $candidate): bool {
 
 $roots = buildUploadRoots();
 
+// AJAX: preview cleanup count before actual delete
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'preview_cleanup') {
+    header('Content-Type: application/json');
+    $scopeType = trim((string)($_GET['scope_type'] ?? ''));
+    $projectId = (int)($_GET['project_id'] ?? 0);
+    $userId    = (int)($_GET['user_id'] ?? 0);
+
+    $where  = ["asset_type = 'file'", "file_path IS NOT NULL", "file_path LIKE 'assets/uploads/%'"];
+    $params = [];
+    $label  = '';
+
+    if ($scopeType === 'project' && $projectId > 0) {
+        $where[]  = 'project_id = ?';
+        $params[] = $projectId;
+        $proj = $db->prepare("SELECT title FROM projects WHERE id = ? LIMIT 1");
+        $proj->execute([$projectId]);
+        $label = 'Project: ' . ($proj->fetchColumn() ?: '#' . $projectId);
+    } elseif ($scopeType === 'user' && $userId > 0) {
+        $where[]  = 'created_by = ?';
+        $params[] = $userId;
+        $usr = $db->prepare("SELECT full_name, email FROM users WHERE id = ? LIMIT 1");
+        $usr->execute([$userId]);
+        $urow = $usr->fetch(PDO::FETCH_ASSOC);
+        $label = $urow ? $urow['full_name'] . ' (' . $urow['email'] . ')' : '#' . $userId;
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Invalid scope or missing selection.']);
+        exit;
+    }
+
+    $countStmt = $db->prepare('SELECT COUNT(*) FROM project_assets WHERE ' . implode(' AND ', $where));
+    $countStmt->execute($params);
+    $count = (int)$countStmt->fetchColumn();
+
+    echo json_encode(['success' => true, 'count' => $count, 'label' => $label, 'scope_type' => $scopeType]);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // CSRF protection for all state-changing POST actions
     $csrfToken = $_POST['csrf_token'] ?? '';
@@ -365,7 +402,7 @@ require_once __DIR__ . '/../../includes/header.php';
         <div class="card-body py-3">
             <div class="fw-semibold mb-2">Project/User Wise Upload Cleanup</div>
             <div class="small text-muted mb-2">This cleanup targets mapped uploads from <code>project_assets.file_path</code> only.</div>
-            <form method="post" class="row g-2 align-items-end" data-confirm="Delete uploads for the selected scope?">
+            <form method="post" id="cleanupForm" class="row g-2 align-items-end">
                 <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="cleanup_action" value="purge_project_assets_scope">
                 <div class="col-md-2">
@@ -470,7 +507,7 @@ require_once __DIR__ . '/../../includes/header.php';
                             <td>
                                 <div class="d-flex gap-1">
                                     <a href="<?php echo htmlspecialchars($r['url']); ?>" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener">Open</a>
-                                    <form method="post" class="d-inline" data-confirm="Delete this file?">
+                                    <form method="post" class="d-inline um-delete-form" data-filename="<?php echo htmlspecialchars($r['name'], ENT_QUOTES, 'UTF-8'); ?>">
                                         <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                         <input type="hidden" name="delete_upload" value="1">
                                         <input type="hidden" name="storage_key" value="<?php echo htmlspecialchars($r['storage_key']); ?>">
