@@ -297,6 +297,38 @@ include __DIR__ . '/../../includes/header.php';
 
 <script src="<?php echo htmlspecialchars(getBaseDir(), ENT_QUOTES, 'UTF-8'); ?>/assets/js/devices.js"></script>
 
+<script nonce="<?php echo $cspNonce ?? ''; ?>">
+// Override API paths for admin page
+(function() {
+    const originalAjax = $.ajax;
+    $.ajax = function(options) {
+        if (typeof options === 'string') {
+            options = { url: options };
+        }
+        if (options.url && options.url.includes('../../api/devices.php')) {
+            options.url = options.url.replace('../../api/devices.php', '../api/devices.php');
+        }
+        return originalAjax.call(this, options);
+    };
+    
+    const originalGet = $.get;
+    $.get = function(url, data, callback, type) {
+        if (typeof url === 'string' && url.includes('../../api/devices.php')) {
+            url = url.replace('../../api/devices.php', '../api/devices.php');
+        }
+        return originalGet.call(this, url, data, callback, type);
+    };
+    
+    const originalPost = $.post;
+    $.post = function(url, data, callback, type) {
+        if (typeof url === 'string' && url.includes('../../api/devices.php')) {
+            url = url.replace('../../api/devices.php', '../api/devices.php');
+        }
+        return originalPost.call(this, url, data, callback, type);
+    };
+})();
+</script>
+
 <!-- Respond to Request Modal -->
 <div class="modal fade" id="respondModal" tabindex="-1">
     <div class="modal-dialog">
