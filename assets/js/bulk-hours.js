@@ -36,6 +36,9 @@
         var maxAllowed = parseFloat(input.dataset.maxAllowed || input.max || '0') || 0;
         var isOverAllocated = String(input.dataset.overAllocated || '0') === '1';
         var infoElement = input.nextElementSibling;
+        var projectTotal = parseFloat(input.dataset.projectTotal || '0') || 0;
+        var projectAllocated = parseFloat(input.dataset.projectAllocated || '0') || 0;
+        var originalHours = parseFloat(input.dataset.original || '0') || 0;
 
         if (input.value === '') {
             input.style.borderColor = '';
@@ -46,7 +49,24 @@
         }
 
         var newHours = parseFloat(input.value) || 0;
-        var originalHours = parseFloat(input.dataset.original);
+
+        // Calculate total allocation considering all pending changes for this project
+        var currentRow = input.closest('tr');
+        var projectName = currentRow.querySelector('td:nth-child(2) strong').textContent;
+        var allRows = document.querySelectorAll('#bulkUpdateForm tbody tr');
+        var totalPendingForProject = 0;
+        
+        allRows.forEach(function(row) {
+            var rowProjectName = row.querySelector('td:nth-child(2) strong').textContent;
+            if (rowProjectName === projectName) {
+                var rowInput = row.querySelector('.hours-input');
+                var rowOriginal = parseFloat(rowInput.dataset.original || '0') || 0;
+                var rowNew = rowInput.value !== '' ? (parseFloat(rowInput.value) || 0) : rowOriginal;
+                totalPendingForProject += rowNew;
+            }
+        });
+
+        var willExceedBudget = totalPendingForProject > projectTotal;
 
         if (newHours < minAllowed) {
             input.style.borderColor = '#dc3545'; input.style.backgroundColor = '#f8d7da';
@@ -55,6 +75,14 @@
                 infoElement.className = 'text-danger hours-info'; 
             }
             input.setCustomValidity('Cannot be lower than ' + minAllowed.toFixed(1) + ' hours');
+        } else if (willExceedBudget) {
+            input.style.borderColor = '#dc3545'; input.style.backgroundColor = '#f8d7da';
+            if (infoElement) { 
+                var overBy = totalPendingForProject - projectTotal;
+                infoElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Project will be over-allocated by ' + overBy.toFixed(1) + 'h (Total: ' + totalPendingForProject.toFixed(1) + 'h / Budget: ' + projectTotal.toFixed(1) + 'h)';
+                infoElement.className = 'text-danger hours-info'; 
+            }
+            input.setCustomValidity('Total allocation will exceed project budget');
         } else if (newHours > maxAllowed) {
             input.style.borderColor = '#dc3545'; input.style.backgroundColor = '#f8d7da';
             if (infoElement) { 
@@ -68,7 +96,8 @@
         } else if (newHours > 0 && newHours !== originalHours) {
             input.style.borderColor = '#198754'; input.style.backgroundColor = '#d1e7dd';
             if (infoElement) { 
-                infoElement.innerHTML = '<i class="fas fa-check-circle"></i> Valid. ' + (maxAllowed - newHours).toFixed(1) + 'h remaining in budget'; 
+                var remaining = projectTotal - totalPendingForProject;
+                infoElement.innerHTML = '<i class="fas fa-check-circle"></i> Valid. Project total: ' + totalPendingForProject.toFixed(1) + 'h / ' + projectTotal.toFixed(1) + 'h (' + remaining.toFixed(1) + 'h remaining)'; 
                 infoElement.className = 'text-success hours-info'; 
             }
             input.setCustomValidity('');
@@ -77,6 +106,19 @@
             if (infoElement) infoElement.textContent = '';
             input.setCustomValidity('');
         }
+        
+        // Re-validate all other inputs for the same project
+        allRows.forEach(function(row) {
+            var rowProjectName = row.querySelector('td:nth-child(2) strong').textContent;
+            if (rowProjectName === projectName) {
+                var rowInput = row.querySelector('.hours-input');
+                if (rowInput !== input && rowInput.value !== '') {
+                    // Trigger validation on other inputs without recursion
+                    var event = new Event('change', { bubbles: true });
+                    setTimeout(function() { rowInput.dispatchEvent(event); }, 10);
+                }
+            }
+        });
     };
 
     window.applyBulkUpdate = function () {
