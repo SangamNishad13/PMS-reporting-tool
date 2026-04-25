@@ -365,8 +365,6 @@ include __DIR__ . '/../../includes/header.php';
 </div>
 
 <script>
-console.log('Phase Master JS loaded - v3.0');
-
 // Delete phase button click handler
 document.addEventListener('DOMContentLoaded', function() {
     // Delete buttons
@@ -375,7 +373,6 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             const phaseId = this.getAttribute('data-phase-id');
             const phaseName = this.getAttribute('data-phase-name');
-            console.log('Delete clicked:', phaseId, phaseName);
             
             document.getElementById('deletePhaseNameDisplay').textContent = phaseName;
             document.getElementById('confirmDeleteBtn').href = '?delete=' + phaseId;
@@ -392,7 +389,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const phaseId = this.getAttribute('data-phase-id');
             const phaseName = this.getAttribute('data-phase-name');
             const isActive = this.getAttribute('data-is-active') === '1';
-            console.log('Toggle clicked:', phaseId, phaseName, isActive);
             
             document.getElementById('togglePhaseNameDisplay').textContent = phaseName;
             document.getElementById('toggleActionText').textContent = isActive ? 'deactivate' : 'activate';
