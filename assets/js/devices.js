@@ -111,6 +111,9 @@ function renderDevices() {
     tbody.empty();
     devices.forEach(device => {
         const statusBadge = getStatusBadge(device.status);
+        const ownershipBadge = getOwnershipBadge(device.ownership_type || 'Owned');
+        const storageBadge = device.storage_capacity ? `${device.storage_capacity} GB` : '-';
+        const chargerBadge = getChargerBadge(device.charger_wire);
         const assignedTo = device.assigned_to_name || '-';
         tbody.append(`
             <tr>
@@ -118,6 +121,9 @@ function renderDevices() {
                 <td><i class="fas fa-${getDeviceIcon(device.device_type)}"></i> ${device.device_type}</td>
                 <td>${device.model || '-'}</td>
                 <td>${device.version || '-'}</td>
+                <td>${ownershipBadge}</td>
+                <td>${storageBadge}</td>
+                <td>${chargerBadge}</td>
                 <td>${statusBadge}</td>
                 <td>${assignedTo}</td>
                 <td>
