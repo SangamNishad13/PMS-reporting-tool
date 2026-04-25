@@ -120,12 +120,40 @@ function toggleLeaseOwner(value) {
 function renderDevices() {
     const tbody = $('#devicesTable tbody');
     tbody.empty();
+    const canManage = window.DevicesConfig && window.DevicesConfig.canManageDevices;
+    const currentUserId = window.DevicesConfig && window.DevicesConfig.currentUserId;
+    
     devices.forEach(device => {
         const statusBadge = getStatusBadge(device.status);
         const ownershipBadge = getOwnershipBadge(device.ownership_type || 'Owned');
         const storageBadge = device.storage_capacity ? `${device.storage_capacity} GB` : '-';
         const chargerBadge = getChargerBadge(device.charger_wire);
         const assignedTo = device.assigned_to_name || '-';
+        
+        // Determine which actions to show
+        let actionButtons = '';
+        
+        // History button - available to all users
+        actionButtons += `<button class="btn btn-sm btn-info" onclick="viewDeviceHistory(${device.id})" title="History"><i class="fas fa-history"></i></button>`;
+        
+        // Management buttons - only for users with device management permission
+        if (canManage) {
+            actionButtons += `<button class="btn btn-sm btn-primary" onclick="showEditDeviceModal(${device.id})" title="Edit"><i class="fas fa-edit"></i></button>`;
+            
+            if (device.status === 'Available') {
+                actionButtons += `<button class="btn btn-sm btn-success" onclick="showAssignModal(${device.id})" title="Assign"><i class="fas fa-user-plus"></i></button>`;
+            } else {
+                actionButtons += `<button class="btn btn-sm btn-warning" onclick="returnDevice(${device.id})" title="Return"><i class="fas fa-undo"></i></button>`;
+            }
+            
+            actionButtons += `<button class="btn btn-sm btn-danger" onclick="deleteDevice(${device.id})" title="Delete"><i class="fas fa-trash"></i></button>`;
+        } else {
+            // For non-managers, show request button if device is assigned to someone else
+            if (device.status === 'Assigned' && device.assigned_user_id != currentUserId) {
+                actionButtons += `<button class="btn btn-sm btn-primary" onclick="showRequestModal(${device.id})" title="Request Device"><i class="fas fa-hand-paper"></i> Request</button>`;
+            }
+        }
+        
         tbody.append(`
             <tr>
                 <td><strong>${device.device_name}</strong></td>
@@ -137,15 +165,7 @@ function renderDevices() {
                 <td>${chargerBadge}</td>
                 <td>${statusBadge}</td>
                 <td>${assignedTo}</td>
-                <td>
-                    <button class="btn btn-sm btn-info" onclick="viewDeviceHistory(${device.id})" title="History"><i class="fas fa-history"></i></button>
-                    <button class="btn btn-sm btn-primary" onclick="showEditDeviceModal(${device.id})" title="Edit"><i class="fas fa-edit"></i></button>
-                    ${device.status === 'Available' ?
-                        `<button class="btn btn-sm btn-success" onclick="showAssignModal(${device.id})" title="Assign"><i class="fas fa-user-plus"></i></button>` :
-                        `<button class="btn btn-sm btn-warning" onclick="returnDevice(${device.id})" title="Return"><i class="fas fa-undo"></i></button>`
-                    }
-                    <button class="btn btn-sm btn-danger" onclick="deleteDevice(${device.id})" title="Delete"><i class="fas fa-trash"></i></button>
-                </td>
+                <td>${actionButtons}</td>
             </tr>
         `);
     });
@@ -463,5 +483,42 @@ function viewDeviceHistory(deviceId) {
             modal.modal('show');
             modal.on('hidden.bs.modal', function() { modal.remove(); });
         }
+    });
+}
+
+function showRequestModal(deviceId) {
+    const device = devices.find(d => d.id == deviceId);
+    if (!device) return;
+    
+    $('#requestDeviceId').val(deviceId);
+    $('#requestDeviceName').text(device.device_name);
+    $('#requestCurrentHolder').text(device.assigned_to_name || 'Office');
+    $('#requestReason').val('');
+    $('#requestModal').modal('show');
+}
+
+function submitRequest() {
+    const deviceId = $('#requestDeviceId').val();
+    const reason = $('#requestReason').val().trim();
+    
+    if (!reason) {
+        alert('Please provide a reason for your request');
+        return;
+    }
+    
+    $.post('../../api/devices.php', {
+        action: 'request_switch',
+        device_id: deviceId,
+        reason: reason
+    }, function(response) {
+        if (response.success) {
+            alert(response.message || 'Request submitted successfully');
+            $('#requestModal').modal('hide');
+            loadRequests();
+        } else {
+            alert('Error: ' + (response.message || 'Failed to submit request'));
+        }
+    }).fail(function() {
+        alert('Failed to submit request. Please try again.');
     });
 }

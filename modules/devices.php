@@ -322,7 +322,11 @@ include '../includes/header.php';
 </style>
 
 <script nonce="<?php echo $cspNonce ?? ''; ?>">
-window.DevicesConfig = { currentUserId: <?php echo (int)$_SESSION['user_id']; ?> };
+window.DevicesConfig = { 
+    currentUserId: <?php echo (int)$_SESSION['user_id']; ?>,
+    canManageDevices: <?php echo (in_array($_SESSION['role'] ?? '', ['admin'], true) || !empty($_SESSION['can_manage_devices'])) ? 'true' : 'false'; ?>,
+    userRole: <?php echo json_encode($_SESSION['role'] ?? ''); ?>
+};
 </script>
 <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/devices.js"></script>
 
