@@ -259,6 +259,31 @@ if ($perPage <= 0 || $perPage > 500) {
     $perPage = 50;
 }
 
+$projects = $db->query("SELECT id, title FROM projects ORDER BY title ASC")->fetchAll(PDO::FETCH_ASSOC);
+$users = $db->query("SELECT id, full_name, email FROM users ORDER BY full_name ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+// Build allowed file paths set when project/user filter is active
+// Must be built BEFORE the filesystem loop
+$filterPathSet = null;
+if ($filterProject > 0 || $filterUser > 0) {
+    $fWhere  = ["asset_type = 'file'", "file_path IS NOT NULL"];
+    $fParams = [];
+    if ($filterProject > 0) {
+        $fWhere[]  = 'project_id = ?';
+        $fParams[] = $filterProject;
+    }
+    if ($filterUser > 0) {
+        $fWhere[]  = 'created_by = ?';
+        $fParams[] = $filterUser;
+    }
+    $fStmt = $db->prepare('SELECT file_path FROM project_assets WHERE ' . implode(' AND ', $fWhere));
+    $fStmt->execute($fParams);
+    $filterPathSet = [];
+    foreach ($fStmt->fetchAll(PDO::FETCH_COLUMN) as $fp) {
+        $filterPathSet[(string)$fp] = true;
+    }
+}
+
 $files = [];
 $totalSize = 0;
 foreach ($roots as $storageKey => $rootPath) {
@@ -338,30 +363,6 @@ if ($page > $totalPages) {
 }
 $offset = ($page - 1) * $perPage;
 $rows = array_slice($files, $offset, $perPage);
-
-$projects = $db->query("SELECT id, title FROM projects ORDER BY title ASC")->fetchAll(PDO::FETCH_ASSOC);
-$users = $db->query("SELECT id, full_name, email FROM users ORDER BY full_name ASC")->fetchAll(PDO::FETCH_ASSOC);
-
-// Build allowed file paths set when project/user filter is active
-$filterPathSet = null;
-if ($filterProject > 0 || $filterUser > 0) {
-    $fWhere  = ["asset_type = 'file'", "file_path IS NOT NULL"];
-    $fParams = [];
-    if ($filterProject > 0) {
-        $fWhere[]  = 'project_id = ?';
-        $fParams[] = $filterProject;
-    }
-    if ($filterUser > 0) {
-        $fWhere[]  = 'created_by = ?';
-        $fParams[] = $filterUser;
-    }
-    $fStmt = $db->prepare('SELECT file_path FROM project_assets WHERE ' . implode(' AND ', $fWhere));
-    $fStmt->execute($fParams);
-    $filterPathSet = [];
-    foreach ($fStmt->fetchAll(PDO::FETCH_COLUMN) as $fp) {
-        $filterPathSet[(string)$fp] = true;
-    }
-}
 
 $assetMetaMap = [];
 $assetPaths = [];
