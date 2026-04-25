@@ -73,21 +73,37 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function isHoursVisibleByFilter(hoursCategory, selectedSet) {
-        var key = String(hoursCategory || '').toLowerCase();
+        // If both checked or neither checked → show all
         if (!selectedSet || selectedSet.size === 0) return true;
-        if (selectedSet.has('under_8_hours') && selectedSet.has('compliant')) return true;
+        var hasUnder = selectedSet.has('under_8_hours');
+        var hasCompliant = selectedSet.has('compliant');
+        if (hasUnder && hasCompliant) return true;  // both on → show all
+        if (!hasUnder && !hasCompliant) return true; // both off → show all
+        // If only one is checked, check if the event matches that category
+        var key = String(hoursCategory || '').toLowerCase();
+        if (!key) return true; // If no category set, show by default
         return selectedSet.has(key);
     }
 
     function applyCombinedFiltersToRenderedEvents() {
         var selectedSet = getSelectedFilterSet();
         var selectedHourSet = getSelectedHourFilterSet();
-        var eventEls = calendarEl.querySelectorAll('.fc-event[data-status-type], .fc-daygrid-event[data-status-type]');
+        var eventEls = calendarEl.querySelectorAll('.fc-event, .fc-daygrid-event');
         eventEls.forEach(function(el) {
-            var statusType = String(el.getAttribute('data-status-type') || '').toLowerCase();
+            // Skip edit request events — they are controlled by their own toggle
+            if (el.classList.contains('fc-edit-request-event')) return;
+
+            var statusType   = String(el.getAttribute('data-status-type') || '').toLowerCase();
             var hoursCategory = String(el.getAttribute('data-hours-category') || '').toLowerCase();
+
+            // If no status-type set yet (event not fully mounted), skip — will be handled on next eventsSet
+            if (!statusType) return;
+
             var statusVisible = isStatusVisibleByFilter(statusType, selectedSet);
+            
+            // Always use isHoursVisibleByFilter - it handles empty category properly now
             var hoursVisible = isHoursVisibleByFilter(hoursCategory, selectedHourSet);
+
             el.style.display = (statusVisible && hoursVisible) ? '' : 'none';
         });
     }
@@ -342,23 +358,39 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (props.user_id) el.setAttribute('data-user-id', props.user_id);
                     if (props.user_full_name) el.setAttribute('data-user-fullname', props.user_full_name);
                     if (props.role) el.setAttribute('data-user-role', props.role);
+                    
+                    // Always set status-type if available
                     if (props.statusType) {
                         el.setAttribute('data-status-type', props.statusType);
-                        var selectedSet = getSelectedFilterSet();
-                        var actualHours = 0;
-                        if (typeof props.total_hours !== 'undefined' && props.total_hours !== null) {
-                            actualHours = parseFloat(props.total_hours || 0);
-                        } else if (typeof props.totalHours !== 'undefined' && props.totalHours !== null) {
-                            actualHours = parseFloat(props.totalHours || 0);
-                        }
+                    }
+                    
+                    // Calculate and set hours category for all events with hours data
+                    var actualHours = 0;
+                    if (typeof props.total_hours !== 'undefined' && props.total_hours !== null) {
+                        actualHours = parseFloat(props.total_hours || 0);
+                    } else if (typeof props.totalHours !== 'undefined' && props.totalHours !== null) {
+                        actualHours = parseFloat(props.totalHours || 0);
+                    }
+                    
+                    // Set hours category even if statusType is not present
+                    if (actualHours > 0 || props.total_hours !== undefined || props.totalHours !== undefined) {
                         var expectedHours = 8;
                         if (props.consolidated && typeof props.userCount !== 'undefined') {
                             expectedHours = Math.max(1, parseInt(props.userCount, 10) || 1) * 8;
                         }
                         var hoursCategory = actualHours >= expectedHours ? 'compliant' : 'under_8_hours';
                         el.setAttribute('data-hours-category', hoursCategory);
-                        var selectedHourSet = getSelectedHourFilterSet();
-                        if (!isStatusVisibleByFilter(props.statusType, selectedSet) || !isHoursVisibleByFilter(hoursCategory, selectedHourSet)) el.style.display = 'none';
+                    }
+                    
+                    // Apply filters
+                    var selectedSet = getSelectedFilterSet();
+                    var selectedHourSet = getSelectedHourFilterSet();
+                    var statusVisible = props.statusType ? isStatusVisibleByFilter(props.statusType, selectedSet) : true;
+                    var hoursCategory = el.getAttribute('data-hours-category') || '';
+                    var hoursVisible = isHoursVisibleByFilter(hoursCategory, selectedHourSet);
+                    
+                    if (!statusVisible || !hoursVisible) {
+                        el.style.display = 'none';
                     }
                     if (typeof info.event.startStr !== 'undefined') el.setAttribute('data-date', info.event.startStr);
                 }
