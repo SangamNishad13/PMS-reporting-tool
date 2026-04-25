@@ -259,10 +259,15 @@ foreach ($permissionTypes as $perm) {
     $permissionsByCategory[$perm['category']][] = $perm;
 }
 
-// Get current permissions with filters
+// Get current permissions with filters and pagination
 $selectedClient = isset($_GET['client_id']) ? intval($_GET['client_id']) : 0;
 $selectedUser = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
 $selectedProject = isset($_GET['project_id']) ? intval($_GET['project_id']) : 0;
+
+// Pagination parameters
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$perPage = 20;
+$offset = ($page - 1) * $perPage;
 
 $whereConditions = ["cp.is_active = 1", "cp.project_id IS NOT NULL"];
 $params = [];
@@ -282,6 +287,23 @@ if ($selectedProject) {
     $params[] = $selectedProject;
 }
 
+// Get total count for pagination
+$countQuery = "
+    SELECT COUNT(*) 
+    FROM client_permissions cp
+    JOIN users u ON cp.user_id = u.id
+    JOIN projects p ON cp.project_id = p.id
+    JOIN clients c ON p.client_id = c.id
+    LEFT JOIN users gb ON cp.granted_by = gb.id
+    LEFT JOIN client_permissions_types pt ON cp.permission_type = pt.permission_type
+    WHERE " . implode(" AND ", $whereConditions);
+
+$countStmt = $db->prepare($countQuery);
+$countStmt->execute($params);
+$totalPermissions = $countStmt->fetchColumn();
+$totalPages = ceil($totalPermissions / $perPage);
+
+// Get permissions for current page
 $currentPermissions = $db->prepare("
     SELECT cp.*, u.full_name as user_name, u.email as user_email, u.role as user_role,
            c.name as client_name,
@@ -296,8 +318,9 @@ $currentPermissions = $db->prepare("
     LEFT JOIN client_permissions_types pt ON cp.permission_type = pt.permission_type
     WHERE " . implode(" AND ", $whereConditions) . "
     ORDER BY c.name, p.title, u.full_name, pt.category, cp.permission_type
+    LIMIT ? OFFSET ?
 ");
-$currentPermissions->execute($params);
+$currentPermissions->execute(array_merge($params, [$perPage, $offset]));
 
 include __DIR__ . '/../../includes/header.php';
 ?>
@@ -395,8 +418,14 @@ include __DIR__ . '/../../includes/header.php';
 
             <!-- Current Permissions -->
             <div class="card">
-                <div class="card-header">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fas fa-list"></i> Current Project Permissions</h5>
+                    <?php if ($totalPermissions > 0): ?>
+                    <small class="text-muted">
+                        Showing <?php echo number_format($offset + 1); ?>-<?php echo number_format(min($offset + $perPage, $totalPermissions)); ?> 
+                        of <?php echo number_format($totalPermissions); ?> permissions
+                    </small>
+                    <?php endif; ?>
                 </div>
                 <div class="card-body">
                     <?php if ($currentPermissions->rowCount() > 0): ?>
@@ -474,6 +503,87 @@ include __DIR__ . '/../../includes/header.php';
                             </tbody>
                         </table>
                     </div>
+                    
+                    <?php if ($totalPages > 1): ?>
+                    <!-- Pagination -->
+                    <nav aria-label="Permissions pagination" class="mt-4">
+                        <ul class="pagination justify-content-center">
+                            <?php
+                            // Build query string for pagination links
+                            $queryParams = [];
+                            if ($selectedClient) $queryParams['client_id'] = $selectedClient;
+                            if ($selectedUser) $queryParams['user_id'] = $selectedUser;
+                            if ($selectedProject) $queryParams['project_id'] = $selectedProject;
+                            
+                            // Previous page
+                            if ($page > 1):
+                                $prevParams = array_merge($queryParams, ['page' => $page - 1]);
+                            ?>
+                            <li class="page-item">
+                                <a class="page-link" href="?<?php echo http_build_query($prevParams); ?>">
+                                    <i class="fas fa-chevron-left"></i> Previous
+                                </a>
+                            </li>
+                            <?php endif; ?>
+                            
+                            <?php
+                            // Page numbers
+                            $startPage = max(1, $page - 2);
+                            $endPage = min($totalPages, $page + 2);
+                            
+                            if ($startPage > 1):
+                            ?>
+                            <li class="page-item">
+                                <a class="page-link" href="?<?php echo http_build_query(array_merge($queryParams, ['page' => 1])); ?>">1</a>
+                            </li>
+                            <?php if ($startPage > 2): ?>
+                            <li class="page-item disabled">
+                                <span class="page-link">...</span>
+                            </li>
+                            <?php endif; ?>
+                            <?php endif; ?>
+                            
+                            <?php for ($i = $startPage; $i <= $endPage; $i++): ?>
+                            <li class="page-item <?php echo $i == $page ? 'active' : ''; ?>">
+                                <a class="page-link" href="?<?php echo http_build_query(array_merge($queryParams, ['page' => $i])); ?>">
+                                    <?php echo $i; ?>
+                                </a>
+                            </li>
+                            <?php endfor; ?>
+                            
+                            <?php if ($endPage < $totalPages): ?>
+                            <?php if ($endPage < $totalPages - 1): ?>
+                            <li class="page-item disabled">
+                                <span class="page-link">...</span>
+                            </li>
+                            <?php endif; ?>
+                            <li class="page-item">
+                                <a class="page-link" href="?<?php echo http_build_query(array_merge($queryParams, ['page' => $totalPages])); ?>">
+                                    <?php echo $totalPages; ?>
+                                </a>
+                            </li>
+                            <?php endif; ?>
+                            
+                            <?php
+                            // Next page
+                            if ($page < $totalPages):
+                                $nextParams = array_merge($queryParams, ['page' => $page + 1]);
+                            ?>
+                            <li class="page-item">
+                                <a class="page-link" href="?<?php echo http_build_query($nextParams); ?>">
+                                    Next <i class="fas fa-chevron-right"></i>
+                                </a>
+                            </li>
+                            <?php endif; ?>
+                        </ul>
+                    </nav>
+                    
+                    <!-- Page size info -->
+                    <div class="text-center text-muted small mt-3">
+                        Showing <?php echo $perPage; ?> permissions per page
+                    </div>
+                    <?php endif; ?>
+                    
                     <?php else: ?>
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle"></i> No project-specific permissions found. Use the filters above or grant new permissions.
