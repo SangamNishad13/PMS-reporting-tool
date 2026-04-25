@@ -103,12 +103,27 @@ include '../includes/header.php';
 
     <!-- Incoming Requests Section (Requests for my devices) -->
     <div class="card mb-4">
-        <div class="card-header bg-success text-white">
+        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="fas fa-inbox"></i> Incoming Device Requests</h5>
+            <small id="incomingRequestsShowingInfo">Loading...</small>
         </div>
         <div class="card-body">
             <div class="alert alert-info">
                 <i class="fas fa-info-circle"></i> <strong>Requests for your devices:</strong> Other users have requested devices currently assigned to you. You can accept or reject these requests directly.
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <input type="text" class="form-control" id="searchIncomingRequests" placeholder="Search requests...">
+                </div>
+                <div class="col-md-6">
+                    <select class="form-select" id="filterIncomingRequestStatus">
+                        <option value="">All Status</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Approved">Approved</option>
+                        <option value="Rejected">Rejected</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </select>
+                </div>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover" id="incomingRequestsTable">
@@ -125,13 +140,15 @@ include '../includes/header.php';
                     <tbody></tbody>
                 </table>
             </div>
+            <div id="incomingRequestsPagination" class="mt-3"></div>
         </div>
     </div>
 
     <!-- My Requests Section -->
     <div class="card">
-        <div class="card-header">
+        <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="fas fa-exchange-alt"></i> My Device Switch Requests</h5>
+            <small class="text-muted" id="myRequestsShowingInfo">Loading...</small>
         </div>
         <div class="card-body">
             <div class="alert alert-info">
@@ -142,6 +159,20 @@ include '../includes/header.php';
                     <li>The device holder or an admin can approve your request</li>
                     <li>If approved, the device will be automatically assigned to you</li>
                 </ol>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <input type="text" class="form-control" id="searchMyRequests" placeholder="Search requests...">
+                </div>
+                <div class="col-md-6">
+                    <select class="form-select" id="filterMyRequestStatus">
+                        <option value="">All Status</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Approved">Approved</option>
+                        <option value="Rejected">Rejected</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </select>
+                </div>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover" id="requestsTable">
@@ -159,6 +190,7 @@ include '../includes/header.php';
                     <tbody></tbody>
                 </table>
             </div>
+            <div id="myRequestsPagination" class="mt-3"></div>
         </div>
     </div>
 </div>

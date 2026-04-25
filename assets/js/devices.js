@@ -3,8 +3,13 @@ let devices = [];
 let users = [];
 let requests = [];
 let filteredDevices = [];
+let filteredMyRequests = [];
+let filteredIncomingRequests = [];
 let currentPage = 1;
+let myRequestsPage = 1;
+let incomingRequestsPage = 1;
 const itemsPerPage = 10;
+const requestsPerPage = 10;
 
 $(document).ready(function() {
     loadUsers();
@@ -22,6 +27,30 @@ $(document).ready(function() {
     $('#filterType, #filterStatus, #filterOwnership').on('change', function() {
         currentPage = 1;
         applyFilters();
+    });
+    
+    // Search filter for My Requests
+    $('#searchMyRequests').on('keyup', function() {
+        myRequestsPage = 1;
+        applyRequestFilters();
+    });
+    
+    // Filter for My Requests
+    $('#filterMyRequestStatus').on('change', function() {
+        myRequestsPage = 1;
+        applyRequestFilters();
+    });
+    
+    // Search filter for Incoming Requests
+    $('#searchIncomingRequests').on('keyup', function() {
+        incomingRequestsPage = 1;
+        applyIncomingRequestFilters();
+    });
+    
+    // Filter for Incoming Requests
+    $('#filterIncomingRequestStatus').on('change', function() {
+        incomingRequestsPage = 1;
+        applyIncomingRequestFilters();
     });
 });
 
@@ -135,8 +164,8 @@ function loadRequests() {
     $.get('../../api/devices.php?action=get_switch_requests', function(response) {
         if (response.success) {
             requests = response.requests;
-            renderRequests();
-            renderIncomingRequests();
+            applyRequestFilters();
+            applyIncomingRequestFilters();
             updateStats();
         }
     });
@@ -357,15 +386,17 @@ function renderRequests() {
     tbody.empty();
     const currentUserId = window.DevicesConfig && window.DevicesConfig.currentUserId;
     
-    // Filter requests made by current user
-    const myRequests = requests.filter(r => r.requested_by == currentUserId);
+    // Calculate pagination
+    const startIndex = (myRequestsPage - 1) * requestsPerPage;
+    const endIndex = startIndex + requestsPerPage;
+    const paginatedRequests = filteredMyRequests.slice(startIndex, endIndex);
     
-    if (myRequests.length === 0) {
-        tbody.html('<tr><td colspan="7" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> You haven\'t made any device switch requests yet</td></tr>');
+    if (paginatedRequests.length === 0) {
+        tbody.html('<tr><td colspan="7" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> No requests found</td></tr>');
         return;
     }
     
-    myRequests.forEach(request => {
+    paginatedRequests.forEach(request => {
         const statusBadge = getRequestStatusBadge(request.status);
         const isPending = request.status === 'Pending';
         const rowClass = request.status === 'Approved' ? 'table-success' : (request.status === 'Rejected' ? 'table-danger' : '');
@@ -389,6 +420,85 @@ function renderRequests() {
             </tr>
         `);
     });
+    
+    // Update showing info
+    const totalRequests = filteredMyRequests.length;
+    const showingStart = totalRequests > 0 ? startIndex + 1 : 0;
+    const showingEnd = Math.min(endIndex, totalRequests);
+    $('#myRequestsShowingInfo').text(`Showing ${showingStart}-${showingEnd} of ${totalRequests} requests`);
+}
+
+function applyRequestFilters() {
+    const searchTerm = $('#searchMyRequests').val().toLowerCase();
+    const filterStatus = $('#filterMyRequestStatus').val();
+    const currentUserId = window.DevicesConfig && window.DevicesConfig.currentUserId;
+    
+    // Filter requests made by current user
+    filteredMyRequests = requests.filter(r => {
+        if (r.requested_by != currentUserId) return false;
+        
+        // Search filter
+        const searchText = `${r.device_name} ${r.device_type} ${r.holder_full_name || r.holder_name || ''} ${r.reason || ''}`.toLowerCase();
+        if (searchTerm && !searchText.includes(searchTerm)) {
+            return false;
+        }
+        
+        // Status filter
+        if (filterStatus && r.status !== filterStatus) {
+            return false;
+        }
+        
+        return true;
+    });
+    
+    renderRequests();
+    renderMyRequestsPagination();
+}
+
+function renderMyRequestsPagination() {
+    const totalPages = Math.ceil(filteredMyRequests.length / requestsPerPage);
+    const paginationDiv = $('#myRequestsPagination');
+    paginationDiv.empty();
+    
+    if (totalPages <= 1) {
+        return;
+    }
+    
+    let paginationHTML = '<nav><ul class="pagination justify-content-center">';
+    
+    // Previous button
+    paginationHTML += `<li class="page-item ${myRequestsPage === 1 ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="changeMyRequestsPage(${myRequestsPage - 1}); return false;">Previous</a>
+    </li>`;
+    
+    // Page numbers
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= myRequestsPage - 2 && i <= myRequestsPage + 2)) {
+            paginationHTML += `<li class="page-item ${i === myRequestsPage ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="changeMyRequestsPage(${i}); return false;">${i}</a>
+            </li>`;
+        } else if (i === myRequestsPage - 3 || i === myRequestsPage + 3) {
+            paginationHTML += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+        }
+    }
+    
+    // Next button
+    paginationHTML += `<li class="page-item ${myRequestsPage === totalPages ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="changeMyRequestsPage(${myRequestsPage + 1}); return false;">Next</a>
+    </li>`;
+    
+    paginationHTML += '</ul></nav>';
+    paginationDiv.html(paginationHTML);
+}
+
+function changeMyRequestsPage(page) {
+    const totalPages = Math.ceil(filteredMyRequests.length / requestsPerPage);
+    if (page < 1 || page > totalPages) {
+        return;
+    }
+    myRequestsPage = page;
+    renderRequests();
+    renderMyRequestsPagination();
 }
 
 function renderIncomingRequests() {
@@ -396,20 +506,17 @@ function renderIncomingRequests() {
     tbody.empty();
     const currentUserId = window.DevicesConfig && window.DevicesConfig.currentUserId;
     
-    // Filter requests for devices assigned to current user
-    const incomingRequests = requests.filter(r => {
-        // Find the device for this request
-        const device = devices.find(d => d.id == r.device_id);
-        // Check if device is assigned to current user and request is not from current user
-        return device && device.assigned_user_id == currentUserId && r.requested_by != currentUserId;
-    });
+    // Calculate pagination
+    const startIndex = (incomingRequestsPage - 1) * requestsPerPage;
+    const endIndex = startIndex + requestsPerPage;
+    const paginatedRequests = filteredIncomingRequests.slice(startIndex, endIndex);
     
-    if (incomingRequests.length === 0) {
-        tbody.html('<tr><td colspan="6" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> No incoming requests for your devices</td></tr>');
+    if (paginatedRequests.length === 0) {
+        tbody.html('<tr><td colspan="6" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> No incoming requests found</td></tr>');
         return;
     }
     
-    incomingRequests.forEach(request => {
+    paginatedRequests.forEach(request => {
         const statusBadge = getRequestStatusBadge(request.status);
         const isPending = request.status === 'Pending';
         const rowClass = request.status === 'Approved' ? 'table-success' : (request.status === 'Rejected' ? 'table-danger' : '');
@@ -431,6 +538,90 @@ function renderIncomingRequests() {
             </tr>
         `);
     });
+    
+    // Update showing info
+    const totalRequests = filteredIncomingRequests.length;
+    const showingStart = totalRequests > 0 ? startIndex + 1 : 0;
+    const showingEnd = Math.min(endIndex, totalRequests);
+    $('#incomingRequestsShowingInfo').text(`Showing ${showingStart}-${showingEnd} of ${totalRequests} requests`);
+}
+
+function applyIncomingRequestFilters() {
+    const searchTerm = $('#searchIncomingRequests').val().toLowerCase();
+    const filterStatus = $('#filterIncomingRequestStatus').val();
+    const currentUserId = window.DevicesConfig && window.DevicesConfig.currentUserId;
+    
+    // Filter requests for devices assigned to current user
+    filteredIncomingRequests = requests.filter(r => {
+        // Find the device for this request
+        const device = devices.find(d => d.id == r.device_id);
+        // Check if device is assigned to current user and request is not from current user
+        if (!device || device.assigned_user_id != currentUserId || r.requested_by == currentUserId) {
+            return false;
+        }
+        
+        // Search filter
+        const searchText = `${r.device_name} ${r.device_type} ${r.requester_full_name || r.requester_name || ''} ${r.reason || ''}`.toLowerCase();
+        if (searchTerm && !searchText.includes(searchTerm)) {
+            return false;
+        }
+        
+        // Status filter
+        if (filterStatus && r.status !== filterStatus) {
+            return false;
+        }
+        
+        return true;
+    });
+    
+    renderIncomingRequests();
+    renderIncomingRequestsPagination();
+}
+
+function renderIncomingRequestsPagination() {
+    const totalPages = Math.ceil(filteredIncomingRequests.length / requestsPerPage);
+    const paginationDiv = $('#incomingRequestsPagination');
+    paginationDiv.empty();
+    
+    if (totalPages <= 1) {
+        return;
+    }
+    
+    let paginationHTML = '<nav><ul class="pagination justify-content-center">';
+    
+    // Previous button
+    paginationHTML += `<li class="page-item ${incomingRequestsPage === 1 ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="changeIncomingRequestsPage(${incomingRequestsPage - 1}); return false;">Previous</a>
+    </li>`;
+    
+    // Page numbers
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= incomingRequestsPage - 2 && i <= incomingRequestsPage + 2)) {
+            paginationHTML += `<li class="page-item ${i === incomingRequestsPage ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="changeIncomingRequestsPage(${i}); return false;">${i}</a>
+            </li>`;
+        } else if (i === incomingRequestsPage - 3 || i === incomingRequestsPage + 3) {
+            paginationHTML += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+        }
+    }
+    
+    // Next button
+    paginationHTML += `<li class="page-item ${incomingRequestsPage === totalPages ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="changeIncomingRequestsPage(${incomingRequestsPage + 1}); return false;">Next</a>
+    </li>`;
+    
+    paginationHTML += '</ul></nav>';
+    paginationDiv.html(paginationHTML);
+}
+
+function changeIncomingRequestsPage(page) {
+    const totalPages = Math.ceil(filteredIncomingRequests.length / requestsPerPage);
+    if (page < 1 || page > totalPages) {
+        return;
+    }
+    incomingRequestsPage = page;
+    renderIncomingRequests();
+    renderIncomingRequestsPagination();
 }
 
 function quickApprove(requestId) {
@@ -763,21 +954,88 @@ function respondToRequest(action) {
 function viewDeviceHistory(deviceId) {
     $.get('../../api/devices.php?action=get_assignment_history&device_id=' + deviceId, function(response) {
         if (response.success) {
-            let html = '<div class="table-responsive"><table class="table table-sm">';
-            html += '<thead><tr><th>User</th><th>Assigned</th><th>Returned</th><th>Status</th></tr></thead><tbody>';
-            response.history.forEach(h => {
-                html += `<tr>
-                    <td>${h.full_name || h.username}</td>
-                    <td>${new Date(h.assigned_at).toLocaleString()}</td>
-                    <td>${h.returned_at ? new Date(h.returned_at).toLocaleString() : '-'}</td>
-                    <td><span class="badge bg-${h.status === 'Active' ? 'success' : 'secondary'}">${h.status}</span></td>
-                </tr>`;
+            const history = response.history;
+            const itemsPerPage = 10;
+            let currentPage = 1;
+            
+            function renderHistory(page) {
+                const startIndex = (page - 1) * itemsPerPage;
+                const endIndex = startIndex + itemsPerPage;
+                const paginatedHistory = history.slice(startIndex, endIndex);
+                
+                let html = '<div class="table-responsive"><table class="table table-sm">';
+                html += '<thead><tr><th>User</th><th>Assigned</th><th>Returned</th><th>Status</th></tr></thead><tbody>';
+                
+                if (paginatedHistory.length === 0) {
+                    html += '<tr><td colspan="4" class="text-center text-muted py-3">No history found</td></tr>';
+                } else {
+                    paginatedHistory.forEach(h => {
+                        html += `<tr>
+                            <td>${h.full_name || h.username}</td>
+                            <td>${new Date(h.assigned_at).toLocaleString()}</td>
+                            <td>${h.returned_at ? new Date(h.returned_at).toLocaleString() : '-'}</td>
+                            <td><span class="badge bg-${h.status === 'Active' ? 'success' : 'secondary'}">${h.status}</span></td>
+                        </tr>`;
+                    });
+                }
+                html += '</tbody></table></div>';
+                
+                // Add pagination
+                const totalPages = Math.ceil(history.length / itemsPerPage);
+                if (totalPages > 1) {
+                    html += '<nav><ul class="pagination pagination-sm justify-content-center">';
+                    html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                        <a class="page-link" href="#" data-page="${currentPage - 1}">Previous</a>
+                    </li>`;
+                    
+                    for (let i = 1; i <= totalPages; i++) {
+                        if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                            html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                                <a class="page-link" href="#" data-page="${i}">${i}</a>
+                            </li>`;
+                        } else if (i === currentPage - 3 || i === currentPage + 3) {
+                            html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+                        }
+                    }
+                    
+                    html += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                        <a class="page-link" href="#" data-page="${currentPage + 1}">Next</a>
+                    </li>`;
+                    html += '</ul></nav>';
+                }
+                
+                // Show info
+                const totalItems = history.length;
+                const showingStart = totalItems > 0 ? startIndex + 1 : 0;
+                const showingEnd = Math.min(endIndex, totalItems);
+                html = `<div class="mb-2"><small class="text-muted">Showing ${showingStart}-${showingEnd} of ${totalItems} records</small></div>` + html;
+                
+                return html;
+            }
+            
+            const modalContent = renderHistory(currentPage);
+            const modal = $(`<div class="modal fade" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Assignment History</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body" id="historyModalBody">${modalContent}</div>
+                    </div>
+                </div>
+            </div>`);
+            
+            // Handle pagination clicks
+            modal.on('click', '.page-link', function(e) {
+                e.preventDefault();
+                const page = parseInt($(this).data('page'));
+                if (page && page >= 1 && page <= Math.ceil(history.length / itemsPerPage)) {
+                    currentPage = page;
+                    $('#historyModalBody').html(renderHistory(currentPage));
+                }
             });
-            html += '</tbody></table></div>';
-            const modal = $('<div class="modal fade" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">' +
-                '<div class="modal-header"><h5 class="modal-title">Assignment History</h5>' +
-                '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>' +
-                '<div class="modal-body">' + html + '</div></div></div></div>');
+            
             modal.modal('show');
             modal.on('hidden.bs.modal', function() { modal.remove(); });
         }
