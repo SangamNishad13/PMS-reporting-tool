@@ -769,8 +769,8 @@ $allUsers = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND 
                     <i class="fas fa-users me-2 text-primary"></i>View Scope
                 </label>
                 <select id="userSelect" class="form-select">
-                    <option value="">?? Individual Users</option>
-                    <option value="all">?? All Users (Consolidated)</option>
+                    <option value="">&#128100; Individual Users</option>
+                    <option value="all">&#128101; All Users (Consolidated)</option>
                     <?php foreach ($allUsers as $au): ?>
                         <option value="<?php echo $au['id']; ?>" <?php echo ($selectedUser && $selectedUser == $au['id']) ? 'selected' : ''; ?>>
                             <?php echo htmlspecialchars($au['full_name'], ENT_QUOTES, 'UTF-8'); ?>
