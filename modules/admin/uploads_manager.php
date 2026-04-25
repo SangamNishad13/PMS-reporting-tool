@@ -185,6 +185,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if (isset($_POST['bulk_delete']) && $_POST['bulk_delete'] === '1') {
+        $selectedFiles = $_POST['selected_files'] ?? [];
+        if (!is_array($selectedFiles) || empty($selectedFiles)) {
+            $_SESSION['error'] = 'No files selected for deletion.';
+            header('Location: ' . $baseDir . '/modules/admin/uploads_manager.php');
+            exit;
+        }
+
+        $redirectQuery = (string)($_POST['redirect_query'] ?? '');
+        $deletedCount  = 0;
+        $failedCount   = 0;
+
+        foreach ($selectedFiles as $encoded) {
+            // Each entry is "storageKey::relativePath" base64-encoded
+            $decoded = base64_decode((string)$encoded, true);
+            if ($decoded === false || strpos($decoded, '::') === false) {
+                $failedCount++;
+                continue;
+            }
+            [$storageKey, $relativePath] = explode('::', $decoded, 2);
+            $storageKey   = trim($storageKey);
+            $relativePath = trim($relativePath);
+
+            if (!isset($roots[$storageKey]) || $relativePath === '' || strpos($relativePath, "\0") !== false) {
+                $failedCount++;
+                continue;
+            }
+
+            $rootPath   = $roots[$storageKey];
+            $targetPath = realpath($rootPath . DIRECTORY_SEPARATOR . $relativePath);
+
+            if ($targetPath === false || !is_file($targetPath) || !isWithinRoot($rootPath, $targetPath)) {
+                $failedCount++;
+                continue;
+            }
+
+            $relativeUnix = ltrim(str_replace('\\', '/', $relativePath), '/');
+            if (@unlink($targetPath)) {
+                $deletedCount++;
+                if ($storageKey === 'assets_uploads') {
+                    $dbPath = 'assets/uploads/' . $relativeUnix;
+                    $db->prepare('DELETE FROM project_assets WHERE file_path = ?')->execute([$dbPath]);
+                }
+            } else {
+                $failedCount++;
+            }
+        }
+
+        try {
+            logActivity($db, (int)$_SESSION['user_id'], 'admin_bulk_delete_uploads', 'file', 0, [
+                'deleted' => $deletedCount,
+                'failed'  => $failedCount,
+            ]);
+        } catch (Throwable $_) {}
+
+        $_SESSION['success'] = $deletedCount . ' file(s) deleted successfully.' . ($failedCount > 0 ? ' ' . $failedCount . ' failed.' : '');
+        $target = $baseDir . '/modules/admin/uploads_manager.php';
+        if ($redirectQuery !== '') {
+            $redirectQuery = preg_replace('/[\r\n]/', '', $redirectQuery);
+            $target .= '?' . ltrim($redirectQuery, '?');
+        }
+        header('Location: ' . $target);
+        exit;
+    }
+
     if (isset($_POST['delete_upload']) && $_POST['delete_upload'] === '1') {
         $storageKey = trim((string)($_POST['storage_key'] ?? ''));
         $relativePath = trim((string)($_POST['relative_path'] ?? ''));
@@ -542,9 +607,31 @@ require_once __DIR__ . '/../../includes/header.php';
     <?php endif; ?>
 
     <div class="table-responsive">
-        <table class="table table-striped table-sm align-middle">
+        <!-- Bulk action bar (hidden until selection) -->
+        <div id="umBulkBar" class="d-none alert alert-warning py-2 mb-2 d-flex align-items-center gap-3">
+            <span id="umBulkCount" class="fw-semibold"></span>
+            <button type="button" class="btn btn-sm btn-danger" id="umBulkDeleteBtn">
+                <i class="fas fa-trash me-1"></i> Delete Selected
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="umBulkClearBtn">
+                Clear Selection
+            </button>
+        </div>
+
+        <!-- Hidden bulk delete form -->
+        <form method="post" id="umBulkForm">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+            <input type="hidden" name="bulk_delete" value="1">
+            <input type="hidden" name="redirect_query" value="<?php echo htmlspecialchars($redirectQuery); ?>">
+            <div id="umBulkInputs"></div>
+        </form>
+
+        <table class="table table-striped table-sm align-middle" id="umTable">
             <thead>
                 <tr>
+                    <th style="width:36px;">
+                        <input type="checkbox" id="umSelectAll" class="form-check-input" title="Select all on this page">
+                    </th>
                     <th>File</th>
                     <th>Location</th>
                     <th>Project</th>
@@ -557,14 +644,20 @@ require_once __DIR__ . '/../../includes/header.php';
             </thead>
             <tbody>
                 <?php if (empty($rows)): ?>
-                    <tr><td colspan="8" class="text-muted">No files found for current filters.</td></tr>
+                    <tr><td colspan="9" class="text-muted">No files found for current filters.</td></tr>
                 <?php else: ?>
                     <?php foreach ($rows as $r): ?>
                         <?php
-                        $metaKey = $r['storage_key'] === 'assets_uploads' ? ('assets/uploads/' . $r['relative_path']) : '';
-                        $meta = $metaKey !== '' && isset($assetMetaMap[$metaKey]) ? $assetMetaMap[$metaKey] : null;
+                        $metaKey  = $r['storage_key'] === 'assets_uploads' ? ('assets/uploads/' . $r['relative_path']) : '';
+                        $meta     = $metaKey !== '' && isset($assetMetaMap[$metaKey]) ? $assetMetaMap[$metaKey] : null;
+                        $fileToken = base64_encode($r['storage_key'] . '::' . $r['relative_path']);
                         ?>
                         <tr>
+                            <td>
+                                <input type="checkbox" class="form-check-input um-row-check"
+                                       value="<?php echo htmlspecialchars($fileToken, ENT_QUOTES, 'UTF-8'); ?>"
+                                       data-name="<?php echo htmlspecialchars($r['name'], ENT_QUOTES, 'UTF-8'); ?>">
+                            </td>
                             <td>
                                 <div class="fw-semibold"><?php echo htmlspecialchars($r['name']); ?></div>
                                 <div class="small text-muted"><?php echo htmlspecialchars($r['extension'] ?: 'no-extension'); ?></div>

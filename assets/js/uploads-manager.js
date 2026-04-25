@@ -3,6 +3,104 @@
  */
 (function () {
 
+    // ── Bulk select / delete ─────────────────────────────────────────────────
+    var selectAll   = document.getElementById('umSelectAll');
+    var bulkBar     = document.getElementById('umBulkBar');
+    var bulkCount   = document.getElementById('umBulkCount');
+    var bulkInputs  = document.getElementById('umBulkInputs');
+    var bulkForm    = document.getElementById('umBulkForm');
+    var bulkDelBtn  = document.getElementById('umBulkDeleteBtn');
+    var bulkClrBtn  = document.getElementById('umBulkClearBtn');
+
+    function getChecked() {
+        return Array.from(document.querySelectorAll('.um-row-check:checked'));
+    }
+
+    function updateBulkBar() {
+        var checked = getChecked();
+        if (checked.length > 0) {
+            bulkBar.classList.remove('d-none');
+            bulkBar.classList.add('d-flex');
+            bulkCount.textContent = checked.length + ' file' + (checked.length !== 1 ? 's' : '') + ' selected';
+        } else {
+            bulkBar.classList.add('d-none');
+            bulkBar.classList.remove('d-flex');
+        }
+        // Sync select-all checkbox state
+        var all = document.querySelectorAll('.um-row-check');
+        if (selectAll) {
+            selectAll.indeterminate = checked.length > 0 && checked.length < all.length;
+            selectAll.checked = all.length > 0 && checked.length === all.length;
+        }
+    }
+
+    // Select all toggle
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            document.querySelectorAll('.um-row-check').forEach(function (cb) {
+                cb.checked = selectAll.checked;
+            });
+            updateBulkBar();
+        });
+    }
+
+    // Individual checkbox change
+    document.addEventListener('change', function (e) {
+        if (e.target.classList.contains('um-row-check')) {
+            updateBulkBar();
+        }
+    });
+
+    // Clear selection
+    if (bulkClrBtn) {
+        bulkClrBtn.addEventListener('click', function () {
+            document.querySelectorAll('.um-row-check').forEach(function (cb) { cb.checked = false; });
+            if (selectAll) selectAll.checked = false;
+            updateBulkBar();
+        });
+    }
+
+    // Bulk delete button
+    if (bulkDelBtn) {
+        bulkDelBtn.addEventListener('click', function () {
+            var checked = getChecked();
+            if (checked.length === 0) return;
+
+            var names = checked.slice(0, 5).map(function (cb) {
+                return '<li>' + escHtml(cb.getAttribute('data-name') || cb.value) + '</li>';
+            }).join('');
+            var moreText = checked.length > 5 ? '<li class="text-muted">… and ' + (checked.length - 5) + ' more</li>' : '';
+
+            var bodyHtml = [
+                '<div class="alert alert-danger mb-3">',
+                  '<i class="fas fa-exclamation-triangle me-2"></i>',
+                  '<strong>This action is permanent and cannot be undone.</strong>',
+                '</div>',
+                '<p>You are about to delete <strong>' + checked.length + ' file' + (checked.length !== 1 ? 's' : '') + '</strong>:</p>',
+                '<ul class="small mb-0">' + names + moreText + '</ul>'
+            ].join('');
+
+            showConfirmModal(
+                '<i class="fas fa-trash-alt text-danger me-2"></i>Bulk Delete Files',
+                bodyHtml,
+                function () {
+                    // Build hidden inputs
+                    bulkInputs.innerHTML = '';
+                    checked.forEach(function (cb) {
+                        var inp = document.createElement('input');
+                        inp.type  = 'hidden';
+                        inp.name  = 'selected_files[]';
+                        inp.value = cb.value;
+                        bulkInputs.appendChild(inp);
+                    });
+                    bulkForm.submit();
+                },
+                'btn-danger',
+                'Yes, Delete ' + checked.length + ' File' + (checked.length !== 1 ? 's' : '')
+            );
+        });
+    }
+
     // ── Scope toggle (Project / User) ────────────────────────────────────────
     var scopeType   = document.getElementById('uploadScopeType');
     var projectWrap = document.getElementById('uploadScopeProjectWrap');
