@@ -193,6 +193,15 @@ if ($_POST) {
     exit;
 }
 
+// Check if is_utilized column exists in project_time_logs
+$hasIsUtilized = false;
+try {
+    $colCheck = $db->query("SHOW COLUMNS FROM project_time_logs LIKE 'is_utilized'");
+    $hasIsUtilized = $colCheck && $colCheck->rowCount() > 0;
+} catch (Exception $e) { $hasIsUtilized = false; }
+
+$utilizedFilter = $hasIsUtilized ? "WHERE is_utilized = 1" : "";
+
 // Get current assignments
 $pLeadAnd = ($_SESSION['role'] === 'project_lead') ? " AND p.project_lead_id = " . (int)$_SESSION['user_id'] : "";
 $assignmentsQuery = "
@@ -203,7 +212,7 @@ $assignmentsQuery = "
     LEFT JOIN (
         SELECT user_id, project_id, SUM(hours_spent) as utilized_hours
         FROM project_time_logs
-        WHERE is_utilized = 1
+        $utilizedFilter
         GROUP BY user_id, project_id
     ) ptl ON ua.user_id = ptl.user_id AND ua.project_id = ptl.project_id
     WHERE ua.user_id = ? $pLeadAnd
@@ -244,6 +253,9 @@ $activityLogs = $stmt->fetchAll();
 include __DIR__ . '/../../includes/header.php';
 ?>
 <script src="<?php echo $baseDir; ?>/assets/js/hours-validation.js"></script>
+<script>
+window._manageHoursConfig = { baseDir: "<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>" };
+</script>
 
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
