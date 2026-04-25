@@ -22,6 +22,7 @@ $can_manage_devices = in_array($user_role, ['admin']) || !empty($_SESSION['can_m
 $baseDir = getBaseDir();
 $devicesLink = $baseDir . '/modules/devices.php';
 $adminDevicesLink = $baseDir . '/modules/admin/devices.php';
+$actionHandled = false; // Flag to track if action was handled
 
 function getDeviceAdminRecipientIds($db) {
     try {
@@ -615,33 +616,34 @@ try {
             break;
 
         case 'respond_to_request':
-            $request_id = $_POST['request_id'];
-            $response_action = $_POST['response_action'] ?? '';
-            $response = $_POST['response'] ?? '';
-            if ($response_action === 'approve') {
-                $response = 'Approved';
-            } elseif ($response_action === 'reject') {
-                $response = 'Rejected';
-            }
-            if ($response !== 'Approved' && $response !== 'Rejected') {
-                throw new Exception('Invalid response');
-            }
-            
-            // Get request details first
-            $stmt = $pdo->prepare("SELECT * FROM device_switch_requests WHERE id = ? AND status = 'Pending'");
-            $stmt->execute([$request_id]);
-            $request = $stmt->fetch();
-            
-            if (!$request) {
-                throw new Exception('Request not found or already processed');
-            }
-            
-            // Check if user is admin OR the current device holder
-            if (!$can_manage_devices && $request['current_holder'] != $user_id) {
-                throw new Exception('You do not have permission to respond to this request');
-            }
-            
-            $pdo->beginTransaction();
+            try {
+                $request_id = $_POST['request_id'];
+                $response_action = $_POST['response_action'] ?? '';
+                $response = $_POST['response'] ?? '';
+                if ($response_action === 'approve') {
+                    $response = 'Approved';
+                } elseif ($response_action === 'reject') {
+                    $response = 'Rejected';
+                }
+                if ($response !== 'Approved' && $response !== 'Rejected') {
+                    throw new Exception('Invalid response');
+                }
+                
+                // Get request details first
+                $stmt = $pdo->prepare("SELECT * FROM device_switch_requests WHERE id = ? AND status = 'Pending'");
+                $stmt->execute([$request_id]);
+                $request = $stmt->fetch();
+                
+                if (!$request) {
+                    throw new Exception('Request not found or already processed');
+                }
+                
+                // Check if user is admin OR the current device holder
+                if (!$can_manage_devices && $request['current_holder'] != $user_id) {
+                    throw new Exception('You do not have permission to respond to this request');
+                }
+                
+                $pdo->beginTransaction();
             
             if ($response === 'Approved') {
                 // Get device name for notifications
@@ -753,8 +755,18 @@ try {
             $stmt->execute([$response, $user_id, $_POST['response_notes'] ?? null, $request_id]);
             
             $pdo->commit();
+            
+            $actionHandled = true;
             echo json_encode(['success' => true, 'message' => 'Request ' . strtolower($response) . ' successfully']);
-            exit;
+            
+            } catch (Exception $respondEx) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                error_log('respond_to_request error: ' . $respondEx->getMessage() . ' | Trace: ' . $respondEx->getTraceAsString());
+                throw $respondEx; // Re-throw to be caught by global handler
+            }
+            break;
 
         case 'get_incoming_requests':
             // Get requests for devices currently held by this user
@@ -794,7 +806,14 @@ try {
             break;
 
         default:
-            throw new Exception('Invalid action');
+            if (!$actionHandled) {
+                throw new Exception('Invalid action');
+            }
+    }
+    
+    // If action was handled and response already sent, exit cleanly
+    if ($actionHandled) {
+        exit;
     }
 } catch (Exception $e) {
     if ($pdo->inTransaction()) {
