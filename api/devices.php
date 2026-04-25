@@ -698,23 +698,31 @@ try {
                 $stmt->execute([$request['device_id']]);
                 
                 // Create notification for requester (device request approved)
-                createNotification(
-                    $pdo,
-                    (int)$request['requested_by'],
-                    'system',
-                    'Your device request for ' . $device_name . ' has been approved',
-                    $devicesLink
-                );
+                try {
+                    createNotification(
+                        $pdo,
+                        (int)$request['requested_by'],
+                        'system',
+                        'Your device request for ' . $device_name . ' has been approved',
+                        $devicesLink
+                    );
+                } catch (Exception $notifEx) {
+                    error_log('Failed to create notification for requester: ' . $notifEx->getMessage());
+                }
                 
                 // Create notification for previous holder (device reassigned) - only if not the one who approved
                 if (!empty($request['current_holder']) && $request['current_holder'] != $user_id) {
-                    createNotification(
-                        $pdo,
-                        (int)$request['current_holder'],
-                        'system',
-                        $device_name . ' has been reassigned to ' . $requester_name,
-                        $devicesLink
-                    );
+                    try {
+                        createNotification(
+                            $pdo,
+                            (int)$request['current_holder'],
+                            'system',
+                            $device_name . ' has been reassigned to ' . $requester_name,
+                            $devicesLink
+                        );
+                    } catch (Exception $notifEx) {
+                        error_log('Failed to create notification for previous holder: ' . $notifEx->getMessage());
+                    }
                 }
             } else {
                 // Rejected - notify requester
@@ -723,13 +731,17 @@ try {
                 $device = $stmt->fetch();
                 $device_name = $device['device_name'] . ' (' . $device['device_type'] . ')';
                 
-                createNotification(
-                    $pdo,
-                    (int)$request['requested_by'],
-                    'system',
-                    'Your device request for ' . $device_name . ' has been rejected',
-                    $devicesLink
-                );
+                try {
+                    createNotification(
+                        $pdo,
+                        (int)$request['requested_by'],
+                        'system',
+                        'Your device request for ' . $device_name . ' has been rejected',
+                        $devicesLink
+                    );
+                } catch (Exception $notifEx) {
+                    error_log('Failed to create notification for rejected request: ' . $notifEx->getMessage());
+                }
             }
             
             // Update request status
