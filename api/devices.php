@@ -756,8 +756,21 @@ try {
             
             $pdo->commit();
             
-            $actionHandled = true;
+            // Send response and exit immediately to prevent any further code execution
+            http_response_code(200);
+            header('Content-Type: application/json');
             echo json_encode(['success' => true, 'message' => 'Request ' . strtolower($response) . ' successfully']);
+            
+            // Flush output buffers and close connection
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            } else {
+                if (ob_get_level() > 0) {
+                    ob_end_flush();
+                }
+                flush();
+            }
+            exit(0);
             
             } catch (Exception $respondEx) {
                 if ($pdo->inTransaction()) {
