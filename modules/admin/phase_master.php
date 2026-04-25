@@ -188,15 +188,15 @@ include __DIR__ . '/../../includes/header.php';
                                         title="Edit">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="btn btn-sm btn-outline-warning"
+                                <button type="button" class="btn btn-sm btn-outline-warning"
                                    title="Toggle Status"
-                                   onclick="confirmToggle(<?php echo $phase['id']; ?>, '<?php echo htmlspecialchars($phase['phase_name'], ENT_QUOTES); ?>', <?php echo $phase['is_active'] ? 'true' : 'false'; ?>)">
+                                   onclick="event.preventDefault(); confirmToggle(<?php echo $phase['id']; ?>, '<?php echo htmlspecialchars($phase['phase_name'], ENT_QUOTES); ?>', <?php echo $phase['is_active'] ? 'true' : 'false'; ?>)">
                                     <i class="fas fa-toggle-on"></i>
                                 </button>
                                 <?php if (($usageStats[$phase['id']] ?? 0) == 0): ?>
-                                <button class="btn btn-sm btn-outline-danger"
+                                <button type="button" class="btn btn-sm btn-outline-danger"
                                    title="Delete"
-                                   onclick="confirmDelete(<?php echo $phase['id']; ?>, '<?php echo htmlspecialchars($phase['phase_name'], ENT_QUOTES); ?>')">
+                                   onclick="event.preventDefault(); confirmDelete(<?php echo $phase['id']; ?>, '<?php echo htmlspecialchars($phase['phase_name'], ENT_QUOTES); ?>')">
                                     <i class="fas fa-trash"></i>
                                 </button>
                                 <?php else: ?>
