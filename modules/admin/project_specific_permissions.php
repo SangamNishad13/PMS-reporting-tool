@@ -320,6 +320,11 @@ foreach ($permissionTypes as $perm) {
 $selectedProject = isset($_GET['project_id']) ? intval($_GET['project_id']) : 0;
 $selectedUser = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
 
+// Pagination
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$perPage = 20;
+$offset = ($page - 1) * $perPage;
+
 $projectWhereConditions = ["pp.is_active = 1"];
 $projectParams = [];
 
@@ -332,6 +337,15 @@ if ($selectedUser) {
     $projectWhereConditions[] = "pp.user_id = ?";
     $projectParams[] = $selectedUser;
 }
+
+// Get total count for project permissions
+$projectCountStmt = $db->prepare("
+    SELECT COUNT(*) as total
+    FROM project_permissions pp
+    WHERE " . implode(" AND ", $projectWhereConditions) . "
+");
+$projectCountStmt->execute($projectParams);
+$projectCount = $projectCountStmt->fetch()['total'];
 
 $projectPermissionsStmt = $db->prepare("
     SELECT pp.*, u.full_name as user_name, u.email as user_email, u.role as user_role,
@@ -367,6 +381,15 @@ if ($selectedUser) {
     $clientParams[] = $selectedUser;
 }
 
+// Get total count for client permissions
+$clientCountStmt = $db->prepare("
+    SELECT COUNT(*) as total
+    FROM client_permissions cp
+    WHERE " . implode(" AND ", $clientWhereConditions) . "
+");
+$clientCountStmt->execute($clientParams);
+$clientCount = $clientCountStmt->fetch()['total'];
+
 $clientPermissionsStmt = $db->prepare("
     SELECT cp.id, cp.user_id, cp.permission_type, cp.granted_by, cp.granted_at, cp.expires_at, cp.notes,
            u.full_name as user_name, u.email as user_email, u.role as user_role,
@@ -386,12 +409,18 @@ $clientPermissionsStmt = $db->prepare("
 $clientPermissionsStmt->execute($clientParams);
 $clientPermissionRows = $clientPermissionsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-$currentPermissions = array_merge($projectPermissionRows, $clientPermissionRows);
-usort($currentPermissions, static function ($left, $right) {
+// Merge and sort all permissions
+$allPermissions = array_merge($projectPermissionRows, $clientPermissionRows);
+usort($allPermissions, static function ($left, $right) {
     $leftKey = strtolower((string)($left['project_title'] ?? '')) . '|' . strtolower((string)($left['user_name'] ?? '')) . '|' . strtolower((string)($left['permission_type'] ?? ''));
     $rightKey = strtolower((string)($right['project_title'] ?? '')) . '|' . strtolower((string)($right['user_name'] ?? '')) . '|' . strtolower((string)($right['permission_type'] ?? ''));
     return strcmp($leftKey, $rightKey);
 });
+
+// Apply pagination to merged results
+$totalPermissions = count($allPermissions);
+$totalPages = ceil($totalPermissions / $perPage);
+$currentPermissions = array_slice($allPermissions, $offset, $perPage);
 
 include __DIR__ . '/../../includes/header.php';
 ?>
@@ -463,8 +492,9 @@ include __DIR__ . '/../../includes/header.php';
 
             <!-- Current Permissions -->
             <div class="card">
-                <div class="card-header">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fas fa-list"></i> Current Project Permissions</h5>
+                    <span class="badge bg-primary">Total: <?php echo $totalPermissions; ?></span>
                 </div>
                 <div class="card-body">
                     <?php if (!empty($currentPermissions)): ?>
@@ -543,6 +573,64 @@ include __DIR__ . '/../../includes/header.php';
                             </tbody>
                         </table>
                     </div>
+                    
+                    <!-- Pagination -->
+                    <?php if ($totalPages > 1): ?>
+                    <nav aria-label="Permissions pagination" class="mt-3">
+                        <ul class="pagination justify-content-center mb-0">
+                            <!-- Previous Button -->
+                            <li class="page-item <?php echo $page <= 1 ? 'disabled' : ''; ?>">
+                                <a class="page-link" href="?page=<?php echo $page - 1; ?><?php echo $selectedProject ? '&project_id=' . $selectedProject : ''; ?><?php echo $selectedUser ? '&user_id=' . $selectedUser : ''; ?>" aria-label="Previous">
+                                    <span aria-hidden="true">&laquo;</span>
+                                </a>
+                            </li>
+                            
+                            <?php
+                            // Show page numbers with ellipsis
+                            $startPage = max(1, $page - 2);
+                            $endPage = min($totalPages, $page + 2);
+                            
+                            if ($startPage > 1): ?>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=1<?php echo $selectedProject ? '&project_id=' . $selectedProject : ''; ?><?php echo $selectedUser ? '&user_id=' . $selectedUser : ''; ?>">1</a>
+                                </li>
+                                <?php if ($startPage > 2): ?>
+                                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                            
+                            <?php for ($i = $startPage; $i <= $endPage; $i++): ?>
+                                <li class="page-item <?php echo $i == $page ? 'active' : ''; ?>">
+                                    <a class="page-link" href="?page=<?php echo $i; ?><?php echo $selectedProject ? '&project_id=' . $selectedProject : ''; ?><?php echo $selectedUser ? '&user_id=' . $selectedUser : ''; ?>">
+                                        <?php echo $i; ?>
+                                    </a>
+                                </li>
+                            <?php endfor; ?>
+                            
+                            <?php if ($endPage < $totalPages): ?>
+                                <?php if ($endPage < $totalPages - 1): ?>
+                                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                                <?php endif; ?>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=<?php echo $totalPages; ?><?php echo $selectedProject ? '&project_id=' . $selectedProject : ''; ?><?php echo $selectedUser ? '&user_id=' . $selectedUser : ''; ?>"><?php echo $totalPages; ?></a>
+                                </li>
+                            <?php endif; ?>
+                            
+                            <!-- Next Button -->
+                            <li class="page-item <?php echo $page >= $totalPages ? 'disabled' : ''; ?>">
+                                <a class="page-link" href="?page=<?php echo $page + 1; ?><?php echo $selectedProject ? '&project_id=' . $selectedProject : ''; ?><?php echo $selectedUser ? '&user_id=' . $selectedUser : ''; ?>" aria-label="Next">
+                                    <span aria-hidden="true">&raquo;</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                    <div class="text-center mt-2">
+                        <small class="text-muted">
+                            Showing <?php echo $offset + 1; ?> to <?php echo min($offset + $perPage, $totalPermissions); ?> of <?php echo $totalPermissions; ?> permissions
+                        </small>
+                    </div>
+                    <?php endif; ?>
+                    
                     <?php else: ?>
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle"></i> No project-specific permissions found. Use the filters above or grant new permissions.
