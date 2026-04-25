@@ -262,28 +262,6 @@ if ($perPage <= 0 || $perPage > 500) {
 $projects = $db->query("SELECT id, title FROM projects ORDER BY title ASC")->fetchAll(PDO::FETCH_ASSOC);
 $users = $db->query("SELECT id, full_name, email FROM users ORDER BY full_name ASC")->fetchAll(PDO::FETCH_ASSOC);
 
-// Build allowed file paths set when project/user filter is active
-// Must be built BEFORE the filesystem loop
-$filterPathSet = null;
-if ($filterProject > 0 || $filterUser > 0) {
-    $fWhere  = ["asset_type = 'file'", "file_path IS NOT NULL"];
-    $fParams = [];
-    if ($filterProject > 0) {
-        $fWhere[]  = 'project_id = ?';
-        $fParams[] = $filterProject;
-    }
-    if ($filterUser > 0) {
-        $fWhere[]  = 'created_by = ?';
-        $fParams[] = $filterUser;
-    }
-    $fStmt = $db->prepare('SELECT file_path FROM project_assets WHERE ' . implode(' AND ', $fWhere));
-    $fStmt->execute($fParams);
-    $filterPathSet = [];
-    foreach ($fStmt->fetchAll(PDO::FETCH_COLUMN) as $fp) {
-        $filterPathSet[(string)$fp] = true;
-    }
-}
-
 $files = [];
 $totalSize = 0;
 foreach ($roots as $storageKey => $rootPath) {
@@ -312,29 +290,67 @@ foreach ($roots as $storageKey => $rootPath) {
         $size = (int)$item->getSize();
         $mtime = (int)$item->getMTime();
         $rawPath = ($storageKey === 'uploads' ? 'uploads/' : 'assets/uploads/') . str_replace('\\', '/', $relativePath);
-
-        // Apply project/user filter — only assets_uploads files are tracked in DB
-        if ($filterPathSet !== null) {
-            if (!isset($filterPathSet[$rawPath])) {
-                continue;
-            }
-        }
-
         $urlPath = $baseDir . '/api/secure_file.php?path=' . rawurlencode($rawPath);
 
         $files[] = [
-            'storage_key' => $storageKey,
+            'storage_key'   => $storageKey,
             'storage_label' => $storageKey === 'uploads' ? 'uploads/' : 'assets/uploads/',
             'relative_path' => $relativePath,
-            'name' => $item->getFilename(),
-            'extension' => strtolower(pathinfo($item->getFilename(), PATHINFO_EXTENSION)),
-            'size' => $size,
-            'mtime' => $mtime,
+            'name'          => $item->getFilename(),
+            'extension'     => strtolower(pathinfo($item->getFilename(), PATHINFO_EXTENSION)),
+            'size'          => $size,
+            'mtime'         => $mtime,
             'mtime_display' => date('Y-m-d H:i:s', $mtime),
-            'url' => $urlPath
+            'url'           => $urlPath,
+            'raw_path'      => $rawPath,
         ];
         $totalSize += $size;
     }
+}
+
+// Build full asset meta map for ALL scanned files (needed for project/user filter)
+$allAssetPaths = [];
+foreach ($files as $f) {
+    if ($f['storage_key'] === 'assets_uploads') {
+        $allAssetPaths[] = $f['raw_path'];
+    }
+}
+$fullMetaMap = [];
+if (!empty($allAssetPaths)) {
+    $allAssetPaths = array_values(array_unique($allAssetPaths));
+    $ph = implode(',', array_fill(0, count($allAssetPaths), '?'));
+    $metaStmt = $db->prepare("
+        SELECT pa.file_path, pa.project_id, pa.created_by,
+               p.title AS project_title, u.full_name AS uploader_name
+        FROM project_assets pa
+        LEFT JOIN projects p ON p.id = pa.project_id
+        LEFT JOIN users u ON u.id = pa.created_by
+        WHERE pa.file_path IN ($ph)
+    ");
+    $metaStmt->execute($allAssetPaths);
+    foreach ($metaStmt->fetchAll(PDO::FETCH_ASSOC) as $m) {
+        $fullMetaMap[(string)$m['file_path']] = $m;
+    }
+}
+
+// Apply project/user filter using meta map
+if ($filterProject > 0 || $filterUser > 0) {
+    $files = array_values(array_filter($files, function ($f) use ($filterProject, $filterUser, $fullMetaMap) {
+        $meta = $fullMetaMap[$f['raw_path']] ?? null;
+        if ($meta === null) {
+            // File not in project_assets — cannot match project/user filter
+            return false;
+        }
+        if ($filterProject > 0 && (int)($meta['project_id'] ?? 0) !== $filterProject) {
+            return false;
+        }
+        if ($filterUser > 0 && (int)($meta['created_by'] ?? 0) !== $filterUser) {
+            return false;
+        }
+        return true;
+    }));
+    // Recalculate total size after filter
+    $totalSize = array_sum(array_column($files, 'size'));
 }
 
 usort($files, function (array $a, array $b) use ($sort): int {
@@ -364,29 +380,7 @@ if ($page > $totalPages) {
 $offset = ($page - 1) * $perPage;
 $rows = array_slice($files, $offset, $perPage);
 
-$assetMetaMap = [];
-$assetPaths = [];
-foreach ($rows as $r) {
-    if ($r['storage_key'] === 'assets_uploads') {
-        $assetPaths[] = 'assets/uploads/' . $r['relative_path'];
-    }
-}
-if (!empty($assetPaths)) {
-    $assetPaths = array_values(array_unique($assetPaths));
-    $ph = implode(',', array_fill(0, count($assetPaths), '?'));
-    $metaSql = "
-        SELECT pa.file_path, pa.project_id, pa.created_by, p.title AS project_title, u.full_name AS uploader_name
-        FROM project_assets pa
-        LEFT JOIN projects p ON p.id = pa.project_id
-        LEFT JOIN users u ON u.id = pa.created_by
-        WHERE pa.file_path IN ($ph)
-    ";
-    $metaStmt = $db->prepare($metaSql);
-    $metaStmt->execute($assetPaths);
-    foreach ($metaStmt->fetchAll(PDO::FETCH_ASSOC) as $m) {
-        $assetMetaMap[(string)$m['file_path']] = $m;
-    }
-}
+$assetMetaMap = $fullMetaMap;
 
 $queryForForms = $_GET;
 unset($queryForForms['page']);
