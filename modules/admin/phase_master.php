@@ -193,15 +193,20 @@ include __DIR__ . '/../../includes/header.php';
                                         title="Edit">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button type="button" class="btn btn-sm btn-outline-warning"
+                                <button type="button" 
+                                   class="btn btn-sm btn-outline-warning toggle-phase-btn"
                                    title="Toggle Status"
-                                   onclick="event.preventDefault(); confirmToggle(<?php echo $phase['id']; ?>, '<?php echo htmlspecialchars($phase['phase_name'], ENT_QUOTES); ?>', <?php echo $phase['is_active'] ? 'true' : 'false'; ?>)">
+                                   data-phase-id="<?php echo $phase['id']; ?>"
+                                   data-phase-name="<?php echo htmlspecialchars($phase['phase_name']); ?>"
+                                   data-is-active="<?php echo $phase['is_active'] ? '1' : '0'; ?>">
                                     <i class="fas fa-toggle-on"></i>
                                 </button>
                                 <?php if (($usageStats[$phase['id']] ?? 0) == 0): ?>
-                                <button type="button" class="btn btn-sm btn-outline-danger"
+                                <button type="button" 
+                                   class="btn btn-sm btn-outline-danger delete-phase-btn"
                                    title="Delete"
-                                   onclick="event.preventDefault(); confirmDelete(<?php echo $phase['id']; ?>, '<?php echo htmlspecialchars($phase['phase_name'], ENT_QUOTES); ?>')">
+                                   data-phase-id="<?php echo $phase['id']; ?>"
+                                   data-phase-name="<?php echo htmlspecialchars($phase['phase_name']); ?>">
                                     <i class="fas fa-trash"></i>
                                 </button>
                                 <?php else: ?>
@@ -360,26 +365,44 @@ include __DIR__ . '/../../includes/header.php';
 </div>
 
 <script>
-console.log('Phase Master JS loaded - v2.0');
+console.log('Phase Master JS loaded - v3.0');
 
-function confirmDelete(phaseId, phaseName) {
-    console.log('confirmDelete called:', phaseId, phaseName);
-    document.getElementById('deletePhaseNameDisplay').textContent = phaseName;
-    document.getElementById('confirmDeleteBtn').href = '?delete=' + phaseId;
-    var deleteModal = new bootstrap.Modal(document.getElementById('deletePhaseModal'));
-    deleteModal.show();
-    return false;
-}
-
-function confirmToggle(phaseId, phaseName, isActive) {
-    console.log('confirmToggle called:', phaseId, phaseName, isActive);
-    document.getElementById('togglePhaseNameDisplay').textContent = phaseName;
-    document.getElementById('toggleActionText').textContent = isActive ? 'deactivate' : 'activate';
-    document.getElementById('confirmToggleBtn').href = '?toggle=' + phaseId;
-    var toggleModal = new bootstrap.Modal(document.getElementById('togglePhaseModal'));
-    toggleModal.show();
-    return false;
-}
+// Delete phase button click handler
+document.addEventListener('DOMContentLoaded', function() {
+    // Delete buttons
+    document.querySelectorAll('.delete-phase-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const phaseId = this.getAttribute('data-phase-id');
+            const phaseName = this.getAttribute('data-phase-name');
+            console.log('Delete clicked:', phaseId, phaseName);
+            
+            document.getElementById('deletePhaseNameDisplay').textContent = phaseName;
+            document.getElementById('confirmDeleteBtn').href = '?delete=' + phaseId;
+            
+            var deleteModal = new bootstrap.Modal(document.getElementById('deletePhaseModal'));
+            deleteModal.show();
+        });
+    });
+    
+    // Toggle buttons
+    document.querySelectorAll('.toggle-phase-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const phaseId = this.getAttribute('data-phase-id');
+            const phaseName = this.getAttribute('data-phase-name');
+            const isActive = this.getAttribute('data-is-active') === '1';
+            console.log('Toggle clicked:', phaseId, phaseName, isActive);
+            
+            document.getElementById('togglePhaseNameDisplay').textContent = phaseName;
+            document.getElementById('toggleActionText').textContent = isActive ? 'deactivate' : 'activate';
+            document.getElementById('confirmToggleBtn').href = '?toggle=' + phaseId;
+            
+            var toggleModal = new bootstrap.Modal(document.getElementById('togglePhaseModal'));
+            toggleModal.show();
+        });
+    });
+});
 </script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; 
