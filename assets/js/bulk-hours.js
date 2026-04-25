@@ -77,8 +77,6 @@
         });
         if (!hasChanges) { showBulkToast('No changes detected. Please modify some hours before saving.', 'warning'); return; }
         if (hasErrors) { showBulkToast('Please fix the validation errors before saving.', 'warning'); return; }
-        var reason = form.querySelector('textarea[name="bulk_reason"]').value;
-        if (!reason.trim()) { showBulkToast('Please provide a reason for the bulk update.', 'warning'); return; }
         var doSubmit = function () { form.submit(); };
         if (typeof confirmModal === 'function') confirmModal('Are you sure you want to apply these changes?', doSubmit);
         else if (window.confirm('Are you sure you want to apply these changes?')) doSubmit();

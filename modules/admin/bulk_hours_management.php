@@ -449,6 +449,33 @@ include __DIR__ . '/../../includes/header.php';
                 <form id="bulkUpdateForm" method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                     <input type="hidden" name="bulk_update" value="1">
+                    
+                    <!-- Reason and Quick Actions - Above Table -->
+                    <div class="row mb-3 p-3 bg-light rounded">
+                        <div class="col-md-6">
+                            <label class="form-label"><i class="fas fa-comment"></i> Reason for Bulk Update (Optional)</label>
+                            <textarea name="bulk_reason" class="form-control" rows="2" placeholder="Optional: Provide reason for these changes..."></textarea>
+                            <small class="text-muted">You can provide a reason for audit trail purposes</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label"><i class="fas fa-bolt"></i> Quick Actions</label>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="increaseAll(5)">
+                                    <i class="fas fa-plus"></i> +5h All
+                                </button>
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="increaseAll(10)">
+                                    <i class="fas fa-plus"></i> +10h All
+                                </button>
+                                <button type="button" class="btn btn-outline-warning btn-sm" onclick="decreaseAll(5)">
+                                    <i class="fas fa-minus"></i> -5h All
+                                </button>
+                                <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearAll()">
+                                    <i class="fas fa-eraser"></i> Clear All
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="table-responsive">
                         <table class="table table-hover">
                             <thead class="table-light">
@@ -571,32 +598,6 @@ include __DIR__ . '/../../includes/header.php';
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
-                    </div>
-                    
-                    <div class="mt-3">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <label class="form-label"><i class="fas fa-comment"></i> Reason for Bulk Update <span class="text-danger">*</span></label>
-                                <textarea name="bulk_reason" class="form-control" rows="2" placeholder="Reason for these changes..." required></textarea>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label"><i class="fas fa-bolt"></i> Quick Actions</label>
-                                <div class="d-flex gap-2 flex-wrap">
-                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="increaseAll(5)">
-                                        <i class="fas fa-plus"></i> +5h All
-                                    </button>
-                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="increaseAll(10)">
-                                        <i class="fas fa-plus"></i> +10h All
-                                    </button>
-                                    <button type="button" class="btn btn-outline-warning btn-sm" onclick="decreaseAll(5)">
-                                        <i class="fas fa-minus"></i> -5h All
-                                    </button>
-                                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearAll()">
-                                        <i class="fas fa-eraser"></i> Clear All
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </form>
 
