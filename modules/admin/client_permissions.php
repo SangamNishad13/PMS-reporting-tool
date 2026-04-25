@@ -259,10 +259,11 @@ foreach ($permissionTypes as $perm) {
     $permissionsByCategory[$perm['category']][] = $perm;
 }
 
-// Get current permissions with filters and pagination
+// Get current permissions with filters, search, and pagination
 $selectedClient = isset($_GET['client_id']) ? intval($_GET['client_id']) : 0;
 $selectedUser = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
 $selectedProject = isset($_GET['project_id']) ? intval($_GET['project_id']) : 0;
+$searchTerm = isset($_GET['search']) ? trim($_GET['search']) : '';
 
 // Pagination parameters
 $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
@@ -285,6 +286,21 @@ if ($selectedUser) {
 if ($selectedProject) {
     $whereConditions[] = "cp.project_id = ?";
     $params[] = $selectedProject;
+}
+
+// Add search functionality
+if ($searchTerm) {
+    $whereConditions[] = "(
+        u.full_name LIKE ? OR 
+        u.email LIKE ? OR 
+        c.name LIKE ? OR 
+        p.title LIKE ? OR 
+        p.po_number LIKE ? OR 
+        cp.permission_type LIKE ? OR
+        pt.description LIKE ?
+    )";
+    $searchParam = '%' . $searchTerm . '%';
+    $params = array_merge($params, [$searchParam, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam]);
 }
 
 // Get total count for pagination
@@ -363,6 +379,27 @@ include __DIR__ . '/../../includes/header.php';
             <div class="card mb-4">
                 <div class="card-body">
                     <form method="GET" class="row g-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Search Permissions</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                <input type="text" name="search" class="form-control" 
+                                       placeholder="Search by user name, email, client, project, or permission type..." 
+                                       value="<?php echo htmlspecialchars($searchTerm); ?>">
+                                <?php if ($searchTerm): ?>
+                                <button type="button" class="btn btn-outline-secondary" onclick="clearSearch()">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                                <?php endif; ?>
+                            </div>
+                            <?php if ($searchTerm): ?>
+                            <small class="text-muted">
+                                <i class="fas fa-info-circle"></i> 
+                                Searching for: <strong>"<?php echo htmlspecialchars($searchTerm); ?>"</strong>
+                                <a href="?" class="text-decoration-none ms-2">Clear search</a>
+                            </small>
+                            <?php endif; ?>
+                        </div>
                         <div class="col-md-3">
                             <label class="form-label">Filter by Client</label>
                             <select name="client_id" class="form-select">
@@ -408,8 +445,8 @@ include __DIR__ . '/../../includes/header.php';
                         </div>
                         <div class="col-md-2">
                             <label class="form-label">&nbsp;</label>
-                            <button type="submit" class="btn btn-outline-primary d-block w-100">
-                                <i class="fas fa-filter"></i> Filter
+                            <button type="submit" class="btn btn-primary d-block w-100">
+                                <i class="fas fa-search"></i> Search & Filter
                             </button>
                         </div>
                     </form>
@@ -419,11 +456,21 @@ include __DIR__ . '/../../includes/header.php';
             <!-- Current Permissions -->
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-list"></i> Current Project Permissions</h5>
+                    <div>
+                        <h5 class="mb-0"><i class="fas fa-list"></i> Current Project Permissions</h5>
+                        <?php if ($searchTerm): ?>
+                        <small class="text-muted">
+                            <i class="fas fa-search"></i> Search results for: <strong>"<?php echo htmlspecialchars($searchTerm); ?>"</strong>
+                        </small>
+                        <?php endif; ?>
+                    </div>
                     <?php if ($totalPermissions > 0): ?>
                     <small class="text-muted">
                         Showing <?php echo number_format($offset + 1); ?>-<?php echo number_format(min($offset + $perPage, $totalPermissions)); ?> 
                         of <?php echo number_format($totalPermissions); ?> permissions
+                        <?php if ($searchTerm || $selectedClient || $selectedUser || $selectedProject): ?>
+                        <br><span class="badge bg-info">Filtered Results</span>
+                        <?php endif; ?>
                     </small>
                     <?php endif; ?>
                 </div>
@@ -514,6 +561,7 @@ include __DIR__ . '/../../includes/header.php';
                             if ($selectedClient) $queryParams['client_id'] = $selectedClient;
                             if ($selectedUser) $queryParams['user_id'] = $selectedUser;
                             if ($selectedProject) $queryParams['project_id'] = $selectedProject;
+                            if ($searchTerm) $queryParams['search'] = $searchTerm;
                             
                             // Previous page
                             if ($page > 1):
@@ -586,7 +634,15 @@ include __DIR__ . '/../../includes/header.php';
                     
                     <?php else: ?>
                     <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i> No project-specific permissions found. Use the filters above or grant new permissions.
+                        <i class="fas fa-info-circle"></i> 
+                        <?php if ($searchTerm): ?>
+                            No permissions found matching your search criteria "<strong><?php echo htmlspecialchars($searchTerm); ?></strong>". 
+                            <a href="?" class="text-decoration-none">Clear search</a> to see all permissions.
+                        <?php elseif ($selectedClient || $selectedUser || $selectedProject): ?>
+                            No permissions found with the selected filters. Try adjusting your filter criteria.
+                        <?php else: ?>
+                            No project-specific permissions found. Use the search and filters above or grant new permissions.
+                        <?php endif; ?>
                     </div>
                     <?php endif; ?>
                 </div>
