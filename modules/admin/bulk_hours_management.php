@@ -135,6 +135,16 @@ if ($_POST) {
 $projectFilter = $_GET['project_filter'] ?? '';
 $userFilter = $_GET['user_filter'] ?? '';
 $roleFilter = $_GET['role_filter'] ?? '';
+$projectStatusFilter = $_GET['project_status_filter'] ?? '';
+$searchUser = $_GET['search_user'] ?? '';
+$searchProject = $_GET['search_project'] ?? '';
+$showOverAllocated = isset($_GET['show_over_allocated']) && $_GET['show_over_allocated'] === '1';
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$perPage = isset($_GET['per_page']) ? (int)$_GET['per_page'] : 25;
+$allowedPerPage = [10, 25, 50, 100, 200];
+if (!in_array($perPage, $allowedPerPage, true)) {
+    $perPage = 25;
+}
 
 // Build query
 $whereConditions = ["p.status NOT IN ('completed', 'cancelled')"];
@@ -160,7 +170,43 @@ if ($roleFilter) {
     $params[] = $roleFilter;
 }
 
+if ($projectStatusFilter) {
+    $whereConditions[] = "p.status = ?";
+    $params[] = $projectStatusFilter;
+}
+
+if (!empty($searchUser)) {
+    $whereConditions[] = "(u.full_name LIKE ? OR u.username LIKE ?)";
+    $searchTerm = '%' . $searchUser . '%';
+    $params[] = $searchTerm;
+    $params[] = $searchTerm;
+}
+
+if (!empty($searchProject)) {
+    $whereConditions[] = "(p.title LIKE ? OR p.po_number LIKE ?)";
+    $searchProjectTerm = '%' . $searchProject . '%';
+    $params[] = $searchProjectTerm;
+    $params[] = $searchProjectTerm;
+}
+
 $whereClause = implode(' AND ', $whereConditions);
+
+// Count total records for pagination
+$countQuery = "
+    SELECT COUNT(*)
+    FROM user_assignments ua
+    JOIN users u ON ua.user_id = u.id
+    JOIN projects p ON ua.project_id = p.id
+    WHERE $whereClause AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+";
+$countStmt = $db->prepare($countQuery);
+$countStmt->execute($params);
+$totalRecords = (int)$countStmt->fetchColumn();
+$totalPages = max(1, (int)ceil($totalRecords / $perPage));
+if ($page > $totalPages) {
+    $page = $totalPages;
+}
+$offset = ($page - 1) * $perPage;
 
 // Get assignments with project hours info
 $assignmentsQuery = "
@@ -177,16 +223,47 @@ $assignmentsQuery = "
         GROUP BY user_id, project_id
     ) ptl ON ua.user_id = ptl.user_id AND ua.project_id = ptl.project_id
     WHERE $whereClause AND (ua.is_removed IS NULL OR ua.is_removed = 0)
-    ORDER BY u.full_name, p.title
 ";
 
+// Add over-allocated filter
+if ($showOverAllocated) {
+    $assignmentsQuery .= " HAVING total_allocated_hours > p.total_hours";
+}
+
+$assignmentsQuery .= " ORDER BY u.full_name, p.title LIMIT ? OFFSET ?";
+
 $stmt = $db->prepare($assignmentsQuery);
-$stmt->execute($params);
+$queryParams = array_merge($params, [$perPage, $offset]);
+$stmt->execute($queryParams);
 $assignments = $stmt->fetchAll();
 
 // Get filter options
 $projects = $db->query("SELECT id, title, po_number FROM projects WHERE status NOT IN ('completed', 'cancelled') ORDER BY title")->fetchAll();
 $users = $db->query("SELECT id, full_name FROM users WHERE is_active = 1 AND role IN ('project_lead', 'qa', 'at_tester', 'ft_tester') ORDER BY full_name")->fetchAll();
+
+// Calculate summary statistics for filtered results
+$summaryQuery = "
+    SELECT 
+        COUNT(DISTINCT ua.user_id) as total_users,
+        COUNT(DISTINCT ua.project_id) as total_projects,
+        COALESCE(SUM(ua.hours_allocated), 0) as total_allocated,
+        COALESCE(SUM(ptl.utilized_hours), 0) as total_utilized,
+        COALESCE(SUM(ua.hours_allocated) - SUM(ptl.utilized_hours), 0) as total_remaining
+    FROM user_assignments ua
+    JOIN users u ON ua.user_id = u.id
+    JOIN projects p ON ua.project_id = p.id
+    LEFT JOIN (
+        SELECT user_id, project_id, SUM(hours_spent) as utilized_hours
+        FROM project_time_logs
+        WHERE is_utilized = 1
+        GROUP BY user_id, project_id
+    ) ptl ON ua.user_id = ptl.user_id AND ua.project_id = ptl.project_id
+    WHERE $whereClause AND (ua.is_removed IS NULL OR ua.is_removed = 0)
+";
+$summaryStmt = $db->prepare($summaryQuery);
+$summaryStmt->execute($params);
+$summary = $summaryStmt->fetch(PDO::FETCH_ASSOC);
+
 $flashSuccess = isset($_SESSION['success']) ? (string)$_SESSION['success'] : '';
 $flashError = isset($_SESSION['error']) ? (string)$_SESSION['error'] : '';
 unset($_SESSION['success'], $_SESSION['error']);
@@ -196,21 +273,69 @@ include __DIR__ . '/../../includes/header.php';
 
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Bulk Hours Management</h2>
+        <h2><i class="fas fa-users-cog"></i> Bulk Hours Management</h2>
         <a href="<?php echo $baseDir; ?>/modules/admin/dashboard.php" class="btn btn-outline-secondary">
             <i class="fas fa-arrow-left"></i> Back to Dashboard
         </a>
     </div>
 
+    <!-- Summary Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-light">
+                <div class="card-body text-center">
+                    <h3 class="text-primary mb-1"><?php echo number_format($summary['total_allocated'] ?? 0, 1); ?>h</h3>
+                    <p class="mb-0 text-muted small">Total Allocated Hours</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-light">
+                <div class="card-body text-center">
+                    <h3 class="text-success mb-1"><?php echo number_format($summary['total_utilized'] ?? 0, 1); ?>h</h3>
+                    <p class="mb-0 text-muted small">Total Utilized Hours</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-light">
+                <div class="card-body text-center">
+                    <h3 class="text-warning mb-1"><?php echo number_format($summary['total_remaining'] ?? 0, 1); ?>h</h3>
+                    <p class="mb-0 text-muted small">Total Remaining Hours</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-light">
+                <div class="card-body text-center">
+                    <h3 class="text-info mb-1"><?php echo (int)($summary['total_users'] ?? 0); ?> / <?php echo (int)($summary['total_projects'] ?? 0); ?></h3>
+                    <p class="mb-0 text-muted small">Users / Projects</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Filters -->
     <div class="card mb-4">
         <div class="card-header">
-            <h5><i class="fas fa-filter"></i> Filters</h5>
+            <h5><i class="fas fa-filter"></i> Filters & Search</h5>
         </div>
         <div class="card-body">
             <form method="GET" class="row g-3">
                 <div class="col-md-3">
-                    <label class="form-label">Project</label>
+                    <label class="form-label"><i class="fas fa-search"></i> Search User</label>
+                    <input type="text" name="search_user" class="form-control" 
+                           placeholder="Search by name or username..." 
+                           value="<?php echo htmlspecialchars($searchUser ?? ''); ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label"><i class="fas fa-search"></i> Search Project</label>
+                    <input type="text" name="search_project" class="form-control" 
+                           placeholder="Search by title or PO number..." 
+                           value="<?php echo htmlspecialchars($searchProject ?? ''); ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label"><i class="fas fa-project-diagram"></i> Project</label>
                     <select name="project_filter" class="form-select">
                         <option value="">All Projects</option>
                         <?php foreach ($projects as $project): ?>
@@ -221,7 +346,7 @@ include __DIR__ . '/../../includes/header.php';
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">User</label>
+                    <label class="form-label"><i class="fas fa-user"></i> User</label>
                     <select name="user_filter" class="form-select">
                         <option value="">All Users</option>
                         <?php foreach ($users as $user): ?>
@@ -231,8 +356,8 @@ include __DIR__ . '/../../includes/header.php';
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">Role</label>
+                <div class="col-md-2">
+                    <label class="form-label"><i class="fas fa-user-tag"></i> Role</label>
                     <select name="role_filter" class="form-select">
                         <option value="">All Roles</option>
                         <option value="project_lead" <?php echo $roleFilter === 'project_lead' ? 'selected' : ''; ?>>Project Lead</option>
@@ -241,11 +366,43 @@ include __DIR__ . '/../../includes/header.php';
                         <option value="ft_tester" <?php echo $roleFilter === 'ft_tester' ? 'selected' : ''; ?>>FT Tester</option>
                     </select>
                 </div>
+                <div class="col-md-2">
+                    <label class="form-label"><i class="fas fa-flag"></i> Project Status</label>
+                    <select name="project_status_filter" class="form-select">
+                        <option value="">All Status</option>
+                        <option value="not_started" <?php echo $projectStatusFilter === 'not_started' ? 'selected' : ''; ?>>Not Started</option>
+                        <option value="in_progress" <?php echo $projectStatusFilter === 'in_progress' ? 'selected' : ''; ?>>In Progress</option>
+                        <option value="on_hold" <?php echo $projectStatusFilter === 'on_hold' ? 'selected' : ''; ?>>On Hold</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label"><i class="fas fa-list"></i> Per Page</label>
+                    <select name="per_page" class="form-select">
+                        <?php foreach ([10, 25, 50, 100, 200] as $pp): ?>
+                            <option value="<?php echo $pp; ?>" <?php echo $perPage === $pp ? 'selected' : ''; ?>>
+                                <?php echo $pp; ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
                 <div class="col-md-3">
-                    <label class="form-label">&nbsp;</label>
-                    <div class="d-flex gap-2">
-                        <button type="submit" class="btn btn-primary">Apply Filters</button>
-                        <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-secondary">Clear</a>
+                    <label class="form-label"><i class="fas fa-exclamation-triangle"></i> Special Filters</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="show_over_allocated" value="1" 
+                               id="showOverAllocated" <?php echo $showOverAllocated ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="showOverAllocated">
+                            Show Over-allocated Projects Only
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="d-flex gap-2 w-100">
+                        <button type="submit" class="btn btn-primary flex-fill">
+                            <i class="fas fa-filter"></i> Apply Filters
+                        </button>
+                        <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-secondary" title="Clear Filters">
+                            <i class="fas fa-times"></i> Clear
+                        </a>
                     </div>
                 </div>
             </form>
@@ -255,7 +412,10 @@ include __DIR__ . '/../../includes/header.php';
     <!-- Bulk Update Form -->
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <h5>Hours Assignments (<?php echo count($assignments); ?> records)</h5>
+            <h5 class="mb-0">
+                <i class="fas fa-users-cog"></i> Hours Assignments 
+                <span class="badge bg-primary"><?php echo (int)$totalRecords; ?> total</span>
+            </h5>
             <div>
                 <button type="button" class="btn btn-success btn-sm" onclick="applyBulkUpdate()">
                     <i class="fas fa-save"></i> Save Changes
@@ -266,6 +426,20 @@ include __DIR__ . '/../../includes/header.php';
             </div>
         </div>
         <div class="card-body">
+            <?php if (!empty($flashSuccess)): ?>
+                <div class="alert alert-success alert-dismissible fade show">
+                    <?php echo htmlspecialchars($flashSuccess); ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($flashError)): ?>
+                <div class="alert alert-danger alert-dismissible fade show">
+                    <?php echo htmlspecialchars($flashError); ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            <?php endif; ?>
+
             <?php if (empty($assignments)): ?>
                 <div class="text-center text-muted py-4">
                     <i class="fas fa-inbox fa-3x mb-3"></i>
@@ -277,7 +451,7 @@ include __DIR__ . '/../../includes/header.php';
                     <input type="hidden" name="bulk_update" value="1">
                     <div class="table-responsive">
                         <table class="table table-hover">
-                            <thead>
+                            <thead class="table-light">
                                 <tr>
                                     <th>User</th>
                                     <th>Project</th>
@@ -331,7 +505,7 @@ include __DIR__ . '/../../includes/header.php';
                                             <?php if ($isOverAllocated): ?>
                                                 <br>
                                                 <small class="text-danger">
-                                                    Over-allocated by <?php echo number_format($projectAllocated - $projectTotal, 1); ?>h
+                                                    <i class="fas fa-exclamation-triangle"></i> Over-allocated by <?php echo number_format($projectAllocated - $projectTotal, 1); ?>h
                                                 </small>
                                             <?php endif; ?>
                                         </div>
@@ -375,7 +549,7 @@ include __DIR__ . '/../../includes/header.php';
                                                data-max-allowed="<?php echo $maxAllowed; ?>"
                                                data-over-allocated="<?php echo $isOverAllocated ? '1' : '0'; ?>"
                                                data-assignment-id="<?php echo $assignment['id']; ?>"
-                                               style="width: 80px;"
+                                               style="width: 100px;"
                                                onchange="validateHours(this)">
                                         <small class="text-muted hours-info" style="font-size: 0.7em;">
                                             Min: <?php echo number_format($minAllowed, 1); ?>h, Max: <?php echo number_format($maxAllowed, 1); ?>h
@@ -402,21 +576,86 @@ include __DIR__ . '/../../includes/header.php';
                     <div class="mt-3">
                         <div class="row">
                             <div class="col-md-6">
-                                <label class="form-label">Reason for Bulk Update</label>
+                                <label class="form-label"><i class="fas fa-comment"></i> Reason for Bulk Update <span class="text-danger">*</span></label>
                                 <textarea name="bulk_reason" class="form-control" rows="2" placeholder="Reason for these changes..." required></textarea>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Quick Actions</label>
-                                <div class="d-flex gap-2">
-                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="increaseAll(5)">+5h All</button>
-                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="increaseAll(10)">+10h All</button>
-                                    <button type="button" class="btn btn-outline-warning btn-sm" onclick="decreaseAll(5)">-5h All</button>
-                                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearAll()">Clear All</button>
+                                <label class="form-label"><i class="fas fa-bolt"></i> Quick Actions</label>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="increaseAll(5)">
+                                        <i class="fas fa-plus"></i> +5h All
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="increaseAll(10)">
+                                        <i class="fas fa-plus"></i> +10h All
+                                    </button>
+                                    <button type="button" class="btn btn-outline-warning btn-sm" onclick="decreaseAll(5)">
+                                        <i class="fas fa-minus"></i> -5h All
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearAll()">
+                                        <i class="fas fa-eraser"></i> Clear All
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </form>
+
+                <!-- Pagination -->
+                <?php if ($totalPages > 1): ?>
+                    <?php
+                        $baseParams = $_GET;
+                        unset($baseParams['page']);
+                        $buildPageUrl = function($p) use ($baseParams) {
+                            $params = $baseParams;
+                            $params['page'] = $p;
+                            return $_SERVER['PHP_SELF'] . '?' . http_build_query($params);
+                        };
+                        $startPage = max(1, $page - 2);
+                        $endPage = min($totalPages, $page + 2);
+                    ?>
+                    <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                        <small class="text-muted">
+                            Showing <?php echo (int)($offset + 1); ?> 
+                            to <?php echo (int)min($offset + $perPage, $totalRecords); ?> 
+                            of <?php echo (int)$totalRecords; ?> assignments
+                        </small>
+                        <nav aria-label="Assignments pagination">
+                            <ul class="pagination pagination-sm mb-0">
+                                <li class="page-item <?php echo $page <= 1 ? 'disabled' : ''; ?>">
+                                    <a class="page-link" href="<?php echo $page <= 1 ? '#' : htmlspecialchars($buildPageUrl($page - 1)); ?>">
+                                        <i class="fas fa-chevron-left"></i> Previous
+                                    </a>
+                                </li>
+                                <?php if ($startPage > 1): ?>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo htmlspecialchars($buildPageUrl(1)); ?>">1</a>
+                                    </li>
+                                    <?php if ($startPage > 2): ?>
+                                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                                <?php for ($p = $startPage; $p <= $endPage; $p++): ?>
+                                    <li class="page-item <?php echo $p === $page ? 'active' : ''; ?>">
+                                        <a class="page-link" href="<?php echo htmlspecialchars($buildPageUrl($p)); ?>"><?php echo $p; ?></a>
+                                    </li>
+                                <?php endfor; ?>
+                                <?php if ($endPage < $totalPages): ?>
+                                    <?php if ($endPage < $totalPages - 1): ?>
+                                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                                    <?php endif; ?>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo htmlspecialchars($buildPageUrl($totalPages)); ?>"><?php echo $totalPages; ?></a>
+                                    </li>
+                                <?php endif; ?>
+                                <li class="page-item <?php echo $page >= $totalPages ? 'disabled' : ''; ?>">
+                                    <a class="page-link" href="<?php echo $page >= $totalPages ? '#' : htmlspecialchars($buildPageUrl($page + 1)); ?>">
+                                        Next <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
     </div>
