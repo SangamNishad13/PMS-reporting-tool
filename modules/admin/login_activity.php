@@ -397,20 +397,54 @@ require_once __DIR__ . '/../../includes/header.php';
     </form>
 
     <nav aria-label="Page navigation">
-        <ul class="pagination pagination-sm">
+        <ul class="pagination pagination-sm flex-wrap">
             <?php
-            // build base query string for pagination links
             $qs = $_GET; unset($qs['page']);
             $baseQs = http_build_query($qs);
             $baseUrl = strtok($_SERVER['REQUEST_URI'], '?');
-            for ($p=1;$p<=$totalPages;$p++) {
-                $activeClass = ($p==$page) ? ' active' : '';
-                $link = $baseUrl . '?' . ($baseQs ? ($baseQs . '&') : '') . 'page=' . $p;
-                echo '<li class="page-item' . $activeClass . '"><a class="page-link" href="' . htmlspecialchars($link) . '">' . $p . '</a></li>';
+            $buildLink = function(int $p) use ($baseUrl, $baseQs): string {
+                return $baseUrl . '?' . ($baseQs ? ($baseQs . '&') : '') . 'page=' . $p;
+            };
+
+            // Prev
+            if ($page > 1) {
+                echo '<li class="page-item"><a class="page-link" href="' . htmlspecialchars($buildLink($page - 1)) . '">&laquo;</a></li>';
+            } else {
+                echo '<li class="page-item disabled"><span class="page-link">&laquo;</span></li>';
+            }
+
+            // Smart ellipsis pages
+            $pagesToShow = [];
+            if ($totalPages <= 9) {
+                for ($i = 1; $i <= $totalPages; $i++) $pagesToShow[] = $i;
+            } else {
+                $pagesToShow[] = 1;
+                if ($page > 4) $pagesToShow[] = '...';
+                for ($i = max(2, $page - 2); $i <= min($totalPages - 1, $page + 2); $i++) $pagesToShow[] = $i;
+                if ($page < $totalPages - 3) $pagesToShow[] = '...';
+                $pagesToShow[] = $totalPages;
+            }
+            foreach ($pagesToShow as $p) {
+                if ($p === '...') {
+                    echo '<li class="page-item disabled"><span class="page-link">…</span></li>';
+                } else {
+                    $cls = ($p == $page) ? ' active' : '';
+                    echo '<li class="page-item' . $cls . '"><a class="page-link" href="' . htmlspecialchars($buildLink((int)$p)) . '">' . $p . '</a></li>';
+                }
+            }
+
+            // Next
+            if ($page < $totalPages) {
+                echo '<li class="page-item"><a class="page-link" href="' . htmlspecialchars($buildLink($page + 1)) . '">&raquo;</a></li>';
+            } else {
+                echo '<li class="page-item disabled"><span class="page-link">&raquo;</span></li>';
             }
             ?>
         </ul>
     </nav>
+    <div class="text-muted small mt-1">
+        Page <?php echo $page; ?> of <?php echo $totalPages; ?> &mdash; <?php echo number_format($total); ?> record<?php echo $total !== 1 ? 's' : ''; ?> total
+    </div>
 
 </div>
 <script src="<?php echo getBaseDir(); ?>/assets/js/login-activity.js?v=<?php echo time(); ?>"></script>
