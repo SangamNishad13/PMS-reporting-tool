@@ -188,19 +188,17 @@ include __DIR__ . '/../../includes/header.php';
                                         title="Edit">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <a href="?toggle=<?php echo $phase['id']; ?>" 
-                                   class="btn btn-sm btn-outline-warning"
+                                <button class="btn btn-sm btn-outline-warning"
                                    title="Toggle Status"
-                                   onclick="return confirm('Toggle active status?')">
+                                   onclick="confirmToggle(<?php echo $phase['id']; ?>, '<?php echo htmlspecialchars($phase['phase_name'], ENT_QUOTES); ?>', <?php echo $phase['is_active'] ? 'true' : 'false'; ?>)">
                                     <i class="fas fa-toggle-on"></i>
-                                </a>
+                                </button>
                                 <?php if (($usageStats[$phase['id']] ?? 0) == 0): ?>
-                                <a href="?delete=<?php echo $phase['id']; ?>" 
-                                   class="btn btn-sm btn-outline-danger"
+                                <button class="btn btn-sm btn-outline-danger"
                                    title="Delete"
-                                   onclick="return confirm('Are you sure you want to delete this phase?')">
+                                   onclick="confirmDelete(<?php echo $phase['id']; ?>, '<?php echo htmlspecialchars($phase['phase_name'], ENT_QUOTES); ?>')">
                                     <i class="fas fa-trash"></i>
-                                </a>
+                                </button>
                                 <?php else: ?>
                                 <button class="btn btn-sm btn-outline-secondary" disabled title="Cannot delete - in use">
                                     <i class="fas fa-trash"></i>
@@ -312,5 +310,65 @@ include __DIR__ . '/../../includes/header.php';
     </div>
 </div>
 <?php endforeach; ?>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deletePhaseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="fas fa-exclamation-triangle"></i> Confirm Delete</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0">Are you sure you want to delete the phase <strong id="deletePhaseNameDisplay"></strong>?</p>
+                <p class="text-muted small mt-2 mb-0">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <a href="#" id="confirmDeleteBtn" class="btn btn-danger">
+                    <i class="fas fa-trash"></i> Delete Phase
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toggle Status Confirmation Modal -->
+<div class="modal fade" id="togglePhaseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title"><i class="fas fa-toggle-on"></i> Confirm Status Change</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0">Are you sure you want to <strong id="toggleActionText"></strong> the phase <strong id="togglePhaseNameDisplay"></strong>?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <a href="#" id="confirmToggleBtn" class="btn btn-warning">
+                    <i class="fas fa-toggle-on"></i> Change Status
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmDelete(phaseId, phaseName) {
+    document.getElementById('deletePhaseNameDisplay').textContent = phaseName;
+    document.getElementById('confirmDeleteBtn').href = '?delete=' + phaseId;
+    var deleteModal = new bootstrap.Modal(document.getElementById('deletePhaseModal'));
+    deleteModal.show();
+}
+
+function confirmToggle(phaseId, phaseName, isActive) {
+    document.getElementById('togglePhaseNameDisplay').textContent = phaseName;
+    document.getElementById('toggleActionText').textContent = isActive ? 'deactivate' : 'activate';
+    document.getElementById('confirmToggleBtn').href = '?toggle=' + phaseId;
+    var toggleModal = new bootstrap.Modal(document.getElementById('togglePhaseModal'));
+    toggleModal.show();
+}
+</script>
 
 <?php include __DIR__ . '/../../includes/footer.php'; 
