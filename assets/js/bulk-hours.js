@@ -50,15 +50,27 @@
 
         if (newHours < minAllowed) {
             input.style.borderColor = '#dc3545'; input.style.backgroundColor = '#f8d7da';
-            if (infoElement) { infoElement.textContent = 'Min: ' + minAllowed.toFixed(1) + 'h'; infoElement.className = 'text-danger hours-info'; }
+            if (infoElement) { 
+                infoElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Cannot be lower than utilized hours (' + minAllowed.toFixed(1) + 'h)'; 
+                infoElement.className = 'text-danger hours-info'; 
+            }
             input.setCustomValidity('Cannot be lower than ' + minAllowed.toFixed(1) + ' hours');
         } else if (newHours > maxAllowed) {
             input.style.borderColor = '#dc3545'; input.style.backgroundColor = '#f8d7da';
-            if (infoElement) { infoElement.textContent = isOverAllocated ? 'Project over-allocated. Max: ' + maxAllowed.toFixed(1) + 'h' : 'Max: ' + maxAllowed.toFixed(1) + 'h'; infoElement.className = 'text-danger hours-info'; }
+            if (infoElement) { 
+                var msg = isOverAllocated 
+                    ? '<i class="fas fa-exclamation-triangle"></i> Project is over-allocated. Cannot exceed ' + maxAllowed.toFixed(1) + 'h' 
+                    : '<i class="fas fa-exclamation-triangle"></i> Exceeds project budget. Max allowed: ' + maxAllowed.toFixed(1) + 'h';
+                infoElement.innerHTML = msg;
+                infoElement.className = 'text-danger hours-info'; 
+            }
             input.setCustomValidity('Cannot exceed ' + maxAllowed.toFixed(1) + ' hours');
         } else if (newHours > 0 && newHours !== originalHours) {
             input.style.borderColor = '#198754'; input.style.backgroundColor = '#d1e7dd';
-            if (infoElement) { infoElement.textContent = (maxAllowed - newHours).toFixed(1) + 'h left'; infoElement.className = 'text-success hours-info'; }
+            if (infoElement) { 
+                infoElement.innerHTML = '<i class="fas fa-check-circle"></i> Valid. ' + (maxAllowed - newHours).toFixed(1) + 'h remaining in budget'; 
+                infoElement.className = 'text-success hours-info'; 
+            }
             input.setCustomValidity('');
         } else {
             input.style.borderColor = ''; input.style.backgroundColor = '';
@@ -71,12 +83,50 @@
         var form = document.getElementById('bulkUpdateForm');
         var inputs = form.querySelectorAll('.hours-input');
         var hasChanges = false, hasErrors = false;
+        var errorDetails = [];
+        
         inputs.forEach(function (input) {
-            if (input.value !== '' && parseFloat(input.value) !== parseFloat(input.dataset.original)) hasChanges = true;
-            if (!input.checkValidity()) hasErrors = true;
+            if (input.value !== '' && parseFloat(input.value) !== parseFloat(input.dataset.original)) {
+                hasChanges = true;
+                
+                // Check for validation errors
+                if (!input.checkValidity()) {
+                    hasErrors = true;
+                    var userName = input.closest('tr').querySelector('td:first-child strong').textContent;
+                    var projectName = input.closest('tr').querySelector('td:nth-child(2) strong').textContent;
+                    var newHours = parseFloat(input.value);
+                    var minAllowed = parseFloat(input.dataset.min);
+                    var maxAllowed = parseFloat(input.dataset.maxAllowed);
+                    
+                    if (newHours < minAllowed) {
+                        errorDetails.push('• ' + userName + ' (' + projectName + '): Cannot allocate ' + newHours.toFixed(1) + 'h - must be at least ' + minAllowed.toFixed(1) + 'h (utilized hours)');
+                    } else if (newHours > maxAllowed) {
+                        errorDetails.push('• ' + userName + ' (' + projectName + '): Cannot allocate ' + newHours.toFixed(1) + 'h - exceeds maximum ' + maxAllowed.toFixed(1) + 'h (project budget limit)');
+                    }
+                }
+            }
         });
-        if (!hasChanges) { showBulkToast('No changes detected. Please modify some hours before saving.', 'warning'); return; }
-        if (hasErrors) { showBulkToast('Please fix the validation errors before saving.', 'warning'); return; }
+        
+        if (!hasChanges) { 
+            showBulkToast('No changes detected. Please modify some hours before saving.', 'warning'); 
+            return; 
+        }
+        
+        if (hasErrors) { 
+            var errorMsg = 'Cannot save due to validation errors:\n\n' + errorDetails.join('\n') + '\n\nPlease adjust the hours to be within the allowed range.';
+            if (typeof confirmModal === 'function') {
+                confirmModal(errorMsg, function(){}, { 
+                    title: 'Validation Errors', 
+                    confirmText: 'OK', 
+                    confirmClass: 'btn-primary',
+                    showCancel: false
+                });
+            } else {
+                alert(errorMsg);
+            }
+            return; 
+        }
+        
         var doSubmit = function () { form.submit(); };
         if (typeof confirmModal === 'function') confirmModal('Are you sure you want to apply these changes?', doSubmit);
         else if (window.confirm('Are you sure you want to apply these changes?')) doSubmit();
