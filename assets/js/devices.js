@@ -640,13 +640,25 @@ function quickApprove(requestId) {
                 }
                 loadRequests();
                 loadDevices();
-                loadRotationHistory();
+                // Only load rotation history if user has permission
+                if (window.DevicesConfig && window.DevicesConfig.canManageDevices) {
+                    loadRotationHistory();
+                }
             } else {
                 if (typeof showToast === 'function') {
                     showToast('Error: ' + response.message, 'danger');
                 } else {
                     alert('Error: ' + response.message);
                 }
+            }
+        }).fail(function(xhr) {
+            const errorMsg = xhr.responseJSON && xhr.responseJSON.message 
+                ? xhr.responseJSON.message 
+                : 'Failed to approve request';
+            if (typeof showToast === 'function') {
+                showToast('Error: ' + errorMsg, 'danger');
+            } else {
+                alert('Error: ' + errorMsg);
             }
         });
     });
@@ -674,6 +686,15 @@ function quickReject(requestId) {
             } else {
                 alert('Error: ' + response.message);
             }
+        }
+    }).fail(function(xhr) {
+        const errorMsg = xhr.responseJSON && xhr.responseJSON.message 
+            ? xhr.responseJSON.message 
+            : 'Failed to reject request';
+        if (typeof showToast === 'function') {
+            showToast('Error: ' + errorMsg, 'danger');
+        } else {
+            alert('Error: ' + errorMsg);
         }
     });
 }
@@ -939,13 +960,33 @@ function respondToRequest(action) {
             response_notes: $('#responseNotes').val()
         }, function(response) {
             if (response.success) {
-                alert(response.message);
+                if (typeof showToast === 'function') {
+                    showToast(response.message || 'Request processed successfully', 'success');
+                } else {
+                    alert(response.message);
+                }
                 $('#respondModal').modal('hide');
                 loadRequests();
                 loadDevices();
-                loadRotationHistory();
+                // Only load rotation history if user has permission
+                if (window.DevicesConfig && window.DevicesConfig.canManageDevices) {
+                    loadRotationHistory();
+                }
             } else {
-                alert('Error: ' + response.message);
+                if (typeof showToast === 'function') {
+                    showToast('Error: ' + response.message, 'danger');
+                } else {
+                    alert('Error: ' + response.message);
+                }
+            }
+        }).fail(function(xhr) {
+            const errorMsg = xhr.responseJSON && xhr.responseJSON.message 
+                ? xhr.responseJSON.message 
+                : 'Failed to process request';
+            if (typeof showToast === 'function') {
+                showToast('Error: ' + errorMsg, 'danger');
+            } else {
+                alert('Error: ' + errorMsg);
             }
         });
     });
