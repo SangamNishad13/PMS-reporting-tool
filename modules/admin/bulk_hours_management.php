@@ -11,6 +11,11 @@ $auth->requireRole(['admin', 'project_lead']); // Admin and Project Lead can man
 
 $db = Database::getInstance();
 
+// Add cache-busting headers
+header("Cache-Control: no-cache, no-store, must-revalidate");
+header("Pragma: no-cache");
+header("Expires: 0");
+
 // Handle bulk operations
 if ($_POST) {
     if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
@@ -81,6 +86,7 @@ if ($_POST) {
 
                 // Do not allow allocation lower than already utilized hours.
                 if ($newHours < $utilizedHours) {
+                    error_log("Bulk hours update failed for assignment {$assignmentId}: New hours ({$newHours}) < Utilized hours ({$utilizedHours})");
                     $errorCount++;
                     continue;
                 }
@@ -92,6 +98,7 @@ if ($_POST) {
                 $freeHours = max(0.0, $projectTotal - $projectAllocated);
                 $maxAllowed = $oldHours + $freeHours;
                 if ($newHours > $maxAllowed) {
+                    error_log("Bulk hours update failed for assignment {$assignmentId}: New hours ({$newHours}) > Max allowed ({$maxAllowed})");
                     $errorCount++;
                     continue;
                 }
@@ -120,10 +127,13 @@ if ($_POST) {
         }
         
         if ($successCount > 0) {
-            $_SESSION['success'] = "Successfully updated $successCount assignments.";
+            $_SESSION['success'] = "Successfully updated $successCount assignment(s).";
         }
         if ($errorCount > 0) {
-            $_SESSION['error'] = "Failed to update $errorCount assignments.";
+            $_SESSION['error'] = "Failed to update $errorCount assignment(s). Check that new hours are between utilized hours and maximum allowed hours.";
+        }
+        if ($successCount === 0 && $errorCount === 0) {
+            $_SESSION['error'] = "No changes were made. Please enter new hour values that are different from current hours.";
         }
         
         header("Location: " . $_SERVER['REQUEST_URI']);
@@ -668,7 +678,7 @@ window.BulkHoursConfig = {
     flashError: <?php echo json_encode($flashError, JSON_HEX_TAG | JSON_HEX_AMP); ?>
 };
 </script>
-<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/bulk-hours.js"></script>
+<script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/bulk-hours.js?v=<?php echo time(); ?>"></script>
 
 
 <style>
