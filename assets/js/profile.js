@@ -65,20 +65,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
 // 2FA Functions
 function start2FASetup() {
+    console.log('start2FASetup called');
     var password = prompt('Please enter your account password to proceed with 2FA setup:');
-    if (!password) return;
+    if (!password) {
+        console.log('Password prompt cancelled');
+        return;
+    }
 
     var cfg = window.ProfileConfig || {};
+    console.log('ProfileConfig:', cfg);
+    
     $.ajax({
         url: cfg.baseDir + '/api/profile_2fa.php',
         method: 'POST',
         data: { action: 'generate_secret', password: password },
         dataType: 'json',
         success: function(res) {
+            console.log('2FA setup response:', res);
             if (res.success) {
                 // Clear and render QR locally
                 const qrContainer = document.getElementById('qrCodeContainer');
                 qrContainer.innerHTML = ''; 
+                
+                if (typeof QRCode === 'undefined') {
+                    console.error('QRCode library not loaded!');
+                    showToast('QR Code library failed to load. Please refresh the page.', 'danger');
+                    return;
+                }
+                
                 new QRCode(qrContainer, {
                     text: res.otpauth_uri,
                     width: 200,
@@ -99,7 +113,8 @@ function start2FASetup() {
                 showToast(res.message || 'Failed to generate 2FA secret.', 'danger');
             }
         },
-        error: function() {
+        error: function(xhr, status, error) {
+            console.error('2FA setup error:', xhr, status, error);
             showToast('A network error occurred while setting up 2FA.', 'danger');
         }
     });
