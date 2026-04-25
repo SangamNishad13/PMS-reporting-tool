@@ -109,6 +109,11 @@ foreach ($phases as $phase) {
     $usageStats[$phase['id']] = $stmt->fetchColumn();
 }
 
+// Add cache-busting headers
+header("Cache-Control: no-cache, no-store, must-revalidate");
+header("Pragma: no-cache");
+header("Expires: 0");
+
 include __DIR__ . '/../../includes/header.php';
 ?>
 
@@ -355,19 +360,25 @@ include __DIR__ . '/../../includes/header.php';
 </div>
 
 <script>
+console.log('Phase Master JS loaded - v2.0');
+
 function confirmDelete(phaseId, phaseName) {
+    console.log('confirmDelete called:', phaseId, phaseName);
     document.getElementById('deletePhaseNameDisplay').textContent = phaseName;
     document.getElementById('confirmDeleteBtn').href = '?delete=' + phaseId;
     var deleteModal = new bootstrap.Modal(document.getElementById('deletePhaseModal'));
     deleteModal.show();
+    return false;
 }
 
 function confirmToggle(phaseId, phaseName, isActive) {
+    console.log('confirmToggle called:', phaseId, phaseName, isActive);
     document.getElementById('togglePhaseNameDisplay').textContent = phaseName;
     document.getElementById('toggleActionText').textContent = isActive ? 'deactivate' : 'activate';
     document.getElementById('confirmToggleBtn').href = '?toggle=' + phaseId;
     var toggleModal = new bootstrap.Modal(document.getElementById('togglePhaseModal'));
     toggleModal.show();
+    return false;
 }
 </script>
 
