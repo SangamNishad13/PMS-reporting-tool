@@ -358,7 +358,7 @@ function renderRequests() {
     const currentUserId = window.DevicesConfig && window.DevicesConfig.currentUserId;
     
     // Filter requests made by current user
-    const myRequests = requests.filter(r => r.requester_id == currentUserId);
+    const myRequests = requests.filter(r => r.requested_by == currentUserId);
     
     if (myRequests.length === 0) {
         tbody.html('<tr><td colspan="7" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> You haven\'t made any device switch requests yet</td></tr>');
@@ -401,7 +401,7 @@ function renderIncomingRequests() {
         // Find the device for this request
         const device = devices.find(d => d.id == r.device_id);
         // Check if device is assigned to current user and request is not from current user
-        return device && device.assigned_user_id == currentUserId && r.requester_id != currentUserId;
+        return device && device.assigned_user_id == currentUserId && r.requested_by != currentUserId;
     });
     
     if (incomingRequests.length === 0) {
@@ -442,12 +442,20 @@ function quickApprove(requestId) {
             response_notes: 'Quick approved by admin'
         }, function(response) {
             if (response.success) {
-                alert(response.message);
+                if (typeof showToast === 'function') {
+                    showToast(response.message || 'Request approved successfully', 'success');
+                } else {
+                    alert(response.message);
+                }
                 loadRequests();
                 loadDevices();
                 loadRotationHistory();
             } else {
-                alert('Error: ' + response.message);
+                if (typeof showToast === 'function') {
+                    showToast('Error: ' + response.message, 'danger');
+                } else {
+                    alert('Error: ' + response.message);
+                }
             }
         });
     });
@@ -463,10 +471,18 @@ function quickReject(requestId) {
         response_notes: reason || 'Rejected by admin'
     }, function(response) {
         if (response.success) {
-            alert(response.message);
+            if (typeof showToast === 'function') {
+                showToast(response.message || 'Request rejected', 'success');
+            } else {
+                alert(response.message);
+            }
             loadRequests();
         } else {
-            alert('Error: ' + response.message);
+            if (typeof showToast === 'function') {
+                showToast('Error: ' + response.message, 'danger');
+            } else {
+                alert('Error: ' + response.message);
+            }
         }
     });
 }
@@ -478,13 +494,28 @@ function cancelRequest(requestId) {
             request_id: requestId
         }, function(response) {
             if (response.success) {
-                alert(response.message || 'Request cancelled successfully');
+                if (typeof showToast === 'function') {
+                    showToast(response.message || 'Request cancelled successfully', 'success');
+                } else {
+                    alert(response.message || 'Request cancelled successfully');
+                }
                 loadRequests();
             } else {
-                alert('Error: ' + (response.message || 'Failed to cancel request'));
+                if (typeof showToast === 'function') {
+                    showToast('Error: ' + (response.message || 'Failed to cancel request'), 'danger');
+                } else {
+                    alert('Error: ' + (response.message || 'Failed to cancel request'));
+                }
             }
-        }).fail(function() {
-            alert('Failed to cancel request. Please try again.');
+        }).fail(function(xhr) {
+            const errorMsg = xhr.responseJSON && xhr.responseJSON.message 
+                ? xhr.responseJSON.message 
+                : 'Failed to cancel request. Please try again.';
+            if (typeof showToast === 'function') {
+                showToast('Error: ' + errorMsg, 'danger');
+            } else {
+                alert('Error: ' + errorMsg);
+            }
         });
     });
 }
@@ -675,11 +706,28 @@ function returnDevice(deviceId) {
     confirmAction('Mark this device as returned?', function() {
         $.post('../../api/devices.php', { action: 'return_device', device_id: deviceId }, function(response) {
             if (response.success) {
-                alert(response.message);
+                if (typeof showToast === 'function') {
+                    showToast(response.message || 'Device returned successfully', 'success');
+                } else {
+                    alert(response.message);
+                }
                 loadDevices();
                 loadRotationHistory();
             } else {
-                alert('Error: ' + response.message);
+                if (typeof showToast === 'function') {
+                    showToast('Error: ' + response.message, 'danger');
+                } else {
+                    alert('Error: ' + response.message);
+                }
+            }
+        }).fail(function(xhr) {
+            const errorMsg = xhr.responseJSON && xhr.responseJSON.message 
+                ? xhr.responseJSON.message 
+                : 'Failed to return device';
+            if (typeof showToast === 'function') {
+                showToast('Error: ' + errorMsg, 'danger');
+            } else {
+                alert('Error: ' + errorMsg);
             }
         });
     });
@@ -761,12 +809,20 @@ function submitRequest() {
     const reason = $('#requestReason').val().trim();
     
     if (!reason) {
-        alert('Please provide a reason for your request');
+        if (typeof showToast === 'function') {
+            showToast('Please provide a reason for your request', 'warning');
+        } else {
+            alert('Please provide a reason for your request');
+        }
         return;
     }
     
     const device = devices.find(d => d.id == deviceId);
     const action = device && device.status === 'Available' ? 'request_available' : 'request_switch';
+    
+    // Disable submit button to prevent double submission
+    const submitBtn = $('#requestSubmitBtn');
+    submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Submitting...');
     
     $.post('../../api/devices.php', {
         action: action,
@@ -774,13 +830,32 @@ function submitRequest() {
         reason: reason
     }, function(response) {
         if (response.success) {
-            alert(response.message || 'Request submitted successfully');
+            if (typeof showToast === 'function') {
+                showToast(response.message || 'Request submitted successfully', 'success');
+            } else {
+                alert(response.message || 'Request submitted successfully');
+            }
             $('#requestModal').modal('hide');
             loadRequests();
+            loadDevices(); // Refresh devices list
         } else {
-            alert('Error: ' + (response.message || 'Failed to submit request'));
+            if (typeof showToast === 'function') {
+                showToast('Error: ' + (response.message || 'Failed to submit request'), 'danger');
+            } else {
+                alert('Error: ' + (response.message || 'Failed to submit request'));
+            }
         }
-    }).fail(function() {
-        alert('Failed to submit request. Please try again.');
+    }).fail(function(xhr) {
+        const errorMsg = xhr.responseJSON && xhr.responseJSON.message 
+            ? xhr.responseJSON.message 
+            : 'Failed to submit request. Please try again.';
+        if (typeof showToast === 'function') {
+            showToast('Error: ' + errorMsg, 'danger');
+        } else {
+            alert('Error: ' + errorMsg);
+        }
+    }).always(function() {
+        // Re-enable submit button
+        submitBtn.prop('disabled', false).html('Submit Request');
     });
 }
