@@ -24,3 +24,9 @@ function resetPassword(userId, userName) {
     document.getElementById('reset_user_name').textContent = userName;
     new bootstrap.Modal(document.getElementById('resetPasswordModal')).show();
 }
+
+function deleteClientUser(userId, userName) {
+    document.getElementById('delete_user_id').value = userId;
+    document.getElementById('delete_user_name').textContent = userName;
+    new bootstrap.Modal(document.getElementById('deleteClientUserModal')).show();
+}
