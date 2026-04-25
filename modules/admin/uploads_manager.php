@@ -488,20 +488,61 @@ require_once __DIR__ . '/../../includes/header.php';
     </div>
 
     <nav aria-label="Uploads pages">
-        <ul class="pagination pagination-sm">
+        <ul class="pagination pagination-sm flex-wrap">
             <?php
             $qs = $_GET;
             unset($qs['page']);
             $baseQs = http_build_query($qs);
             $baseUrl = strtok($_SERVER['REQUEST_URI'], '?');
-            for ($p = 1; $p <= $totalPages; $p++) {
-                $activeClass = $p === $page ? ' active' : '';
-                $href = $baseUrl . '?' . ($baseQs !== '' ? $baseQs . '&' : '') . 'page=' . $p;
-                echo '<li class="page-item' . $activeClass . '"><a class="page-link" href="' . htmlspecialchars($href) . '">' . $p . '</a></li>';
+
+            $buildHref = function(int $p) use ($baseUrl, $baseQs): string {
+                return $baseUrl . '?' . ($baseQs !== '' ? $baseQs . '&' : '') . 'page=' . $p;
+            };
+
+            // Prev button
+            if ($page > 1) {
+                echo '<li class="page-item"><a class="page-link" href="' . htmlspecialchars($buildHref($page - 1)) . '">&laquo;</a></li>';
+            } else {
+                echo '<li class="page-item disabled"><span class="page-link">&laquo;</span></li>';
+            }
+
+            // Smart page numbers with ellipsis
+            $pagesToShow = [];
+            if ($totalPages <= 9) {
+                // Show all if 9 or fewer
+                for ($i = 1; $i <= $totalPages; $i++) $pagesToShow[] = $i;
+            } else {
+                $pagesToShow[] = 1;
+                if ($page > 4) $pagesToShow[] = '...';
+                for ($i = max(2, $page - 2); $i <= min($totalPages - 1, $page + 2); $i++) {
+                    $pagesToShow[] = $i;
+                }
+                if ($page < $totalPages - 3) $pagesToShow[] = '...';
+                $pagesToShow[] = $totalPages;
+            }
+
+            foreach ($pagesToShow as $p) {
+                if ($p === '...') {
+                    echo '<li class="page-item disabled"><span class="page-link">…</span></li>';
+                } else {
+                    $activeClass = $p === $page ? ' active' : '';
+                    echo '<li class="page-item' . $activeClass . '"><a class="page-link" href="' . htmlspecialchars($buildHref((int)$p)) . '">' . $p . '</a></li>';
+                }
+            }
+
+            // Next button
+            if ($page < $totalPages) {
+                echo '<li class="page-item"><a class="page-link" href="' . htmlspecialchars($buildHref($page + 1)) . '">&raquo;</a></li>';
+            } else {
+                echo '<li class="page-item disabled"><span class="page-link">&raquo;</span></li>';
             }
             ?>
         </ul>
     </nav>
+    <div class="text-muted small mt-1">
+        Page <?php echo $page; ?> of <?php echo $totalPages; ?> &mdash;
+        <?php echo number_format($totalFiles); ?> file<?php echo $totalFiles !== 1 ? 's' : ''; ?> total
+    </div>
 </div>
 
 <script src="<?php echo getBaseDir(); ?>/assets/js/uploads-manager.js?v=<?php echo time(); ?>"></script>
