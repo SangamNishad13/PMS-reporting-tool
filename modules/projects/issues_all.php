@@ -25,9 +25,8 @@ if (!hasProjectAccess($db, $userId, $projectId)) {
     exit;
 }
 $canUpdateIssueQaStatus = hasIssueQaStatusUpdateAccess($db, $userId, $projectId);
-if (in_array($normalizedUserRole, ['at_tester', 'ft_tester'], true)) {
-    $canUpdateIssueQaStatus = false;
-}
+// Note: hasIssueQaStatusUpdateAccess already handles tester role permissions properly
+// Don't override it here as testers may have explicit QA permissions granted
 
 // Get project details
 $stmt = $db->prepare("SELECT p.*, c.name as client_name FROM projects p LEFT JOIN clients c ON p.client_id = c.id WHERE p.id = ?");

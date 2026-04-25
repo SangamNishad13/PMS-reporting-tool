@@ -69,9 +69,8 @@
         return !!status && list.indexOf(status) === index;
     });
     var resolutionAuthorityRoles = ['admin', 'project_lead', 'qa', 'at_tester', 'ft_tester'];
-    if (isTesterRole) {
-        canUpdateIssueQaStatus = false;
-    }
+    // Note: canUpdateIssueQaStatus is already calculated server-side based on permissions
+    // Don't override it here for tester roles as they may have explicit QA permissions
 
     var issueData = {
         selectedPageId: null,
