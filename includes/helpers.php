@@ -1092,9 +1092,20 @@ function renderQAEnvStatusDropdown($pageId, $envId, $currentStatus) {
  */
 function get_browser_info($ua) {
     $info = ['browser' => 'Unknown', 'browser_version' => '', 'platform' => 'Unknown'];
-    if (stripos($ua, 'Firefox') !== false) {
+
+    // Order matters — check specific browsers before generic ones
+    if (stripos($ua, 'Edg/') !== false || stripos($ua, 'Edge/') !== false) {
+        $info['browser'] = 'Edge';
+        if (preg_match('/Edg(?:e)?\/([0-9\.]+)/', $ua, $m)) $info['browser_version'] = $m[1];
+    } elseif (stripos($ua, 'OPR/') !== false || stripos($ua, 'Opera') !== false) {
+        $info['browser'] = 'Opera';
+        if (preg_match('/(?:OPR|Opera)\/([0-9\.]+)/', $ua, $m)) $info['browser_version'] = $m[1];
+    } elseif (stripos($ua, 'Firefox') !== false) {
         $info['browser'] = 'Firefox';
         if (preg_match('/Firefox\/([0-9\.]+)/', $ua, $m)) $info['browser_version'] = $m[1];
+    } elseif (stripos($ua, 'SamsungBrowser') !== false) {
+        $info['browser'] = 'Samsung Browser';
+        if (preg_match('/SamsungBrowser\/([0-9\.]+)/', $ua, $m)) $info['browser_version'] = $m[1];
     } elseif (stripos($ua, 'Chrome') !== false && stripos($ua, 'Safari') !== false) {
         $info['browser'] = 'Chrome';
         if (preg_match('/Chrome\/([0-9\.]+)/', $ua, $m)) $info['browser_version'] = $m[1];
@@ -1103,13 +1114,15 @@ function get_browser_info($ua) {
         if (preg_match('/Version\/([0-9\.]+)/', $ua, $m)) $info['browser_version'] = $m[1];
     } elseif (stripos($ua, 'Trident') !== false || stripos($ua, 'MSIE') !== false) {
         $info['browser'] = 'Internet Explorer';
+        if (preg_match('/(?:MSIE |rv:)([0-9\.]+)/', $ua, $m)) $info['browser_version'] = $m[1];
     }
 
-    if (stripos($ua, 'Windows') !== false) $info['platform'] = 'Windows';
+    if (stripos($ua, 'Android') !== false) $info['platform'] = 'Android';
+    elseif (stripos($ua, 'iPhone') !== false) $info['platform'] = 'iOS (iPhone)';
+    elseif (stripos($ua, 'iPad') !== false) $info['platform'] = 'iOS (iPad)';
+    elseif (stripos($ua, 'Windows') !== false) $info['platform'] = 'Windows';
     elseif (stripos($ua, 'Mac OS X') !== false) $info['platform'] = 'macOS';
     elseif (stripos($ua, 'Linux') !== false) $info['platform'] = 'Linux';
-    elseif (stripos($ua, 'Android') !== false) $info['platform'] = 'Android';
-    elseif (stripos($ua, 'iPhone') !== false || stripos($ua, 'iPad') !== false) $info['platform'] = 'iOS';
 
     return $info;
 }

@@ -113,6 +113,70 @@ document.addEventListener('click', function (e) {
 window.addEventListener('load', ensureUaButtonsLogin);
 window.addEventListener('resize', function () { setTimeout(ensureUaButtonsLogin, 150); });
 
+// ── Geo lazy load ────────────────────────────────────────────────────────────
+// Loads location for rows where geo was not stored at login time.
+// Uses ip-api.com (free, no key, 45 req/min batch endpoint).
+(function () {
+    function loadGeo() {
+        var spans = Array.from(document.querySelectorAll('.geo-lazy[data-ip]'));
+        if (spans.length === 0) return;
+
+        // Deduplicate IPs
+        var ipMap = {}; // ip -> [span, ...]
+        spans.forEach(function (s) {
+            var ip = s.getAttribute('data-ip');
+            if (!ip) return;
+            if (!ipMap[ip]) ipMap[ip] = [];
+            ipMap[ip].push(s);
+        });
+
+        var ips = Object.keys(ipMap);
+        if (ips.length === 0) return;
+
+        // ip-api.com batch endpoint — max 100 IPs per request
+        var chunks = [];
+        for (var i = 0; i < ips.length; i += 100) chunks.push(ips.slice(i, i + 100));
+
+        chunks.forEach(function (chunk) {
+            fetch('http://ip-api.com/batch?fields=status,city,regionName,country,lat,lon,query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(chunk.map(function (ip) { return { query: ip }; }))
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (results) {
+                results.forEach(function (res) {
+                    var ip = res.query;
+                    var targets = ipMap[ip] || [];
+                    targets.forEach(function (span) {
+                        if (res.status === 'success') {
+                            var parts = [res.city, res.regionName, res.country].filter(Boolean);
+                            var addr = parts.join(', ');
+                            var mapUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(res.lat + ',' + res.lon);
+                            span.innerHTML = escHtml(addr) + ' <a href="' + escHtml(mapUrl) + '" target="_blank" rel="noopener" class="ms-1"><i class="fas fa-map-marker-alt text-primary"></i></a>';
+                        } else {
+                            span.innerHTML = '<span class="text-muted">-</span>';
+                        }
+                    });
+                });
+            })
+            .catch(function () {
+                chunk.forEach(function (ip) {
+                    (ipMap[ip] || []).forEach(function (s) {
+                        s.innerHTML = '<span class="text-muted" title="Geo lookup failed">-</span>';
+                    });
+                });
+            });
+        });
+    }
+
+    function escHtml(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    document.addEventListener('DOMContentLoaded', loadGeo);
+})();
+
 document.addEventListener('DOMContentLoaded', function () {
     var selectAllLoginLogs = document.getElementById('selectAllLoginLogs');
     if (selectAllLoginLogs) {

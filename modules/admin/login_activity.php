@@ -348,40 +348,45 @@ require_once __DIR__ . '/../../includes/header.php';
                         $ua_full = $ua ?? '';
                         $ua_short = mb_substr($ua_full, 0, 100);
                         $ua_too_long = mb_strlen($ua_full) > 100;
+
+                        // Parse UA at display time if not already parsed at login time
+                        if (!$ua_parsed && !empty($ua_full)) {
+                            $ua_parsed = get_browser_info($ua_full);
+                        }
                     ?>
-                    <?php if ($ua_parsed): ?>
-                        <?php echo htmlspecialchars($ua_parsed['platform'] . ' / ' . $ua_parsed['browser'] . ' ' . ($ua_parsed['browser_version'] ?? '')); ?>
+                    <?php if ($ua_parsed && $ua_parsed['browser'] !== 'Unknown'): ?>
+                        <span class="fw-semibold"><?php echo htmlspecialchars($ua_parsed['platform'] . ' / ' . $ua_parsed['browser'] . ' ' . ($ua_parsed['browser_version'] ?? '')); ?></span>
+                        <?php if (!empty($ua_full)): ?>
                         <div class="small text-muted ua-snippet" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:480px;" title="<?php echo htmlspecialchars($ua_full); ?>"><?php echo htmlspecialchars($ua_short); ?><?php if ($ua_too_long) echo '...'; ?></div>
-                        <?php if ($ua_too_long): ?>
-                            <div class="small text-muted ua-full d-none" style="white-space:normal; word-break:break-word; margin-top:4px; max-width:480px;"> <?php echo htmlspecialchars($ua_full); ?></div>
-                            <div class="mt-1">
-                                <button type="button" class="btn btn-link btn-sm ua-toggle">Read more</button>
-                                <button type="button" class="btn btn-outline-secondary btn-sm ua-copy ms-2" title="Copy user-agent">Copy</button>
-                            </div>
                         <?php endif; ?>
-                    <?php else: ?>
+                    <?php elseif (!empty($ua_full)): ?>
                         <div class="ua-snippet" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:480px;" title="<?php echo htmlspecialchars($ua_full); ?>"><?php echo htmlspecialchars($ua_short); ?><?php if ($ua_too_long) echo '...'; ?></div>
-                        <?php if ($ua_too_long): ?>
-                            <div class="ua-full d-none" style="white-space:normal; word-break:break-word; margin-top:4px; max-width:480px;"><?php echo htmlspecialchars($ua_full); ?></div>
-                            <div class="mt-1">
-                                <button type="button" class="btn btn-link btn-sm ua-toggle">Read more</button>
-                                <button type="button" class="btn btn-outline-secondary btn-sm ua-copy ms-2" title="Copy user-agent">Copy</button>
-                            </div>
-                        <?php endif; ?>
+                    <?php else: ?>
+                        <span class="text-muted">-</span>
+                    <?php endif; ?>
+                    <?php if ($ua_too_long): ?>
+                        <div class="ua-full d-none" style="white-space:normal; word-break:break-word; margin-top:4px; max-width:480px;"><?php echo htmlspecialchars($ua_full); ?></div>
+                        <div class="mt-1">
+                            <button type="button" class="btn btn-link btn-sm p-0 ua-toggle">Read more</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm ua-copy ms-2" title="Copy user-agent">Copy</button>
+                        </div>
                     <?php endif; ?>
                 </td>
                 <td>
                     <?php
                         $geo = $details['geo'] ?? [];
-                        // Don't call get_geo_info during page load - it's too slow
                         if (!empty($geo)) {
-                            $addr = trim(($geo['city'] ?? '') . ' ' . ($geo['postal'] ?? '') . ', ' . ($geo['region'] ?? '') . ', ' . ($geo['country'] ?? ''));
+                            $addr = trim(($geo['city'] ?? '') . ', ' . ($geo['region'] ?? '') . ', ' . ($geo['country'] ?? ''));
+                            $addr = trim($addr, ', ');
                             if (!empty($geo['latitude']) && !empty($geo['longitude'])) {
                                 $mapUrl = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($geo['latitude'] . ',' . $geo['longitude']);
                             } else {
                                 $mapUrl = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($addr);
                             }
                             echo htmlspecialchars($addr) . ' <a href="' . htmlspecialchars($mapUrl) . '" target="_blank" rel="noopener" class="ms-1"><i class="fas fa-map-marker-alt text-primary"></i></a>';
+                        } elseif (!empty($ip)) {
+                            // Lazy-load geo via JS — avoids slow page load
+                            echo '<span class="geo-lazy text-muted" data-ip="' . htmlspecialchars($ip, ENT_QUOTES) . '"><i class="fas fa-spinner fa-spin fa-xs"></i></span>';
                         } else {
                             echo '<span class="text-muted">-</span>';
                         }
