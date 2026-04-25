@@ -53,6 +53,28 @@ function notifyAdmins($db, $message, $link) {
     }
 }
 
+/**
+ * Create device notification WITHOUT sending email
+ * Only creates in-app notification, no email sent
+ */
+function createDeviceNotification($db, $userId, $message, $link = null) {
+    $userId = (int)$userId;
+    if ($userId <= 0) return false;
+
+    $type = 'system';
+    $message = trim((string)$message);
+    $link = $link ? trim((string)$link) : null;
+    if ($link === '') $link = null;
+
+    try {
+        $stmt = $db->prepare("INSERT INTO notifications (user_id, type, message, link) VALUES (?, ?, ?, ?)");
+        return $stmt->execute([$userId, $type, $message, $link]);
+    } catch (Exception $e) {
+        error_log('createDeviceNotification failed: ' . $e->getMessage());
+        return false;
+    }
+}
+
 try {
     switch ($action) {
         case 'get_users':
@@ -701,11 +723,11 @@ try {
                 
                 // Create notification for requester ONLY (device request approved)
                 // No notifications to admins or previous holders
+                // NO EMAIL - only in-app notification
                 try {
-                    createNotification(
+                    createDeviceNotification(
                         $pdo,
                         (int)$request['requested_by'],
-                        'system',
                         'Your device request for ' . $device_name . ' has been approved',
                         $devicesLink
                     );
@@ -715,16 +737,16 @@ try {
             } else {
                 // Rejected - notify requester ONLY
                 // No notifications to admins
+                // NO EMAIL - only in-app notification
                 $stmt = $pdo->prepare("SELECT device_name, device_type FROM devices WHERE id = ?");
                 $stmt->execute([$request['device_id']]);
                 $device = $stmt->fetch();
                 $device_name = $device['device_name'] . ' (' . $device['device_type'] . ')';
                 
                 try {
-                    createNotification(
+                    createDeviceNotification(
                         $pdo,
                         (int)$request['requested_by'],
-                        'system',
                         'Your device request for ' . $device_name . ' has been rejected',
                         $devicesLink
                     );
