@@ -360,38 +360,9 @@ window.DevicesConfig = {
     currentUserId: <?php echo (int)$_SESSION['user_id']; ?>,
     canManageDevices: true, // Admin page always has management permissions
     userRole: <?php echo json_encode($_SESSION['role'] ?? ''); ?>,
-    isAdminPage: true
+    isAdminPage: true,
+    apiBasePath: '../api/' // Admin page uses different API path
 };
-
-// Override API paths for admin page BEFORE loading devices.js
-(function() {
-    const originalAjax = $.ajax;
-    $.ajax = function(options) {
-        if (typeof options === 'string') {
-            options = { url: options };
-        }
-        if (options.url && options.url.includes('../../api/')) {
-            options.url = options.url.replace('../../api/', '../api/');
-        }
-        return originalAjax.call(this, options);
-    };
-    
-    const originalGet = $.get;
-    $.get = function(url, data, callback, type) {
-        if (typeof url === 'string' && url.includes('../../api/')) {
-            url = url.replace('../../api/', '../api/');
-        }
-        return originalGet.call(this, url, data, callback, type);
-    };
-    
-    const originalPost = $.post;
-    $.post = function(url, data, callback, type) {
-        if (typeof url === 'string' && url.includes('../../api/')) {
-            url = url.replace('../../api/', '../api/');
-        }
-        return originalPost.call(this, url, data, callback, type);
-    };
-})();
 </script>
 <script src="<?php echo htmlspecialchars(getBaseDir(), ENT_QUOTES, 'UTF-8'); ?>/assets/js/devices.js"></script>
 
@@ -523,7 +494,7 @@ function changeAdminRequestsPage(page) {
 // Override loadRequests to initialize admin filters
 const originalLoadRequests = window.loadRequests;
 window.loadRequests = function() {
-    $.get('../api/devices.php?action=get_switch_requests', function(response) {
+    $.get(API_URL + '?action=get_switch_requests', function(response) {
         if (response.success) {
             requests = response.requests;
             filteredAdminRequests = requests;

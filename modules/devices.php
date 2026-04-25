@@ -390,7 +390,8 @@ include '../includes/header.php';
 window.DevicesConfig = { 
     currentUserId: <?php echo (int)$_SESSION['user_id']; ?>,
     canManageDevices: <?php echo (in_array($_SESSION['role'] ?? '', ['admin'], true) || !empty($_SESSION['can_manage_devices'])) ? 'true' : 'false'; ?>,
-    userRole: <?php echo json_encode($_SESSION['role'] ?? ''); ?>
+    userRole: <?php echo json_encode($_SESSION['role'] ?? ''); ?>,
+    apiBasePath: '../../api/' // User page uses different API path
 };
 </script>
 <script src="<?php echo htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8'); ?>/assets/js/devices.js"></script>

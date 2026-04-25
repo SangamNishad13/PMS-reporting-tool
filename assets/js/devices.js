@@ -11,6 +11,11 @@ let incomingRequestsPage = 1;
 const itemsPerPage = 10;
 const requestsPerPage = 10;
 
+// Get API base path from config, default to ../../api/ for backward compatibility
+const API_BASE_PATH = (window.DevicesConfig && window.DevicesConfig.apiBasePath) || '../../api/';
+const API_URL = API_BASE_PATH + 'devices.php';
+const ADMIN_VAULT_URL = API_BASE_PATH + 'admin_vault.php';
+
 $(document).ready(function() {
     loadUsers();
     loadDevices();
@@ -60,7 +65,7 @@ $(document).on('click', '#assignDeviceBtn', function() {
 });
 
 function loadUsers() {
-    $.get('../../api/devices.php?action=get_users', function(response) {
+    $.get(API_URL + '?action=get_users', function(response) {
         if (response.success) {
             users = response.users;
         }
@@ -68,7 +73,7 @@ function loadUsers() {
 }
 
 function loadDevices() {
-    $.get('../../api/devices.php?action=get_all_devices', function(response) {
+    $.get(API_URL + '?action=get_all_devices', function(response) {
         if (response.success) {
             devices = response.devices;
             filteredDevices = devices;
@@ -161,7 +166,7 @@ function changePage(page) {
 }
 
 function loadRequests() {
-    $.get('../../api/devices.php?action=get_switch_requests', function(response) {
+    $.get(API_URL + '?action=get_switch_requests', function(response) {
         if (response.success) {
             requests = response.requests;
             applyRequestFilters();
@@ -178,7 +183,7 @@ function loadRotationHistory() {
         return; // Skip loading rotation history for non-admin users
     }
     
-    $.get('../../api/admin_vault.php?action=get_device_rotation_history', function(response) {
+    $.get(ADMIN_VAULT_URL + '?action=get_device_rotation_history', function(response) {
         if (response.success) {
             renderRotationHistory(response.history);
         }
@@ -630,7 +635,7 @@ function changeIncomingRequestsPage(page) {
 
 function quickApprove(requestId) {
     confirmAction('Approve this device switch request? The device will be automatically reassigned.', function() {
-        $.post('../../api/devices.php', {
+        $.post(API_URL, {
             action: 'respond_to_request',
             request_id: requestId,
             response: 'Approved',
@@ -671,7 +676,7 @@ function quickApprove(requestId) {
 function quickReject(requestId) {
     const reason = prompt('Reason for rejection (optional):');
     if (reason === null) return;
-    $.post('../../api/devices.php', {
+    $.post(API_URL, {
         action: 'respond_to_request',
         request_id: requestId,
         response: 'Rejected',
@@ -705,7 +710,7 @@ function quickReject(requestId) {
 
 function cancelRequest(requestId) {
     confirmAction('Are you sure you want to cancel this request?', function() {
-        $.post('../../api/devices.php', {
+        $.post(API_URL, {
             action: 'cancel_request',
             request_id: requestId
         }, function(response) {
@@ -809,7 +814,7 @@ function saveDevice() {
     const action = isEdit ? 'update_device' : 'add_device';
     formData.append('action', action);
     $.ajax({
-        url: '../../api/devices.php',
+        url: API_URL,
         type: 'POST',
         data: formData,
         processData: false,
@@ -820,7 +825,7 @@ function saveDevice() {
                 const selectedAssignUserId = $('#editAssignUserId').val();
                 const currentAssignedUserId = $('#editAssignUserId').attr('data-current-assigned');
                 if (isEdit && selectedAssignUserId && String(selectedAssignUserId) !== String(currentAssignedUserId)) {
-                    $.post('../../api/devices.php', {
+                    $.post(API_URL, {
                         action: 'assign_device',
                         device_id: deviceId,
                         user_id: selectedAssignUserId,
@@ -861,7 +866,7 @@ function confirmAction(message, onConfirm) {
 
 function deleteDevice(deviceId) {
     confirmAction('Are you sure you want to delete this device?', function() {
-        $.post('../../api/devices.php', { action: 'delete_device', device_id: deviceId }, function(response) {
+        $.post(API_URL, { action: 'delete_device', device_id: deviceId }, function(response) {
             if (response.success) {
                 alert(response.message);
                 loadDevices();
@@ -878,7 +883,7 @@ function showAssignModal(deviceId) {
     const select = $('#assignUserId');
     select.empty();
     select.append('<option value="">Select User...</option>');
-    $.get('../../api/devices.php?action=get_users', function(response) {
+    $.get(API_URL + '?action=get_users', function(response) {
         if (response.success) {
             response.users.forEach(user => {
                 select.append(`<option value="${user.id}">${user.full_name || user.username}</option>`);
@@ -896,7 +901,7 @@ function assignDevice() {
     const formData = new FormData($('#assignForm')[0]);
     formData.append('action', 'assign_device');
     $.ajax({
-        url: '../../api/devices.php',
+        url: API_URL,
         type: 'POST',
         data: formData,
         processData: false,
@@ -920,7 +925,7 @@ function assignDevice() {
 
 function returnDevice(deviceId) {
     confirmAction('Mark this device as returned?', function() {
-        $.post('../../api/devices.php', { action: 'return_device', device_id: deviceId }, function(response) {
+        $.post(API_URL, { action: 'return_device', device_id: deviceId }, function(response) {
             if (response.success) {
                 if (typeof showToast === 'function') {
                     showToast(response.message || 'Device returned successfully', 'success');
@@ -957,7 +962,7 @@ function showRespondModal(requestId) {
 
 function respondToRequest(action) {
     confirmAction(`Are you sure you want to ${action === 'Approved' ? 'approve' : 'reject'} this request?`, function() {
-        $.post('../../api/devices.php', {
+        $.post(API_URL, {
             action: 'respond_to_request',
             request_id: $('#requestId').val(),
             response: action,
@@ -997,7 +1002,7 @@ function respondToRequest(action) {
 }
 
 function viewDeviceHistory(deviceId) {
-    $.get('../../api/devices.php?action=get_assignment_history&device_id=' + deviceId, function(response) {
+    $.get(API_URL + '?action=get_assignment_history&device_id=' + deviceId, function(response) {
         if (response.success) {
             const history = response.history;
             const itemsPerPage = 10;
@@ -1127,7 +1132,7 @@ function submitRequest() {
     const submitBtn = $('#requestSubmitBtn');
     submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Submitting...');
     
-    $.post('../../api/devices.php', {
+    $.post(API_URL, {
         action: action,
         device_id: deviceId,
         reason: reason
