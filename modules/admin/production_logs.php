@@ -111,14 +111,31 @@ $sql = "
         te.environment_name,
         ph.phase_name,
         gtc.category_name as generic_category_name
-    " . $fromAndWhere . "
+    FROM project_time_logs ptl
+    JOIN users u ON ptl.user_id = u.id
+    LEFT JOIN projects p ON ptl.project_id = p.id
     LEFT JOIN project_pages pp ON ptl.page_id = pp.id
     LEFT JOIN testing_environments te ON ptl.environment_id = te.id
     LEFT JOIN project_phases ph ON ptl.phase_id = ph.id
     LEFT JOIN generic_task_categories gtc ON ptl.generic_category_id = gtc.id
-    ORDER BY ptl.log_date DESC, u.full_name ASC
-    LIMIT ? OFFSET ?
+    WHERE ptl.log_date BETWEEN ? AND ?
 ";
+
+// Apply User Filter
+if ($userFilter !== 'all') {
+    $sql .= " AND ptl.user_id = ?";
+} else if ($roleFilter !== 'all') {
+    $sql .= " AND u.role = ?";
+} else {
+    $sql .= " AND u.role IN ('project_lead', 'qa', 'at_tester', 'ft_tester')";
+}
+
+// Apply Project Filter
+if ($projectFilter !== 'all') {
+    $sql .= " AND ptl.project_id = ?";
+}
+
+$sql .= " ORDER BY ptl.log_date DESC, u.full_name ASC LIMIT ? OFFSET ?";
 
 $stmt = $db->prepare($sql);
 $queryParams = array_merge($params, [$perPage, $offset]);
