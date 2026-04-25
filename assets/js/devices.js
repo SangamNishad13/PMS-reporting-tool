@@ -44,9 +44,20 @@ function loadRequests() {
 }
 
 function loadRotationHistory() {
+    // Only load rotation history for admin users
+    // Check if user has admin role by checking if the admin vault link exists
+    if (!document.querySelector('a[href*="admin_vault"]')) {
+        return; // Skip loading rotation history for non-admin users
+    }
+    
     $.get('../../api/admin_vault.php?action=get_device_rotation_history', function(response) {
         if (response.success) {
             renderRotationHistory(response.history);
+        }
+    }).fail(function(xhr) {
+        // Silently fail for non-admin users (403 Forbidden)
+        if (xhr.status === 403) {
+            console.log('Device rotation history is only available for admin users');
         }
     });
 }
