@@ -401,15 +401,19 @@ require_once __DIR__ . '/../../includes/header.php';
                 <td><?php echo htmlspecialchars($r['ip_address'] ?? ''); ?></td>
                 <td>
                     <?php
-                        $ua_full = $r['user_agent'] ?? '';
+                        $ua_full  = $r['user_agent'] ?? '';
                         $ua_short = mb_substr($ua_full, 0, 120);
                         $ua_too_long = mb_strlen($ua_full) > 120;
+                        $ua_parsed = !empty($ua_full) ? get_browser_info($ua_full) : null;
                     ?>
-                    <div class="ua-snippet" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:480px;" title="<?php echo htmlspecialchars($ua_full); ?>"><?php echo htmlspecialchars($ua_short); ?><?php if ($ua_too_long) echo '...'; ?></div>
+                    <?php if ($ua_parsed && $ua_parsed['browser'] !== 'Unknown'): ?>
+                        <span class="fw-semibold"><?php echo htmlspecialchars($ua_parsed['platform'] . ' / ' . $ua_parsed['browser'] . ' ' . ($ua_parsed['browser_version'] ?? '')); ?></span>
+                    <?php endif; ?>
+                    <div class="ua-snippet small text-muted" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:480px;" title="<?php echo htmlspecialchars($ua_full); ?>"><?php echo htmlspecialchars($ua_short); ?><?php if ($ua_too_long) echo '...'; ?></div>
                     <?php if ($ua_too_long): ?>
                         <div class="ua-full d-none" style="white-space:normal; word-break:break-word; max-width:480px; margin-top:4px;"><?php echo htmlspecialchars($ua_full); ?></div>
                         <div class="mt-1">
-                            <button type="button" class="btn btn-link btn-sm ua-toggle">Read more</button>
+                            <button type="button" class="btn btn-link btn-sm p-0 ua-toggle">Read more</button>
                             <button type="button" class="btn btn-outline-secondary btn-sm ua-copy ms-2" title="Copy user-agent">Copy</button>
                         </div>
                     <?php endif; ?>
@@ -420,15 +424,18 @@ require_once __DIR__ . '/../../includes/header.php';
                         if (!empty($r['ip_location'])) {
                             $loc = json_decode($r['ip_location'], true) ?: [];
                         }
-                        // Don't call get_geo_info during page load - it's too slow
+                        $ipAddr = $r['ip_address'] ?? '';
                         if (!empty($loc)) {
-                            $addr = trim(($loc['city'] ?? '') . ' ' . ($loc['postal'] ?? '') . ', ' . ($loc['region'] ?? '') . ', ' . ($loc['country'] ?? ''));
+                            $addr = trim(($loc['city'] ?? '') . ', ' . ($loc['region'] ?? '') . ', ' . ($loc['country'] ?? ''));
+                            $addr = trim($addr, ', ');
                             if (!empty($loc['latitude']) && !empty($loc['longitude'])) {
                                 $mapUrl = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($loc['latitude'] . ',' . $loc['longitude']);
                             } else {
                                 $mapUrl = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($addr);
                             }
                             echo htmlspecialchars($addr) . ' <a href="' . htmlspecialchars($mapUrl) . '" target="_blank" rel="noopener" class="ms-1"><i class="fas fa-map-marker-alt text-primary"></i></a>';
+                        } elseif (!empty($ipAddr)) {
+                            echo '<span class="geo-lazy text-muted" data-ip="' . htmlspecialchars($ipAddr, ENT_QUOTES) . '"><i class="fas fa-spinner fa-spin fa-xs"></i></span>';
                         } else {
                             echo '<span class="text-muted">-</span>';
                         }
