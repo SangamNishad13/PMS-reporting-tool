@@ -509,18 +509,71 @@ try {
 // Calculate total pending count
 $totalPendingCount = count($pendingRequests) + count($pendingLogEdits) + count($pendingLogDeletions);
 
-// Fetch recent processed requests (last 30 days)
+// Recent Processed Requests - Pagination and Filters
+$recentUserFilter = $_GET['recent_user_filter'] ?? 'all';
+$recentStatusFilter = $_GET['recent_status_filter'] ?? 'all';
+$recentSearchUser = $_GET['recent_search_user'] ?? '';
+$recentPage = isset($_GET['recent_page']) ? max(1, (int)$_GET['recent_page']) : 1;
+$recentPerPage = isset($_GET['recent_per_page']) ? (int)$_GET['recent_per_page'] : 25;
+$allowedRecentPerPage = [10, 25, 50, 100];
+if (!in_array($recentPerPage, $allowedRecentPerPage, true)) {
+    $recentPerPage = 25;
+}
+
+// Build query for recent processed requests
+$recentWhere = "uer.status IN ('approved', 'rejected', 'used') AND uer.updated_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+$recentParams = [];
+
+if ($recentUserFilter !== 'all') {
+    $recentWhere .= " AND uer.user_id = ?";
+    $recentParams[] = $recentUserFilter;
+}
+
+if ($recentStatusFilter !== 'all') {
+    $recentWhere .= " AND uer.status = ?";
+    $recentParams[] = $recentStatusFilter;
+}
+
+if (!empty($recentSearchUser)) {
+    $recentWhere .= " AND (u.full_name LIKE ? OR u.username LIKE ?)";
+    $searchTerm = '%' . $recentSearchUser . '%';
+    $recentParams[] = $searchTerm;
+    $recentParams[] = $searchTerm;
+}
+
+// Count total records
+$countRecentSql = "SELECT COUNT(*) FROM user_edit_requests uer JOIN users u ON uer.user_id = u.id WHERE " . $recentWhere;
+$countRecentStmt = $db->prepare($countRecentSql);
+$countRecentStmt->execute($recentParams);
+$recentTotalRecords = (int)$countRecentStmt->fetchColumn();
+$recentTotalPages = max(1, (int)ceil($recentTotalRecords / $recentPerPage));
+if ($recentPage > $recentTotalPages) {
+    $recentPage = $recentTotalPages;
+}
+$recentOffset = ($recentPage - 1) * $recentPerPage;
+
+// Fetch recent processed requests with pagination
 $stmt = $db->prepare("
     SELECT uer.*, u.full_name, u.username 
     FROM user_edit_requests uer 
     JOIN users u ON uer.user_id = u.id 
-    WHERE uer.status IN ('approved', 'rejected', 'used') 
-    AND uer.updated_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+    WHERE " . $recentWhere . "
     ORDER BY uer.updated_at DESC
-    LIMIT 50
+    LIMIT ? OFFSET ?
 ");
-$stmt->execute();
+$recentQueryParams = array_merge($recentParams, [$recentPerPage, $recentOffset]);
+$stmt->execute($recentQueryParams);
 $recentRequests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Fetch users list for recent filter dropdown
+$recentUsersStmt = $db->query("
+    SELECT DISTINCT u.id, u.full_name 
+    FROM users u 
+    JOIN user_edit_requests uer ON u.id = uer.user_id 
+    WHERE uer.status IN ('approved', 'rejected', 'used')
+    ORDER BY u.full_name
+");
+$recentUsersList = $recentUsersStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Debug: Check all processed requests (remove after debugging)
 $debugStmt = $db->prepare("
@@ -571,21 +624,18 @@ include __DIR__ . '/../../includes/header.php';
                     <div class="border rounded p-3 h-100 <?php echo count($pendingRequests) > 0 ? 'border-warning' : ''; ?>">
                         <div class="text-muted small">Edit Access Requests</div>
                         <div class="h4 mb-0"><?php echo count($pendingRequests); ?></div>
-                        <small class="text-muted">From user_edit_requests table</small>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="border rounded p-3 h-100 <?php echo count($pendingLogEdits) > 0 ? 'border-info' : ''; ?>">
                         <div class="text-muted small">Pending Log Edits</div>
                         <div class="h4 mb-0"><?php echo count($pendingLogEdits); ?></div>
-                        <small class="text-muted">From user_pending_log_edits table</small>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="border rounded p-3 h-100 <?php echo count($pendingLogDeletions) > 0 ? 'border-danger' : ''; ?>">
                         <div class="text-muted small">Pending Log Deletions</div>
                         <div class="h4 mb-0"><?php echo count($pendingLogDeletions); ?></div>
-                        <small class="text-muted">From user_pending_log_deletions table</small>
                     </div>
                 </div>
             </div>
@@ -836,14 +886,68 @@ include __DIR__ . '/../../includes/header.php';
 
     <!-- Recent Processed Requests -->
     <div class="card">
-        <div class="card-header bg-secondary text-white">
+        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
             <h5 class="mb-0">
                 <i class="fas fa-history"></i> Recent Processed Requests (Last 30 days)
             </h5>
+            <span class="badge bg-dark"><?php echo (int)$recentTotalRecords; ?> records</span>
         </div>
         <div class="card-body">
+            <!-- Filters -->
+            <form method="GET" class="row g-3 mb-4 p-3 bg-light rounded">
+                <div class="col-md-3">
+                    <label class="form-label"><i class="fas fa-search"></i> Search User</label>
+                    <input type="text" name="recent_search_user" class="form-control" 
+                           placeholder="Search by name or username..." 
+                           value="<?php echo htmlspecialchars($recentSearchUser ?? ''); ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label"><i class="fas fa-user"></i> User</label>
+                    <select name="recent_user_filter" class="form-select">
+                        <option value="all">All Users</option>
+                        <?php foreach ($recentUsersList as $u): ?>
+                            <option value="<?php echo $u['id']; ?>" <?php echo $recentUserFilter == $u['id'] ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($u['full_name']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label"><i class="fas fa-filter"></i> Status</label>
+                    <select name="recent_status_filter" class="form-select">
+                        <option value="all" <?php echo ($recentStatusFilter ?? 'all') === 'all' ? 'selected' : ''; ?>>All Status</option>
+                        <option value="approved" <?php echo ($recentStatusFilter ?? '') === 'approved' ? 'selected' : ''; ?>>Approved</option>
+                        <option value="used" <?php echo ($recentStatusFilter ?? '') === 'used' ? 'selected' : ''; ?>>Approved & Applied</option>
+                        <option value="rejected" <?php echo ($recentStatusFilter ?? '') === 'rejected' ? 'selected' : ''; ?>>Rejected</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label"><i class="fas fa-list"></i> Per Page</label>
+                    <select name="recent_per_page" class="form-select">
+                        <?php foreach ([10, 25, 50, 100] as $rpp): ?>
+                            <option value="<?php echo $rpp; ?>" <?php echo $recentPerPage === $rpp ? 'selected' : ''; ?>>
+                                <?php echo $rpp; ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <div class="d-flex gap-2 w-100">
+                        <button type="submit" class="btn btn-primary flex-fill">
+                            <i class="fas fa-filter"></i> Apply
+                        </button>
+                        <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-secondary" title="Clear Filters">
+                            <i class="fas fa-times"></i>
+                        </a>
+                    </div>
+                </div>
+            </form>
+
             <?php if (empty($recentRequests)): ?>
-                <p class="text-muted">No recent processed requests.</p>
+                <div class="text-muted text-center py-3">
+                    <i class="fas fa-info-circle fa-2x mb-2"></i>
+                    <p>No recent processed requests found.</p>
+                </div>
             <?php else: ?>
                 <div class="table-responsive">
                     <table class="table table-striped">
@@ -883,6 +987,59 @@ include __DIR__ . '/../../includes/header.php';
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Pagination -->
+                <?php if ($recentTotalPages > 1): ?>
+                    <?php
+                        $recentBaseParams = $_GET;
+                        unset($recentBaseParams['recent_page']);
+                        $buildRecentPageUrl = function($p) use ($recentBaseParams) {
+                            $params = $recentBaseParams;
+                            $params['recent_page'] = $p;
+                            return $_SERVER['PHP_SELF'] . '?' . http_build_query($params);
+                        };
+                        $recentStartPage = max(1, $recentPage - 2);
+                        $recentEndPage = min($recentTotalPages, $recentPage + 2);
+                    ?>
+                    <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
+                        <small class="text-muted">
+                            Showing <?php echo (int)($recentOffset + 1); ?> 
+                            to <?php echo (int)min($recentOffset + $recentPerPage, $recentTotalRecords); ?> 
+                            of <?php echo (int)$recentTotalRecords; ?> records
+                        </small>
+                        <nav aria-label="Recent requests pagination">
+                            <ul class="pagination pagination-sm mb-0">
+                                <li class="page-item <?php echo $recentPage <= 1 ? 'disabled' : ''; ?>">
+                                    <a class="page-link" href="<?php echo $recentPage <= 1 ? '#' : htmlspecialchars($buildRecentPageUrl($recentPage - 1)); ?>">Previous</a>
+                                </li>
+                                <?php if ($recentStartPage > 1): ?>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo htmlspecialchars($buildRecentPageUrl(1)); ?>">1</a>
+                                    </li>
+                                    <?php if ($recentStartPage > 2): ?>
+                                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                                <?php for ($p = $recentStartPage; $p <= $recentEndPage; $p++): ?>
+                                    <li class="page-item <?php echo $p === $recentPage ? 'active' : ''; ?>">
+                                        <a class="page-link" href="<?php echo htmlspecialchars($buildRecentPageUrl($p)); ?>"><?php echo $p; ?></a>
+                                    </li>
+                                <?php endfor; ?>
+                                <?php if ($recentEndPage < $recentTotalPages): ?>
+                                    <?php if ($recentEndPage < $recentTotalPages - 1): ?>
+                                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                                    <?php endif; ?>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo htmlspecialchars($buildRecentPageUrl($recentTotalPages)); ?>"><?php echo $recentTotalPages; ?></a>
+                                    </li>
+                                <?php endif; ?>
+                                <li class="page-item <?php echo $recentPage >= $recentTotalPages ? 'disabled' : ''; ?>">
+                                    <a class="page-link" href="<?php echo $recentPage >= $recentTotalPages ? '#' : htmlspecialchars($buildRecentPageUrl($recentPage + 1)); ?>">Next</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
     </div>
