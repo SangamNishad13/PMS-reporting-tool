@@ -337,7 +337,13 @@ var ProjectConfig = window.ProjectConfig || {};
         document.getElementById('editPage_unique_id').value = uniqueId;
         document.getElementById('editPage_page_id').value = pageId;
         document.getElementById('editPage_field').value = field;
+        
         // hide the field selector when opened from an Edit button so user edits only the clicked field
+        var fieldWrapper = document.getElementById('editPage_field').closest('.mb-3');
+        if (fieldWrapper) {
+            fieldWrapper.style.display = 'none';
+            modalEl._editFieldHidden = true;
+        }
         // update modal title to reflect target field
         try { 
             var titleText = 'Edit Page Name';
@@ -449,6 +455,8 @@ var ProjectConfig = window.ProjectConfig || {};
                 // clear inputs
                 document.getElementById('editPage_value').value = '';
                 document.getElementById('editPage_text').value = '';
+                // reset field selector to default
+                document.getElementById('editPage_field').value = 'page_name';
             } catch (e) {}
             // remove this listener after run
             modalEl.removeEventListener('hidden.bs.modal', onHidden);

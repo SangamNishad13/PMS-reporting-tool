@@ -677,6 +677,7 @@
                     <label class="form-label">Field</label>
                     <select id="editPage_field" class="form-select form-select-sm">
                         <option value="page_name">Page Name</option>
+                        <option value="page_number">Page Number</option>
                         <option value="canonical_url">Unique URL</option>
                         <option value="notes">Notes</option>
                     </select>
