@@ -393,6 +393,8 @@ function renderRequests() {
     
     if (paginatedRequests.length === 0) {
         tbody.html('<tr><td colspan="7" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> No requests found</td></tr>');
+        // Update showing info even when no results
+        $('#myRequestsShowingInfo').text(filteredMyRequests.length === 0 ? 'No requests' : 'No results');
         return;
     }
     
@@ -513,6 +515,8 @@ function renderIncomingRequests() {
     
     if (paginatedRequests.length === 0) {
         tbody.html('<tr><td colspan="6" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> No incoming requests found</td></tr>');
+        // Update showing info even when no results
+        $('#incomingRequestsShowingInfo').text(filteredIncomingRequests.length === 0 ? 'No requests' : 'No results');
         return;
     }
     
