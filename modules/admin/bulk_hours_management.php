@@ -29,6 +29,10 @@ if ($_POST) {
         $successCount = 0;
         $errorCount = 0;
         
+        // First pass: validate all updates and group by project
+        $validatedUpdates = [];
+        $projectUpdates = [];
+        
         foreach ($updates as $assignmentId => $newHours) {
             if ($newHours === '' || !is_numeric($newHours)) {
                 continue;
@@ -41,7 +45,7 @@ if ($_POST) {
             }
 
             try {
-                // Get current assignment details with utilized hours for this user/project.
+                // Get current assignment details
                 $getQuery = "
                     SELECT ua.*, u.full_name, p.title as project_title, p.id as project_id,
                            p.total_hours, p.project_lead_id,
@@ -79,50 +83,84 @@ if ($_POST) {
                 $oldHours = (float)($assignment['hours_allocated'] ?? 0);
                 $utilizedHours = (float)($assignment['utilized_hours'] ?? 0);
 
-                // Skip unchanged rows.
+                // Skip unchanged rows
                 if (abs($newHours - $oldHours) < 0.0001) {
                     continue;
                 }
 
-                // Do not allow allocation lower than already utilized hours.
+                // Do not allow allocation lower than already utilized hours
                 if ($newHours < $utilizedHours) {
                     error_log("Bulk hours update failed for assignment {$assignmentId}: New hours ({$newHours}) < Utilized hours ({$utilizedHours})");
                     $errorCount++;
                     continue;
                 }
 
-                // Allow decreases even when project is currently over-allocated.
-                // Increases are capped by free budget + this assignment's current hours.
-                $projectTotal = (float)($assignment['total_hours'] ?? 0);
-                $projectAllocated = (float)($assignment['total_allocated_hours'] ?? 0);
-                $freeHours = max(0.0, $projectTotal - $projectAllocated);
-                $maxAllowed = $oldHours + $freeHours;
-                if ($newHours > $maxAllowed) {
-                    error_log("Bulk hours update failed for assignment {$assignmentId}: New hours ({$newHours}) > Max allowed ({$maxAllowed})");
-                    $errorCount++;
-                    continue;
+                // Store for second pass validation
+                $projectId = (int)$assignment['project_id'];
+                if (!isset($projectUpdates[$projectId])) {
+                    $projectUpdates[$projectId] = [
+                        'total_hours' => (float)($assignment['total_hours'] ?? 0),
+                        'current_allocated' => (float)($assignment['total_allocated_hours'] ?? 0),
+                        'updates' => []
+                    ];
                 }
                 
-                $updateQuery = "UPDATE user_assignments SET hours_allocated = ?, updated_at = NOW() WHERE id = ?";
-                $stmt = $db->prepare($updateQuery);
-                $stmt->execute([$newHours, $assignmentId]);
-                
-                logHoursActivity($db, $_SESSION['user_id'], 'bulk_hours_updated', $assignmentId, [
-                    'target_user_id' => $assignment['user_id'],
-                    'target_user_name' => $assignment['full_name'],
-                    'project_id' => $assignment['project_id'],
-                    'project_title' => $assignment['project_title'],
+                $projectUpdates[$projectId]['updates'][] = [
+                    'assignment_id' => $assignmentId,
                     'old_hours' => $oldHours,
                     'new_hours' => $newHours,
-                    'reason' => $reason,
-                    'updated_by' => $_SESSION['user_id'],
-                    'utilized_hours' => $utilizedHours
-                ]);
+                    'assignment' => $assignment
+                ];
                 
-                $successCount++;
             } catch (Exception $e) {
-                error_log('Bulk hours update error for assignment ' . $assignmentId . ': ' . $e->getMessage());
+                error_log('Bulk hours validation error for assignment ' . $assignmentId . ': ' . $e->getMessage());
                 $errorCount++;
+            }
+        }
+        
+        // Second pass: validate project totals and apply updates
+        foreach ($projectUpdates as $projectId => $projectData) {
+            $projectTotal = $projectData['total_hours'];
+            $currentAllocated = $projectData['current_allocated'];
+            
+            // Calculate new total allocation for this project
+            $newTotalAllocated = $currentAllocated;
+            foreach ($projectData['updates'] as $update) {
+                $newTotalAllocated = $newTotalAllocated - $update['old_hours'] + $update['new_hours'];
+            }
+            
+            // Check if new total exceeds project budget
+            if ($newTotalAllocated > $projectTotal) {
+                error_log("Bulk hours update failed for project {$projectId}: New total ({$newTotalAllocated}) > Project budget ({$projectTotal})");
+                $errorCount += count($projectData['updates']);
+                continue; // Skip all updates for this project
+            }
+            
+            // Apply all updates for this project
+            foreach ($projectData['updates'] as $update) {
+                try {
+                    $updateQuery = "UPDATE user_assignments SET hours_allocated = ?, updated_at = NOW() WHERE id = ?";
+                    $stmt = $db->prepare($updateQuery);
+                    $stmt->execute([$update['new_hours'], $update['assignment_id']]);
+                    
+                    $assignment = $update['assignment'];
+                    logHoursActivity($db, $_SESSION['user_id'], 'bulk_hours_updated', $update['assignment_id'], [
+                        'target_user_id' => $assignment['user_id'],
+                        'target_user_name' => $assignment['full_name'],
+                        'project_id' => $assignment['project_id'],
+                        'project_title' => $assignment['project_title'],
+                        'old_hours' => $update['old_hours'],
+                        'new_hours' => $update['new_hours'],
+                        'reason' => $reason,
+                        'updated_by' => $_SESSION['user_id'],
+                        'utilized_hours' => $assignment['utilized_hours']
+                    ]);
+                    
+                    $successCount++;
+                } catch (Exception $e) {
+                    error_log('Bulk hours update error for assignment ' . $update['assignment_id'] . ': ' . $e->getMessage());
+                    $errorCount++;
+                }
             }
         }
         
