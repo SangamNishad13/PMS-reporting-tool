@@ -699,7 +699,8 @@ try {
                 $stmt = $pdo->prepare("UPDATE devices SET status = 'Assigned' WHERE id = ?");
                 $stmt->execute([$request['device_id']]);
                 
-                // Create notification for requester (device request approved)
+                // Create notification for requester ONLY (device request approved)
+                // No notifications to admins or previous holders
                 try {
                     createNotification(
                         $pdo,
@@ -711,23 +712,9 @@ try {
                 } catch (Exception $notifEx) {
                     error_log('Failed to create notification for requester: ' . $notifEx->getMessage());
                 }
-                
-                // Create notification for previous holder (device reassigned) - only if not the one who approved
-                if (!empty($request['current_holder']) && $request['current_holder'] != $user_id) {
-                    try {
-                        createNotification(
-                            $pdo,
-                            (int)$request['current_holder'],
-                            'system',
-                            $device_name . ' has been reassigned to ' . $requester_name,
-                            $devicesLink
-                        );
-                    } catch (Exception $notifEx) {
-                        error_log('Failed to create notification for previous holder: ' . $notifEx->getMessage());
-                    }
-                }
             } else {
-                // Rejected - notify requester
+                // Rejected - notify requester ONLY
+                // No notifications to admins
                 $stmt = $pdo->prepare("SELECT device_name, device_type FROM devices WHERE id = ?");
                 $stmt->execute([$request['device_id']]);
                 $device = $stmt->fetch();
