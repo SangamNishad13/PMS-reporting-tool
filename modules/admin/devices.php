@@ -518,11 +518,26 @@ const originalRenderRotationHistory = window.renderRotationHistory;
 window.renderRotationHistory = function(history) {
     rotationHistory = history || [];
     filteredRotationHistory = rotationHistory;
+    
+    // Update showing info immediately
+    $('#historyShowingInfo').text(rotationHistory.length > 0 ? `${rotationHistory.length} records` : 'No history');
+    
     filterHistory();
 };
 
 function filterHistory() {
     const search = $('#searchHistory').val().toLowerCase();
+    
+    if (rotationHistory.length === 0) {
+        // No history at all - show empty state
+        const tbody = $('#rotationHistoryTable tbody');
+        tbody.empty();
+        tbody.html('<tr><td colspan="7" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> No rotation history yet</td></tr>');
+        $('#historyShowingInfo').text('No history');
+        $('#historyPagination').empty();
+        return;
+    }
+    
     filteredRotationHistory = rotationHistory.filter(h => {
         const text = `${h.device_name} ${h.device_type} ${h.from_user_name || ''} ${h.to_user_name} ${h.rotated_by_name} ${h.reason || ''} ${h.notes || ''}`.toLowerCase();
         return text.includes(search);

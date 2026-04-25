@@ -185,23 +185,33 @@ function loadRotationHistory() {
     
     $.get(ADMIN_VAULT_URL + '?action=get_device_rotation_history', function(response) {
         if (response.success) {
-            renderRotationHistory(response.history);
+            renderRotationHistory(response.history || []);
+        } else {
+            // Handle error - show empty state
+            renderRotationHistory([]);
         }
     }).fail(function(xhr) {
         // Silently fail for non-admin users (403 Forbidden)
         if (xhr.status === 403) {
             console.log('Device rotation history is only available for admin users');
         }
+        // Show empty state on failure
+        renderRotationHistory([]);
     });
 }
 
 function renderRotationHistory(history) {
     const tbody = $('#rotationHistoryTable tbody');
     tbody.empty();
-    if (history.length === 0) {
+    
+    // Update showing info immediately
+    $('#historyShowingInfo').text(history && history.length > 0 ? `${history.length} records` : 'No history');
+    
+    if (!history || history.length === 0) {
         tbody.html('<tr><td colspan="7" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> No rotation history yet</td></tr>');
         return;
     }
+    
     history.forEach(h => {
         tbody.append(`
             <tr>
