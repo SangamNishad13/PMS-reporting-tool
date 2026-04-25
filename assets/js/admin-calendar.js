@@ -88,13 +88,22 @@ document.addEventListener('DOMContentLoaded', function() {
     function applyCombinedFiltersToRenderedEvents() {
         var selectedSet = getSelectedFilterSet();
         var selectedHourSet = getSelectedHourFilterSet();
+        console.log('Applying filters - Status:', Array.from(selectedSet), 'Hours:', Array.from(selectedHourSet));
+        
         var eventEls = calendarEl.querySelectorAll('.fc-event, .fc-daygrid-event');
+        console.log('Total events found:', eventEls.length);
+        
+        var hiddenCount = 0;
+        var visibleCount = 0;
+        
         eventEls.forEach(function(el) {
             // Skip edit request events — they are controlled by their own toggle
             if (el.classList.contains('fc-edit-request-event')) return;
 
             var statusType   = String(el.getAttribute('data-status-type') || '').toLowerCase();
             var hoursCategory = String(el.getAttribute('data-hours-category') || '').toLowerCase();
+
+            console.log('Event:', {statusType, hoursCategory});
 
             // If no status-type set yet (event not fully mounted), skip — will be handled on next eventsSet
             if (!statusType) return;
@@ -104,8 +113,16 @@ document.addEventListener('DOMContentLoaded', function() {
             // Always use isHoursVisibleByFilter - it handles empty category properly now
             var hoursVisible = isHoursVisibleByFilter(hoursCategory, selectedHourSet);
 
-            el.style.display = (statusVisible && hoursVisible) ? '' : 'none';
+            if (statusVisible && hoursVisible) {
+                el.style.display = '';
+                visibleCount++;
+            } else {
+                el.style.display = 'none';
+                hiddenCount++;
+            }
         });
+        
+        console.log('Visible:', visibleCount, 'Hidden:', hiddenCount);
     }
 
     function applySavedStatusFilters() {
@@ -472,6 +489,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('.hours-filter-check').forEach(function(checkbox) {
         checkbox.addEventListener('change', function() {
+            console.log('Hours filter changed:', checkbox.value, checkbox.checked);
             saveHourFilters();
             applyCombinedFiltersToRenderedEvents();
         });
