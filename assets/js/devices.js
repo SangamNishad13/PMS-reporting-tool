@@ -8,6 +8,15 @@ $(document).ready(function() {
     loadDevices();
     loadRequests();
     loadRotationHistory();
+    
+    // Search filter for devices table
+    $('#searchDevice').on('keyup', function() {
+        const searchTerm = $(this).val().toLowerCase();
+        $('#devicesTable tbody tr').each(function() {
+            const text = $(this).text().toLowerCase();
+            $(this).toggle(text.includes(searchTerm));
+        });
+    });
 });
 
 // Assign device button handler
@@ -28,6 +37,7 @@ function loadDevices() {
         if (response.success) {
             devices = response.devices;
             renderDevices();
+            renderMyDevices();
             updateStats();
         }
     });
@@ -38,6 +48,7 @@ function loadRequests() {
         if (response.success) {
             requests = response.requests;
             renderRequests();
+            renderIncomingRequests();
             updateStats();
         }
     });
@@ -117,6 +128,67 @@ function toggleLeaseOwner(value) {
     }
 }
 
+function renderMyDevices() {
+    const myDevicesDiv = $('#myDevices');
+    myDevicesDiv.empty();
+    const currentUserId = window.DevicesConfig && window.DevicesConfig.currentUserId;
+    
+    // Filter devices assigned to current user
+    const myDevices = devices.filter(d => d.assigned_user_id == currentUserId && d.status === 'Assigned');
+    
+    if (myDevices.length === 0) {
+        myDevicesDiv.html(`
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> You don't have any devices assigned to you currently.
+                </div>
+            </div>
+        `);
+        return;
+    }
+    
+    myDevices.forEach(device => {
+        const ownershipBadge = getOwnershipBadge(device.ownership_type || 'Owned');
+        const storageBadge = device.storage_capacity ? `${device.storage_capacity} GB` : '-';
+        const chargerBadge = getChargerBadge(device.charger_wire);
+        
+        myDevicesDiv.append(`
+            <div class="col-md-6 col-lg-4">
+                <div class="device-card position-relative">
+                    <div class="device-status">
+                        ${getStatusBadge(device.status)}
+                    </div>
+                    <div class="d-flex align-items-start">
+                        <div class="device-icon me-3">
+                            <i class="fas fa-${getDeviceIcon(device.device_type)}"></i>
+                        </div>
+                        <div class="device-info">
+                            <h5 class="mb-1">${device.device_name}</h5>
+                            <p class="text-muted mb-2">${device.device_type}</p>
+                            <div class="mb-2">
+                                <small><strong>Model:</strong> ${device.model || '-'}</small><br>
+                                <small><strong>Version:</strong> ${device.version || '-'}</small><br>
+                                <small><strong>Storage:</strong> ${storageBadge}</small><br>
+                                <small><strong>Charger:</strong> ${chargerBadge}</small><br>
+                                <small><strong>Ownership:</strong> ${ownershipBadge}</small>
+                            </div>
+                            ${device.notes ? `<p class="text-muted small mb-2"><i class="fas fa-sticky-note"></i> ${device.notes}</p>` : ''}
+                            <div class="d-flex gap-2 mt-3">
+                                <button class="btn btn-sm btn-warning" onclick="returnDevice(${device.id})" title="Return Device">
+                                    <i class="fas fa-undo"></i> Return Device
+                                </button>
+                                <button class="btn btn-sm btn-info" onclick="viewDeviceHistory(${device.id})" title="History">
+                                    <i class="fas fa-history"></i> History
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `);
+    });
+}
+
 function renderDevices() {
     const tbody = $('#devicesTable tbody');
     tbody.empty();
@@ -148,8 +220,12 @@ function renderDevices() {
             
             actionButtons += `<button class="btn btn-sm btn-danger" onclick="deleteDevice(${device.id})" title="Delete"><i class="fas fa-trash"></i></button>`;
         } else {
-            // For non-managers, show request button if device is assigned to someone else
-            if (device.status === 'Assigned' && device.assigned_user_id != currentUserId) {
+            // For non-managers, show return button if device is assigned to them
+            if (device.status === 'Assigned' && device.assigned_user_id == currentUserId) {
+                actionButtons += `<button class="btn btn-sm btn-warning" onclick="returnDevice(${device.id})" title="Return Device"><i class="fas fa-undo"></i> Return</button>`;
+            }
+            // Show request button if device is assigned to someone else
+            else if (device.status === 'Assigned' && device.assigned_user_id != currentUserId) {
                 actionButtons += `<button class="btn btn-sm btn-primary" onclick="showRequestModal(${device.id})" title="Request Device"><i class="fas fa-hand-paper"></i> Request</button>`;
             }
         }
@@ -174,25 +250,75 @@ function renderDevices() {
 function renderRequests() {
     const tbody = $('#requestsTable tbody');
     tbody.empty();
-    if (requests.length === 0) {
-        tbody.html('<tr><td colspan="7" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> No switch requests yet</td></tr>');
+    const currentUserId = window.DevicesConfig && window.DevicesConfig.currentUserId;
+    
+    // Filter requests made by current user
+    const myRequests = requests.filter(r => r.requester_id == currentUserId);
+    
+    if (myRequests.length === 0) {
+        tbody.html('<tr><td colspan="7" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> You haven\'t made any device switch requests yet</td></tr>');
         return;
     }
-    requests.forEach(request => {
+    
+    myRequests.forEach(request => {
         const statusBadge = getRequestStatusBadge(request.status);
         const isPending = request.status === 'Pending';
         const rowClass = request.status === 'Approved' ? 'table-success' : (request.status === 'Rejected' ? 'table-danger' : '');
-        const actions = isPending ?
-            `<button class="btn btn-sm btn-success me-1" onclick="quickApprove(${request.id})" title="Quick Approve"><i class="fas fa-check"></i> Approve</button>
-            <button class="btn btn-sm btn-danger" onclick="quickReject(${request.id})" title="Quick Reject"><i class="fas fa-times"></i> Reject</button>
-            <button class="btn btn-sm btn-primary mt-1" onclick="showRespondModal(${request.id})" title="Respond with Notes"><i class="fas fa-reply"></i> Respond</button>` :
-            `<small class="text-muted">Responded</small>`;
         const holderName = request.holder_full_name || request.holder_name || 'Office';
+        const responseNotes = request.response_notes ? `<small>${request.response_notes}</small>` : '-';
+        
+        // Actions for user's own requests
+        const actions = isPending ? 
+            `<button class="btn btn-sm btn-danger" onclick="cancelRequest(${request.id})" title="Cancel Request"><i class="fas fa-times"></i> Cancel</button>` :
+            `<small class="text-muted">Completed</small>`;
+        
         tbody.append(`
             <tr class="${rowClass}">
                 <td><strong>${request.device_name}</strong><br><small class="text-muted">${request.device_type}</small></td>
-                <td><strong>${request.requester_full_name || request.requester_name}</strong>${isPending ? '<br><span class="badge bg-warning">Waiting</span>' : ''}</td>
-                <td><strong>${holderName}</strong>${isPending ? '<br><span class="badge bg-info">Current</span>' : ''}</td>
+                <td><strong>${holderName}</strong></td>
+                <td><small>${request.reason || '<em class="text-muted">No reason provided</em>'}</small></td>
+                <td><small>${new Date(request.requested_at).toLocaleString()}</small></td>
+                <td>${statusBadge}</td>
+                <td>${responseNotes}</td>
+                <td>${actions}</td>
+            </tr>
+        `);
+    });
+}
+
+function renderIncomingRequests() {
+    const tbody = $('#incomingRequestsTable tbody');
+    tbody.empty();
+    const currentUserId = window.DevicesConfig && window.DevicesConfig.currentUserId;
+    
+    // Filter requests for devices assigned to current user
+    const incomingRequests = requests.filter(r => {
+        // Find the device for this request
+        const device = devices.find(d => d.id == r.device_id);
+        // Check if device is assigned to current user and request is not from current user
+        return device && device.assigned_user_id == currentUserId && r.requester_id != currentUserId;
+    });
+    
+    if (incomingRequests.length === 0) {
+        tbody.html('<tr><td colspan="6" class="text-center text-muted py-4"><i class="fas fa-info-circle"></i> No incoming requests for your devices</td></tr>');
+        return;
+    }
+    
+    incomingRequests.forEach(request => {
+        const statusBadge = getRequestStatusBadge(request.status);
+        const isPending = request.status === 'Pending';
+        const rowClass = request.status === 'Approved' ? 'table-success' : (request.status === 'Rejected' ? 'table-danger' : '');
+        
+        const actions = isPending ?
+            `<button class="btn btn-sm btn-success me-1" onclick="quickApprove(${request.id})" title="Approve"><i class="fas fa-check"></i> Approve</button>
+            <button class="btn btn-sm btn-danger" onclick="quickReject(${request.id})" title="Reject"><i class="fas fa-times"></i> Reject</button>
+            <button class="btn btn-sm btn-primary mt-1" onclick="showRespondModal(${request.id})" title="Respond with Notes"><i class="fas fa-reply"></i> Respond</button>` :
+            `<small class="text-muted">Responded</small>`;
+        
+        tbody.append(`
+            <tr class="${rowClass}">
+                <td><strong>${request.device_name}</strong><br><small class="text-muted">${request.device_type}</small></td>
+                <td><strong>${request.requester_full_name || request.requester_name}</strong></td>
                 <td><small>${request.reason || '<em class="text-muted">No reason provided</em>'}</small></td>
                 <td><small>${new Date(request.requested_at).toLocaleString()}</small></td>
                 <td>${statusBadge}</td>
@@ -211,12 +337,12 @@ function quickApprove(requestId) {
             response_notes: 'Quick approved by admin'
         }, function(response) {
             if (response.success) {
-                showToast(response.message, 'success');
+                alert(response.message);
                 loadRequests();
                 loadDevices();
                 loadRotationHistory();
             } else {
-                showToast('Error: ' + response.message, 'danger');
+                alert('Error: ' + response.message);
             }
         });
     });
@@ -232,11 +358,29 @@ function quickReject(requestId) {
         response_notes: reason || 'Rejected by admin'
     }, function(response) {
         if (response.success) {
-            showToast(response.message, 'success');
+            alert(response.message);
             loadRequests();
         } else {
-            showToast('Error: ' + response.message, 'danger');
+            alert('Error: ' + response.message);
         }
+    });
+}
+
+function cancelRequest(requestId) {
+    confirmAction('Are you sure you want to cancel this request?', function() {
+        $.post('../../api/devices.php', {
+            action: 'cancel_request',
+            request_id: requestId
+        }, function(response) {
+            if (response.success) {
+                alert(response.message || 'Request cancelled successfully');
+                loadRequests();
+            } else {
+                alert('Error: ' + (response.message || 'Failed to cancel request'));
+            }
+        }).fail(function() {
+            alert('Failed to cancel request. Please try again.');
+        });
     });
 }
 
@@ -428,6 +572,7 @@ function returnDevice(deviceId) {
             if (response.success) {
                 alert(response.message);
                 loadDevices();
+                loadRotationHistory();
             } else {
                 alert('Error: ' + response.message);
             }
