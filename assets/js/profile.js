@@ -65,30 +65,86 @@ document.addEventListener('DOMContentLoaded', function () {
 
 // 2FA Functions
 function start2FASetup() {
-    console.log('start2FASetup called');
-    var password = prompt('Please enter your account password to proceed with 2FA setup:');
+    // Use Bootstrap modal instead of prompt for better UX
+    const modalHtml = `
+        <div class="modal fade" id="password2FAModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-warning">
+                        <h5 class="modal-title"><i class="fas fa-lock"></i> Verify Password</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Please enter your account password to proceed with 2FA setup:</p>
+                        <input type="password" id="password2FAInput" class="form-control" placeholder="Enter your password" autocomplete="current-password">
+                        <div id="password2FAError" class="text-danger mt-2" style="display:none;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="proceed2FASetup()">Continue</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if any
+    const existingModal = document.getElementById('password2FAModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Add modal to body
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Show modal
+    const passwordModal = new bootstrap.Modal(document.getElementById('password2FAModal'));
+    passwordModal.show();
+    
+    // Focus on input when modal is shown
+    document.getElementById('password2FAModal').addEventListener('shown.bs.modal', function() {
+        document.getElementById('password2FAInput').focus();
+    });
+    
+    // Allow Enter key to submit
+    document.getElementById('password2FAInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            proceed2FASetup();
+        }
+    });
+}
+
+function proceed2FASetup() {
+    const password = document.getElementById('password2FAInput').value;
+    const errorDiv = document.getElementById('password2FAError');
+    
     if (!password) {
-        console.log('Password prompt cancelled');
+        errorDiv.textContent = 'Please enter your password';
+        errorDiv.style.display = 'block';
         return;
     }
+    
+    errorDiv.style.display = 'none';
 
     var cfg = window.ProfileConfig || {};
-    console.log('ProfileConfig:', cfg);
-    
     $.ajax({
         url: cfg.baseDir + '/api/profile_2fa.php',
         method: 'POST',
         data: { action: 'generate_secret', password: password },
         dataType: 'json',
         success: function(res) {
-            console.log('2FA setup response:', res);
             if (res.success) {
+                // Close password modal
+                const passwordModal = bootstrap.Modal.getInstance(document.getElementById('password2FAModal'));
+                if (passwordModal) {
+                    passwordModal.hide();
+                }
+                
                 // Clear and render QR locally
                 const qrContainer = document.getElementById('qrCodeContainer');
                 qrContainer.innerHTML = ''; 
                 
                 if (typeof QRCode === 'undefined') {
-                    console.error('QRCode library not loaded!');
                     showToast('QR Code library failed to load. Please refresh the page.', 'danger');
                     return;
                 }
@@ -110,12 +166,13 @@ function start2FASetup() {
                 var modal = new bootstrap.Modal(document.getElementById('modal2FASetup'));
                 modal.show();
             } else {
-                showToast(res.message || 'Failed to generate 2FA secret.', 'danger');
+                errorDiv.textContent = res.message || 'Failed to generate 2FA secret. Please check your password.';
+                errorDiv.style.display = 'block';
             }
         },
         error: function(xhr, status, error) {
-            console.error('2FA setup error:', xhr, status, error);
-            showToast('A network error occurred while setting up 2FA.', 'danger');
+            errorDiv.textContent = 'A network error occurred while setting up 2FA.';
+            errorDiv.style.display = 'block';
         }
     });
 }
@@ -155,8 +212,66 @@ function verifyAndEnable2FA() {
 function disable2FA() {
     if (!confirm('Are you sure you want to disable Two-Factor Authentication? Your account will be less secure.')) return;
     
-    var password = prompt('Please enter your account password to confirm disabling 2FA:');
-    if (!password) return;
+    // Use Bootstrap modal instead of prompt
+    const modalHtml = `
+        <div class="modal fade" id="passwordDisable2FAModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title"><i class="fas fa-lock"></i> Verify Password</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Please enter your account password to confirm disabling 2FA:</p>
+                        <input type="password" id="passwordDisable2FAInput" class="form-control" placeholder="Enter your password" autocomplete="current-password">
+                        <div id="passwordDisable2FAError" class="text-danger mt-2" style="display:none;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger" onclick="proceedDisable2FA()">Disable 2FA</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if any
+    const existingModal = document.getElementById('passwordDisable2FAModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Add modal to body
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Show modal
+    const passwordModal = new bootstrap.Modal(document.getElementById('passwordDisable2FAModal'));
+    passwordModal.show();
+    
+    // Focus on input when modal is shown
+    document.getElementById('passwordDisable2FAModal').addEventListener('shown.bs.modal', function() {
+        document.getElementById('passwordDisable2FAInput').focus();
+    });
+    
+    // Allow Enter key to submit
+    document.getElementById('passwordDisable2FAInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            proceedDisable2FA();
+        }
+    });
+}
+
+function proceedDisable2FA() {
+    const password = document.getElementById('passwordDisable2FAInput').value;
+    const errorDiv = document.getElementById('passwordDisable2FAError');
+    
+    if (!password) {
+        errorDiv.textContent = 'Please enter your password';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    errorDiv.style.display = 'none';
 
     var cfg = window.ProfileConfig || {};
     $.ajax({
@@ -166,14 +281,22 @@ function disable2FA() {
         dataType: 'json',
         success: function(res) {
             if (res.success) {
+                // Close password modal
+                const passwordModal = bootstrap.Modal.getInstance(document.getElementById('passwordDisable2FAModal'));
+                if (passwordModal) {
+                    passwordModal.hide();
+                }
+                
                 showToast(res.message, 'success');
                 setTimeout(function() { window.location.reload(); }, 1500);
             } else {
-                showToast(res.message || 'Failed to disable 2FA.', 'danger');
+                errorDiv.textContent = res.message || 'Failed to disable 2FA. Please check your password.';
+                errorDiv.style.display = 'block';
             }
         },
         error: function() {
-            showToast('A network error occurred.', 'danger');
+            errorDiv.textContent = 'A network error occurred.';
+            errorDiv.style.display = 'block';
         }
     });
 }
