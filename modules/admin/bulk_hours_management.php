@@ -129,6 +129,9 @@ if ($_POST) {
                 $newTotalAllocated = $newTotalAllocated - $update['old_hours'] + $update['new_hours'];
             }
             
+            // Debug logging
+            error_log("Project {$projectId}: Current={$currentAllocated}, New Total={$newTotalAllocated}, Budget={$projectTotal}");
+            
             // Check if new total exceeds project budget
             if ($newTotalAllocated > $projectTotal) {
                 error_log("Bulk hours update failed for project {$projectId}: New total ({$newTotalAllocated}) > Project budget ({$projectTotal})");
