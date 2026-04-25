@@ -972,12 +972,23 @@ function showRespondModal(requestId) {
 
 function respondToRequest(action) {
     confirmAction(`Are you sure you want to ${action === 'Approved' ? 'approve' : 'reject'} this request?`, function() {
+        const requestId = $('#requestId').val();
+        const responseNotes = $('#responseNotes').val();
+        
+        console.log('Responding to request:', {
+            request_id: requestId,
+            response: action,
+            response_notes: responseNotes,
+            api_url: API_URL
+        });
+        
         $.post(API_URL, {
             action: 'respond_to_request',
-            request_id: $('#requestId').val(),
+            request_id: requestId,
             response: action,
-            response_notes: $('#responseNotes').val()
+            response_notes: responseNotes
         }, function(response) {
+            console.log('Response received:', response);
             if (response.success) {
                 if (typeof showToast === 'function') {
                     showToast(response.message || 'Request processed successfully', 'success');
@@ -999,6 +1010,7 @@ function respondToRequest(action) {
                 }
             }
         }).fail(function(xhr) {
+            console.error('Request failed:', xhr);
             const errorMsg = xhr.responseJSON && xhr.responseJSON.message 
                 ? xhr.responseJSON.message 
                 : 'Failed to process request';
