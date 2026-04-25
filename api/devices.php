@@ -816,9 +816,16 @@ try {
         exit;
     }
 } catch (Exception $e) {
-    if ($pdo->inTransaction()) {
-        $pdo->rollBack();
+    // Only try to rollback if there's actually an active transaction
+    try {
+        if ($pdo && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+    } catch (Exception $rollbackEx) {
+        // Ignore rollback errors - transaction may have already been committed
+        error_log('Rollback error (ignored): ' . $rollbackEx->getMessage());
     }
+    
     error_log('devices.php error: action=' . (string)$action . ' user_id=' . (int)$user_id . ' message=' . $e->getMessage());
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
