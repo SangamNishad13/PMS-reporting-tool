@@ -108,9 +108,9 @@ $sql = "
         p.po_number,
         p.status as project_status,
         pp.page_name,
-        te.environment_name,
+        te.name as environment_name,
         ph.phase_name,
-        gtc.category_name as generic_category_name
+        gtc.name as generic_category_name
     FROM project_time_logs ptl
     JOIN users u ON ptl.user_id = u.id
     LEFT JOIN projects p ON ptl.project_id = p.id
