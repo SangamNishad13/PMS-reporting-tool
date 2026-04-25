@@ -318,14 +318,15 @@ function renderDevices() {
             
             actionButtons += `<button class="btn btn-sm btn-danger" onclick="deleteDevice(${device.id})" title="Delete"><i class="fas fa-trash"></i></button>`;
         } else {
-            // For non-managers, show return button if device is assigned to them
+            // For non-managers
             if (device.status === 'Assigned' && device.assigned_user_id == currentUserId) {
+                // Device is assigned to current user - show Return button
                 actionButtons += `<button class="btn btn-sm btn-warning" onclick="returnDevice(${device.id})" title="Return Device"><i class="fas fa-undo"></i> Return</button>`;
-            }
-            // Show request button if device is assigned to someone else
-            else if (device.status === 'Assigned' && device.assigned_user_id != currentUserId) {
+            } else if (device.status === 'Available' || (device.status === 'Assigned' && device.assigned_user_id != currentUserId)) {
+                // Device is available OR assigned to someone else - show Request button
                 actionButtons += `<button class="btn btn-sm btn-primary" onclick="showRequestModal(${device.id})" title="Request Device"><i class="fas fa-hand-paper"></i> Request</button>`;
             }
+            // For Maintenance/Retired devices, no action buttons for non-managers
         }
         
         tbody.append(`
@@ -741,7 +742,16 @@ function showRequestModal(deviceId) {
     
     $('#requestDeviceId').val(deviceId);
     $('#requestDeviceName').text(device.device_name);
-    $('#requestCurrentHolder').text(device.assigned_to_name || 'Office');
+    
+    // Update modal based on device status
+    if (device.status === 'Available') {
+        $('#requestCurrentHolder').text('Office (Available)');
+        $('#requestHelpText').text('This device is currently available in the office. Your request will be sent to admins for approval.');
+    } else {
+        $('#requestCurrentHolder').text(device.assigned_to_name || 'Office');
+        $('#requestHelpText').text('Your request will be sent to the device holder. They can accept your request, or an admin can approve it.');
+    }
+    
     $('#requestReason').val('');
     $('#requestModal').modal('show');
 }
@@ -755,8 +765,11 @@ function submitRequest() {
         return;
     }
     
+    const device = devices.find(d => d.id == deviceId);
+    const action = device && device.status === 'Available' ? 'request_available' : 'request_switch';
+    
     $.post('../../api/devices.php', {
-        action: 'request_switch',
+        action: action,
         device_id: deviceId,
         reason: reason
     }, function(response) {
