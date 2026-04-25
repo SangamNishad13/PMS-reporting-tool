@@ -362,41 +362,40 @@ window.DevicesConfig = {
     userRole: <?php echo json_encode($_SESSION['role'] ?? ''); ?>,
     isAdminPage: true
 };
-</script>
-<script src="<?php echo htmlspecialchars(getBaseDir(), ENT_QUOTES, 'UTF-8'); ?>/assets/js/devices.js"></script>
 
-<script nonce="<?php echo $cspNonce ?? ''; ?>">
-// Override API paths for admin page
+// Override API paths for admin page BEFORE loading devices.js
 (function() {
     const originalAjax = $.ajax;
     $.ajax = function(options) {
         if (typeof options === 'string') {
             options = { url: options };
         }
-        if (options.url && options.url.includes('../../api/devices.php')) {
-            options.url = options.url.replace('../../api/devices.php', '../api/devices.php');
+        if (options.url && options.url.includes('../../api/')) {
+            options.url = options.url.replace('../../api/', '../api/');
         }
         return originalAjax.call(this, options);
     };
     
     const originalGet = $.get;
     $.get = function(url, data, callback, type) {
-        if (typeof url === 'string' && url.includes('../../api/devices.php')) {
-            url = url.replace('../../api/devices.php', '../api/devices.php');
+        if (typeof url === 'string' && url.includes('../../api/')) {
+            url = url.replace('../../api/', '../api/');
         }
         return originalGet.call(this, url, data, callback, type);
     };
     
     const originalPost = $.post;
     $.post = function(url, data, callback, type) {
-        if (typeof url === 'string' && url.includes('../../api/devices.php')) {
-            url = url.replace('../../api/devices.php', '../api/devices.php');
+        if (typeof url === 'string' && url.includes('../../api/')) {
+            url = url.replace('../../api/', '../api/');
         }
         return originalPost.call(this, url, data, callback, type);
     };
 })();
+</script>
+<script src="<?php echo htmlspecialchars(getBaseDir(), ENT_QUOTES, 'UTF-8'); ?>/assets/js/devices.js"></script>
 
-// Admin page specific functionality
+<script nonce="<?php echo $cspNonce ?? ''; ?>">// Admin page specific functionality
 let adminRequestsPage = 1;
 let filteredAdminRequests = [];
 let rotationHistory = [];
