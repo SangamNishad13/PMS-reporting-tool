@@ -241,9 +241,18 @@ try {
             $pageId = isset($input['page_id']) && $input['page_id'] !== '' ? (int)$input['page_id'] : 0;
             $newName = trim($input['page_name'] ?? '');
             $field = trim($input['field'] ?? 'page_name');
+            
+            // Debug logging for troubleshooting
+            error_log("update_page_name: uniqueId=$uniqueId, pageId=$pageId, field=$field, newName='$newName'");
+            
             if (!$uniqueId && !$pageId) jsonRes(['error' => 'unique_page_id or page_id required'], 400);
             if (!in_array($field, ['page_name', 'canonical_url', 'notes', 'page_number'], true)) jsonRes(['error' => 'invalid field'], 400);
-            if (!in_array($field, ['notes', 'page_number']) && $newName === '') jsonRes(['error' => 'value required'], 400);
+            
+            // For page_number field, allow empty values (it can be cleared)
+            // For other fields except notes, require non-empty values
+            if (!in_array($field, ['notes', 'page_number']) && $newName === '') {
+                jsonRes(['error' => 'value required'], 400);
+            }
 
             // determine project id
             if ($pageId) {

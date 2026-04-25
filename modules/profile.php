@@ -187,8 +187,14 @@ try {
     die("Error loading user: " . $e->getMessage());
 }
 
+// Pagination parameters for projects
+$projectsPage = max(1, intval($_GET['projects_page'] ?? 1));
+$projectsPerPage = 10;
+$projectsOffset = ($projectsPage - 1) * $projectsPerPage;
+
 // Get user's assigned projects with robust multi-source lookup
 $projects = [];
+$totalProjects = 0;
 try {
     $projectRoleMap = [];
     $rolePriority = [
@@ -256,6 +262,8 @@ try {
 
     if (!empty($projectRoleMap)) {
         $projectIds = array_keys($projectRoleMap);
+        $totalProjects = count($projectIds);
+        
         $placeholders = implode(',', array_fill(0, count($projectIds), '?'));
         $projStmt = $db->prepare("
             SELECT p.id, p.title, p.status, p.priority, p.created_at,
@@ -263,6 +271,7 @@ try {
             FROM projects p
             WHERE p.id IN ($placeholders)
             ORDER BY p.created_at DESC
+            LIMIT $projectsPerPage OFFSET $projectsOffset
         ");
         $projStmt->execute($projectIds);
         $projects = $projStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -272,12 +281,14 @@ try {
         unset($p);
     }
 
-    $user['total_projects'] = count($projects);
+    $user['total_projects'] = $totalProjects;
     $completedCount = 0;
-    foreach ($projects as $p) {
-        if (($p['status'] ?? '') === 'completed') {
-            $completedCount++;
-        }
+    if (!empty($projectRoleMap)) {
+        $projectIds = array_keys($projectRoleMap);
+        $placeholders = implode(',', array_fill(0, count($projectIds), '?'));
+        $completedStmt = $db->prepare("SELECT COUNT(*) FROM projects WHERE id IN ($placeholders) AND status = 'completed'");
+        $completedStmt->execute($projectIds);
+        $completedCount = $completedStmt->fetchColumn();
     }
     $user['completed_projects'] = $completedCount;
 } catch (Exception $e) {
@@ -285,8 +296,31 @@ try {
     $projects = [];
 }
 
+// Pagination parameters for tasks
+$tasksPage = max(1, intval($_GET['tasks_page'] ?? 1));
+$tasksPerPage = 10;
+$tasksOffset = ($tasksPage - 1) * $tasksPerPage;
+
 // Get assigned task list (project pages/environment tasks)
+$totalTasks = 0;
 try {
+    // First get total count
+    $countStmt = $db->prepare("
+        SELECT COUNT(DISTINCT pp.id)
+        FROM project_pages pp
+        JOIN projects p ON p.id = pp.project_id
+        WHERE
+            pp.at_tester_id = ? OR pp.ft_tester_id = ? OR pp.qa_id = ?
+            OR EXISTS (
+                SELECT 1
+                FROM page_environments pe
+                WHERE pe.page_id = pp.id
+                  AND (pe.at_tester_id = ? OR pe.ft_tester_id = ? OR pe.qa_id = ?)
+            )
+    ");
+    $countStmt->execute([$userId, $userId, $userId, $userId, $userId, $userId]);
+    $totalTasks = $countStmt->fetchColumn();
+
     $taskStmt = $db->prepare("
         SELECT
             pp.id AS page_id,
@@ -306,7 +340,7 @@ try {
             )
         GROUP BY pp.id, pp.page_name, pp.status, p.id, p.title
         ORDER BY p.created_at DESC, pp.id DESC
-        LIMIT 30
+        LIMIT $tasksPerPage OFFSET $tasksOffset
     ");
     $taskStmt->execute([$userId, $userId, $userId, $userId, $userId, $userId]);
     $assignedTasks = $taskStmt->fetchAll();
@@ -315,8 +349,22 @@ try {
     $assignedTasks = [];
 }
 
+// Pagination parameters for activities
+$activitiesPage = max(1, intval($_GET['activities_page'] ?? 1));
+$activitiesPerPage = 10;
+$activitiesOffset = ($activitiesPage - 1) * $activitiesPerPage;
+
 // Get user's recent activity (include activity_log and project_time_logs)
+$totalActivities = 0;
 try {
+    // First get total count
+    $countSql = "(SELECT COUNT(*) FROM activity_log al WHERE al.user_id = ?)
+                 + 
+                 (SELECT COUNT(*) FROM project_time_logs ptl WHERE ptl.user_id = ?)";
+    $countStmt = $db->prepare("SELECT ($countSql) as total");
+    $countStmt->execute([$userId, $userId]);
+    $totalActivities = $countStmt->fetchColumn();
+
     $sql = "(SELECT al.id, al.user_id, al.action, al.entity_type, al.entity_id, al.details, al.ip_address, al.created_at, p.title as project_title, pp.page_name, COALESCE(p.id, pp.project_id) as project_ref_id
         FROM activity_log al
         LEFT JOIN projects p ON al.entity_id = p.id AND al.entity_type = 'project'
@@ -329,7 +377,7 @@ try {
         LEFT JOIN project_pages pp2 ON ptl.page_id = pp2.id
         WHERE ptl.user_id = ?)
         ORDER BY created_at DESC
-        LIMIT 10";
+        LIMIT $activitiesPerPage OFFSET $activitiesOffset";
     $stmt = $db->prepare($sql);
     $stmt->execute([$userId, $userId]);
     $activities = $stmt->fetchAll();
@@ -549,9 +597,14 @@ include __DIR__ . '/../includes/header.php';
         <div class="col-md-8">
             <?php if (!$isClientViewer): ?>
             <!-- Recent Digital Assets -->
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-folder-open"></i> Digital Assets (<?php echo count($projects); ?>)</h5>
+            <div class="card" id="digital-assets">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-folder-open"></i> Digital Assets (<?php echo $totalProjects; ?>)</h5>
+                    <?php if ($totalProjects > $projectsPerPage): ?>
+                    <small class="text-muted">
+                        Showing <?php echo min($projectsOffset + 1, $totalProjects); ?>-<?php echo min($projectsOffset + $projectsPerPage, $totalProjects); ?> of <?php echo $totalProjects; ?>
+                    </small>
+                    <?php endif; ?>
                 </div>
                 <div class="card-body">
                     <?php if (empty($projects)): ?>
@@ -612,6 +665,43 @@ include __DIR__ . '/../includes/header.php';
                                 </tbody>
                             </table>
                         </div>
+                        
+                        <?php if ($totalProjects > $projectsPerPage): ?>
+                        <!-- Projects Pagination -->
+                        <nav aria-label="Digital Assets pagination" class="mt-3">
+                            <ul class="pagination pagination-sm justify-content-center">
+                                <?php
+                                $totalProjectsPages = ceil($totalProjects / $projectsPerPage);
+                                $currentUrl = $_SERVER['REQUEST_URI'];
+                                $currentUrl = preg_replace('/[&?]projects_page=\d+/', '', $currentUrl);
+                                $separator = strpos($currentUrl, '?') !== false ? '&' : '?';
+                                
+                                // Previous button
+                                if ($projectsPage > 1): ?>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo $currentUrl . $separator . 'projects_page=' . ($projectsPage - 1); ?>#digital-assets">Previous</a>
+                                    </li>
+                                <?php endif;
+                                
+                                // Page numbers
+                                $startPage = max(1, $projectsPage - 2);
+                                $endPage = min($totalProjectsPages, $projectsPage + 2);
+                                
+                                for ($i = $startPage; $i <= $endPage; $i++): ?>
+                                    <li class="page-item <?php echo $i === $projectsPage ? 'active' : ''; ?>">
+                                        <a class="page-link" href="<?php echo $currentUrl . $separator . 'projects_page=' . $i; ?>#digital-assets"><?php echo $i; ?></a>
+                                    </li>
+                                <?php endfor;
+                                
+                                // Next button
+                                if ($projectsPage < $totalProjectsPages): ?>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo $currentUrl . $separator . 'projects_page=' . ($projectsPage + 1); ?>#digital-assets">Next</a>
+                                    </li>
+                                <?php endif; ?>
+                            </ul>
+                        </nav>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
             </div>
@@ -655,9 +745,14 @@ include __DIR__ . '/../includes/header.php';
 
             <?php if (!$isClientViewer): ?>
             <!-- Assigned Tasks -->
-            <div class="card mt-3">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-tasks"></i> Assigned Tasks (<?php echo count($assignedTasks); ?>)</h5>
+            <div class="card mt-3" id="assigned-tasks">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-tasks"></i> Assigned Tasks (<?php echo $totalTasks; ?>)</h5>
+                    <?php if ($totalTasks > $tasksPerPage): ?>
+                    <small class="text-muted">
+                        Showing <?php echo min($tasksOffset + 1, $totalTasks); ?>-<?php echo min($tasksOffset + $tasksPerPage, $totalTasks); ?> of <?php echo $totalTasks; ?>
+                    </small>
+                    <?php endif; ?>
                 </div>
                 <div class="card-body">
                     <?php if (empty($assignedTasks)): ?>
@@ -697,6 +792,43 @@ include __DIR__ . '/../includes/header.php';
                                 </tbody>
                             </table>
                         </div>
+                        
+                        <?php if ($totalTasks > $tasksPerPage): ?>
+                        <!-- Tasks Pagination -->
+                        <nav aria-label="Assigned Tasks pagination" class="mt-3">
+                            <ul class="pagination pagination-sm justify-content-center">
+                                <?php
+                                $totalTasksPages = ceil($totalTasks / $tasksPerPage);
+                                $currentUrl = $_SERVER['REQUEST_URI'];
+                                $currentUrl = preg_replace('/[&?]tasks_page=\d+/', '', $currentUrl);
+                                $separator = strpos($currentUrl, '?') !== false ? '&' : '?';
+                                
+                                // Previous button
+                                if ($tasksPage > 1): ?>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo $currentUrl . $separator . 'tasks_page=' . ($tasksPage - 1); ?>#assigned-tasks">Previous</a>
+                                    </li>
+                                <?php endif;
+                                
+                                // Page numbers
+                                $startPage = max(1, $tasksPage - 2);
+                                $endPage = min($totalTasksPages, $tasksPage + 2);
+                                
+                                for ($i = $startPage; $i <= $endPage; $i++): ?>
+                                    <li class="page-item <?php echo $i === $tasksPage ? 'active' : ''; ?>">
+                                        <a class="page-link" href="<?php echo $currentUrl . $separator . 'tasks_page=' . $i; ?>#assigned-tasks"><?php echo $i; ?></a>
+                                    </li>
+                                <?php endfor;
+                                
+                                // Next button
+                                if ($tasksPage < $totalTasksPages): ?>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo $currentUrl . $separator . 'tasks_page=' . ($tasksPage + 1); ?>#assigned-tasks">Next</a>
+                                    </li>
+                                <?php endif; ?>
+                            </ul>
+                        </nav>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
             </div>
@@ -704,9 +836,14 @@ include __DIR__ . '/../includes/header.php';
 
             <?php if (!$isClientViewer): ?>
             <!-- Recent Activity -->
-            <div class="card mt-3">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-history"></i> Recent Activity</h5>
+            <div class="card mt-3" id="recent-activity">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-history"></i> Recent Activity (<?php echo $totalActivities; ?>)</h5>
+                    <?php if ($totalActivities > $activitiesPerPage): ?>
+                    <small class="text-muted">
+                        Showing <?php echo min($activitiesOffset + 1, $totalActivities); ?>-<?php echo min($activitiesOffset + $activitiesPerPage, $totalActivities); ?> of <?php echo $totalActivities; ?>
+                    </small>
+                    <?php endif; ?>
                 </div>
                 <div class="card-body recent-activity-scroll">
                     <?php if (empty($activities)): ?>
@@ -734,6 +871,43 @@ include __DIR__ . '/../includes/header.php';
                             </div>
                             <?php endforeach; ?>
                         </div>
+                        
+                        <?php if ($totalActivities > $activitiesPerPage): ?>
+                        <!-- Activities Pagination -->
+                        <nav aria-label="Recent Activity pagination" class="mt-3">
+                            <ul class="pagination pagination-sm justify-content-center">
+                                <?php
+                                $totalActivitiesPages = ceil($totalActivities / $activitiesPerPage);
+                                $currentUrl = $_SERVER['REQUEST_URI'];
+                                $currentUrl = preg_replace('/[&?]activities_page=\d+/', '', $currentUrl);
+                                $separator = strpos($currentUrl, '?') !== false ? '&' : '?';
+                                
+                                // Previous button
+                                if ($activitiesPage > 1): ?>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo $currentUrl . $separator . 'activities_page=' . ($activitiesPage - 1); ?>#recent-activity">Previous</a>
+                                    </li>
+                                <?php endif;
+                                
+                                // Page numbers
+                                $startPage = max(1, $activitiesPage - 2);
+                                $endPage = min($totalActivitiesPages, $activitiesPage + 2);
+                                
+                                for ($i = $startPage; $i <= $endPage; $i++): ?>
+                                    <li class="page-item <?php echo $i === $activitiesPage ? 'active' : ''; ?>">
+                                        <a class="page-link" href="<?php echo $currentUrl . $separator . 'activities_page=' . $i; ?>#recent-activity"><?php echo $i; ?></a>
+                                    </li>
+                                <?php endfor;
+                                
+                                // Next button
+                                if ($activitiesPage < $totalActivitiesPages): ?>
+                                    <li class="page-item">
+                                        <a class="page-link" href="<?php echo $currentUrl . $separator . 'activities_page=' . ($activitiesPage + 1); ?>#recent-activity">Next</a>
+                                    </li>
+                                <?php endif; ?>
+                            </ul>
+                        </nav>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
             </div>

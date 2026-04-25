@@ -372,10 +372,26 @@ var ProjectConfig = window.ProjectConfig || {};
             var f = document.getElementById('editPage_field').value;
             var val = f === 'notes' ? document.getElementById('editPage_text').value : document.getElementById('editPage_value').value;
             val = String(val || '').trim();
-            if (val === '') { alert('Value required'); return; }
+            
+            // For page_number field, allow empty values
+            if (val === '' && !['notes', 'page_number'].includes(f)) { 
+                alert('Value required'); 
+                return; 
+            }
 
-            var payload = { project_id: projectId, unique_page_id: parseInt(uniqueId, 10) || 0, page_id: (pageId !== '' ? parseInt(pageId, 10) : 0), field: f };
-            if (f === 'notes') payload['page_name'] = val; else payload['page_name'] = val;
+            var payload = { 
+                project_id: projectId, 
+                unique_page_id: parseInt(uniqueId, 10) || 0, 
+                page_id: (pageId !== '' ? parseInt(pageId, 10) : 0), 
+                field: f 
+            };
+            
+            // Use appropriate parameter name based on field
+            if (f === 'page_number') {
+                payload['page_name'] = val; // API expects page_name parameter for all fields
+            } else {
+                payload['page_name'] = val;
+            }
 
             saveBtn.disabled = true;
             fetch(baseDir + '/api/project_pages.php?action=update_page_name', {
@@ -401,12 +417,19 @@ var ProjectConfig = window.ProjectConfig || {};
                                 else deleteBtn.classList.add('d-none');
                             }
                         }
-                    } catch (e) { }
+                    } catch (e) { 
+                        console.error('UI update error:', e);
+                    }
                     bsModal.hide();
                 } else {
-                    alert('Update failed');
+                    console.error('API Error:', j);
+                    alert('Update failed: ' + (j && j.error ? j.error : 'Unknown error'));
                 }
-            }).catch(function () { saveBtn.disabled = false; alert('Request failed'); });
+            }).catch(function (err) { 
+                saveBtn.disabled = false; 
+                console.error('Request error:', err);
+                alert('Request failed: ' + err.message); 
+            });
 
             // cleanup
             saveBtn.removeEventListener('click', handler);
@@ -439,8 +462,24 @@ var ProjectConfig = window.ProjectConfig || {};
         var field = btn.getAttribute('data-field');
         var uniqueId = btn.getAttribute('data-unique-id') || 0;
         var pageId = btn.getAttribute('data-page-id') || 0;
+        
+        // Validate input for non-optional fields
+        if (!val && !['notes', 'page_number'].includes(field)) {
+            alert('Value required');
+            return;
+        }
+        
         fetch(baseDir + '/api/project_pages.php?action=update_page_name', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: projectId, unique_page_id: uniqueId, page_id: pageId, field: field, page_name: val }), credentials: 'same-origin'
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ 
+                project_id: projectId, 
+                unique_page_id: uniqueId, 
+                page_id: pageId, 
+                field: field, 
+                page_name: val 
+            }), 
+            credentials: 'same-origin'
         }).then(r => r.json()).then(function (j) {
             if (j && j.success) {
                 var parent = btn.closest('tr') || btn.parentElement;
@@ -460,9 +499,13 @@ var ProjectConfig = window.ProjectConfig || {};
                     }
                 }
             } else {
-                alert('Update failed');
+                console.error('Fallback API Error:', j);
+                alert('Update failed: ' + (j && j.error ? j.error : 'Unknown error'));
             }
-        }).catch(function () { alert('Request failed'); });
+        }).catch(function (err) { 
+            console.error('Fallback Request error:', err);
+            alert('Request failed: ' + err.message); 
+        });
         return false;
     };
 
