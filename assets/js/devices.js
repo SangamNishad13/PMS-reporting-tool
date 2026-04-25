@@ -11,8 +11,8 @@ let incomingRequestsPage = 1;
 const itemsPerPage = 10;
 const requestsPerPage = 10;
 
-// Get API base path from config, default to ../../api/ for backward compatibility
-const API_BASE_PATH = (window.DevicesConfig && window.DevicesConfig.apiBasePath) || '../../api/';
+// Get API base path from config, default to ../api/ for backward compatibility (modules/ folder)
+const API_BASE_PATH = (window.DevicesConfig && window.DevicesConfig.apiBasePath) || '../api/';
 const API_URL = API_BASE_PATH + 'devices.php';
 const ADMIN_VAULT_URL = API_BASE_PATH + 'admin_vault.php';
 

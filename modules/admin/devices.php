@@ -361,7 +361,7 @@ window.DevicesConfig = {
     canManageDevices: true, // Admin page always has management permissions
     userRole: <?php echo json_encode($_SESSION['role'] ?? ''); ?>,
     isAdminPage: true,
-    apiBasePath: '../api/' // Admin page uses different API path
+    apiBasePath: '../../api/' // Admin page: modules/admin/ -> go up 2 levels to root, then api/
 };
 </script>
 <script src="<?php echo htmlspecialchars(getBaseDir(), ENT_QUOTES, 'UTF-8'); ?>/assets/js/devices.js"></script>
