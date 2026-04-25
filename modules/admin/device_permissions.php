@@ -165,6 +165,7 @@ include __DIR__ . '/../../includes/header.php';
                                 </td>
                                 <td>
                                     <form method="POST" class="d-flex align-items-center gap-2" data-confirm="device-perm">
+                                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                         <input type="hidden" name="update_device_perm" value="1">
                                         <input type="hidden" name="user_id" value="<?php echo (int)$u['id']; ?>">
                                         <div class="form-check m-0">
