@@ -251,6 +251,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $q = trim((string)($_GET['q'] ?? ''));
 $locationFilter = trim((string)($_GET['location'] ?? 'all'));
 $sort = trim((string)($_GET['sort'] ?? 'newest'));
+$filterProject = (int)($_GET['filter_project'] ?? 0);
+$filterUser    = (int)($_GET['filter_user'] ?? 0);
 $page = max(1, (int)($_GET['page'] ?? 1));
 $perPage = (int)($_GET['per_page'] ?? 50);
 if ($perPage <= 0 || $perPage > 500) {
@@ -285,6 +287,14 @@ foreach ($roots as $storageKey => $rootPath) {
         $size = (int)$item->getSize();
         $mtime = (int)$item->getMTime();
         $rawPath = ($storageKey === 'uploads' ? 'uploads/' : 'assets/uploads/') . str_replace('\\', '/', $relativePath);
+
+        // Apply project/user filter — only assets_uploads files are tracked in DB
+        if ($filterPathSet !== null) {
+            if (!isset($filterPathSet[$rawPath])) {
+                continue;
+            }
+        }
+
         $urlPath = $baseDir . '/api/secure_file.php?path=' . rawurlencode($rawPath);
 
         $files[] = [
@@ -331,6 +341,27 @@ $rows = array_slice($files, $offset, $perPage);
 
 $projects = $db->query("SELECT id, title FROM projects ORDER BY title ASC")->fetchAll(PDO::FETCH_ASSOC);
 $users = $db->query("SELECT id, full_name, email FROM users ORDER BY full_name ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+// Build allowed file paths set when project/user filter is active
+$filterPathSet = null;
+if ($filterProject > 0 || $filterUser > 0) {
+    $fWhere  = ["asset_type = 'file'", "file_path IS NOT NULL"];
+    $fParams = [];
+    if ($filterProject > 0) {
+        $fWhere[]  = 'project_id = ?';
+        $fParams[] = $filterProject;
+    }
+    if ($filterUser > 0) {
+        $fWhere[]  = 'created_by = ?';
+        $fParams[] = $filterUser;
+    }
+    $fStmt = $db->prepare('SELECT file_path FROM project_assets WHERE ' . implode(' AND ', $fWhere));
+    $fStmt->execute($fParams);
+    $filterPathSet = [];
+    foreach ($fStmt->fetchAll(PDO::FETCH_COLUMN) as $fp) {
+        $filterPathSet[(string)$fp] = true;
+    }
+}
 
 $assetMetaMap = [];
 $assetPaths = [];
@@ -438,7 +469,7 @@ require_once __DIR__ . '/../../includes/header.php';
     </div>
 
     <form method="get" class="row g-2 mb-3">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <input type="text" class="form-control form-control-sm" name="q" value="<?php echo htmlspecialchars($q); ?>" placeholder="Search by file name or path">
         </div>
         <div class="col-md-2">
@@ -449,6 +480,26 @@ require_once __DIR__ . '/../../includes/header.php';
             </select>
         </div>
         <div class="col-md-2">
+            <select name="filter_project" class="form-select form-select-sm">
+                <option value="">All Projects</option>
+                <?php foreach ($projects as $p): ?>
+                    <option value="<?php echo (int)$p['id']; ?>"<?php if ($filterProject === (int)$p['id']) echo ' selected'; ?>>
+                        <?php echo htmlspecialchars((string)$p['title']); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="filter_user" class="form-select form-select-sm">
+                <option value="">All Users</option>
+                <?php foreach ($users as $u): ?>
+                    <option value="<?php echo (int)$u['id']; ?>"<?php if ($filterUser === (int)$u['id']) echo ' selected'; ?>>
+                        <?php echo htmlspecialchars((string)$u['full_name']); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="col-md-1">
             <select name="sort" class="form-select form-select-sm">
                 <option value="newest"<?php if ($sort === 'newest') echo ' selected'; ?>>Newest</option>
                 <option value="oldest"<?php if ($sort === 'oldest') echo ' selected'; ?>>Oldest</option>
@@ -458,17 +509,42 @@ require_once __DIR__ . '/../../includes/header.php';
                 <option value="name_desc"<?php if ($sort === 'name_desc') echo ' selected'; ?>>Name Z-A</option>
             </select>
         </div>
-        <div class="col-md-2">
+        <div class="col-md-1">
             <select name="per_page" class="form-select form-select-sm">
                 <?php foreach ([25, 50, 100, 200] as $pp): ?>
                     <option value="<?php echo $pp; ?>"<?php if ($perPage === $pp) echo ' selected'; ?>><?php echo $pp; ?>/page</option>
                 <?php endforeach; ?>
             </select>
         </div>
-        <div class="col-md-2">
-            <button class="btn btn-sm btn-primary w-100">Apply</button>
+        <div class="col-md-1 d-flex gap-1">
+            <button class="btn btn-sm btn-primary flex-grow-1">Apply</button>
+            <?php if ($q || $locationFilter !== 'all' || $filterProject || $filterUser): ?>
+                <a href="<?php echo htmlspecialchars($baseDir . '/modules/admin/uploads_manager.php'); ?>" class="btn btn-sm btn-outline-secondary" title="Reset filters"><i class="fas fa-times"></i></a>
+            <?php endif; ?>
         </div>
     </form>
+
+    <?php if ($filterProject > 0 || $filterUser > 0): ?>
+    <div class="alert alert-info py-2 mb-3">
+        <i class="fas fa-filter me-1"></i>
+        Showing uploads filtered by:
+        <?php if ($filterProject > 0):
+            $fp = array_filter($projects, fn($p) => (int)$p['id'] === $filterProject);
+            $fpTitle = $fp ? reset($fp)['title'] : '#' . $filterProject;
+        ?>
+            <strong>Project:</strong> <?php echo htmlspecialchars($fpTitle); ?>
+        <?php endif; ?>
+        <?php if ($filterUser > 0):
+            $fu = array_filter($users, fn($u) => (int)$u['id'] === $filterUser);
+            $fuName = $fu ? reset($fu)['full_name'] : '#' . $filterUser;
+        ?>
+            <?php if ($filterProject > 0) echo ' &amp; '; ?>
+            <strong>User:</strong> <?php echo htmlspecialchars($fuName); ?>
+        <?php endif; ?>
+        &mdash; <strong><?php echo number_format($totalFiles); ?></strong> file<?php echo $totalFiles !== 1 ? 's' : ''; ?> found
+        (<?php echo htmlspecialchars(formatBytesAdminUpload($totalSize)); ?>)
+    </div>
+    <?php endif; ?>
 
     <div class="table-responsive">
         <table class="table table-striped table-sm align-middle">
