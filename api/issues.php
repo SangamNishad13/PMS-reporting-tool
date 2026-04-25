@@ -1215,6 +1215,12 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         $title = trim($_POST['title'] ?? '');
         if (!$title) jsonError('title is required', 400);
         $description = $_POST['description'] ?? '';
+        
+        // Validate description length (TEXT column can hold ~65,535 characters)
+        if (strlen($description) > 65000) {
+            jsonError('Description is too long. Please reduce the content or remove large images.', 400);
+        }
+        
         $pageIds = parseArrayInput($_POST['pages'] ?? []);
         $pageId = (int)($_POST['page_id'] ?? 0);
         if (!$pageId && !empty($pageIds)) $pageId = (int)$pageIds[0];
@@ -2078,6 +2084,12 @@ if ($method === 'POST' && ($action === 'create' || $action === 'update')) {
         $title = trim($_POST['title'] ?? '');
         if (!$title) jsonError('title is required', 400);
         $description = $_POST['description'] ?? '';
+        
+        // Validate description length (TEXT column can hold ~65,535 characters)
+        if (strlen($description) > 65000) {
+            jsonError('Description is too long. Please reduce the content or remove large images.', 400);
+        }
+        
         $pageIds = parseArrayInput($_POST['pages'] ?? []);
         $pageSelection = normalizeIssuePageSelection($db, $projectId, 0, $pageIds);
         $pageIds = $pageSelection['page_ids'];
