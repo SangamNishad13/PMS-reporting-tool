@@ -195,7 +195,7 @@ RewriteRule .* - [F,L]
 </FilesMatch>
 
 # Block direct web access to debug/test/deployment scripts
-<FilesMatch "^(test_|_patch|deploy_production|run_final_validation)">
+<FilesMatch "^(test_standalone|_patch|deploy_production|run_final_validation)">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>
