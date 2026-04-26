@@ -170,7 +170,7 @@ if ($_POST) {
             // Apply all updates for this project
             foreach ($projectData['updates'] as $update) {
                 try {
-                    $updateQuery = "UPDATE user_assignments SET hours_allocated = ?, updated_at = NOW() WHERE id = ?";
+                    $updateQuery = "UPDATE user_assignments SET hours_allocated = ? WHERE id = ?";
                     $stmt = $db->prepare($updateQuery);
                     $stmt->execute([$update['new_hours'], $update['assignment_id']]);
                     
