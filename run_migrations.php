@@ -24,7 +24,7 @@ if (!hash_equals(RUNNER_TOKEN, $providedToken)) {
     </body></html>');
 }
 
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/config/database.php';
 
 $db = Database::getInstance();
 
@@ -47,7 +47,7 @@ try {
 } catch (Exception $e) {}
 
 // Collect all migration files (SQL only — PHP migrations handled separately)
-$migrationDir = __DIR__ . '/migrations/';
+$migrationDir = __DIR__ . '/database/migrations/';
 $sqlFiles = glob($migrationDir . '*.sql');
 sort($sqlFiles);
 
