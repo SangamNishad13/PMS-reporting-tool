@@ -635,7 +635,19 @@ class Auth {
         if (!$this->checkRole($requiredRole)) {
             $_SESSION['error'] = "You don't have permission to access this page.";
             $baseDir = getBaseDir();
-            header("Location: " . $baseDir . "/modules/auth/login.php?error=access_denied");
+            
+            // Redirect to role-specific dashboard instead of login page
+            $userRole = $_SESSION['role'] ?? '';
+            $dashboardMap = [
+                'admin' => '/modules/admin/dashboard.php',
+                'project_lead' => '/modules/project_lead/dashboard.php',
+                'qa' => '/modules/qa/dashboard.php',
+                'at_tester' => '/modules/at_tester/dashboard.php',
+                'ft_tester' => '/modules/ft_tester/dashboard.php',
+            ];
+            
+            $redirectTo = $dashboardMap[$userRole] ?? '/modules/auth/login.php';
+            header("Location: " . $baseDir . $redirectTo);
             exit;
         }
     }
@@ -714,7 +726,19 @@ function requireRole($role) {
             $_SESSION['error'] = "You don't have permission to access this page.";
             require_once __DIR__ . '/helpers.php';
             $baseDir = getBaseDir();
-            redirect($baseDir . "/");
+            
+            // Redirect to role-specific dashboard instead of home
+            $userRole = $_SESSION['role'] ?? '';
+            $dashboardMap = [
+                'admin' => '/modules/admin/dashboard.php',
+                'project_lead' => '/modules/project_lead/dashboard.php',
+                'qa' => '/modules/qa/dashboard.php',
+                'at_tester' => '/modules/at_tester/dashboard.php',
+                'ft_tester' => '/modules/ft_tester/dashboard.php',
+            ];
+            
+            $redirectTo = $dashboardMap[$userRole] ?? '/';
+            redirect($baseDir . $redirectTo);
             exit;
         }
     } else {
@@ -722,7 +746,19 @@ function requireRole($role) {
             $_SESSION['error'] = "You don't have permission to access this page.";
             require_once __DIR__ . '/helpers.php';
             $baseDir = getBaseDir();
-            redirect($baseDir . "/");
+            
+            // Redirect to role-specific dashboard instead of home
+            $userRole = $_SESSION['role'] ?? '';
+            $dashboardMap = [
+                'admin' => '/modules/admin/dashboard.php',
+                'project_lead' => '/modules/project_lead/dashboard.php',
+                'qa' => '/modules/qa/dashboard.php',
+                'at_tester' => '/modules/at_tester/dashboard.php',
+                'ft_tester' => '/modules/ft_tester/dashboard.php',
+            ];
+            
+            $redirectTo = $dashboardMap[$userRole] ?? '/';
+            redirect($baseDir . $redirectTo);
             exit;
         }
     }
