@@ -143,29 +143,11 @@ if ($_POST) {
                 $newTotalAllocated = $newTotalAllocated - $update['old_hours'] + $update['new_hours'];
             }
             
-            // Debug logging with detailed breakdown
-            error_log("Project {$projectId} Validation:");
-            error_log("  - Project Budget: {$projectTotal}h");
-            error_log("  - Current Total Allocated (from DB): {$currentAllocated}h");
-            error_log("  - Sum of Old Hours Being Changed: {$oldHoursSum}h");
-            error_log("  - Sum of New Hours Being Set: {$newHoursSum}h");
-            error_log("  - Calculated New Total: {$newTotalAllocated}h");
-            error_log("  - Formula: {$currentAllocated} - {$oldHoursSum} + {$newHoursSum} = {$newTotalAllocated}");
-            
-            // Store debug info in session for display
-            if (!isset($_SESSION['debug_info'])) {
-                $_SESSION['debug_info'] = [];
-            }
-            $_SESSION['debug_info'][] = "Project {$projectId}: Budget={$projectTotal}h, Current={$currentAllocated}h, New Total={$newTotalAllocated}h";
-            
             // Check if new total exceeds project budget (with small tolerance for floating point)
             if ($newTotalAllocated > ($projectTotal + 0.01)) {
-                error_log("Bulk hours update REJECTED for project {$projectId}: New total ({$newTotalAllocated}h) > Project budget ({$projectTotal}h)");
                 $errorCount += count($projectData['updates']);
                 continue; // Skip all updates for this project
             }
-            
-            error_log("Bulk hours update APPROVED for project {$projectId}: New total ({$newTotalAllocated}h) <= Project budget ({$projectTotal}h)");
             
             // Apply all updates for this project
             foreach ($projectData['updates'] as $update) {
@@ -345,8 +327,7 @@ $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC);
 
 $flashSuccess = isset($_SESSION['success']) ? (string)$_SESSION['success'] : '';
 $flashError = isset($_SESSION['error']) ? (string)$_SESSION['error'] : '';
-$debugInfo = isset($_SESSION['debug_info']) ? $_SESSION['debug_info'] : [];
-unset($_SESSION['success'], $_SESSION['error'], $_SESSION['debug_info']);
+unset($_SESSION['success'], $_SESSION['error']);
 
 include __DIR__ . '/../../includes/header.php';
 ?>
@@ -358,19 +339,6 @@ include __DIR__ . '/../../includes/header.php';
             <i class="fas fa-arrow-left"></i> Back to Dashboard
         </a>
     </div>
-
-    <?php if (!empty($debugInfo)): ?>
-    <!-- Debug Information -->
-    <div class="alert alert-info alert-dismissible fade show" role="alert">
-        <h5><i class="fas fa-bug"></i> Debug Information</h5>
-        <ul class="mb-0">
-            <?php foreach ($debugInfo as $info): ?>
-                <li><?php echo htmlspecialchars($info); ?></li>
-            <?php endforeach; ?>
-        </ul>
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-    <?php endif; ?>
 
     <!-- Summary Statistics -->
     <div class="row mb-4">
